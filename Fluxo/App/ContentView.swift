@@ -8,9 +8,9 @@
 import SwiftUI
 
 struct ContentView: View {
-    
+
     @StateObject private var themeManager = ThemeManager()
-    
+
     var body: some View {
         TabView {
             HomeView()
@@ -18,7 +18,7 @@ struct ContentView: View {
                 .tabItem {
                     Label("Home", systemImage: "house")
                 }
-            
+
             Text("Settings")
                 .tabItem {
                     Label("Settings", systemImage: "gear")

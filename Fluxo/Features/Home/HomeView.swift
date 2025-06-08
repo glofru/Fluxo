@@ -8,8 +8,8 @@
 import SwiftUI
 
 struct HomeView: View {
-    @State private var displayedSheet: HomeViewSheet? = nil
-    
+    @State private var displayedSheet: HomeViewSheet? = .addPlaylist
+
     var body: some View {
         NavigationView {
             Text("Home")
@@ -17,9 +17,9 @@ struct HomeView: View {
                 .toolbar {
                     Button(action: {
                         displayedSheet = .addPlaylist
-                    }) {
+                    }, label: {
                         Image(systemName: "plus")
-                    }
+                    })
                 }
                 .sheet(item: $displayedSheet) { sheet in
                     switch sheet {
@@ -30,9 +30,9 @@ struct HomeView: View {
     }
 }
 
-fileprivate enum HomeViewSheet: Identifiable {
+private enum HomeViewSheet: Identifiable {
     case addPlaylist
-    
+
     var id: String {
         switch self {
         case .addPlaylist: "AddPlaylist"

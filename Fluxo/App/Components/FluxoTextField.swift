@@ -11,11 +11,11 @@ struct FluxoTextField: View {
     @EnvironmentObject private var themeManager: ThemeManager
 
     @Binding private var text: String
-    
+
     let name: String
     let placeholder: String?
     let error: String?
-    
+
     init(_ name: String, text: Binding<String>, placeholder: String? = nil, error: String? = nil) {
         self.name = name
         self._text = text
@@ -30,20 +30,20 @@ struct FluxoTextField: View {
                     .bold()
                     .padding(.trailing, 4)
                     .frame(width: 55)
-                
+
                 ZStack(alignment: .leading) {
                     if text.isEmpty, let placeholder {
                         Text(placeholder)
                             .foregroundColor(themeManager.selectedTheme.placeholderTextColor)
                     }
-                    
+
                     TextField("", text: $text)
                         .background(.clear)
                         .foregroundStyle(themeManager.selectedTheme.textColor.opacity(0.9))
                         .textFieldStyle(.plain)
                 }.padding(.leading, 4)
             }
-            
+
             if let error {
                 Text(error)
                     .foregroundStyle(themeManager.selectedTheme.errorTextColor)
@@ -51,7 +51,7 @@ struct FluxoTextField: View {
         }
         .padding()
         .overlay {
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: themeManager.selectedTheme.cornerRadius)
                 .stroke(themeManager.selectedTheme.textColor, lineWidth: 0.2)
         }
     }

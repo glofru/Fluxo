@@ -8,17 +8,29 @@
 import SwiftUI
 
 protocol BaseTheme {
-    var backgroundColor: Color { get }
+    var primary: Color { get }
+    var secondary: Color { get }
+
+    var accentPrimary: Color { get }
+
     var textColor: Color { get }
     var placeholderTextColor: Color { get }
     var errorTextColor: Color { get }
+
+    var cornerRadius: CGFloat { get }
 }
 
 struct MainTheme: BaseTheme {
-    var backgroundColor: Color = .init(red: 24/255, green: 31/255, blue: 45/255)
+    var primary: Color = .init(red: 11 / 255, green: 15 / 255, blue: 26 / 255)
+    var secondary: Color = .init(red: 18 / 255, green: 24 / 255, blue: 38 / 255)
+
+    var accentPrimary: Color = .init(red: 0, green: 207 / 255, blue: 255 / 255)
+
     var textColor: Color = .white
     var placeholderTextColor: Color = .gray
     var errorTextColor: Color = .red
+
+    var cornerRadius: CGFloat = 16
 }
 
 class ThemeManager: ObservableObject {
