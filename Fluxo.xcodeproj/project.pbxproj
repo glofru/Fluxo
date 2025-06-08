@@ -6,7 +6,12 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		993BF4A62DF63B8300F21206 /* .swiftlint.yml in Resources */ = {isa = PBXBuildFile; fileRef = 993BF4A52DF63B8300F21206 /* .swiftlint.yml */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
+		993BF4A52DF63B8300F21206 /* .swiftlint.yml */ = {isa = PBXFileReference; lastKnownFileType = text.yaml; path = .swiftlint.yml; sourceTree = "<group>"; };
 		99B5FAC42DEAF9DC0095A78E /* Fluxo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Fluxo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -32,6 +37,7 @@
 		99B5FABB2DEAF9DC0095A78E = {
 			isa = PBXGroup;
 			children = (
+				993BF4A52DF63B8300F21206 /* .swiftlint.yml */,
 				99B5FAC62DEAF9DC0095A78E /* Fluxo */,
 				99B5FAC52DEAF9DC0095A78E /* Products */,
 			);
@@ -55,6 +61,7 @@
 				99B5FAC02DEAF9DC0095A78E /* Sources */,
 				99B5FAC12DEAF9DC0095A78E /* Frameworks */,
 				99B5FAC22DEAF9DC0095A78E /* Resources */,
+				993BF4A22DF63A5800F21206 /* ShellScript */,
 			);
 			buildRules = (
 			);
@@ -78,7 +85,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1630;
-				LastUpgradeCheck = 1630;
+				LastUpgradeCheck = 1640;
 				TargetAttributes = {
 					99B5FAC32DEAF9DC0095A78E = {
 						CreatedOnToolsVersion = 16.3;
@@ -94,6 +101,8 @@
 			);
 			mainGroup = 99B5FABB2DEAF9DC0095A78E;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 99B5FAC52DEAF9DC0095A78E /* Products */;
 			projectDirPath = "";
@@ -109,10 +118,33 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				993BF4A62DF63B8300F21206 /* .swiftlint.yml in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		993BF4A22DF63A5800F21206 /* ShellScript */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\nif [[ \"$(uname -m)\" == arm64 ]]; then\n    export PATH=\"/opt/homebrew/bin:$PATH\"\nfi\n\nif which swiftlint > /dev/null; then\n    swiftlint --fix\n    swiftlint\nelse\n  echo \"warning: SwiftLint not installed, download from https://github.com/realm/SwiftLint\"\nfi\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		99B5FAC02DEAF9DC0095A78E /* Sources */ = {
@@ -159,6 +191,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 4MJXMYZ3D9;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -221,6 +254,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 4MJXMYZ3D9;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -249,9 +283,11 @@
 				CODE_SIGN_ENTITLEMENTS = Fluxo/Fluxo.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 4MJXMYZ3D9;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -288,9 +324,11 @@
 				CODE_SIGN_ENTITLEMENTS = Fluxo/Fluxo.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 4MJXMYZ3D9;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
