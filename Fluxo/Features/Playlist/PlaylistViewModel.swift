@@ -6,8 +6,6 @@
 //
 
 import SwiftUI
-class playlist {
-}
 
 class PlaylistViewModel: ObservableObject {
 

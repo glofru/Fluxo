@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 @main
 struct FluxoApp: App {
@@ -13,5 +14,6 @@ struct FluxoApp: App {
         WindowGroup {
             ContentView()
         }
+        .modelContainer(for: ModelRegistry.all)
     }
 }

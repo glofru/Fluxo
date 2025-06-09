@@ -3,7 +3,6 @@
 disabled_rules: # rule identifiers to exclude from running
   - attributes
   - closure_end_indentation
-  - cyclomatic_complexity
   - discouraged_object_literal
   - discouraged_optional_collection
   - explicit_acl
@@ -37,19 +36,15 @@ disabled_rules: # rule identifiers to exclude from running
   - quick_discouraged_pending_test
   - raw_value_for_camel_cased_codable_enum
   - redundant_self_in_closure
-  - redundant_string_enum_value
   - required_deinit
   - reduce_into
   - sorted_enum_cases
-  - sorted_imports
   - superfluous_else
   - strict_fileprivate
   - switch_case_on_newline
   - trailing_closure
-  - trailing_whitespace
   - type_body_length
   - type_contents_order
-  - type_name
   - unneeded_parentheses_in_closure_argument
   - todo
   - vertical_whitespace_opening_braces
@@ -185,6 +180,7 @@ opt_in_rules: # some rules are only opt-in
 excluded: # paths to ignore during linting. Takes precedence over `included`.
   - Carthage
   - Pods
+  - "**/*generated.swift"
 
 file_header:
   required_pattern: |

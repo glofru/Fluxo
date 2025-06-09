@@ -8,10 +8,12 @@
 
 /* Begin PBXBuildFile section */
 		993BF4A62DF63B8300F21206 /* .swiftlint.yml in Resources */ = {isa = PBXBuildFile; fileRef = 993BF4A52DF63B8300F21206 /* .swiftlint.yml */; };
+		993BF4AD2DF6981900F21206 /* ModelRegisty.stencil in Resources */ = {isa = PBXBuildFile; fileRef = 993BF4AB2DF6980F00F21206 /* ModelRegisty.stencil */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		993BF4A52DF63B8300F21206 /* .swiftlint.yml */ = {isa = PBXFileReference; lastKnownFileType = text.yaml; path = .swiftlint.yml; sourceTree = "<group>"; };
+		993BF4AB2DF6980F00F21206 /* ModelRegisty.stencil */ = {isa = PBXFileReference; lastKnownFileType = text; path = ModelRegisty.stencil; sourceTree = "<group>"; };
 		99B5FAC42DEAF9DC0095A78E /* Fluxo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Fluxo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -34,9 +36,18 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		993BF4B02DF698C800F21206 /* Templates */ = {
+			isa = PBXGroup;
+			children = (
+				993BF4AB2DF6980F00F21206 /* ModelRegisty.stencil */,
+			);
+			path = Templates;
+			sourceTree = "<group>";
+		};
 		99B5FABB2DEAF9DC0095A78E = {
 			isa = PBXGroup;
 			children = (
+				993BF4B02DF698C800F21206 /* Templates */,
 				993BF4A52DF63B8300F21206 /* .swiftlint.yml */,
 				99B5FAC62DEAF9DC0095A78E /* Fluxo */,
 				99B5FAC52DEAF9DC0095A78E /* Products */,
@@ -61,6 +72,7 @@
 				99B5FAC02DEAF9DC0095A78E /* Sources */,
 				99B5FAC12DEAF9DC0095A78E /* Frameworks */,
 				99B5FAC22DEAF9DC0095A78E /* Resources */,
+				993BF4AF2DF6984000F21206 /* ShellScript */,
 				993BF4A22DF63A5800F21206 /* ShellScript */,
 			);
 			buildRules = (
@@ -119,6 +131,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				993BF4A62DF63B8300F21206 /* .swiftlint.yml in Resources */,
+				993BF4AD2DF6981900F21206 /* ModelRegisty.stencil in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -142,6 +155,25 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\nif [[ \"$(uname -m)\" == arm64 ]]; then\n    export PATH=\"/opt/homebrew/bin:$PATH\"\nfi\n\nif which swiftlint > /dev/null; then\n    swiftlint --fix\n    swiftlint\nelse\n  echo \"warning: SwiftLint not installed, download from https://github.com/realm/SwiftLint\"\nfi\n";
+			showEnvVarsInLog = 0;
+		};
+		993BF4AF2DF6984000F21206 /* ShellScript */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\nif [[ \"$(uname -m)\" == arm64 ]]; then\n    export PATH=\"/opt/homebrew/bin:$PATH\"\nfi\n\nif which sourcery > /dev/null; then\n    sourcery \\\n      --sources \"${SRCROOT}/Fluxo/\" \\\n      --templates \"${SRCROOT}/Templates/\" \\\n      --output \"${SRCROOT}/Fluxo/App/Database/\"\nelse\n  echo \"warning: sourcery not installed, download from https://github.com/krzysztofzablocki/Sourcery\"\nfi\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
