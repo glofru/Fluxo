@@ -30,16 +30,17 @@ class PlaylistViewModel: ObservableObject {
             for await downloadProgress in downloadManager.download(from: playlist.url) {
                 self.progress = .init(message: "Downloading...", percentage: downloadProgress.percentage * 0.45)
                 guard downloadProgress.error == nil else {
-                    return .failure(AddPlaylistError(downloadProgress.error?.localizedDescription ?? "Unknown error"))
+                    throw AddPlaylistError(downloadProgress.error?.localizedDescription ?? "Unknown error")
                 }
                 guard downloadProgress.isCompleted else {
                     continue
                 }
-                guard let data = downloadProgress.data else {
-                    return .failure(AddPlaylistError("Playlist data is missing"))
-                }
 
                 self.progress = .init(message: "Analyzing donwloaded content...", percentage: downloadProgress.percentage * 0.45)
+
+                guard let data = downloadProgress.data else {
+                    throw AddPlaylistError("Playlist data is missing")
+                }
 
                 for try await validationProgress in validator.validate(playlist: playlist, content: data, playlistEntries: &playlistEntries) {
                     self.progress = .init(message: "Parsing channel \(validationProgress.count)...", percentage: 0.45 + validationProgress.percentage * 0.45)
@@ -61,6 +62,8 @@ class PlaylistViewModel: ObservableObject {
             try? context.save()
 
             self.progress = nil
+            await Task.yield()
+
             return .failure(AddPlaylistError(error.localizedDescription))
         }
 

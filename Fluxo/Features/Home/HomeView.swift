@@ -9,14 +9,30 @@ import SwiftData
 import SwiftUI
 
 struct HomeView: View {
-    @State private var displayedSheet: HomeViewSheet? = .addPlaylist
+
+    @Environment(\.modelContext) private var modelContext
+
+    @State private var displayedSheet: HomeViewSheet?
+
+    @State private var playlistToDelete: Playlist?
 
     @Query(sort: \Playlist.createdOn) private var playlists: [Playlist]
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List(playlists) { playlist in
-                Text("\(playlist.name) (\(playlist.url.absoluteString)")
+                NavigationLink(playlist.name) {
+                    PlaylistView(playlist: playlist)
+                }
+                    .swipeActions {
+                        Button("Delete", systemImage: "trash", role: .destructive) {
+                            playlistToDelete = playlist
+                        }
+
+                        Button("Rename", systemImage: "pencil") {
+                            displayedSheet = .updatePlaylist(playlist)
+                        }
+                    }
             }
                 .navigationTitle("Home")
                 .toolbar {
@@ -30,7 +46,18 @@ struct HomeView: View {
                 .sheet(item: $displayedSheet) { sheet in
                     switch sheet {
                     case .addPlaylist: AddPlaylistView()
+                    case .updatePlaylist(let playlist): AddPlaylistView(playlist: playlist)
                     }
+                }
+                .alert("Delete playlist", isPresented: .init(get: { playlistToDelete != nil }, set: { _ in playlistToDelete = nil }), presenting: playlistToDelete) { playlist in
+                    Button("Cancel", role: .cancel) {}
+
+                    Button("Delete", role: .destructive) {
+                        modelContext.delete(playlist)
+                        try? modelContext.save()
+                    }
+                } message: { playlist in
+                    Text("Are you sure to delete playlist \"\(playlist.name)\"?")
                 }
         }
     }
@@ -38,10 +65,12 @@ struct HomeView: View {
 
 private enum HomeViewSheet: Identifiable {
     case addPlaylist
+    case updatePlaylist(Playlist)
 
     var id: String {
         switch self {
         case .addPlaylist: "AddPlaylist"
+        case .updatePlaylist(let playlist): "UpdatePlaylist\(playlist.id)"
         }
     }
 }

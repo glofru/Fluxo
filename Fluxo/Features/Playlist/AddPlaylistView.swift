@@ -29,11 +29,21 @@ struct AddPlaylistView: View {
     @State private var loading = false
     @State private var error: String?
 
-    var showUrlError: Bool {
+    private var showUrlError: Bool {
         !url.isEmpty && actualUrl == nil
     }
 
+    private var title: String {
+        if playlist != nil {
+            return "Edit Playlist"
+        }
+
+        return "Add Playlist"
+    }
+
     @FocusState private var focusField: Field?
+
+    var playlist: Playlist?
 
     var body: some View {
         NavigationView {
@@ -44,7 +54,7 @@ struct AddPlaylistView: View {
                 VStack(alignment: .center) {
                     Text("Support M3U playlists")
 
-                    FluxoTextField("Name", text: $name, placeholder: "optional")
+                    FluxoTextField("Name", text: .init(get: { name }, set: { name = $0.trimmingCharacters(in: .whitespacesAndNewlines) }), placeholder: "Name of the playlist")
                         .focused($focusField, equals: .name)
                         .onSubmit {
                             focusField = .url
@@ -60,16 +70,18 @@ struct AddPlaylistView: View {
                         .focused($focusField, equals: .url)
                         .textContentType(.URL)
                         .keyboardType(.URL)
-                        .disabled(loading)
+                        .disabled(loading || playlist != nil)
 
-                    if showUrlError {
-                        Text("Invalid URL")
-                            .bold()
-                            .underline(color: themeManager.selectedTheme.errorTextColor)
-                    }
+                    FluxoButton(label: title, loading: loading) {
+                        guard let actualUrl, !name.isEmpty else {
+                            return
+                        }
 
-                    FluxoButton(label: "Add playlist", loading: loading) {
-                        guard let actualUrl else {
+                        if let playlist {
+                            playlist.name = name
+                            playlist.url = actualUrl
+                            try? modelContext.save()
+                            dismiss()
                             return
                         }
 
@@ -90,7 +102,7 @@ struct AddPlaylistView: View {
                             }
                         }
                     }
-                    .disabled(loading)
+                    .disabled(loading || actualUrl == nil || name.isEmpty)
 
                     if let progress = viewModel.progress {
                         ProgressView(progress.message, value: progress.percentage, total: 1)
@@ -102,7 +114,7 @@ struct AddPlaylistView: View {
                 }
                 .textFieldStyle(.roundedBorder)
                 .padding()
-                .navigationTitle("Add playlist")
+                .navigationTitle(title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
@@ -117,6 +129,15 @@ struct AddPlaylistView: View {
                 .toolbarBackground(.visible, for: .navigationBar)
                 .alert(isPresented: .init(get: { error != nil }, set: { _ in error = nil })) {
                     Alert(title: Text("Error"), message: Text(error ?? ""))
+                }
+                .onAppear {
+                    guard let playlist else {
+                        return
+                    }
+
+                    self.name = playlist.name
+                    self.url = playlist.url.absoluteString
+                    self.actualUrl = URL(string: url)
                 }
             }
         }.foregroundStyle(themeManager.selectedTheme.textColor)
