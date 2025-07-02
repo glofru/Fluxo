@@ -5,20 +5,43 @@
 //  Created by Gianluca Lofrumento on 2025-06-08.
 //
 
-import SwiftData
 import Foundation
+import SwiftData
 
 @Model
-class Playlist {
-    private(set) var id: UUID
+class Playlist: Identifiable {
+    @Attribute(.unique)
+    private(set) var uuid: UUID
     var name: String
     var url: URL
     private(set) var createdOn: Date
 
-    init(id: UUID, name: String, url: URL, createdOn: Date) {
-        self.id = id
+    init(uuid: UUID, name: String, url: URL, createdOn: Date) {
+        self.uuid = uuid
         self.name = name
         self.url = url
         self.createdOn = createdOn
+    }
+}
+
+@Model
+class PlaylistEntry: Identifiable {
+    private(set) var uuid: UUID
+    var name: String?
+    var logo: URL?
+    var duration: Int?
+    var group: String?
+    var url: URL?
+    @Relationship(deleteRule: .cascade)
+    var playlist: Playlist
+
+    init(uuid: UUID, name: String? = nil, logo: URL? = nil, duration: Int? = nil, group: String? = nil, url: URL? = nil, playlist: Playlist) {
+        self.uuid = uuid
+        self.name = name
+        self.logo = logo
+        self.duration = duration
+        self.group = group
+        self.url = url
+        self.playlist = playlist
     }
 }

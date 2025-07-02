@@ -5,8 +5,8 @@
 //  Created by Gianluca Lofrumento on 2025-05-31.
 //
 
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 @main
 struct FluxoApp: App {

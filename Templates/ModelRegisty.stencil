@@ -1,4 +1,5 @@
 // Generated using Sourcery — DO NOT EDIT
+
 import SwiftData
 
 enum ModelRegistry {
