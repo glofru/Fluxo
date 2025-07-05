@@ -7,6 +7,7 @@ import SwiftData
 enum ModelRegistry {
     static let all: [any PersistentModel.Type] = [
         Playlist.self,
-        PlaylistEntry.self,
+        PlaylistChannel.self,
+        PlaylistChannelGroup.self,
     ]
 }

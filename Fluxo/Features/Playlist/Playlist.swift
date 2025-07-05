@@ -25,17 +25,17 @@ class Playlist: Identifiable {
 }
 
 @Model
-class PlaylistEntry: Identifiable {
+class PlaylistChannel: Identifiable {
     private(set) var uuid: UUID
     var name: String?
-    var logo: URL?
+    var logo: String?
     var duration: Int?
-    var group: String?
+    var group: String
     var url: URL?
     @Relationship(deleteRule: .cascade)
     var playlist: Playlist
 
-    init(uuid: UUID, name: String? = nil, logo: URL? = nil, duration: Int? = nil, group: String? = nil, url: URL? = nil, playlist: Playlist) {
+    init(uuid: UUID, name: String? = nil, logo: String? = nil, duration: Int? = nil, group: String = "", url: URL? = nil, playlist: Playlist) {
         self.uuid = uuid
         self.name = name
         self.logo = logo
@@ -43,5 +43,23 @@ class PlaylistEntry: Identifiable {
         self.group = group
         self.url = url
         self.playlist = playlist
+    }
+
+    var isLiveContent: Bool {
+        url?.pathExtension.isEmpty ?? false
+    }
+}
+
+@Model
+class PlaylistChannelGroup: Identifiable {
+    private(set) var uuid: UUID
+    var name: String
+    @Relationship(deleteRule: .cascade)
+    var playlistChannels: [PlaylistChannel]
+
+    init(uuid: UUID, name: String, playlistChannels: [PlaylistChannel]) {
+        self.uuid = uuid
+        self.name = name
+        self.playlistChannels = playlistChannels
     }
 }

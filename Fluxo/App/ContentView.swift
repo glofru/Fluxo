@@ -13,10 +13,10 @@ struct ContentView: View {
 
     var body: some View {
         TabView {
-            HomeView()
+            WatchView()
                 .environmentObject(themeManager)
                 .tabItem {
-                    Label("Home", systemImage: "house")
+                    Label("Watch", systemImage: "play.tv")
                 }
 
             Text("Settings")

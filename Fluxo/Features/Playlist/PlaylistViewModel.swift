@@ -22,7 +22,8 @@ class PlaylistViewModel: ObservableObject {
 
         self.progress = .init(message: "Contacting the server...", percentage: 0.01)
 
-        var playlistEntries: [PlaylistEntry] = []
+        var playlistChannels: [PlaylistChannel] = []
+        var playlistChannelGroups: [PlaylistChannelGroup] = []
 
         do {
             try context.save()
@@ -36,23 +37,36 @@ class PlaylistViewModel: ObservableObject {
                     continue
                 }
 
-                self.progress = .init(message: "Analyzing donwloaded content...", percentage: downloadProgress.percentage * 0.45)
+                self.progress = .init(message: "Analyzing downloaded content...", percentage: downloadProgress.percentage * 0.45)
+                await Task.yield()
 
                 guard let data = downloadProgress.data else {
                     throw AddPlaylistError("Playlist data is missing")
                 }
 
-                for try await validationProgress in validator.validate(playlist: playlist, content: data, playlistEntries: &playlistEntries) {
+                for try await validationProgress in validator.validate(playlist: playlist, content: data, playlistChannels: &playlistChannels, playlistChannelGroups: &playlistChannelGroups) {
                     self.progress = .init(message: "Parsing channel \(validationProgress.count)...", percentage: 0.45 + validationProgress.percentage * 0.45)
+                    await Task.yield()
                 }
             }
 
             self.progress = .init(message: "Saving channels...", percentage: 0.9)
 
-            for index in 0..<playlistEntries.count {
-                context.insert(playlistEntries[index])
+            for index in 0..<playlistChannels.count {
+                context.insert(playlistChannels[index])
                 if index.isMultiple(of: 1_000) {
-                    self.progress = .init(message: "Saving channels \(index)/\(playlistEntries.count)...", percentage: 0.9 + Double(index) * 0.1 / Double(playlistEntries.count))
+                    self.progress = .init(message: "Saving channels \(index)/\(playlistChannels.count)...", percentage: 0.9 + Double(index) * 0.08 / Double(playlistChannels.count))
+                    try context.save()
+                    await Task.yield()
+                }
+            }
+
+            self.progress = .init(message: "Saving channel groups...", percentage: 0.9)
+
+            for index in 0..<playlistChannelGroups.count {
+                context.insert(playlistChannelGroups[index])
+                if index.isMultiple(of: 10) {
+                    self.progress = .init(message: "Saving channel groups \(index)/\(playlistChannelGroups.count)...", percentage: 0.98 + Double(index) * 0.02 / Double(playlistChannelGroups.count))
                     try context.save()
                     await Task.yield()
                 }
