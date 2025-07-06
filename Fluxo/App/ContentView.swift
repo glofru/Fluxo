@@ -12,17 +12,43 @@ struct ContentView: View {
     @StateObject private var themeManager = ThemeManager()
 
     var body: some View {
-        TabView {
-            WatchView()
-                .environmentObject(themeManager)
-                .tabItem {
-                    Label("Watch", systemImage: "play.tv")
-                }
+        Group {
+            if #available(iOS 26, *) {
+                TabView {
+                    Tab("Watch", systemImage: "play.tv") {
+                        WatchView()
+                            .environmentObject(themeManager)
+                    }
 
-            Text("Settings")
-                .tabItem {
-                    Label("Settings", systemImage: "gear")
+                    Tab("Settings", systemImage: "gear") {
+                        Text("Settings")
+                    }
+
+                    Tab("Seach", systemImage: "magnifyingglass", role: .search) {
+                        List(0..<100) { i in
+                            Text("Row \(i)")
+                        }
+                    }
                 }
+                .tabBarMinimizeBehavior(.onScrollDown)
+            } else {
+                TabView {
+                    Tab("Watch", systemImage: "play.tv") {
+                        WatchView()
+                            .environmentObject(themeManager)
+                    }
+
+                    Tab("Settings", systemImage: "gear") {
+                        Text("Settings")
+                    }
+
+                    Tab("Seach", systemImage: "magnifyingglass", role: .search) {
+                        List(0..<100) { i in
+                            Text("Row \(i)")
+                        }
+                    }
+                }
+            }
         }
     }
 }

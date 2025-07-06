@@ -45,7 +45,11 @@ struct WatchView: View {
                         ScrollView(.horizontal) {
                             LazyHStack {
                                 ForEach(group.playlistChannels, id: \.self) { channel in
-                                    ChannelPreview(channel: channel)
+                                    NavigationLink {
+                                        WatchChannelView(channel: channel)
+                                    } label: {
+                                        ChannelPreview(channel: channel)
+                                    }
                                 }
                             }
                         }

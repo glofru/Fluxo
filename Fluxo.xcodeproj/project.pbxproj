@@ -9,6 +9,9 @@
 /* Begin PBXBuildFile section */
 		993BF4A62DF63B8300F21206 /* .swiftlint.yml in Resources */ = {isa = PBXBuildFile; fileRef = 993BF4A52DF63B8300F21206 /* .swiftlint.yml */; };
 		993BF4AD2DF6981900F21206 /* ModelRegisty.stencil in Resources */ = {isa = PBXBuildFile; fileRef = 993BF4AB2DF6980F00F21206 /* ModelRegisty.stencil */; };
+		997F92342E1A3931008E2656 /* FlyingFox in Frameworks */ = {isa = PBXBuildFile; productRef = 997F92332E1A3931008E2656 /* FlyingFox */; };
+		997F92362E1A3931008E2656 /* FlyingSocks in Frameworks */ = {isa = PBXBuildFile; productRef = 997F92352E1A3931008E2656 /* FlyingSocks */; };
+		99CBEDF92E1B2A7600C9CEE6 /* FFmpegKit in Frameworks */ = {isa = PBXBuildFile; productRef = 99CBEDF82E1B2A7600C9CEE6 /* FFmpegKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -43,6 +46,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				997F92342E1A3931008E2656 /* FlyingFox in Frameworks */,
+				997F92362E1A3931008E2656 /* FlyingSocks in Frameworks */,
+				99CBEDF92E1B2A7600C9CEE6 /* FFmpegKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -97,6 +103,9 @@
 			);
 			name = Fluxo;
 			packageProductDependencies = (
+				997F92332E1A3931008E2656 /* FlyingFox */,
+				997F92352E1A3931008E2656 /* FlyingSocks */,
+				99CBEDF82E1B2A7600C9CEE6 /* FFmpegKit */,
 			);
 			productName = Fluxo;
 			productReference = 99B5FAC42DEAF9DC0095A78E /* Fluxo.app */;
@@ -110,7 +119,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1630;
-				LastUpgradeCheck = 1640;
+				LastUpgradeCheck = 2600;
 				TargetAttributes = {
 					99B5FAC32DEAF9DC0095A78E = {
 						CreatedOnToolsVersion = 16.3;
@@ -127,6 +136,8 @@
 			mainGroup = 99B5FABB2DEAF9DC0095A78E;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				997F92322E1A3931008E2656 /* XCRemoteSwiftPackageReference "FlyingFox" */,
+				99CBEDF72E1B2A7600C9CEE6 /* XCRemoteSwiftPackageReference "FFmpegKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 99B5FAC52DEAF9DC0095A78E /* Products */;
@@ -260,6 +271,7 @@
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -316,6 +328,7 @@
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 			};
 			name = Release;
@@ -330,9 +343,11 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 4MJXMYZ3D9;
+				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Fluxo/Info.plist;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
@@ -345,7 +360,7 @@
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 18.4;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 15.4;
@@ -372,9 +387,11 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 4MJXMYZ3D9;
+				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Fluxo/Info.plist;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
@@ -387,7 +404,7 @@
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 18.4;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 15.4;
@@ -426,6 +443,43 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		997F92322E1A3931008E2656 /* XCRemoteSwiftPackageReference "FlyingFox" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/swhitty/FlyingFox.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.24.1;
+			};
+		};
+		99CBEDF72E1B2A7600C9CEE6 /* XCRemoteSwiftPackageReference "FFmpegKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/kingslay/FFmpegKit.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 6.1.3;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		997F92332E1A3931008E2656 /* FlyingFox */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 997F92322E1A3931008E2656 /* XCRemoteSwiftPackageReference "FlyingFox" */;
+			productName = FlyingFox;
+		};
+		997F92352E1A3931008E2656 /* FlyingSocks */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 997F92322E1A3931008E2656 /* XCRemoteSwiftPackageReference "FlyingFox" */;
+			productName = FlyingSocks;
+		};
+		99CBEDF82E1B2A7600C9CEE6 /* FFmpegKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 99CBEDF72E1B2A7600C9CEE6 /* XCRemoteSwiftPackageReference "FFmpegKit" */;
+			productName = FFmpegKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 99B5FABC2DEAF9DC0095A78E /* Project object */;
 }
