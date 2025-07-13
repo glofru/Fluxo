@@ -1,15 +1,6 @@
 {
-  "originHash" : "3d97343275db4f5fffdce518023c9bbfedfd0c88f2057de5c75a2bb2f9690ab2",
+  "originHash" : "b54bad70a3d3bd645957e64ed4a63d0152d69db2aa03619d6e27486b13f5731d",
   "pins" : [
-    {
-      "identity" : "ffmpegkit",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/kingslay/FFmpegKit.git",
-      "state" : {
-        "revision" : "85b77c589de0360c111de16752db86b60496d70b",
-        "version" : "6.1.3"
-      }
-    },
     {
       "identity" : "flyingfox",
       "kind" : "remoteSourceControl",
