@@ -5,28 +5,34 @@
 //  Created by Gianluca Lofrumento on 2025-07-05.
 //
 
+import AVKit
 import SwiftUI
 
 struct WatchChannelView: View {
-    @ObservedObject private var viewModel = AVPlayerViewModel()
 
-    let channel: PlaylistChannel
+    @ObservedObject var viewModel: AVPlayerViewModel
 
     var body: some View {
-        VStack {
-            Button("Play") {
-                viewModel.play()
-            }
+        ZStack {
+            Color.red
 
-            AVVideoPlayer(viewModel: viewModel)
-        }
-        .onAppear {
-            viewModel.setChannel(channel)
-            print("Playling \(channel.name): \(channel.url?.absoluteString)")
+            VStack {
+                Button(action: {
+                    viewModel.isPresented = false
+                }, label: {
+                    Text("Bye")
+                })
+
+                AVVideoPlayer(viewModel: viewModel)
+                    .frame(height: 200)
+                    .onAppear {
+                        viewModel.play()
+                    }
+            }
         }
     }
 }
 
 #Preview {
-    WatchChannelView(channel: PlaylistChannel(uuid: UUID(), playlist: .init(uuid: UUID(), name: "Test", url: .applicationDirectory, createdOn: .distantPast)))
+    WatchChannelView(viewModel: AVPlayerViewModel())
 }

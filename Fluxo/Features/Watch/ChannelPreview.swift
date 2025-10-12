@@ -10,15 +10,19 @@ import SwiftUI
 struct ChannelPreview: View {
 
     let channel: PlaylistChannel
+    let onClick: () -> Void
 
-    @EnvironmentObject private var themeManager: ThemeManager
+    init(channel: PlaylistChannel, onClick: @escaping () -> Void) {
+        self.channel = channel
+        self.onClick = onClick
+    }
 
     private let borderShape = RoundedRectangle(cornerSize: .init(width: 10, height: 10))
 
     var body: some View {
         VStack(alignment: .leading) {
             Button(action: {
-                print("\(channel.name): \(channel.logo)")
+                onClick()
             }, label: {
                 ZStack {
                     Group {
@@ -30,7 +34,7 @@ struct ChannelPreview: View {
                     }
                 }
                 .frame(width: channel.isLiveContent ? 250 : 180, height: channel.isLiveContent ? 150 : 266)
-                .background(themeManager.selectedTheme.primary.opacity(0.8))
+                .background(Color(uiColor: UIColor.lightGray))
                 .clipShape(borderShape)
             })
 
@@ -101,11 +105,10 @@ private struct ChannelPreviewImage: View {
 #Preview {
     ScrollView {
         VStack {
-            ChannelPreview(channel: PlaylistChannel(uuid: UUID(), name: "Channel name", logo: "https://i.imgur.com/Vx1F4o5.png", url: URL(string: "https://test.com/1234"), playlist: .init(uuid: UUID(), name: "Test", url: .applicationDirectory, createdOn: .init(timeIntervalSince1970: 0))))
-            ChannelPreview(channel: PlaylistChannel(uuid: UUID(), name: "Channel name", logo: "invalid", url: URL(string: "https://test.com/1234"), playlist: .init(uuid: UUID(), name: "Test", url: .applicationDirectory, createdOn: .init(timeIntervalSince1970: 0))))
-            ChannelPreview(channel: PlaylistChannel(uuid: UUID(), name: "Channel name with very long long long name like crazy long", logo: "https://image.tmdb.org/t/p/w600_and_h900_bestv2/6JVhFwg6lhnmjLndT18idG7rwwg.jpg", url: URL(string: "https://test.com/1234.mp4"), playlist: .init(uuid: UUID(), name: "Test", url: .applicationDirectory, createdOn: .init(timeIntervalSince1970: 0))))
-            ChannelPreview(channel: PlaylistChannel(uuid: UUID(), name: "Channel name with very long long long name like crazy long", logo: "invalid", url: URL(string: "https://test.com/1234.mp4"), playlist: .init(uuid: UUID(), name: "Test", url: .applicationDirectory, createdOn: .init(timeIntervalSince1970: 0))))
+            ChannelPreview(channel: PlaylistChannel(uuid: UUID(), name: "Channel name", logo: "https://i.imgur.com/Vx1F4o5.png", url: URL(string: "https://test.com/1234"), playlist: .init(uuid: UUID(), name: "Test", url: .applicationDirectory, createdOn: .init(timeIntervalSince1970: 0)))) {}
+            ChannelPreview(channel: PlaylistChannel(uuid: UUID(), name: "Channel name", logo: "invalid", url: URL(string: "https://test.com/1234"), playlist: .init(uuid: UUID(), name: "Test", url: .applicationDirectory, createdOn: .init(timeIntervalSince1970: 0)))) {}
+            ChannelPreview(channel: PlaylistChannel(uuid: UUID(), name: "Channel name with very long long long name like crazy long", logo: "https://image.tmdb.org/t/p/w600_and_h900_bestv2/6JVhFwg6lhnmjLndT18idG7rwwg.jpg", url: URL(string: "https://test.com/1234.mp4"), playlist: .init(uuid: UUID(), name: "Test", url: .applicationDirectory, createdOn: .init(timeIntervalSince1970: 0)))) {}
+            ChannelPreview(channel: PlaylistChannel(uuid: UUID(), name: "Channel name with very long long long name like crazy long", logo: "invalid", url: URL(string: "https://test.com/1234.mp4"), playlist: .init(uuid: UUID(), name: "Test", url: .applicationDirectory, createdOn: .init(timeIntervalSince1970: 0)))) {}
         }
     }
-    .environmentObject(ThemeManager())
 }

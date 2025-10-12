@@ -18,7 +18,9 @@ struct AVVideoPlayer: UIViewControllerRepresentable {
         return vc
     }
 
-    func updateUIViewController(_ uiViewController: AVPlayerViewController, context: Context) { }
+    func updateUIViewController(_ uiViewController: AVPlayerViewController, context: Context) {
+        uiViewController.player = viewModel.player
+    }
 
     func makeCoordinator() -> Coordinator {
         return Coordinator(self)
@@ -31,13 +33,15 @@ struct AVVideoPlayer: UIViewControllerRepresentable {
             self.parent = parent
         }
 
-//        func playerViewControllerWillStartPictureInPicture(_ playerViewController: AVPlayerViewController) {
-//            parent.viewModel.pipStatus = .willStart
-//        }
-//
-//        func playerViewControllerDidStartPictureInPicture(_ playerViewController: AVPlayerViewController) {
-//            parent.viewModel.pipStatus = .didStart
-//        }
+        func playerViewControllerWillStartPictureInPicture(_ playerViewController: AVPlayerViewController) {
+            parent.viewModel.isPresented = false
+            print("Will start")
+        }
+
+        func playerViewControllerDidStartPictureInPicture(_ playerViewController: AVPlayerViewController) {
+            parent.viewModel.isPresented = false
+            print("Did start")
+        }
 //
 //        func playerViewControllerWillStopPictureInPicture(_ playerViewController: AVPlayerViewController) {
 //            parent.viewModel.pipStatus = .willStop

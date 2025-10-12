@@ -9,20 +9,25 @@ import FlyingFox
 import Foundation
 
 class SimpleHTTPServer {
-    let task: Task<Void, Error>
+    var task: Task<Void, Error>?
 
-    let path: URL
+    init() {}
 
-    init(path: URL) {
-        self.path = path
+    func start(path: URL) {
+        if let task, !task.isCancelled {
+            stop()
+        }
 
         self.task = Task {
             let server = HTTPServer(port: 19123)
             await server.appendRoute("GET /*") { request in
                 let fileName = request.path.replacing("/", with: "")
 
-                guard let contents = try? Data(contentsOf: path.appending(component: fileName)) else {
+                guard var contents = try? Data(contentsOf: path.appending(component: fileName)) else {
                     return HTTPResponse(statusCode: .notFound)
+                }
+                if !fileName.hasSuffix(".m3u8") {
+                    contents.append(Data("\n#EXT-X-ENDLIST".utf8))
                 }
 
                 return HTTPResponse(statusCode: .ok, body: contents)
@@ -33,12 +38,12 @@ class SimpleHTTPServer {
                 try await server.run()
                 print("Server running")
             } catch {
-                print("Server failed")
+                print("Server stopped")
             }
         }
     }
 
     func stop() {
-        task.cancel()
+        task?.cancel()
     }
 }

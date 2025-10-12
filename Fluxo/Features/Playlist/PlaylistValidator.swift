@@ -23,6 +23,7 @@ class PlaylistValidator {
     func validate(playlist: Playlist, content: Data, playlistChannels: inout [PlaylistChannel], playlistChannelGroups: inout [PlaylistChannelGroup]) -> AsyncThrowingStream<PlaylistValidationProgress, Error> {
         return AsyncThrowingStream { continuation in
             guard let content = String(data: content, encoding: .utf8) else {
+                print("No string")
                 continuation.finish(throwing: PlaylistValidationError.invalidFormat)
                 return
             }
@@ -91,6 +92,7 @@ class PlaylistValidator {
             }
 
             guard !playlistChannels.isEmpty else {
+                print("no channels")
                 continuation.finish(throwing: PlaylistValidationError.invalidFormat)
                 return
             }

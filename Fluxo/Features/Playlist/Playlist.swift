@@ -25,7 +25,7 @@ class Playlist: Identifiable {
 }
 
 @Model
-class PlaylistChannel: Identifiable {
+class PlaylistChannel: Identifiable, Equatable {
     private(set) var uuid: UUID
     var name: String?
     var logo: String?
@@ -47,6 +47,10 @@ class PlaylistChannel: Identifiable {
 
     var isLiveContent: Bool {
         url?.pathExtension.isEmpty ?? false
+    }
+
+    static func == (lhs: PlaylistChannel, rhs: PlaylistChannel) -> Bool {
+        lhs.uuid == rhs.uuid
     }
 }
 

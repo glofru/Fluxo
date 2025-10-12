@@ -8,8 +8,6 @@
 import SwiftUI
 
 struct FluxoTextField: View {
-    @EnvironmentObject private var themeManager: ThemeManager
-
     @Binding private var text: String
 
     let name: String
@@ -34,29 +32,27 @@ struct FluxoTextField: View {
                 ZStack(alignment: .leading) {
                     if text.isEmpty, let placeholder {
                         Text(placeholder)
-                            .foregroundColor(themeManager.selectedTheme.placeholderTextColor)
                     }
 
                     TextField("", text: $text)
                         .background(.clear)
-                        .foregroundStyle(themeManager.selectedTheme.textColor.opacity(0.9))
                         .textFieldStyle(.plain)
                 }.padding(.leading, 4)
             }
 
             if let error {
                 Text(error)
-                    .foregroundStyle(themeManager.selectedTheme.errorTextColor)
+                    .foregroundStyle(.red)
             }
         }
         .padding()
         .overlay {
-            RoundedRectangle(cornerRadius: themeManager.selectedTheme.cornerRadius)
-                .stroke(themeManager.selectedTheme.textColor, lineWidth: 0.2)
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.primary, lineWidth: 0.2)
         }
     }
 }
 
 #Preview {
-    FluxoTextField("Preview", text: .constant("Preview")).environmentObject(ThemeManager())
+    FluxoTextField("Preview", text: .constant("Preview"))
 }

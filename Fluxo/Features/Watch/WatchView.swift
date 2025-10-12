@@ -12,6 +12,8 @@ struct WatchView: View {
 
     @Environment(\.modelContext) private var modelContext
 
+    @ObservedObject var viewModel: AVPlayerViewModel
+
     @State private var displayedSheet: HomeViewSheet?
 
     @State private var playlistToDelete: Playlist?
@@ -41,14 +43,15 @@ struct WatchView: View {
                 }
 
                 ForEach(groups, id: \.self) { group in
-                    Section(header: Text(group.name)) {
+                    Section(header: Text(group.name).padding().glassEffect()) {
                         ScrollView(.horizontal) {
                             LazyHStack {
                                 ForEach(group.playlistChannels, id: \.self) { channel in
-                                    NavigationLink {
-                                        WatchChannelView(channel: channel)
-                                    } label: {
-                                        ChannelPreview(channel: channel)
+                                    ChannelPreview(channel: channel) {
+                                        DispatchQueue.main.async {
+                                            viewModel.currentChannel = channel
+                                            viewModel.isPresented = true
+                                        }
                                     }
                                 }
                             }
@@ -69,8 +72,12 @@ struct WatchView: View {
             }
             .sheet(item: $displayedSheet) { sheet in
                 switch sheet {
-                case .addPlaylist: AddPlaylistView()
-                case .updatePlaylist(let playlist): AddPlaylistView(playlist: playlist)
+                case .addPlaylist:
+                    AddPlaylistView()
+                        .presentationDetents([.medium])
+                case .updatePlaylist(let playlist):
+                    AddPlaylistView(playlist: playlist)
+                        .presentationDetents([.medium])
                 }
             }
             .alert("Delete playlist", isPresented: .init(get: { playlistToDelete != nil }, set: { _ in playlistToDelete = nil }), presenting: playlistToDelete) { playlist in
@@ -100,5 +107,5 @@ private enum HomeViewSheet: Identifiable {
 }
 
 #Preview {
-    WatchView()
+    WatchView(viewModel: AVPlayerViewModel())
 }

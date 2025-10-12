@@ -8,8 +8,6 @@
 import SwiftUI
 
 struct FluxoButton: View {
-    @EnvironmentObject private var themeManager: ThemeManager
-
     let label: String
     var loading: Bool = false
     let action: @MainActor () -> Void
@@ -25,9 +23,6 @@ struct FluxoButton: View {
             }
         }
         .padding()
-        .foregroundStyle(themeManager.selectedTheme.textColor)
-        .background(themeManager.selectedTheme.accentPrimary)
-        .clipShape(RoundedRectangle(cornerRadius: themeManager.selectedTheme.cornerRadius))
     }
 }
 
