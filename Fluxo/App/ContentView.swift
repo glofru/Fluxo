@@ -28,27 +28,24 @@ struct ContentView: View {
                 .searchable(text: .init(get: { "test" }, set: { _ in }))
             }
         }
-        .tabBarMinimizeBehavior(.onScrollDown)
-        .tabViewBottomAccessory {
+        .playerAccessory(isVisible: viewModel.currentChannel != nil) {
             PlayerBottomAccessory(viewModel: viewModel)
         }
-        .fullScreenCover(isPresented: $viewModel.isPresented) {
+        .playerPresentation(isPresented: $viewModel.isPresented) {
             WatchChannelView(viewModel: viewModel)
         }
     }
 }
 
 struct PlayerBottomAccessory: View {
-    @Environment(\.tabViewBottomAccessoryPlacement) private var placement: TabViewBottomAccessoryPlacement?
-
     @ObservedObject var viewModel: AVPlayerViewModel
 
     var body: some View {
         if let channel = viewModel.currentChannel {
             HStack {
                 if let logo = channel.logo, let url = URL(string: logo) {
-                    if url.absoluteString.hasPrefix("data:image") == true, let data = try? Data(contentsOf: url), let image = UIImage(data: data) {
-                        Image(uiImage: image)
+                    if let image = Image(dataURL: url) {
+                        image
                             .resizable()
                             .scaledToFit()
                             .clipShape(RoundedRectangle(cornerSize: .init(width: 6, height: 6)))

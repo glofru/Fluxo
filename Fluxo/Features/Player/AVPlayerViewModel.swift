@@ -10,9 +10,10 @@ import SwiftUI
 
 final class AVPlayerViewModel: ObservableObject {
 
-    private var runningInput: URL?
-    private var server = SimpleHTTPServer()
+    private let server = SimpleHTTPServer()
+    private let remuxer = StreamRemuxer()
     private let outputDir = FileManager.default.temporaryDirectory.appendingPathComponent("hls", isDirectory: true)
+    private var playbackTask: Task<Void, Never>?
 
     @Published var isPresented: Bool = false
 
@@ -24,12 +25,18 @@ final class AVPlayerViewModel: ObservableObject {
         }
     }
 
-    let ffmpegManager = FFmpegManager()
+    /// Last error reported by the stream engine for the current channel.
+    @Published private(set) var streamError: String?
 
     let player = AVPlayer()
 
     init() {
-        setAudioSessionCategory(to: .playback)
+        configureAudioSession()
+        remuxer.onStateChange = { [weak self] state in
+            if case .failed(let message) = state {
+                self?.streamError = message
+            }
+        }
     }
 
     private func setChannel(_ channel: PlaylistChannel) {
@@ -38,65 +45,50 @@ final class AVPlayerViewModel: ObservableObject {
             return
         }
 
+        playbackTask?.cancel()
+        remuxer.stop()
+        streamError = nil
+
         guard channel.isLiveContent else {
             player.replaceCurrentItem(with: AVPlayerItem(url: url))
             return
         }
 
-        server.start(path: outputDir)
-        let (transmuxedUrl, playlistPath) = transmuxStream(url, name: "\(channel.uuid)-\(UUID().uuidString)")
+        server.start(root: outputDir)
 
-        Task {
-            for _ in 0..<10 {
-                guard FileManager.default.fileExists(atPath: playlistPath) else {
-                    try? await Task.sleep(for: .seconds(1))
-                    continue
-                }
+        let configuration = StreamRemuxer.Configuration(
+            inputURL: url,
+            outputDirectory: outputDir,
+            name: "\(channel.uuid)-\(UUID().uuidString)"
+        )
+        guard let streamURL = SimpleHTTPServer.url(forFileNamed: configuration.playlistFileName) else {
+            return
+        }
 
-                await MainActor.run { [weak self] in
-                    self?.player.replaceCurrentItem(with: AVPlayerItem(url: transmuxedUrl))
+        do {
+            try remuxer.start(configuration)
+        } catch {
+            streamError = error.localizedDescription
+            return
+        }
+
+        let playlistPath = configuration.playlistURL.path
+        playbackTask = Task { @MainActor [weak self] in
+            // Wait for the first segment and playlist to be written, then attach the stream once.
+            for _ in 0..<120 {
+                guard !Task.isCancelled else {
+                    return
                 }
+                if FileManager.default.fileExists(atPath: playlistPath) {
+                    self?.player.replaceCurrentItem(with: AVPlayerItem(url: streamURL))
+                    return
+                }
+                guard self?.remuxer.isProcessing == true else {
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(250))
             }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
-            self?.player.replaceCurrentItem(with: AVPlayerItem(url: transmuxedUrl))
-        }
-    }
-
-    private func transmuxStream(_ inputUrl: URL, name: String) -> (URL, String) {
-        if ffmpegManager.isProcessing {
-            print("Stopping FFmpeg")
-            ffmpegManager.stopExecution()
-        }
-
-        try? FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
-
-        let fileName = "stream-\(name).m3u8"
-        let playlistPath = outputDir.appendingPathComponent(fileName).path
-
-        if runningInput?.absoluteString != inputUrl.absoluteString {
-            Task {
-                print("Starting transmuxing into \(playlistPath)")
-                let args = [
-                    "-i \(inputUrl.absoluteString)",
-                    "-c copy",
-                    "-f hls",
-                    "-hls_time 1",
-                    "-hls_list_size 30",
-                    "-hls_flags delete_segments",
-                    "-loglevel quiet",
-                    playlistPath
-                ]
-                let command = args.joined(separator: " ")
-                ffmpegManager.executeCommand(command) { success, errorMessage in
-                    print("FFmpeg: \(success). Error: \(errorMessage)")
-                }
-            }
-        }
-
-        runningInput = inputUrl
-
-        return (URL(string: "http://127.0.0.1:19123/\(fileName)")!, playlistPath)
     }
 
     func play() {
@@ -109,18 +101,20 @@ final class AVPlayerViewModel: ObservableObject {
 
     func stop() {
         currentChannel = nil
-        if ffmpegManager.isProcessing {
-            ffmpegManager.stopExecution()
-        }
+        playbackTask?.cancel()
+        playbackTask = nil
+        player.replaceCurrentItem(with: nil)
+        remuxer.stop()
         server.stop()
     }
 
-    func setAudioSessionCategory(to value: AVAudioSession.Category) {
-        let audioSession = AVAudioSession.sharedInstance()
+    private func configureAudioSession() {
+        #if !os(macOS)
         do {
-           try audioSession.setCategory(value)
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         } catch {
-           print("Setting category to AVAudioSessionCategoryPlayback failed.")
+            print("Setting category to AVAudioSessionCategoryPlayback failed.")
         }
+        #endif
     }
 }

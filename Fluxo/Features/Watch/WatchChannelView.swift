@@ -28,6 +28,12 @@ struct WatchChannelView: View {
                     .onAppear {
                         viewModel.play()
                     }
+
+                if let streamError = viewModel.streamError {
+                    Text(streamError)
+                        .foregroundStyle(.white)
+                        .padding()
+                }
             }
         }
     }

@@ -34,7 +34,7 @@ struct ChannelPreview: View {
                     }
                 }
                 .frame(width: channel.isLiveContent ? 250 : 180, height: channel.isLiveContent ? 150 : 266)
-                .background(Color(uiColor: UIColor.lightGray))
+                .background(Color.artworkPlaceholder)
                 .clipShape(borderShape)
             })
 
@@ -44,7 +44,7 @@ struct ChannelPreview: View {
         }
         .frame(width: channel.isLiveContent ? 250 : 180)
         .padding()
-        .contentShape(.contextMenuPreview, borderShape)
+        .contextMenuPreviewShape(borderShape)
         .contextMenu {
             Text(channel.name ?? "No channel name")
                 .bold()
@@ -66,8 +66,8 @@ private struct ChannelPreviewImage: View {
 
     var body: some View {
         Group {
-            if url.absoluteString.hasPrefix("data:image") == true, let data = try? Data(contentsOf: url), let image = UIImage(data: data) {
-                Image(uiImage: image)
+            if let image = Image(dataURL: url) {
+                image
                     .resizable()
                     .if(isLiveContent) { image in
                         image.scaledToFit()

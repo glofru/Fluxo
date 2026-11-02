@@ -7,22 +7,14 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		991C73072E1B3D57004AF87A /* libavfilter.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 991C73002E1B3D57004AF87A /* libavfilter.framework */; settings = {ATTRIBUTES = (Required, ); }; };
-		991C73082E1B3D57004AF87A /* libavformat.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 991C73012E1B3D57004AF87A /* libavformat.framework */; };
-		991C73092E1B3D57004AF87A /* libswscale.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 991C73022E1B3D57004AF87A /* libswscale.framework */; };
-		991C730A2E1B3D57004AF87A /* libswresample.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 991C73032E1B3D57004AF87A /* libswresample.framework */; };
-		991C730B2E1B3D57004AF87A /* libavutil.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 991C73042E1B3D57004AF87A /* libavutil.framework */; };
-		991C730C2E1B3D57004AF87A /* libavdevice.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 991C73052E1B3D57004AF87A /* libavdevice.framework */; };
-		991C730D2E1B3D57004AF87A /* libavcodec.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 991C73062E1B3D57004AF87A /* libavcodec.framework */; };
-		991C73502E1B3E38004AF87A /* libavdevice.framework in CopyFiles */ = {isa = PBXBuildFile; fileRef = 991C73492E1B3E37004AF87A /* libavdevice.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		991C73512E1B3E38004AF87A /* libswresample.framework in CopyFiles */ = {isa = PBXBuildFile; fileRef = 991C734A2E1B3E37004AF87A /* libswresample.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		991C73522E1B3E38004AF87A /* libavcodec.framework in CopyFiles */ = {isa = PBXBuildFile; fileRef = 991C734B2E1B3E37004AF87A /* libavcodec.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		991C73532E1B3E38004AF87A /* libavutil.framework in CopyFiles */ = {isa = PBXBuildFile; fileRef = 991C734C2E1B3E37004AF87A /* libavutil.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		991C73542E1B3E38004AF87A /* libavfilter.framework in CopyFiles */ = {isa = PBXBuildFile; fileRef = 991C734D2E1B3E37004AF87A /* libavfilter.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		991C73552E1B3E38004AF87A /* libavformat.framework in CopyFiles */ = {isa = PBXBuildFile; fileRef = 991C734E2E1B3E38004AF87A /* libavformat.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		991C73562E1B3E38004AF87A /* libswscale.framework in CopyFiles */ = {isa = PBXBuildFile; fileRef = 991C734F2E1B3E38004AF87A /* libswscale.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		991C73572E1B3F00004AF87A /* ffmpegkit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 99CBEE912E1B314900C9CEE6 /* ffmpegkit.framework */; };
-		991C73582E1B3F10004AF87A /* ffmpegkit.framework in CopyFiles */ = {isa = PBXBuildFile; fileRef = 99CBEE912E1B314900C9CEE6 /* ffmpegkit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		991C73082E1B3D57004AF87A /* libavformat.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 991C73012E1B3D57004AF87A /* libavformat.framework */; platformFilters = (ios, ); };
+		991C730A2E1B3D57004AF87A /* libswresample.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 991C73032E1B3D57004AF87A /* libswresample.framework */; platformFilters = (ios, ); };
+		991C730B2E1B3D57004AF87A /* libavutil.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 991C73042E1B3D57004AF87A /* libavutil.framework */; platformFilters = (ios, ); };
+		991C730D2E1B3D57004AF87A /* libavcodec.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 991C73062E1B3D57004AF87A /* libavcodec.framework */; platformFilters = (ios, ); };
+		991C73512E1B3E38004AF87A /* libswresample.framework in CopyFiles */ = {isa = PBXBuildFile; fileRef = 991C734A2E1B3E37004AF87A /* libswresample.framework */; platformFilters = (ios, ); settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		991C73522E1B3E38004AF87A /* libavcodec.framework in CopyFiles */ = {isa = PBXBuildFile; fileRef = 991C734B2E1B3E37004AF87A /* libavcodec.framework */; platformFilters = (ios, ); settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		991C73532E1B3E38004AF87A /* libavutil.framework in CopyFiles */ = {isa = PBXBuildFile; fileRef = 991C734C2E1B3E37004AF87A /* libavutil.framework */; platformFilters = (ios, ); settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		991C73552E1B3E38004AF87A /* libavformat.framework in CopyFiles */ = {isa = PBXBuildFile; fileRef = 991C734E2E1B3E38004AF87A /* libavformat.framework */; platformFilters = (ios, ); settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		993BF4A62DF63B8300F21206 /* .swiftlint.yml in Resources */ = {isa = PBXBuildFile; fileRef = 993BF4A52DF63B8300F21206 /* .swiftlint.yml */; };
 		993BF4AD2DF6981900F21206 /* ModelRegisty.stencil in Resources */ = {isa = PBXBuildFile; fileRef = 993BF4AB2DF6980F00F21206 /* ModelRegisty.stencil */; };
 		997F92342E1A3931008E2656 /* FlyingFox in Frameworks */ = {isa = PBXBuildFile; productRef = 997F92332E1A3931008E2656 /* FlyingFox */; };
@@ -36,14 +28,10 @@
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
-				991C73502E1B3E38004AF87A /* libavdevice.framework in CopyFiles */,
 				991C73512E1B3E38004AF87A /* libswresample.framework in CopyFiles */,
 				991C73522E1B3E38004AF87A /* libavcodec.framework in CopyFiles */,
 				991C73532E1B3E38004AF87A /* libavutil.framework in CopyFiles */,
-				991C73542E1B3E38004AF87A /* libavfilter.framework in CopyFiles */,
 				991C73552E1B3E38004AF87A /* libavformat.framework in CopyFiles */,
-				991C73562E1B3E38004AF87A /* libswscale.framework in CopyFiles */,
-				991C73582E1B3F10004AF87A /* ffmpegkit.framework in CopyFiles */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -67,7 +55,6 @@
 		993BF4A52DF63B8300F21206 /* .swiftlint.yml */ = {isa = PBXFileReference; lastKnownFileType = text.yaml; path = .swiftlint.yml; sourceTree = "<group>"; };
 		993BF4AB2DF6980F00F21206 /* ModelRegisty.stencil */ = {isa = PBXFileReference; lastKnownFileType = text; path = ModelRegisty.stencil; sourceTree = "<group>"; };
 		99B5FAC42DEAF9DC0095A78E /* Fluxo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Fluxo.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		99CBEE912E1B314900C9CEE6 /* ffmpegkit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ffmpegkit.framework; path = "fmpeg-arm64/ffmpeg/framework/ffmpegkit.framework"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -85,6 +72,7 @@
 			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
 			buildPhase = 99B5FAC22DEAF9DC0095A78E /* Resources */;
 			membershipExceptions = (
+				Features/Player/Engine/FluxoRemuxEngine.h,
 				Features/Player/FFmpegBridgingHeader.h,
 			);
 		};
@@ -107,14 +95,10 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				991C73072E1B3D57004AF87A /* libavfilter.framework in Frameworks */,
 				991C73082E1B3D57004AF87A /* libavformat.framework in Frameworks */,
-				991C73092E1B3D57004AF87A /* libswscale.framework in Frameworks */,
 				991C730A2E1B3D57004AF87A /* libswresample.framework in Frameworks */,
 				991C730B2E1B3D57004AF87A /* libavutil.framework in Frameworks */,
-				991C730C2E1B3D57004AF87A /* libavdevice.framework in Frameworks */,
 				991C730D2E1B3D57004AF87A /* libavcodec.framework in Frameworks */,
-				991C73572E1B3F00004AF87A /* ffmpegkit.framework in Frameworks */,
 				997F92342E1A3931008E2656 /* FlyingFox in Frameworks */,
 				997F92362E1A3931008E2656 /* FlyingSocks in Frameworks */,
 			);
@@ -167,7 +151,6 @@
 				991C73042E1B3D57004AF87A /* libavutil.framework */,
 				991C73032E1B3D57004AF87A /* libswresample.framework */,
 				991C73022E1B3D57004AF87A /* libswscale.framework */,
-				99CBEE912E1B314900C9CEE6 /* ffmpegkit.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -429,7 +412,10 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Fluxo/Fluxo.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "Fluxo/Fluxo-macOS.entitlements";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
+				"CODE_SIGN_STYLE[sdk=macosx*]" = Manual;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 4MJXMYZ3D9;
@@ -438,9 +424,13 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				ENABLE_USER_SELECTED_FILES = readonly;
-				FRAMEWORK_SEARCH_PATHS = "$(SRCROOT)/fmpeg-arm64/ffmpeg/framework/**";
+				FFMPEG_MACOS_PREFIX = /opt/homebrew/opt/ffmpeg;
+				"FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]" = "$(SRCROOT)/fmpeg-arm64/ffmpeg/framework";
+				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*]" = "$(SRCROOT)/fmpeg-arm64/ffmpeg/framework";
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = "$(SRCROOT)/fmpeg-arm64/ffmpeg-kit/include/**";
+				"HEADER_SEARCH_PATHS[sdk=iphoneos*]" = "$(SRCROOT)/fmpeg-arm64/ffmpeg/include";
+				"HEADER_SEARCH_PATHS[sdk=iphonesimulator*]" = "$(SRCROOT)/fmpeg-arm64/ffmpeg/include";
+				"HEADER_SEARCH_PATHS[sdk=macosx*]" = "$(FFMPEG_MACOS_PREFIX)/include";
 				INFOPLIST_FILE = Fluxo/Info.plist;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -454,12 +444,21 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
-				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				LIBRARY_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(PROJECT_DIR)/fmpeg-arm64/ffmpeg-kit/lib",
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"@executable_path/../Frameworks",
+					"$(FFMPEG_MACOS_PREFIX)/lib",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 15.4;
+				"LIBRARY_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"$(FFMPEG_MACOS_PREFIX)/lib",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				"OTHER_LDFLAGS[sdk=macosx*]" = (
+					"$(inherited)",
+					"-lavformat",
+					"-lavcodec",
+					"-lavutil",
+				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.watermelon.Fluxo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -480,7 +479,10 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Fluxo/Fluxo.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "Fluxo/Fluxo-macOS.entitlements";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
+				"CODE_SIGN_STYLE[sdk=macosx*]" = Manual;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 4MJXMYZ3D9;
@@ -489,9 +491,13 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				ENABLE_USER_SELECTED_FILES = readonly;
-				FRAMEWORK_SEARCH_PATHS = "$(SRCROOT)/fmpeg-arm64/ffmpeg/framework/**";
+				FFMPEG_MACOS_PREFIX = /opt/homebrew/opt/ffmpeg;
+				"FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]" = "$(SRCROOT)/fmpeg-arm64/ffmpeg/framework";
+				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*]" = "$(SRCROOT)/fmpeg-arm64/ffmpeg/framework";
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = "$(SRCROOT)/fmpeg-arm64/ffmpeg-kit/include/**";
+				"HEADER_SEARCH_PATHS[sdk=iphoneos*]" = "$(SRCROOT)/fmpeg-arm64/ffmpeg/include";
+				"HEADER_SEARCH_PATHS[sdk=iphonesimulator*]" = "$(SRCROOT)/fmpeg-arm64/ffmpeg/include";
+				"HEADER_SEARCH_PATHS[sdk=macosx*]" = "$(FFMPEG_MACOS_PREFIX)/include";
 				INFOPLIST_FILE = Fluxo/Info.plist;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -505,12 +511,21 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
-				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				LIBRARY_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(PROJECT_DIR)/fmpeg-arm64/ffmpeg-kit/lib",
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"@executable_path/../Frameworks",
+					"$(FFMPEG_MACOS_PREFIX)/lib",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 15.4;
+				"LIBRARY_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"$(FFMPEG_MACOS_PREFIX)/lib",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				"OTHER_LDFLAGS[sdk=macosx*]" = (
+					"$(inherited)",
+					"-lavformat",
+					"-lavcodec",
+					"-lavutil",
+				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.watermelon.Fluxo;
 				PRODUCT_NAME = "$(TARGET_NAME)";

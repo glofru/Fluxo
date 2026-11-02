@@ -8,6 +8,31 @@
 import AVKit
 import SwiftUI
 
+#if os(macOS)
+
+/// macOS player backed by AVPlayerView.
+struct AVVideoPlayer: NSViewRepresentable {
+    @ObservedObject var viewModel: AVPlayerViewModel
+
+    func makeNSView(context: Context) -> AVPlayerView {
+        let view = AVPlayerView()
+        view.player = viewModel.player
+        view.controlsStyle = .floating
+        view.allowsPictureInPicturePlayback = true
+        view.showsFullScreenToggleButton = true
+        return view
+    }
+
+    func updateNSView(_ nsView: AVPlayerView, context: Context) {
+        if nsView.player !== viewModel.player {
+            nsView.player = viewModel.player
+        }
+    }
+}
+
+#else
+
+/// iOS / visionOS player backed by AVPlayerViewController.
 struct AVVideoPlayer: UIViewControllerRepresentable {
     @ObservedObject var viewModel: AVPlayerViewModel
 
@@ -19,7 +44,9 @@ struct AVVideoPlayer: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: AVPlayerViewController, context: Context) {
-        uiViewController.player = viewModel.player
+        if uiViewController.player !== viewModel.player {
+            uiViewController.player = viewModel.player
+        }
     }
 
     func makeCoordinator() -> Coordinator {
@@ -52,3 +79,5 @@ struct AVVideoPlayer: UIViewControllerRepresentable {
 //        }
     }
 }
+
+#endif

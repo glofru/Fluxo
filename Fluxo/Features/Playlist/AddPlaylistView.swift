@@ -63,7 +63,7 @@ struct AddPlaylistView: View {
             FluxoTextField("URL", text: .init(get: { url }, set: { url = $0; actualUrl = URL(string: $0) }), placeholder: "https://myplaylist.com/playlist.m3u", error: showUrlError ? "InvalidURL" : nil)
                 .focused($focusField, equals: .url)
                 .textContentType(.URL)
-                .keyboardType(.URL)
+                .urlKeyboard()
                 .disabled(loading || playlist != nil)
 
             FluxoButton(label: title, loading: loading) {
@@ -108,7 +108,7 @@ struct AddPlaylistView: View {
         .textFieldStyle(.roundedBorder)
         .padding()
         .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
+        .inlineNavigationBar()
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button(action: {
@@ -118,7 +118,6 @@ struct AddPlaylistView: View {
                 })
             }
         }
-        .toolbarBackground(.visible, for: .navigationBar)
         .alert(isPresented: .init(get: { error != nil }, set: { _ in error = nil })) {
             Alert(title: Text("Error"), message: Text(error ?? ""))
         }
