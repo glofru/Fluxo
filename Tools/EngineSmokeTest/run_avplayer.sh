@@ -2,17 +2,17 @@
 # Plays the engine's live HLS output with AVPlayer through a loopback-only HTTP server and
 # exercises pause / resume / skip / go live. macOS only.
 set -eu
-FFMPEG_PREFIX=${FFMPEG_PREFIX:-/opt/homebrew/opt/ffmpeg}
-FFMPEG=$FFMPEG_PREFIX/bin/ffmpeg
 PORT=${PORT:-18923}
 HTTP_PORT=${HTTP_PORT:-18924}
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+. "$ROOT/Tools/FFmpeg/env.sh"
 WORK=$(mktemp -d /tmp/fluxo-avplayer-test.XXXXXX)
 BIN="$WORK/engine-smoke-test"
 
-clang -O1 -o "$BIN" -I "$ROOT/Fluxo/Features/Player/Engine" -I "$FFMPEG_PREFIX/include" \
+# shellcheck disable=SC2086 # FFMPEG_CFLAGS / FFMPEG_LDFLAGS are lists of words.
+clang -O1 -o "$BIN" -I "$ROOT/Fluxo/Features/Player/Engine" $FFMPEG_CFLAGS \
     "$ROOT/Tools/EngineSmokeTest/main.c" "$ROOT/Fluxo/Features/Player/Engine/FluxoRemuxEngine.c" \
-    -L "$FFMPEG_PREFIX/lib" -lavformat -lavcodec -lavutil
+    $FFMPEG_LDFLAGS
 
 cleanup() {
     kill "${SERVER_PID:-0}" "${ENGINE_PID:-0}" "${HTTP_PID:-0}" 2>/dev/null || true

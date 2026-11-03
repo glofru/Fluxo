@@ -4,11 +4,11 @@
 #   Tools/ImageLoaderBenchmark/run.sh          # 200 logos
 #   COUNT=500 Tools/ImageLoaderBenchmark/run.sh
 #
-# A 1024x1024 PNG is generated with Homebrew FFmpeg and served by a Python HTTP server bound to
+# A 1024x1024 PNG is generated with the ffmpeg command line tool and served by a Python HTTP server bound to
 # 127.0.0.1 only; every request uses a distinct query string, so each one is a distinct logo URL.
 set -eu
 
-FFMPEG=${FFMPEG:-/opt/homebrew/opt/ffmpeg/bin/ffmpeg}
+FFMPEG=${FFMPEG:-$(command -v ffmpeg || echo /opt/homebrew/bin/ffmpeg)}
 PORT=${PORT:-18931}
 COUNT=${COUNT:-200}
 HERE=$(cd "$(dirname "$0")" && pwd)

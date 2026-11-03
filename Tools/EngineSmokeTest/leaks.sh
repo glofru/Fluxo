@@ -1,23 +1,23 @@
 #!/bin/sh
-# Leak and footprint check of the remux engine (macOS, Homebrew FFmpeg).
+# Leak and footprint check of the remux engine (macOS, bundled FFmpeg.xcframework).
 #
 # Serves a live MPEG-TS test pattern on 127.0.0.1 only, runs CYCLES engine sessions of SECONDS
 # each under `leaks --atExit` (FOOTPRINT_ONLY=1: without it), and prints the footprint after every cycle and the leaks report.
 set -eu
 
-FFMPEG_PREFIX=${FFMPEG_PREFIX:-/opt/homebrew/opt/ffmpeg}
-FFMPEG=${FFMPEG:-$FFMPEG_PREFIX/bin/ffmpeg}
 PORT=${PORT:-18925}
 CYCLES=${CYCLES:-12}
 SECONDS_PER_CYCLE=${SECONDS_PER_CYCLE:-4}
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+. "$ROOT/Tools/FFmpeg/env.sh"
 WORK=$(mktemp -d /tmp/fluxo-engine-leaks.XXXXXX)
 BIN="$WORK/engine-churn"
 
+# shellcheck disable=SC2086 # FFMPEG_CFLAGS / FFMPEG_LDFLAGS are lists of words.
 clang -O1 -g -Wall -Wextra -o "$BIN" \
-    -I "$ROOT/Fluxo/Features/Player/Engine" -I "$FFMPEG_PREFIX/include" \
+    -I "$ROOT/Fluxo/Features/Player/Engine" $FFMPEG_CFLAGS \
     "$ROOT/Tools/EngineSmokeTest/churn.c" "$ROOT/Fluxo/Features/Player/Engine/FluxoRemuxEngine.c" \
-    -L "$FFMPEG_PREFIX/lib" -lavformat -lavcodec -lavutil
+    $FFMPEG_LDFLAGS
 
 cleanup() {
     kill "${LOOP_PID:-0}" 2>/dev/null || true

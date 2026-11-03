@@ -2,8 +2,9 @@
 //  FluxoRemuxEngine.c
 //  Fluxo
 //
-//  Uses only libavformat/libavcodec/libavutil API that is common to FFmpeg 6
-//  (bundled iOS frameworks) and FFmpeg 8 (Homebrew on macOS).
+//  Built against the bundled FFmpeg 9 (Vendor/FFmpeg, see Tools/FFmpeg/build-xcframework.sh),
+//  using only the public libavformat/libavcodec/libavutil API. Every demuxer, muxer, protocol and
+//  bitstream filter the engine reaches must be enabled in that script.
 //
 //  Threading: everything except the public request functions runs on the engine thread.
 //  Requests coming from other threads (cancel, recording) go through atomics and a mutex.
@@ -251,6 +252,18 @@ static void fluxo_format_error(char *buffer, size_t size, int error_code, const 
     char reason[AV_ERROR_MAX_STRING_SIZE] = {0};
     av_strerror(error_code, reason, sizeof(reason));
     snprintf(buffer, size, "%s: %s", what, reason);
+}
+
+// "Protocol not found" names neither the protocol nor the cause; say which URL scheme the bundled
+// FFmpeg cannot open (Tools/FFmpeg/build-xcframework.sh lists the protocols it has).
+static void fluxo_format_unsupported_protocol(char *buffer, size_t size, const char *url) {
+    const char *separator = url != NULL ? strstr(url, "://") : NULL;
+    int length = separator != NULL ? (int)(separator - url) : 0;
+    if (length > 0 && length <= 16) {
+        snprintf(buffer, size, "Unsupported stream type: %.*s:// streams cannot be played", length, url);
+    } else {
+        snprintf(buffer, size, "Unsupported stream type");
+    }
 }
 
 // MARK: - Input
@@ -1091,7 +1104,8 @@ static void *fluxo_thread_main(void *arg) {
     // Set when a live input could not be reconnected: always a failure, even if the last error was EOF.
     int reconnect_failed = 0;
     int ret = fluxo_open_input(session);
-    if (ret < 0 && session->is_live && !fluxo_is_cancelled(session)) {
+    // A missing protocol (e.g. srt://, which needs libsrt) is not a transient error: no retry.
+    if (ret < 0 && ret != AVERROR_PROTOCOL_NOT_FOUND && session->is_live && !fluxo_is_cancelled(session)) {
         // One quick retry: IPTV servers often refuse the very first connection of a burst.
         fluxo_wait(session, AV_TIME_BASE / 2);
         if (!fluxo_is_cancelled(session)) {
@@ -1148,7 +1162,11 @@ static void *fluxo_thread_main(void *arg) {
             ret = AVERROR_UNKNOWN;
         }
         char message[512];
-        fluxo_format_error(message, sizeof(message), ret, stage);
+        if (ret == AVERROR_PROTOCOL_NOT_FOUND) {
+            fluxo_format_unsupported_protocol(message, sizeof(message), session->input_url);
+        } else {
+            fluxo_format_error(message, sizeof(message), ret, stage);
+        }
         fluxo_set_state(session, FluxoRemuxStateFailed, ret, message);
     }
     return NULL;

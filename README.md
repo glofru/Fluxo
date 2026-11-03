@@ -12,33 +12,18 @@ Live streams go through a small C remux engine
 and libavutil. The engine copies the stream into HLS segments on disk, and a
 local HTTP server bound to `127.0.0.1` gives them to AVPlayer.
 
-### iOS
+There is nothing to install: FFmpeg ships with the repository (see "FFmpeg" below), and the
+only Swift package is [FlyingFox](https://github.com/swhitty/FlyingFox) (the loopback HTTP
+server), which Xcode resolves on its own. The app builds for iOS devices, the iOS Simulator and
+macOS.
 
-The bundled FFmpeg 6 frameworks in `fmpeg-arm64/ffmpeg/framework` are linked
-and embedded. You do not need to install anything. These frameworks contain
-only an iOS device `arm64` slice, so build for a real device
-(`generic/platform=iOS`). The iOS Simulator cannot link them.
-
-### macOS
-
-The Mac app links FFmpeg from Homebrew. Install it first:
-
-```sh
-brew install ffmpeg
-```
-
-The project expects FFmpeg at `/opt/homebrew/opt/ffmpeg` (Apple silicon
-Homebrew). To use another prefix, change the `FFMPEG_MACOS_PREFIX` build
-setting. The app loads the Homebrew dylibs at runtime, so the hardened runtime
-uses the `com.apple.security.cs.disable-library-validation` entitlement
-(`Fluxo/Fluxo-macOS.entitlements`). The same file grants the sandbox
-`network.client` (to read streams) and `network.server` (for the loopback HLS
-server).
-
-The macOS build is signed ad hoc ("Sign to Run Locally") so that it builds
-without a Mac Development certificate. To distribute the app, set the macOS
-code signing style back to Automatic. A distributed build must also embed
-FFmpeg, because it cannot depend on Homebrew being installed.
+The macOS build is signed ad hoc ("Sign to Run Locally") so that it builds without a Mac
+Development certificate. To distribute the app, set the macOS code signing style back to
+Automatic. `Fluxo/Fluxo-macOS.entitlements` grants the sandbox `network.client` (to read
+streams) and `network.server` (for the loopback HLS server). It also has
+`com.apple.security.cs.disable-library-validation`, which only the ad hoc signature needs: an ad
+hoc signature has no Team ID, so the hardened runtime's library validation would refuse to load
+the embedded `FFmpeg.framework`. Remove that entitlement when you sign with a development team.
 
 Command-line builds:
 
@@ -46,9 +31,53 @@ Command-line builds:
 # iOS device (unsigned)
 xcodebuild -project Fluxo.xcodeproj -scheme Fluxo -destination 'generic/platform=iOS' build CODE_SIGNING_ALLOWED=NO
 
+# iOS Simulator
+xcodebuild -project Fluxo.xcodeproj -scheme Fluxo -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO
+
 # macOS
 xcodebuild -project Fluxo.xcodeproj -scheme Fluxo -destination 'platform=macOS' build
 ```
+
+The SwiftData schema is the list in `Fluxo/App/Database/ModelRegistry.swift`; add new `@Model`
+types there. `.swiftlint.yml` configures [SwiftLint](https://github.com/realm/SwiftLint) for
+manual runs (`swiftlint lint`); it is not part of the build.
+
+### FFmpeg
+
+`Vendor/FFmpeg/FFmpeg.xcframework` is a minimal FFmpeg 9.0.2 built from the official release
+tarball by `Tools/FFmpeg/build-xcframework.sh` (pinned version and SHA-256, plus the release
+signature when `gpg` is installed). It contains one dynamic framework, `FFmpeg.framework`,
+with libavformat, libavcodec and libavutil linked into a single library that exports only the
+public API (`av_*`, `avio_*`, `avcodec_*`, `avformat_*`, `avutil_*`, `avsubtitle_*`; no internal
+`avpriv_*` / `ff_*` symbols), for iOS (arm64), the iOS Simulator (arm64, x86_64) and macOS
+(arm64, x86_64: macOS 26 still runs on Intel Macs, and Xcode builds universal Release apps).
+The public headers are in `Vendor/FFmpeg/include`, and `Vendor/FFmpeg/BUILD_INFO.txt` lists the
+exact configuration.
+
+- **Remux only**: everything is disabled except what the engine reaches: the MPEG-TS, HLS,
+  MP4/MOV, FLV, Matroska, MPEG-PS, RTSP/RTP and elementary audio/video demuxers, WebVTT (the HLS
+  demuxer probes the subtitle renditions of a master playlist and fails without it), the MPEG-TS and
+  MP4 muxers, the file, HTTP(S), TCP, TLS, UDP, RTP, RTMP(S/T) and AES (`crypto`) protocols, the
+  H.264 / HEVC / AAC / AC-3 / MPEG audio parsers, the decoders `avformat_find_stream_info` uses
+  to read stream parameters (H.264, HEVC, AAC, AC-3, E-AC-3, MP3, and the MP2 audio and MPEG-2
+  video of DVB-derived channels; without a decoder a live input waits out the whole 3 s probe),
+  and the bitstream filters the muxers insert (`aac_adtstoasc`, `h264_mp4toannexb`,
+  `hevc_mp4toannexb`, `extract_extradata`).
+  No filters, scalers, resamplers, devices or programs. `srt://` needs libsrt (and a crypto
+  library), which is not included: such channels fail at once with "Unsupported stream type".
+- **HTTPS** uses Secure Transport, the TLS backend FFmpeg has for Apple platforms without an
+  extra library, with the system trust store and certificate verification on (TLS 1.2). The only
+  external libraries are Secure Transport and the system zlib, so nothing is taken from Homebrew.
+- **License**: the build enables no GPL, version 3 or non-free component, so it is LGPL v2.1 or
+  later. It is linked dynamically and embedded as `Fluxo.app/Frameworks/FFmpeg.framework`
+  (`Contents/Frameworks` on macOS), so it can be replaced with another build of the same
+  library; the license text is in `Vendor/FFmpeg/LICENSE` and inside the framework. Anyone
+  distributing the app must also offer the FFmpeg source (the release tarball) and this build
+  script.
+- **Rebuild** (about 5 minutes; Xcode only, no Homebrew packages): `Tools/FFmpeg/build-xcframework.sh`.
+  To add a component, add it to the lists at the top of the script, rebuild and run
+  `Tools/FFmpeg/check.sh`, which checks the version, the license and the components, and opens
+  any URLs passed to it (`Tools/FFmpeg/check.sh https://…` checks HTTPS).
 
 ## Playlist import
 
@@ -95,8 +124,8 @@ CHANNELS=100000 Tools/HomeQueriesCheck/run.sh
 ## Player
 
 - **Routing** (`PlaybackRoute`): HLS playlists and MP4/MOV files play directly in
-  AVPlayer. Raw MPEG-TS channels (no extension or `.ts`, or `udp://`, `rtmp://`,
-  `rtsp://`, `srt://`) go through the remux engine, which writes local HLS that
+  AVPlayer. Raw MPEG-TS channels (no extension or `.ts`, or `udp://`, `rtp://`,
+  `rtmp://`, `rtsp://`) go through the remux engine, which writes local HLS that
   AVPlayer reads from the loopback server (`127.0.0.1:19123` only).
   Live channels with `.m3u8` URLs play directly in AVPlayer, so they use the
   DVR window of the source playlist (if it has one) and cannot be recorded.
@@ -138,8 +167,10 @@ CHANNELS=100000 Tools/HomeQueriesCheck/run.sh
   channel to the Lock Screen / Now Playing menu and handles its play, pause, skip and
   next / previous channel commands.
 
-Engine smoke tests (macOS, Homebrew FFmpeg). They serve a generated live
-stream on 127.0.0.1:
+Engine smoke tests (macOS). They build the engine against the bundled `FFmpeg.xcframework` and
+serve a generated live stream on 127.0.0.1. Generating and checking the test streams needs the
+`ffmpeg` / `ffprobe` programs (any recent build, e.g. `brew install ffmpeg`, used by the tests
+only; set `FFMPEG` / `FFPROBE` to use others):
 
 ```sh
 Tools/EngineSmokeTest/run.sh           # window cleanup, reconnection, recording + MP4 conversion

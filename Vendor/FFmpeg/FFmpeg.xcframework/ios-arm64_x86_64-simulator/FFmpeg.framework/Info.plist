@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>FFmpeg</string>
+	<key>CFBundleIdentifier</key>
+	<string>dev.watermelon.FFmpeg</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>FFmpeg</string>
+	<key>CFBundlePackageType</key>
+	<string>FMWK</string>
+	<key>CFBundleShortVersionString</key>
+	<string>9.0.2</string>
+	<key>CFBundleVersion</key>
+	<string>9.0.2</string>
+	<key>CFBundleSupportedPlatforms</key>
+	<array>
+		<string>iPhoneSimulator</string>
+	</array>
+	<key>MinimumOSVersion</key>
+	<string>26.0</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>FFmpeg 9.0.2, LGPL v2.1 or later. https://ffmpeg.org</string>
+</dict>
+</plist>

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Smoke test of the remux engine against a local live MPEG-TS stream (macOS, Homebrew FFmpeg).
+# Smoke test of the remux engine against a local live MPEG-TS stream (macOS, bundled FFmpeg.xcframework).
 #
 # 1. An ffmpeg process serves a real-time test pattern as MPEG-TS over HTTP on 127.0.0.1 only.
 # 2. The engine remuxes it to HLS with a small time-shift window (WINDOW seconds) and records
@@ -8,22 +8,21 @@
 # 4. The recording is converted to MP4 and both files are checked with ffprobe.
 set -eu
 
-FFMPEG_PREFIX=${FFMPEG_PREFIX:-/opt/homebrew/opt/ffmpeg}
-FFMPEG=${FFMPEG:-$FFMPEG_PREFIX/bin/ffmpeg}
-FFPROBE=${FFPROBE:-$FFMPEG_PREFIX/bin/ffprobe}
 PORT=${PORT:-18923}
 SECONDS_TOTAL=${SECONDS_TOTAL:-50}
 RECORD_START=${RECORD_START:-6}
 RECORD_STOP=${RECORD_STOP:-30}
 WINDOW=${WINDOW:-12}
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+. "$ROOT/Tools/FFmpeg/env.sh"
 WORK=$(mktemp -d /tmp/fluxo-engine-test.XXXXXX)
 BIN="$WORK/engine-smoke-test"
 
+# shellcheck disable=SC2086 # FFMPEG_CFLAGS / FFMPEG_LDFLAGS are lists of words.
 clang -O1 -g -Wall -Wextra -o "$BIN" \
-    -I "$ROOT/Fluxo/Features/Player/Engine" -I "$FFMPEG_PREFIX/include" \
+    -I "$ROOT/Fluxo/Features/Player/Engine" $FFMPEG_CFLAGS \
     "$ROOT/Tools/EngineSmokeTest/main.c" "$ROOT/Fluxo/Features/Player/Engine/FluxoRemuxEngine.c" \
-    -L "$FFMPEG_PREFIX/lib" -lavformat -lavcodec -lavutil
+    $FFMPEG_LDFLAGS
 
 serve() {
     # -listen 1 makes ffmpeg an HTTP server; it is bound to the loopback address only.

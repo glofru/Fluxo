@@ -82,7 +82,7 @@ extension View {
     /// Uses the URL keyboard where the platform has one, without autocorrection or capitalization.
     @ViewBuilder
     func urlKeyboard() -> some View {
-        #if os(iOS) || os(visionOS)
+        #if os(iOS)
         self
             .keyboardType(.URL)
             .textInputAutocapitalization(.never)
@@ -95,7 +95,7 @@ extension View {
     /// Lift / highlight under the iPad pointer; macOS cards handle hover in their button style.
     @ViewBuilder
     func cardHoverEffect() -> some View {
-        #if os(iOS) || os(visionOS)
+        #if os(iOS)
         self.hoverEffect(.lift)
         #else
         self
@@ -105,18 +105,14 @@ extension View {
     /// Soft scroll edge effect under the floating glass toolbar (iOS 26 / macOS 26).
     @ViewBuilder
     func softScrollEdge() -> some View {
-        #if os(visionOS)
-        self
-        #else
         self.scrollEdgeEffectStyle(.soft, for: .top)
-        #endif
     }
 
     /// Inline navigation title where the platform supports it. The bar keeps its default (Liquid Glass)
     /// appearance: forcing a visible bar background would put an opaque strip over glass sheets.
     @ViewBuilder
     func inlineNavigationBar() -> some View {
-        #if os(iOS) || os(visionOS)
+        #if os(iOS)
         self.navigationBarTitleDisplayMode(.inline)
         #else
         self

@@ -79,7 +79,7 @@ final class PlayerContainerView: NSView {
 
 #else
 
-/// iOS / visionOS player. Embeds the long-lived video view of the view model's PlayerSurface, so that
+/// iOS player. Embeds the long-lived video view of the view model's PlayerSurface, so that
 /// Picture in Picture survives the player cover being dismissed.
 ///
 /// Every player screen gets its own container and the shared video view moves into the newest one.
