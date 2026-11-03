@@ -24,6 +24,9 @@ struct ChannelPreview: View {
 
     @Environment(ChannelLibrary.self) private var library
     @Environment(\.playChannel) private var playChannel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The player zooms out of this card's artwork. Unique per card: the same channel can be in several rows.
+    @State private var sourceID = UUID().uuidString
 
     private let borderShape = RoundedRectangle(cornerRadius: 16, style: .continuous)
 
@@ -34,21 +37,23 @@ struct ChannelPreview: View {
     var body: some View {
         let isFavorite = library.isFavorite(item)
         Button {
-            playChannel(item)
+            playChannel(item, from: sourceID)
         } label: {
             VStack(alignment: .leading, spacing: 6) {
                 ChannelArtwork(logo: item.logo, name: item.displayName, kind: item.kind, size: size)
                     .frame(width: size.width, height: size.height)
                     .background(artworkBackground)
                     .clipShape(borderShape)
+                    // Badges are content: a small material, not glass (glass is for controls).
                     .overlay(alignment: .topTrailing) {
                         if isFavorite {
                             Image(systemName: "star.fill")
                                 .font(.caption.bold())
                                 .foregroundStyle(.yellow)
                                 .padding(6)
-                                .glassEffect(.regular, in: .circle)
+                                .background(.thinMaterial, in: .circle)
                                 .padding(8)
+                                .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
                                 .accessibilityLabel("Favorite")
                         }
                     }
@@ -60,11 +65,13 @@ struct ChannelPreview: View {
                             Image(systemName: item.kind.systemImage)
                                 .font(.caption2.bold())
                                 .padding(5)
-                                .glassEffect(.regular, in: .circle)
+                                .background(.thinMaterial, in: .circle)
                                 .padding(8)
                                 .accessibilityHidden(true)
                         }
                     }
+                    .playerTransitionSource(id: sourceID)
+                    .animation(reduceMotion ? nil : .spring(duration: 0.3, bounce: 0.4), value: isFavorite)
 
                 Text(item.displayName)
                     .font(.subheadline.weight(.semibold))

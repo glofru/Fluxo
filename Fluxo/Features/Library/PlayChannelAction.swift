@@ -25,9 +25,12 @@ struct PlayChannelAction: Equatable {
         self.player = player
     }
 
+    /// - Parameter sourceID: the view the player zooms out of (`playerTransitionSource(id:)`); nil zooms
+    ///   from the mini player.
     @MainActor
-    func callAsFunction(_ item: ChannelItem) {
+    func callAsFunction(_ item: ChannelItem, from sourceID: String? = nil) {
         library?.recordWatch(item)
+        player?.presentationSourceID = sourceID
         player?.play(item)
     }
 

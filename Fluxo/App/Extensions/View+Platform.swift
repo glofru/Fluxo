@@ -17,15 +17,22 @@ extension Color {
 
 extension View {
 
-    /// Shows the mini player: as a tab bar bottom accessory on iOS, as a floating bar on other platforms.
+    /// Shows the mini player: as a tab bar bottom accessory on iOS (the tab bar minimizes while scrolling down
+    /// and the accessory then moves inline), as a floating glass bar on other platforms.
     @ViewBuilder
     func playerAccessory<Accessory: View>(isVisible: Bool, @ViewBuilder accessory: () -> Accessory) -> some View {
         #if os(iOS)
-        self
-            .tabBarMinimizeBehavior(.onScrollDown)
-            .tabViewBottomAccessory {
+        let minimizing = self.tabBarMinimizeBehavior(.onScrollDown)
+        if #available(iOS 26.1, *) {
+            minimizing.tabViewBottomAccessory(isEnabled: isVisible) {
                 accessory()
             }
+        } else {
+            // iOS 26.0 always shows the accessory: the accessory itself shows a "Not Playing" state.
+            minimizing.tabViewBottomAccessory {
+                accessory()
+            }
+        }
         #else
         self.safeAreaInset(edge: .bottom) {
             if isVisible {
@@ -95,15 +102,46 @@ extension View {
         #endif
     }
 
-    /// Inline navigation title with a visible bar where the platform supports it.
+    /// Soft scroll edge effect under the floating glass toolbar (iOS 26 / macOS 26).
+    @ViewBuilder
+    func softScrollEdge() -> some View {
+        #if os(visionOS)
+        self
+        #else
+        self.scrollEdgeEffectStyle(.soft, for: .top)
+        #endif
+    }
+
+    /// Inline navigation title where the platform supports it. The bar keeps its default (Liquid Glass)
+    /// appearance: forcing a visible bar background would put an opaque strip over glass sheets.
     @ViewBuilder
     func inlineNavigationBar() -> some View {
         #if os(iOS) || os(visionOS)
-        self
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.visible, for: .navigationBar)
+        self.navigationBarTitleDisplayMode(.inline)
         #else
         self
+        #endif
+    }
+
+    /// Lets a form or list in a sheet show the sheet's Liquid Glass background (iOS) at partial heights,
+    /// instead of covering it with the opaque grouped background.
+    @ViewBuilder
+    func glassSheetContentBackground() -> some View {
+        #if os(iOS)
+        self.scrollContentBackground(.hidden)
+        #else
+        self
+        #endif
+    }
+}
+
+extension Color {
+    /// The system background of a screen (what Home's hero fades into).
+    static var appBackground: Color {
+        #if os(macOS)
+        Color(nsColor: .windowBackgroundColor)
+        #else
+        Color(uiColor: .systemBackground)
         #endif
     }
 }

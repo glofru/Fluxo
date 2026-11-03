@@ -111,6 +111,7 @@ private struct PlaybackMenuItems: View {
         Divider()
 
         Button("Show Player") {
+            player.presentationSourceID = nil
             player.isPresented = true
         }
         .keyboardShortcut("p", modifiers: [.command, .shift])

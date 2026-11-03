@@ -16,18 +16,32 @@ enum ChannelRoute: Hashable {
 }
 
 extension View {
-    /// Registers the screens of `ChannelRoute` on the enclosing NavigationStack.
+    /// Registers the screens of `ChannelRoute` on the enclosing NavigationStack. On iOS a group's grid zooms
+    /// out of its Home row (or its search category chip).
     func channelDestinations() -> some View {
-        navigationDestination(for: ChannelRoute.self) { route in
-            switch route {
-            case let .group(importID, groupName, title):
-                ChannelGridView(importID: importID, groupName: groupName, title: title)
-            case .favorites(let playlistIDs):
-                BookmarkGridView(mode: .favorites, playlistIDs: playlistIDs)
-            case .history(let playlistIDs):
-                BookmarkGridView(mode: .history, playlistIDs: playlistIDs)
+        modifier(ChannelDestinations())
+    }
+}
+
+private struct ChannelDestinations: ViewModifier {
+
+    @Namespace private var namespace
+
+    func body(content: Content) -> some View {
+        content
+            .navigationDestination(for: ChannelRoute.self) { route in
+                switch route {
+                case let .group(importID, groupName, title):
+                    ChannelGridView(importID: importID, groupName: groupName, title: title)
+                        .zoomTransition(sourceID: route, in: namespace)
+                case .favorites(let playlistIDs):
+                    BookmarkGridView(mode: .favorites, playlistIDs: playlistIDs)
+                case .history(let playlistIDs):
+                    BookmarkGridView(mode: .history, playlistIDs: playlistIDs)
+                }
             }
-        }
+            // Outside the destination too, so pushed screens can mark sources of their own.
+            .environment(\.routeTransitionNamespace, namespace)
     }
 }
 
@@ -181,6 +195,8 @@ struct ChannelGroupRow: View {
                 }
             }
         }
+        // "See All" zooms the whole row into the group's grid.
+        .routeTransitionSource(group.route)
     }
 }
 
@@ -315,10 +331,13 @@ struct CompactChannelCard: View {
 
     @Environment(ChannelLibrary.self) private var library
     @Environment(\.playChannel) private var playChannel
+    @State private var sourceID = UUID().uuidString
+
+    private let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
 
     var body: some View {
         Button {
-            playChannel(item)
+            playChannel(item, from: sourceID)
         } label: {
             HStack(spacing: 12) {
                 LogoImage(source: item.logo, size: Self.logoSize, accessibilityLabel: item.displayName) { phase in
@@ -348,10 +367,15 @@ struct CompactChannelCard: View {
                     .accessibilityHidden(true)
             }
             .padding(10)
-            .contentShape(.rect(cornerRadius: 18))
+            // A content surface: glass is kept for the controls and navigation layer.
+            .background(.background.secondary, in: shape)
+            .overlay {
+                shape.strokeBorder(.primary.opacity(0.06))
+            }
+            .contentShape(shape)
+            .playerTransitionSource(id: sourceID, cornerRadius: 18)
         }
         .buttonStyle(CardButtonStyle())
-        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 18))
         .contextMenu {
             ChannelContextMenu(item: item, isFavorite: library.isFavorite(item), extraActions: extraActions)
         }

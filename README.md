@@ -160,7 +160,7 @@ these with `-configuration Debug`.
   recording indicator, plus PiP, AirPlay, full screen (macOS) and a menu (fill / fit,
   recordings, stop). The bottom bar has a scrubber (on-demand position, or the time-shift
   window of a live channel), channel down / up, skip back / forward, play / pause, Record
-  and Go Live. Controls fade out after 4 s of playback without interaction and come back on
+  and Go Live (see "Liquid Glass" below for how these controls morph). Controls fade out after 4 s of playback without interaction and come back on
   a tap or mouse move; they stay up while paused, buffering, failed, scrubbing or with
   VoiceOver on. Errors and the end of a stream show a card with Try Again / Play Again.
 - **Channel zapping** (`ChannelZapper`): channel up / down plays the next / previous
@@ -187,6 +187,49 @@ these with `-configuration Debug`.
   arrows) are only enabled while the player is on screen. Escape closes the player.
 - **Haptics** (iOS): channel changes, recording start / stop, favorites, and the result of a
   playlist import.
+
+## Liquid Glass (iOS 26)
+
+Glass is used for the navigation and control layer only (tab bar, toolbars, the mini player,
+the playlist chips, the player controls, sheets). Cards, rows and banners are content and use
+plain surfaces or small materials.
+
+- **Tab bar**: a native `TabView` with Home, Favorites, Settings and a `.search` role tab. It
+  minimizes while scrolling down (`tabBarMinimizeBehavior(.onScrollDown)`).
+- **Mini player** (`PlayerBottomAccessory` in `App/ContentView.swift`): the
+  `tabViewBottomAccessory`, shown only while something plays (on iOS 26.1+ through
+  `isEnabled:`; iOS 26.0 cannot hide it and shows "Not Playing"). It reads
+  `tabViewBottomAccessoryPlacement`: expanded, it shows the artwork, the title, a status line
+  (LIVE and group, recording with a pulsing symbol, PiP, buffering), play / pause and close;
+  inline (next to the minimized tab bar), only the artwork, the title and play / pause.
+- **Zoom transitions** (`App/Design/ZoomTransitions.swift`): the full-screen player zooms out of
+  the card, billboard artwork, search result or mini player that opened it
+  (`matchedTransitionSource` + `navigationTransition(.zoom)`); `PlayChannelAction` passes the
+  source to `AVPlayerViewModel.presentationSourceID`, and paths without a card (PiP restore,
+  recordings, Show Player) zoom from the mini player. A group's "See All" grid zooms out of its
+  Home row or its search chip, and the Recordings sheet out of its toolbar button.
+- **Home**: the featured billboard runs under the status bar and the floating toolbar, its
+  blurred artwork uses `backgroundExtensionEffect()` (it also extends under the iPad sidebar and
+  the landscape safe areas), stretches on overscroll and fades into the background so both light
+  and dark mode stay legible. The inline title fades in once the billboard has scrolled away;
+  the scroll edge effect is `.soft`. Recordings and the playlist menu are separate toolbar glass
+  groups (`ToolbarSpacer(.fixed)`). The playlist chips share a `GlassEffectContainer` and the
+  tinted selection glass keeps its `glassEffectID`, so it morphs from chip to chip.
+- **Player controls**: floating glass clusters in one `GlassEffectContainer`. Channel and skip
+  buttons merge into a capsule on each side (`glassEffectUnion`), play / pause is a larger
+  circle tinted with the accent color while paused, Record stretches into a red-tinted
+  `REC m:ss` timer with a pulsing dot, and a red LIVE indicator morphs into `-m:ss Go Live`
+  when the stream is time-shifted (`glassEffectID`). PiP, AirPlay and the menu share one capsule.
+- **Sheets**: Add / Edit Playlist and Recordings use `.medium` / `.large` detents; their forms
+  hide the grouped background so the sheet's glass shows at partial height, and they use the
+  iOS 26 `.cancel` / `.close` / `.confirm` button roles.
+- **Motion and accessibility**: symbol transitions (`contentTransition(.symbolEffect(.replace))`)
+  for play / pause, PiP and favorites, `.pulse` for recording and `.variableColor` for LIVE,
+  haptics for play / pause, Go Live, chip selection and favorites. With Reduce Motion the glass
+  morphs, symbol loops and the welcome animation are turned off; with Reduce Transparency the
+  player scrims and the billboard fades get stronger (the system glass adapts on its own).
+- **Tint**: the `AccentColor` asset is a violet with a lighter dark-mode variant; live and
+  recording states stay red.
 
 ## Memory
 

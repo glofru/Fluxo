@@ -29,6 +29,11 @@ struct HomeView: View {
     @State private var showsRecordings = false
     /// Number of groups per content kind in the scope; nil until counted.
     @State private var groupCounts: [ChannelContentKind: Int]?
+    /// iOS: the billboard runs under the toolbar; the title fades in once it has scrolled away.
+    @State private var isShowingBillboard = false
+    @State private var isScrolledPastHero = false
+    /// The Recordings sheet zooms out of its toolbar button.
+    @Namespace private var sheetNamespace
 
     private var scope: LibraryScope {
         LibraryScope(playlists: playlists, selection: PlaylistSelection(rawValue: selectionRawValue))
@@ -47,6 +52,9 @@ struct HomeView: View {
                 }
             }
             .navigationTitle(title(for: scope))
+            #if os(iOS)
+            .toolbarTitleDisplayMode(playlists.isEmpty ? .large : .inline)
+            #endif
             .toolbar {
                 toolbarContent(scope: scope)
             }
@@ -58,22 +66,55 @@ struct HomeView: View {
                 showsRecordings = false
                 player.playRecording(recording)
             }
+            .presentationDetents([.medium, .large])
+            .zoomTransition(sourceID: Self.recordingsSourceID, in: sheetNamespace)
         }
         #endif
     }
 
+    private static let recordingsSourceID = "home.recordings"
+
+    @ViewBuilder
     private func content(scope: LibraryScope) -> some View {
+        #if os(iOS)
+        // The billboard runs under the status bar and the floating toolbar: the scroll view ignores the top
+        // safe area, and the billboard adds it back as its own height.
+        GeometryReader { proxy in
+            scrollContent(scope: scope, topInset: proxy.safeAreaInsets.top)
+                .ignoresSafeArea(edges: .top)
+                .onScrollGeometryChange(for: Bool.self) { geometry in
+                    let threshold = isShowingBillboard ? FeaturedCarousel.billboardHeight - 40 : 24
+                    return geometry.contentOffset.y + geometry.contentInsets.top > threshold
+                } action: { _, isPast in
+                    isScrolledPastHero = isPast
+                }
+        }
+        #else
+        scrollContent(scope: scope, topInset: 0)
+        #endif
+    }
+
+    private func scrollContent(scope: LibraryScope, topInset: CGFloat) -> some View {
         let available = ChannelContentKind.allCases.filter { (groupCounts?[$0] ?? 0) > 0 }
         let kind = available.first { $0.rawValue == kindRawValue } ?? available.first
         return ScrollView {
             LazyVStack(alignment: .leading, spacing: 28) {
+                #if os(iOS)
+                FeaturedCarousel(importIDs: scope.importIDs, style: .billboard, topInset: topInset, isShowingBillboard: $isShowingBillboard)
+                    .padding(.bottom, -12)
+
+                if showsPlaylistSwitcher {
+                    PlaylistSwitcher(playlists: playlists, selection: selectionBinding(scope: scope))
+                }
+                #else
                 if showsPlaylistSwitcher {
                     PlaylistSwitcher(playlists: playlists, selection: selectionBinding(scope: scope))
                 }
 
-                PlaylistStatusBanner(playlists: playlistsInScope(scope))
-
                 FeaturedCarousel(importIDs: scope.importIDs)
+                #endif
+
+                PlaylistStatusBanner(playlists: playlistsInScope(scope))
 
                 RecentlyWatchedRow(playlistIDs: scope.bookmarkFilter)
                     .id(scope.bookmarkFilter)
@@ -90,9 +131,14 @@ struct HomeView: View {
                     ContentUnavailableView("No Channels", systemImage: "tv.slash", description: Text("This playlist has no channels."))
                 }
             }
+            #if os(iOS)
+            .padding(.bottom, 12)
+            #else
             .padding(.vertical, 12)
+            #endif
         }
         .scrollIndicators(.hidden)
+        .softScrollEdge()
         .task(id: scope.importIDs) {
             groupCounts = countGroups(importIDs: scope.importIDs)
         }
@@ -105,11 +151,31 @@ struct HomeView: View {
 
     @ToolbarContentBuilder
     private func toolbarContent(scope: LibraryScope) -> some ToolbarContent {
-        #if !os(macOS)
-        ToolbarItem {
-            Button("Recordings", systemImage: "film.stack") {
-                showsRecordings = true
+        #if os(iOS)
+        if !playlists.isEmpty {
+            // The inline title only shows once the billboard has scrolled under the toolbar.
+            ToolbarItem(placement: .principal) {
+                Text(title(for: scope))
+                    .font(.headline)
+                    .lineLimit(1)
+                    .opacity(isScrolledPastHero ? 1 : 0)
+                    .animation(.easeInOut(duration: 0.2), value: isScrolledPastHero)
+                    .accessibilityAddTraits(.isHeader)
             }
+            .sharedBackgroundVisibility(.hidden)
+        }
+        #endif
+        #if os(iOS)
+        ToolbarItem {
+            recordingsButton
+        }
+        .matchedTransitionSource(id: Self.recordingsSourceID, in: sheetNamespace)
+
+        // Recordings and the playlist menu are separate glass groups.
+        ToolbarSpacer(.fixed)
+        #elseif !os(macOS)
+        ToolbarItem {
+            recordingsButton
         }
         #endif
         ToolbarItem {
@@ -127,6 +193,12 @@ struct HomeView: View {
                     }
                 }
             }
+        }
+    }
+
+    private var recordingsButton: some View {
+        Button("Recordings", systemImage: "film.stack") {
+            showsRecordings = true
         }
     }
 
@@ -168,20 +240,28 @@ struct HomeView: View {
 
 /// Horizontally scrolling glass chips: "All" plus one per playlist, and a chip to add one.
 /// Each playlist chip has the playlist's refresh / rename / delete actions in its context menu.
+///
+/// The chips share one `GlassEffectContainer`, and the tinted selection glass carries the same
+/// `glassEffectID` from chip to chip, so changing the selection morphs the tint across the bar.
 struct PlaylistSwitcher: View {
+
+    private static let selectionGlassID = "switcher.selection"
+    private static let allGlassID = "switcher.all"
+    private static let addGlassID = "switcher.add"
 
     let playlists: [Playlist]
     @Binding var selection: PlaylistSelection
 
     @Environment(PlaylistActions.self) private var actions
     @Environment(PlaylistImportCenter.self) private var importCenter
-    @Namespace private var namespace
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var glassNamespace
 
     var body: some View {
         ScrollView(.horizontal) {
             GlassEffectContainer(spacing: 8) {
                 HStack(spacing: 8) {
-                    chip(title: "All Playlists", systemImage: "square.stack.fill", isSelected: selection == .all, isUpdating: false) {
+                    chip(title: "All Playlists", systemImage: "square.stack.fill", glassID: Self.allGlassID, isSelected: selection == .all, isUpdating: false) {
                         selection = .all
                     }
 
@@ -189,6 +269,7 @@ struct PlaylistSwitcher: View {
                         chip(
                             title: playlist.name,
                             systemImage: nil,
+                            glassID: playlist.uuid.uuidString,
                             isSelected: selection == .playlist(playlist.uuid),
                             isUpdating: importCenter.progress[playlist.uuid] != nil
                         ) {
@@ -206,20 +287,23 @@ struct PlaylistSwitcher: View {
                             .font(.subheadline.bold())
                             .frame(width: 20, height: 20)
                             .padding(8)
-                            .accessibilityLabel("Add Playlist")
+                            .contentShape(.circle)
                     }
                     .buttonStyle(.plain)
                     .glassEffect(.regular.interactive(), in: .circle)
+                    .glassEffectID(Self.addGlassID, in: glassNamespace)
+                    .accessibilityLabel("Add Playlist")
                 }
             }
             .padding(.vertical, 4)
         }
         .contentMargins(.horizontal, HomeLayout.horizontalMargin, for: .scrollContent)
         .scrollIndicators(.hidden)
-        .animation(.snappy, value: selection)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.35), value: selection)
+        .sensoryFeedback(.selection, trigger: selection)
     }
 
-    private func chip(title: String, systemImage: String?, isSelected: Bool, isUpdating: Bool, action: @escaping () -> Void) -> some View {
+    private func chip(title: String, systemImage: String?, glassID: String, isSelected: Bool, isUpdating: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 6) {
                 if isUpdating {
@@ -240,6 +324,7 @@ struct PlaylistSwitcher: View {
         }
         .buttonStyle(.plain)
         .glassEffect(isSelected ? .regular.tint(.accentColor).interactive() : .regular.interactive(), in: .capsule)
+        .glassEffectID(isSelected ? Self.selectionGlassID : glassID, in: glassNamespace)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
@@ -298,7 +383,8 @@ private struct PlaylistStatusBanner: View {
                 }
             }
             .padding(16)
-            .glassEffect(.regular, in: .rect(cornerRadius: 22))
+            // Content, not a control layer: a plain grouped surface rather than glass.
+            .background(.background.secondary, in: .rect(cornerRadius: 22, style: .continuous))
             .padding(.horizontal, HomeLayout.horizontalMargin)
         }
     }
@@ -310,6 +396,7 @@ struct HomeEmptyState: View {
     let onAddPlaylist: () -> Void
 
     @State private var animates = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 22) {
@@ -355,6 +442,9 @@ struct HomeEmptyState: View {
         .padding(32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
+            guard !reduceMotion else {
+                return
+            }
             withAnimation(.linear(duration: 20).repeatForever(autoreverses: false)) {
                 animates = true
             }

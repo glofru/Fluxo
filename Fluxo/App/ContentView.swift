@@ -13,11 +13,15 @@ struct ContentView: View {
 
     @Environment(\.scenePhase) private var scenePhase
     @Environment(ChannelLibrary.self) private var library
+    /// The player zooms out of the card or the mini player that opened it.
+    @Namespace private var playerNamespace
 
     var body: some View {
         root
+            .environment(\.playerTransitionNamespace, playerNamespace)
             .playerPresentation(isPresented: $viewModel.isPresented) {
                 WatchChannelView(viewModel: viewModel)
+                    .zoomTransition(sourceID: viewModel.presentationSourceID ?? PlayerTransition.miniPlayerID, in: playerNamespace)
             }
             .playlistManagement()
             .environment(\.playChannel, PlayChannelAction(library: library, player: viewModel))
@@ -75,65 +79,150 @@ struct ContentView: View {
     }
 }
 
+/// The mini player: the tab bar bottom accessory on iOS, a floating glass bar on macOS.
+///
+/// Expanded (above the tab bar): artwork, title, a status line (live, time-shifted, recording, PiP, buffering),
+/// play / pause and close. Inline (next to the minimized tab bar): artwork, title and play / pause only.
+/// Tapping it opens the player, which zooms out of it.
 struct PlayerBottomAccessory: View {
-    static let logoSize = CGSize(width: 40, height: 32)
 
     let viewModel: AVPlayerViewModel
 
+    @Environment(\.tabViewBottomAccessoryPlacement) private var placement
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var playPauseTaps = 0
+
     var body: some View {
         if let channel = viewModel.currentChannel {
-            HStack {
-                if channel.logo != nil {
-                    LogoImage(source: channel.logo, size: Self.logoSize, accessibilityLabel: channel.name ?? "No channel name") { _ in
-                        Color.clear
-                    }
-                    .clipShape(RoundedRectangle(cornerSize: .init(width: 6, height: 6)))
-                    .padding(.leading, 16)
-                    .padding(.trailing, 6)
-                }
+            let isInline = placement == .inline
+            HStack(spacing: isInline ? 10 : 12) {
+                artwork(for: channel, isInline: isInline)
 
-                VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 1) {
                     Text(channel.name ?? "No channel name")
-                        .bold()
+                        .font(isInline ? .footnote.weight(.semibold) : .subheadline.weight(.semibold))
                         .lineLimit(1)
-                    if viewModel.isPictureInPictureActive || viewModel.isRecording || viewModel.playbackState.isBusy {
-                        Text(accessoryStatus)
-                            .font(.caption2)
-                            .foregroundStyle(viewModel.isRecording ? .red : .secondary)
+                    if !isInline {
+                        status
+                            .font(.caption2.weight(.medium))
+                            .lineLimit(1)
+                            .transition(.opacity)
                     }
                 }
 
-                Spacer()
+                Spacer(minLength: 4)
 
                 Button {
+                    playPauseTaps += 1
                     viewModel.togglePlayPause()
                 } label: {
                     Image(systemName: isPaused ? "play.fill" : "pause.fill")
-                        .accessibilityLabel(isPaused ? "Play" : "Pause")
+                        .font(isInline ? .body : .title3)
+                        .contentTransition(.symbolEffect(.replace))
+                        .frame(width: 36, height: 36)
+                        .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
-                .padding(.horizontal, 8)
+                .accessibilityLabel(isPaused ? "Play" : "Pause")
+                .sensoryFeedback(.impact(weight: .light), trigger: playPauseTaps)
 
-                Button {
-                    viewModel.stop()
-                } label: {
-                    Image(systemName: "xmark")
-                        .accessibilityLabel("Stop playback")
+                if !isInline {
+                    Button {
+                        viewModel.stop()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.body.weight(.semibold))
+                            .frame(width: 32, height: 36)
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Stop playback")
                 }
-                .buttonStyle(.plain)
-                .padding(.trailing, 16)
             }
-            .ignoresSafeArea(.all)
+            .padding(.leading, isInline ? 6 : 10)
+            .padding(.trailing, isInline ? 4 : 10)
+            .frame(maxHeight: .infinity)
             .contentShape(.rect)
-            .onTapGesture {
-                viewModel.isPresented = true
+            .onTapGesture(perform: openPlayer)
+            .playerTransitionSource(id: PlayerTransition.miniPlayerID, cornerRadius: 24)
+            .accessibilityElement(children: .contain)
+            .accessibilityAction(named: "Open Player", openPlayer)
+            .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: placement)
+        } else {
+            // Only reached on iOS 26.0, which cannot hide the accessory.
+            Label("Not Playing", systemImage: "play.tv")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private func openPlayer() {
+        viewModel.presentationSourceID = nil
+        viewModel.isPresented = true
+    }
+
+    @ViewBuilder
+    private func artwork(for channel: PlayableChannel, isInline: Bool) -> some View {
+        let size = isInline ? CGSize(width: 30, height: 30) : CGSize(width: 40, height: 40)
+        let name = channel.name ?? ""
+        ZStack {
+            if channel.logo != nil {
+                LogoImage(source: channel.logo, size: CGSize(width: size.width - 6, height: size.height - 6), accessibilityLabel: name) { phase in
+                    if phase == .unavailable {
+                        ArtworkPlaceholder(name: name, kind: .live)
+                    } else {
+                        Color.clear
+                    }
+                }
+            } else {
+                ArtworkPlaceholder(name: name, kind: .live)
             }
-            .accessibilityAction(named: "Open Player") {
-                viewModel.isPresented = true
+        }
+        .frame(width: size.width, height: size.height)
+        .background(.fill.tertiary)
+        .clipShape(.rect(cornerRadius: isInline ? 8 : 10, style: .continuous))
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var status: some View {
+        if viewModel.isRecording {
+            Label {
+                Text("Recording")
+            } icon: {
+                Image(systemName: "record.circle.fill")
+                    .symbolEffect(.pulse, options: .repeating, isActive: !reduceMotion)
+            }
+            .foregroundStyle(.red)
+        } else if viewModel.isPictureInPictureActive {
+            Label("Picture in Picture", systemImage: "pip")
+                .foregroundStyle(.secondary)
+        } else if viewModel.playbackState.isBusy {
+            Text(viewModel.playbackState.label)
+                .foregroundStyle(.secondary)
+        } else if isLive && viewModel.playbackState == .playing {
+            HStack(spacing: 6) {
+                Text("LIVE")
+                    .font(.caption2.weight(.heavy))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(.red, in: .capsule)
+                    .foregroundStyle(.white)
+                if let group = viewModel.currentItem?.groupName, !group.isEmpty {
+                    Text(group)
+                        .foregroundStyle(.secondary)
+                }
             }
         } else {
-            EmptyView()
+            Text(viewModel.playbackState.label)
+                .foregroundStyle(.secondary)
         }
+    }
+
+    private var isLive: Bool {
+        viewModel.isTimeShiftAvailable || viewModel.currentChannel?.isLiveContent == true
     }
 
     private var isPaused: Bool {
@@ -143,16 +232,6 @@ struct PlayerBottomAccessory: View {
         default:
             return false
         }
-    }
-
-    private var accessoryStatus: String {
-        if viewModel.isRecording {
-            return "Recording"
-        }
-        if viewModel.isPictureInPictureActive {
-            return "Picture in Picture"
-        }
-        return viewModel.playbackState.label
     }
 }
 

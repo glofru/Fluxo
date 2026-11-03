@@ -64,6 +64,7 @@ struct RecordingsView: View {
                             Text("\(store.recordings.count) recordings · \(ByteCountFormatter.string(fromByteCount: store.totalBytes, countStyle: .file))")
                         }
                     }
+                    .glassSheetContentBackground()
                 }
             }
             .navigationTitle("Recordings")
@@ -86,7 +87,7 @@ struct RecordingsView: View {
                 }
                 if showsDoneButton {
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") {
+                        Button(role: .close) {
                             dismiss()
                         }
                     }

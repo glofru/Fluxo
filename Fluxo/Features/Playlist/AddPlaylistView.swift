@@ -195,11 +195,13 @@ struct AddPlaylistView: View {
             }
         }
         .formStyle(.grouped)
+        .glassSheetContentBackground()
         .navigationTitle(isEditing ? "Edit Playlist" : "Add Playlist")
         .inlineNavigationBar()
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") {
+                // iOS 26 draws the cancel role as a glass close button.
+                Button(role: .cancel) {
                     // Cancelling stops the download and removes everything imported so far.
                     importTask?.cancel()
                     dismiss()
@@ -210,7 +212,7 @@ struct AddPlaylistView: View {
                     ProgressView()
                         .controlSize(.small)
                 } else {
-                    Button(isEditing ? "Save" : "Add", action: submit)
+                    Button(isEditing ? "Save" : "Add", role: .confirm, action: submit)
                         .disabled(!canSubmit)
                 }
             }

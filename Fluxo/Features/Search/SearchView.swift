@@ -196,6 +196,7 @@ private struct SearchResultsList: View {
                                     }
                                     .buttonStyle(.plain)
                                     .glassEffect(.regular.interactive(), in: .capsule)
+                                    .routeTransitionSource(group.route, cornerRadius: 20)
                                 }
                             }
                             .padding(.vertical, 4)
@@ -233,11 +234,12 @@ private struct SearchResultRow: View {
 
     @Environment(ChannelLibrary.self) private var library
     @Environment(\.playChannel) private var playChannel
+    @State private var sourceID = UUID().uuidString
 
     var body: some View {
         let isFavorite = library.isFavorite(item)
         Button {
-            playChannel(item)
+            playChannel(item, from: sourceID)
         } label: {
             HStack(spacing: 12) {
                 LogoImage(source: item.logo, size: Self.logoSize, accessibilityLabel: item.displayName) { _ in
@@ -247,6 +249,7 @@ private struct SearchResultRow: View {
                 }
                 .background(Color.artworkPlaceholder.opacity(0.25), in: .rect(cornerRadius: 8))
                 .clipShape(.rect(cornerRadius: 8))
+                .playerTransitionSource(id: sourceID, cornerRadius: 8)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.displayName)

@@ -129,6 +129,10 @@ final class AVPlayerViewModel {
     }
 
     var isPresented: Bool = false
+    /// The view the full-screen player zooms out of (iOS), see `playerTransitionSource(id:)`. nil: the mini
+    /// player. Only read when the player is presented.
+    @ObservationIgnored
+    var presentationSourceID: String?
 
     private(set) var currentChannel: PlayableChannel?
     /// The playlist entry being played, when it was started from a card, a row or by zapping (not for
@@ -242,6 +246,8 @@ final class AVPlayerViewModel {
     /// Plays a stream that is not a playlist entry (e.g. a recording or a debug URL).
     func play(_ channel: PlayableChannel, present: Bool = true) {
         currentItem = nil
+        // Not started from a card: the player zooms from the mini player.
+        presentationSourceID = nil
         playChannel(channel, present: present)
     }
 
@@ -942,6 +948,8 @@ final class AVPlayerViewModel {
             }
             self.completePendingRestore(false)
             self.pendingRestoreCompletion = completion
+            // Coming back from PiP: the mini player is the only source sure to be on screen.
+            self.presentationSourceID = nil
             self.isPresented = true
             // Never leave PiP waiting if the player screen cannot appear.
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
