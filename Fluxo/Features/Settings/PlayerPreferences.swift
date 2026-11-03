@@ -2,7 +2,7 @@
 //  PlayerPreferences.swift
 //  Fluxo
 //
-//  User settings of the player, stored in UserDefaults. SettingsView edits them with @AppStorage
+//  User settings of the player, stored in `UserDefaults.fluxo`. SettingsView edits them with @AppStorage
 //  using the same keys and defaults; the player reads them when a channel starts.
 //
 
@@ -51,11 +51,11 @@ enum PlayerPreferences {
     }
 
     static var autoPictureInPicture: Bool {
-        UserDefaults.standard.object(forKey: autoPictureInPictureKey) as? Bool ?? defaultAutoPictureInPicture
+        UserDefaults.fluxo.object(forKey: autoPictureInPictureKey) as? Bool ?? defaultAutoPictureInPicture
     }
 
     private static func value(forKey key: String, default defaultValue: Int, allowed: [Int]) -> Int {
-        guard let stored = UserDefaults.standard.object(forKey: key) as? Int, allowed.contains(stored) else {
+        guard let stored = UserDefaults.fluxo.object(forKey: key) as? Int, allowed.contains(stored) else {
             return defaultValue
         }
         return stored

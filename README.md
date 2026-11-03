@@ -177,6 +177,17 @@ Tools/EngineSmokeTest/run.sh           # window cleanup, reconnection, recording
 Tools/EngineSmokeTest/run_avplayer.sh  # AVPlayer pause/resume/skip/go-live on the engine output
 ```
 
+Debug builds have a test harness for the simulators (`Tools/Simulator/README.md`): an isolated in-memory or
+temporary library (`-FluxoDebugStore`), seeded sample content with local artwork (`-FluxoDebugSeed sample|large`),
+deep-link routes to any screen (`-FluxoDebugRoute "group:Sport;player:Sky Sport F1"`), forced appearance and
+Dynamic Type, loopback test streams, and scripts that clone a simulator, run the app and screenshot every
+display:
+
+```sh
+Tools/Simulator/build.sh
+Tools/Simulator/run.sh --device "iPhone 17e" --clone fluxo-mykey-1 --step-shots --route "home;search:Sky;player:Sky Sport F1"
+```
+
 Debug builds (`Fluxo/App/Debug/DebugAutoplay.swift`) also accept `-FluxoDebugAutoplayURL <url>`, which plays a stream at
 launch, `-FluxoDebugRecordSeconds <n>`, which records it for n seconds, and `-FluxoDebugPictureInPicture YES`, which
 starts Picture in Picture once it is possible and stops it 6 seconds later. The shared scheme builds Release, so build

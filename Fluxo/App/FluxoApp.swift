@@ -65,6 +65,7 @@ struct FluxoApp: App {
                 .environment(library)
                 .environment(epg)
                 .modelContainer(container)
+                .defaultAppStorage(.fluxo)
         }
         #else
         // Multiple scenes are disabled in the build settings for the same reason.

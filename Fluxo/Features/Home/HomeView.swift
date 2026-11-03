@@ -24,9 +24,10 @@ struct HomeView: View {
 
     @Environment(PlaylistActions.self) private var actions
     @Environment(PlaylistImportCenter.self) private var importCenter
+    /// The navigation path and the Recordings sheet.
+    @Environment(AppNavigation.self) private var navigation
 
     @AppStorage("home.contentKind") private var kindRawValue = ChannelContentKind.live.rawValue
-    @State private var showsRecordings = false
     /// Number of groups per content kind in the scope; nil until counted.
     @State private var groupCounts: [ChannelContentKind: Int]?
     /// iOS: the billboard runs under the toolbar; the title fades in once it has scrolled away.
@@ -41,7 +42,8 @@ struct HomeView: View {
 
     var body: some View {
         let scope = scope
-        NavigationStack {
+        @Bindable var navigation = navigation
+        NavigationStack(path: $navigation.homePath) {
             Group {
                 if playlists.isEmpty {
                     HomeEmptyState {
@@ -61,9 +63,9 @@ struct HomeView: View {
             .channelDestinations()
         }
         #if !os(macOS)
-        .sheet(isPresented: $showsRecordings) {
+        .sheet(isPresented: $navigation.isShowingRecordings) {
             RecordingsView(store: player.recordings, isRecordingActive: player.isRecording) { recording in
-                showsRecordings = false
+                navigation.isShowingRecordings = false
                 player.playRecording(recording)
             }
             .presentationDetents([.medium, .large])
@@ -198,7 +200,7 @@ struct HomeView: View {
 
     private var recordingsButton: some View {
         Button("Recordings", systemImage: "film.stack") {
-            showsRecordings = true
+            navigation.isShowingRecordings = true
         }
     }
 

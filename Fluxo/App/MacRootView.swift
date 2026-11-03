@@ -27,11 +27,17 @@ struct MacRootView: View {
 
     @Query(sort: \Playlist.createdOn) private var playlists: [Playlist]
     @AppStorage(PlaylistSelection.storageKey) private var selectionRawValue = ""
-    @State private var sidebarSelection: SidebarItem? = .home
+    /// The sidebar selection lives in `AppNavigation`, so code outside the window can change it.
+    @Environment(AppNavigation.self) private var navigation
+
+    private var sidebarSelection: SidebarItem? {
+        get { navigation.sidebarSelection }
+        nonmutating set { navigation.sidebarSelection = newValue }
+    }
 
     var body: some View {
         NavigationSplitView {
-            MacSidebar(playlists: playlists, selection: $sidebarSelection)
+            MacSidebar(playlists: playlists, selection: Bindable(navigation).sidebarSelection)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
         } detail: {
             detail

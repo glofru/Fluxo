@@ -50,7 +50,7 @@ final class ReminderCenter {
     }
 
     nonisolated static var leadMinutes: Int {
-        let value = UserDefaults.standard.object(forKey: leadMinutesKey) as? Int
+        let value = UserDefaults.fluxo.object(forKey: leadMinutesKey) as? Int
         return value ?? defaultLeadMinutes
     }
 

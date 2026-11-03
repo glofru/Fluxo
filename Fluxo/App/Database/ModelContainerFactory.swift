@@ -23,6 +23,12 @@ enum ModelContainerFactory {
         }
         #endif
         let schema = Schema(ModelRegistry.all)
+        #if DEBUG
+        // -FluxoDebugStore: an isolated library that never touches the real store.
+        if let environment = DebugEnvironment.shared {
+            return environment.makeContainer(schema: schema)
+        }
+        #endif
         let configuration = ModelConfiguration(schema: schema)
         do {
             return try ModelContainer(for: schema, configurations: configuration)

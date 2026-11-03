@@ -135,6 +135,7 @@ extension View {
             .environment(epg)
             .environment(library)
             .environment(PlaylistActions())
+            .environment(AppNavigation())
             .environment(\.playChannel, PlayChannelAction(library: library, player: player))
             .modelContainer(container)
     }

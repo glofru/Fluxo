@@ -14,11 +14,10 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(ChannelLibrary.self) private var library
     @Environment(EPGStore.self) private var epg
+    /// Selected tab / sidebar item, navigation paths and search text, shared with code outside the screens.
+    @State private var navigation = AppNavigation()
     /// The player zooms out of the card or the mini player that opened it.
     @Namespace private var playerNamespace
-    #if !os(macOS)
-    @State private var selectedTab = AppTab.home
-    #endif
 
     var body: some View {
         root
@@ -57,7 +56,10 @@ struct ContentView: View {
             #if DEBUG
             .debugAutoplay(viewModel)
             .debugSnapshots()
+            .debugHarness(player: viewModel, navigation: navigation)
             #endif
+            .environment(navigation)
+            .defaultAppStorage(.fluxo)
     }
 
     @ViewBuilder
@@ -65,30 +67,30 @@ struct ContentView: View {
         #if os(macOS)
         MacRootView(player: viewModel)
         #else
-        TabView(selection: $selectedTab) {
-            Tab("Home", systemImage: "play.tv", value: AppTab.home) {
+        TabView(selection: $navigation.tab) {
+            Tab("Home", systemImage: "play.tv", value: AppNavigation.Tab.home) {
                 HomeView(player: viewModel)
             }
 
-            Tab("Guide", systemImage: "calendar.day.timeline.left", value: AppTab.guide) {
+            Tab("Guide", systemImage: "calendar.day.timeline.left", value: AppNavigation.Tab.guide) {
                 GuideView()
             }
 
-            Tab("Favorites", systemImage: "star", value: AppTab.favorites) {
-                NavigationStack {
+            Tab("Favorites", systemImage: "star", value: AppNavigation.Tab.favorites) {
+                NavigationStack(path: $navigation.favoritesPath) {
                     BookmarkGridView(mode: .favorites, playlistIDs: nil)
                         .channelDestinations()
                 }
             }
 
-            Tab("Settings", systemImage: "gear", value: AppTab.settings) {
+            Tab("Settings", systemImage: "gear", value: AppNavigation.Tab.settings) {
                 NavigationStack {
                     SettingsView(player: viewModel)
                         .navigationTitle("Settings")
                 }
             }
 
-            Tab("Search", systemImage: "magnifyingglass", value: AppTab.search, role: .search) {
+            Tab("Search", systemImage: "magnifyingglass", value: AppNavigation.Tab.search, role: .search) {
                 SearchView()
             }
         }
@@ -98,26 +100,15 @@ struct ContentView: View {
         #if DEBUG
         .onAppear {
             if DebugGuideDemo.opensGuide {
-                selectedTab = .guide
+                navigation.tab = .guide
             } else if DebugGuideDemo.opensFavorites {
-                selectedTab = .favorites
+                navigation.tab = .favorites
             }
         }
         #endif
         #endif
     }
 }
-
-#if !os(macOS)
-/// The tabs of the iOS app.
-private enum AppTab: Hashable {
-    case home
-    case guide
-    case favorites
-    case settings
-    case search
-}
-#endif
 
 /// The mini player: the tab bar bottom accessory on iOS, a floating glass bar on macOS.
 ///

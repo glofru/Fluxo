@@ -41,8 +41,9 @@ struct SearchView: View {
     @Query(sort: \Playlist.createdOn) private var playlists: [Playlist]
     @AppStorage(PlaylistSelection.storageKey) private var selectionRawValue = ""
     @Environment(\.modelContext) private var modelContext
+    /// The search text and the navigation path.
+    @Environment(AppNavigation.self) private var navigation
 
-    @State private var text = ""
     @State private var scope = Scope.all
     @State private var results: ChannelSearch.Results?
 
@@ -52,11 +53,12 @@ struct SearchView: View {
 
     var body: some View {
         let libraryScope = libraryScope
-        let request = ChannelSearch.Request(term: text.trimmingCharacters(in: .whitespacesAndNewlines), importIDs: libraryScope.importIDs, kind: scope.kind)
-        NavigationStack {
+        let request = ChannelSearch.Request(term: navigation.searchText.trimmingCharacters(in: .whitespacesAndNewlines), importIDs: libraryScope.importIDs, kind: scope.kind)
+        @Bindable var navigation = navigation
+        NavigationStack(path: $navigation.searchPath) {
             content(request: request, libraryScope: libraryScope)
                 .navigationTitle("Search")
-                .searchable(text: $text, prompt: "Channels, movies and series")
+                .searchable(text: $navigation.searchText, prompt: "Channels, movies and series")
                 .searchScopes($scope, activation: .onSearchPresentation) {
                     ForEach(Scope.allCases, id: \.self) { scope in
                         Text(scope.title)

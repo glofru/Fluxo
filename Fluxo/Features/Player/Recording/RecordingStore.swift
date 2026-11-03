@@ -47,9 +47,7 @@ final class RecordingStore {
     private static let mediaExtensions: Set<String> = ["mp4", "ts"]
 
     init(directory: URL? = nil) {
-        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
-        self.directory = directory ?? documents.appendingPathComponent("Recordings", isDirectory: true)
+        self.directory = directory ?? Self.defaultDirectory
         try? FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true)
         reload()
         if !Self.didRecoverInterruptedRecordings, AppInstanceLock.isPrimaryInstance {
@@ -58,6 +56,18 @@ final class RecordingStore {
             Self.didRecoverInterruptedRecordings = true
             recoverInterruptedRecordings()
         }
+    }
+
+    /// Documents/Recordings, or the isolated recordings folder of a debug run (`-FluxoDebugStore`).
+    private static var defaultDirectory: URL {
+        #if DEBUG
+        if let directory = DebugEnvironment.shared?.recordingsDirectory {
+            return directory
+        }
+        #endif
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        return documents.appendingPathComponent("Recordings", isDirectory: true)
     }
 
     /// Returns a new, unique file URL for a recording of `channelName`.
@@ -166,6 +176,14 @@ final class RecordingStore {
     func clearError() {
         lastError = nil
     }
+
+    #if DEBUG
+    /// Debug harness: lists an existing media file of the recordings folder as a finished recording.
+    func debugAddRecording(at url: URL, title: String, createdOn: Date, duration: TimeInterval?) {
+        writeMetadata(RecordingMetadata(title: title, createdOn: createdOn, duration: duration), for: url)
+        reload()
+    }
+    #endif
 
     // MARK: - Private
 
