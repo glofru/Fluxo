@@ -17,7 +17,7 @@ final class AVPlayerViewModel: ObservableObject {
 
     @Published var isPresented: Bool = false
 
-    @Published var currentChannel: PlaylistChannel? {
+    @Published var currentChannel: PlayableChannel? {
         willSet {
             if let newValue {
                 setChannel(newValue)
@@ -39,7 +39,7 @@ final class AVPlayerViewModel: ObservableObject {
         }
     }
 
-    private func setChannel(_ channel: PlaylistChannel) {
+    private func setChannel(_ channel: PlayableChannel) {
         guard let url = channel.url, channel != currentChannel else {
             // TODO
             return
@@ -59,7 +59,7 @@ final class AVPlayerViewModel: ObservableObject {
         let configuration = StreamRemuxer.Configuration(
             inputURL: url,
             outputDirectory: outputDir,
-            name: "\(channel.uuid)-\(UUID().uuidString)"
+            name: "\(channel.id)-\(UUID().uuidString)"
         )
         guard let streamURL = SimpleHTTPServer.url(forFileNamed: configuration.playlistFileName) else {
             return

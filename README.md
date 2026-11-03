@@ -49,3 +49,19 @@ xcodebuild -project Fluxo.xcodeproj -scheme Fluxo -destination 'generic/platform
 # macOS
 xcodebuild -project Fluxo.xcodeproj -scheme Fluxo -destination 'platform=macOS' build
 ```
+
+## Playlist import
+
+Playlists are streamed from the network (`DownloadManager`), parsed incrementally
+by a byte-level M3U parser (`M3UParser`), and stored in batches on a background
+`ModelContext` (`PlaylistImporter`). The main actor only receives throttled
+progress (`PlaylistImportCenter`). A refresh writes a complete new copy of the
+channels and switches to it only when the copy is fully stored. If the refresh is
+cancelled or fails, the previous channels are kept.
+
+To benchmark the old and new pipelines on a synthetic 100k-entry playlist, and to
+run the parser edge-case self test:
+
+```sh
+Tools/PlaylistBenchmark/run.sh             # ENTRIES=20000 for a quicker run
+```

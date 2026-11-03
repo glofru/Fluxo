@@ -7,73 +7,181 @@
 
 import Foundation
 
-struct DownloadProgress {
-    let percentage: Double
-    let isCompleted: Bool
-    let error: Error?
-    let data: Data?
+/// A piece of a streamed download.
+struct DownloadChunk: Sendable {
+    let data: Data
+    /// Fraction of the transfer completed, when the server announced a length.
+    let fractionCompleted: Double?
 }
 
-class DownloadManager: NSObject, URLSessionDownloadDelegate {
-    // swiftlint:disable:next implicitly_unwrapped_optional
-    private var urlSession: URLSession!
-    private var downloadTask: URLSessionDownloadTask?
-    private var resumeData: Data?
+enum DownloadError: LocalizedError {
+    case httpStatus(Int)
 
-    private var expectedContentLength: Int64 = 0
-    private var receivedContentLength: Int64 = 0
+    var errorDescription: String? {
+        switch self {
+        case .httpStatus(let status):
+            return "The server responded with HTTP \(status) (\(HTTPURLResponse.localizedString(forStatusCode: status)))."
+        }
+    }
+}
 
-    private var downloadContinuation: AsyncStream<DownloadProgress>.Continuation?
+/// Streams the body of a URL as it arrives instead of buffering the whole file.
+///
+/// Delegate callbacks run on a private serial queue, never on the main thread. Chunks flow through an
+/// `AsyncThrowingStream` with simple flow control: when more than `highWaterMark` bytes have been delivered but
+/// not yet consumed the data task is suspended, and it is resumed once the consumer drops below `lowWaterMark`,
+/// so a slow consumer (e.g. database inserts) never makes the whole file pile up in memory.
+/// Cancelling the consuming task cancels the network request.
+enum DownloadManager {
 
-    override init() {
-        super.init()
-        let config = URLSessionConfiguration.default
-        urlSession = URLSession(configuration: config, delegate: self, delegateQueue: .main)
+    private static let session: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        // Playlists can be tens of MB: keep them out of URLCache (memory and disk) and always fetch fresh content.
+        configuration.urlCache = nil
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.timeoutIntervalForRequest = 60
+        configuration.httpMaximumConnectionsPerHost = 2
+        let queue = OperationQueue()
+        queue.name = "fluxo.download.delegate"
+        queue.maxConcurrentOperationCount = 1
+        queue.qualityOfService = .userInitiated
+        return URLSession(configuration: configuration, delegate: nil, delegateQueue: queue)
+    }()
+
+    static func stream(from url: URL, highWaterMark: Int = 8 << 20, lowWaterMark: Int = 2 << 20) -> DownloadStream {
+        var request = URLRequest(url: url)
+        request.setValue("*/*", forHTTPHeaderField: "Accept")
+
+        let task = session.dataTask(with: request)
+        let handler = DownloadTaskHandler(highWaterMark: highWaterMark, lowWaterMark: lowWaterMark)
+        let base = AsyncThrowingStream<DownloadChunk, Error> { continuation in
+            handler.continuation = continuation
+            continuation.onTermination = { termination in
+                if case .cancelled = termination {
+                    task.cancel()
+                }
+            }
+        }
+        handler.task = task
+        task.delegate = handler
+        task.resume()
+        return DownloadStream(base: base, handler: handler)
+    }
+}
+
+/// Async sequence of download chunks. Requesting the next chunk marks the previous one as consumed.
+struct DownloadStream: AsyncSequence {
+    typealias Element = DownloadChunk
+
+    fileprivate let base: AsyncThrowingStream<DownloadChunk, Error>
+    fileprivate let handler: DownloadTaskHandler
+
+    func makeAsyncIterator() -> Iterator {
+        Iterator(base: base.makeAsyncIterator(), handler: handler)
     }
 
-    func download(from url: URL) -> AsyncStream<DownloadProgress> {
-        AsyncStream { continuation in
-            self.downloadContinuation = continuation
-            self.downloadTask = urlSession.downloadTask(with: url)
-            self.downloadTask?.resume()
+    struct Iterator: AsyncIteratorProtocol {
+        fileprivate var base: AsyncThrowingStream<DownloadChunk, Error>.AsyncIterator
+        fileprivate let handler: DownloadTaskHandler
+        private var pendingBytes = 0
+
+        fileprivate init(base: AsyncThrowingStream<DownloadChunk, Error>.AsyncIterator, handler: DownloadTaskHandler) {
+            self.base = base
+            self.handler = handler
+        }
+
+        mutating func next() async throws -> DownloadChunk? {
+            if pendingBytes > 0 {
+                handler.consumed(pendingBytes)
+                pendingBytes = 0
+            }
+            let chunk = try await base.next()
+            pendingBytes = chunk?.data.count ?? 0
+            return chunk
+        }
+    }
+}
+
+private final class DownloadTaskHandler: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+
+    // All mutable state is guarded by `lock`: delegate callbacks arrive on the session queue,
+    // `consumed(_:)` on the consumer's executor.
+    private let lock = NSLock()
+    private let highWaterMark: Int
+    private let lowWaterMark: Int
+    private var bufferedBytes = 0
+    private var isSuspended = false
+    private var isFinished = false
+
+    var continuation: AsyncThrowingStream<DownloadChunk, Error>.Continuation?
+    weak var task: URLSessionDataTask?
+
+    init(highWaterMark: Int, lowWaterMark: Int) {
+        self.highWaterMark = highWaterMark
+        self.lowWaterMark = lowWaterMark
+    }
+
+    func consumed(_ count: Int) {
+        lock.lock()
+        bufferedBytes -= count
+        let shouldResume = isSuspended && !isFinished && bufferedBytes <= lowWaterMark
+        if shouldResume {
+            isSuspended = false
+        }
+        lock.unlock()
+        if shouldResume {
+            task?.resume()
         }
     }
 
-    // MARK: - URLSessionDownloadDelegate
-
     func urlSession(
         _ session: URLSession,
-        downloadTask: URLSessionDownloadTask,
-        didWriteData bytesWritten: Int64,
-        totalBytesWritten: Int64,
-        totalBytesExpectedToWrite: Int64) {
-        let percentage = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
-        let progress = DownloadProgress(percentage: percentage, isCompleted: false, error: nil, data: nil)
-        downloadContinuation?.yield(progress)
+        dataTask: URLSessionDataTask,
+        didReceive response: URLResponse,
+        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
+    ) {
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            finish(throwing: DownloadError.httpStatus(http.statusCode))
+            completionHandler(.cancel)
+            return
+        }
+        completionHandler(.allow)
     }
 
-    func urlSession(
-        _ session: URLSession,
-        downloadTask: URLSessionDownloadTask,
-        didFinishDownloadingTo location: URL) {
-        do {
-            let data = try Data(contentsOf: location)
-            let progress = DownloadProgress(percentage: 1.0, isCompleted: true, error: nil, data: data)
-            downloadContinuation?.yield(progress)
-            downloadContinuation?.finish()
-        } catch {
-            let progress = DownloadProgress(percentage: 1.0, isCompleted: true, error: error, data: nil)
-            downloadContinuation?.yield(progress)
-            downloadContinuation?.finish()
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        let expected = dataTask.countOfBytesExpectedToReceive
+        let fraction = expected > 0 ? min(1, Double(dataTask.countOfBytesReceived) / Double(expected)) : nil
+
+        lock.lock()
+        bufferedBytes += data.count
+        let shouldSuspend = !isSuspended && !isFinished && bufferedBytes >= highWaterMark
+        if shouldSuspend {
+            isSuspended = true
+        }
+        let continuation = isFinished ? nil : self.continuation
+        lock.unlock()
+
+        continuation?.yield(DownloadChunk(data: data, fractionCompleted: fraction))
+        if shouldSuspend {
+            dataTask.suspend()
         }
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        guard let error else {
-            return
+        finish(throwing: error)
+    }
+
+    private func finish(throwing error: Error?) {
+        lock.lock()
+        let continuation = isFinished ? nil : self.continuation
+        isFinished = true
+        self.continuation = nil
+        lock.unlock()
+
+        if let error {
+            continuation?.finish(throwing: error)
+        } else {
+            continuation?.finish()
         }
-        let progress = DownloadProgress(percentage: 0.0, isCompleted: true, error: error, data: nil)
-        downloadContinuation?.yield(progress)
-        downloadContinuation?.finish()
     }
 }

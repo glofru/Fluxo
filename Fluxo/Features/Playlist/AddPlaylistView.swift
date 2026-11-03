@@ -18,15 +18,15 @@ struct AddPlaylistView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
-    @StateObject private var viewModel = PlaylistViewModel()
-
-    @Query(sort: \Playlist.createdOn) private var playlists: [Playlist]
+    @EnvironmentObject private var importCenter: PlaylistImportCenter
 
     @State private var name: String = ""
     @State private var url: String = ""
     @State private var actualUrl: URL?
     @State private var loading = false
     @State private var error: String?
+    @State private var importTask: Task<Void, Never>?
+    @State private var importingPlaylistID: UUID?
 
     private var showUrlError: Bool {
         !url.isEmpty && actualUrl == nil
@@ -79,28 +79,12 @@ struct AddPlaylistView: View {
                     return
                 }
 
-                loading = true
-
-                Task {
-                    let result = await viewModel.addPlaylist(.init(name: name, url: actualUrl), context: modelContext)
-
-                    switch result {
-                    case .failure(let error):
-                        self.error = error.localizedDescription
-                    case .success:
-                        dismiss()
-                    }
-
-                    await MainActor.run {
-                        loading = false
-                    }
-                }
+                startImport(name: name, url: actualUrl)
             }
             .disabled(loading || actualUrl == nil || name.isEmpty)
 
-            if let progress = viewModel.progress {
-                ProgressView(progress.message, value: progress.percentage, total: 1)
-                    .progressViewStyle(.linear)
+            if loading {
+                PlaylistImportProgressView(progress: importingPlaylistID.flatMap { importCenter.progress[$0] } ?? .connecting)
             }
 
             Spacer()
@@ -112,12 +96,16 @@ struct AddPlaylistView: View {
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button(action: {
+                    // Cancelling stops the download and removes everything imported so far.
+                    importTask?.cancel()
                     dismiss()
                 }, label: {
                     Text("Cancel")
                 })
             }
         }
+        // Keep the sheet up while importing so the import is either finished or explicitly cancelled.
+        .interactiveDismissDisabled(loading)
         .alert(isPresented: .init(get: { error != nil }, set: { _ in error = nil })) {
             Alert(title: Text("Error"), message: Text(error ?? ""))
         }
@@ -134,8 +122,47 @@ struct AddPlaylistView: View {
             self.actualUrl = URL(string: url)
         }
     }
+
+    private func startImport(name: String, url: URL) {
+        let uuid = UUID()
+        loading = true
+        importingPlaylistID = uuid
+
+        importTask = Task {
+            defer {
+                loading = false
+                importingPlaylistID = nil
+                importTask = nil
+            }
+
+            do {
+                try await importCenter.addPlaylist(uuid: uuid, name: name, url: url)
+                dismiss()
+            } catch is CancellationError {
+                // The user cancelled; the sheet is already being dismissed.
+            } catch {
+                self.error = error.localizedDescription
+            }
+        }
+    }
+}
+
+/// Linear progress for an import; indeterminate when the server did not send a length.
+struct PlaylistImportProgressView: View {
+    let progress: PlaylistImportProgress
+
+    var body: some View {
+        if let fraction = progress.fractionCompleted {
+            ProgressView(progress.message, value: fraction, total: 1)
+                .progressViewStyle(.linear)
+        } else {
+            ProgressView(progress.message)
+                .progressViewStyle(.linear)
+        }
+    }
 }
 
 #Preview {
     AddPlaylistView()
+        .environmentObject(PlaylistImportCenter(container: ModelContainerFactory.preview()))
 }

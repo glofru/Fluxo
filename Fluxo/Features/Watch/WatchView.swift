@@ -10,7 +10,7 @@ import SwiftUI
 
 struct WatchView: View {
 
-    @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var importCenter: PlaylistImportCenter
 
     @ObservedObject var viewModel: AVPlayerViewModel
 
@@ -20,41 +20,47 @@ struct WatchView: View {
 
     @Query(sort: \Playlist.createdOn) private var playlists: [Playlist]
 
-    @Query(sort: \PlaylistChannelGroup.name) private var groups: [PlaylistChannelGroup]
-
     var body: some View {
         NavigationStack {
             List {
                 Section(header: Text("Playlist")) {
-                    ForEach(playlists, id: \.self) { playlist in
-                        NavigationLink(playlist.name) {
+                    ForEach(playlists) { playlist in
+                        NavigationLink {
                             PlaylistView(playlist: playlist)
+                        } label: {
+                            PlaylistRow(playlist: playlist, progress: importCenter.progress[playlist.uuid])
                         }
                         .swipeActions {
                             Button("Delete", systemImage: "trash", role: .destructive) {
-                                modelContext.delete(playlist)
+                                playlistToDelete = playlist
                             }
 
                             Button("Rename", systemImage: "pencil") {
                                 displayedSheet = .updatePlaylist(playlist)
                             }
                         }
+                        .swipeActions(edge: .leading) {
+                            refreshButton(for: playlist)
+                        }
+                        .contextMenu {
+                            refreshButton(for: playlist)
+
+                            Button("Rename", systemImage: "pencil") {
+                                displayedSheet = .updatePlaylist(playlist)
+                            }
+
+                            Button("Delete", systemImage: "trash", role: .destructive) {
+                                playlistToDelete = playlist
+                            }
+                        }
                     }
                 }
 
-                ForEach(groups, id: \.self) { group in
-                    Section(header: Text(group.name).padding().glassEffect()) {
-                        ScrollView(.horizontal) {
-                            LazyHStack {
-                                ForEach(group.playlistChannels, id: \.self) { channel in
-                                    ChannelPreview(channel: channel) {
-                                        DispatchQueue.main.async {
-                                            viewModel.currentChannel = channel
-                                            viewModel.isPresented = true
-                                        }
-                                    }
-                                }
-                            }
+                ForEach(playlists) { playlist in
+                    if let importID = playlist.currentImportID {
+                        ChannelGroupSections(importID: importID) { channel in
+                            viewModel.currentChannel = PlayableChannel(channel)
+                            viewModel.isPresented = true
                         }
                     }
                 }
@@ -84,13 +90,146 @@ struct WatchView: View {
                 Button("Cancel", role: .cancel) {}
 
                 Button("Delete", role: .destructive) {
-                    modelContext.delete(playlist)
-                    try? modelContext.save()
+                    importCenter.delete(playlist)
                 }
             } message: { playlist in
                 Text("Are you sure to delete playlist \"\(playlist.name)\"?")
             }
+            .alert("Playlist error", isPresented: .init(get: { importCenter.failure != nil }, set: { _ in importCenter.failure = nil }), presenting: importCenter.failure) { _ in
+                Button("OK", role: .cancel) {}
+            } message: { failure in
+                Text("\(failure.playlistName): \(failure.message)")
+            }
         }
+    }
+
+    @ViewBuilder
+    private func refreshButton(for playlist: Playlist) -> some View {
+        if importCenter.progress[playlist.uuid] != nil {
+            Button("Cancel update", systemImage: "xmark.circle") {
+                importCenter.cancelImport(for: playlist.uuid)
+            }
+            .tint(.orange)
+        } else {
+            Button("Refresh", systemImage: "arrow.clockwise") {
+                importCenter.refresh(playlist)
+            }
+            .tint(.blue)
+        }
+    }
+}
+
+private struct PlaylistRow: View {
+    let playlist: Playlist
+    let progress: PlaylistImportProgress?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(playlist.name)
+
+            if let progress {
+                PlaylistImportProgressView(progress: progress)
+                    .font(.caption)
+            } else if playlist.currentImportID != nil {
+                Text("\(playlist.channelCount.formatted()) channels in \(playlist.groupCount.formatted()) groups")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("No channels yet. Refresh to download them.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+/// The groups of one playlist import, one list section each.
+private struct ChannelGroupSections: View {
+
+    @Query private var groups: [PlaylistChannelGroup]
+
+    private let importID: UUID
+    private let onSelect: (PlaylistChannel) -> Void
+
+    init(importID: UUID, onSelect: @escaping (PlaylistChannel) -> Void) {
+        self.importID = importID
+        self.onSelect = onSelect
+        _groups = Query(filter: #Predicate { $0.importID == importID }, sort: \.sortIndex)
+    }
+
+    var body: some View {
+        ForEach(groups) { group in
+            Section(header: Text(group.displayName).padding().glassEffect()) {
+                ChannelGroupRow(importID: importID, groupName: group.name, onSelect: onSelect)
+
+                if group.channelCount > ChannelGroupRow.fetchLimit {
+                    NavigationLink("Show all \(group.channelCount.formatted()) channels") {
+                        ChannelGroupView(importID: importID, groupName: group.name, title: group.displayName, onSelect: onSelect)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Horizontal strip with the first channels of a group. Only `fetchLimit` rows are fetched,
+/// so huge groups do not load thousands of models for one row.
+private struct ChannelGroupRow: View {
+
+    static let fetchLimit = 50
+
+    @Query private var channels: [PlaylistChannel]
+
+    private let onSelect: (PlaylistChannel) -> Void
+
+    init(importID: UUID, groupName: String, onSelect: @escaping (PlaylistChannel) -> Void) {
+        self.onSelect = onSelect
+        var descriptor = FetchDescriptor<PlaylistChannel>(
+            predicate: #Predicate { $0.importID == importID && $0.groupName == groupName },
+            sortBy: [SortDescriptor(\.sortIndex)]
+        )
+        descriptor.fetchLimit = Self.fetchLimit
+        _channels = Query(descriptor)
+    }
+
+    var body: some View {
+        ScrollView(.horizontal) {
+            LazyHStack {
+                ForEach(channels) { channel in
+                    ChannelPreview(channel: channel) {
+                        onSelect(channel)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Every channel of a group in a lazy grid.
+private struct ChannelGroupView: View {
+
+    @Query private var channels: [PlaylistChannel]
+
+    private let title: String
+    private let onSelect: (PlaylistChannel) -> Void
+
+    init(importID: UUID, groupName: String, title: String, onSelect: @escaping (PlaylistChannel) -> Void) {
+        self.title = title
+        self.onSelect = onSelect
+        _channels = Query(filter: #Predicate { $0.importID == importID && $0.groupName == groupName }, sort: \.sortIndex)
+    }
+
+    var body: some View {
+        ScrollView {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), alignment: .top)]) {
+                ForEach(channels) { channel in
+                    ChannelPreview(channel: channel) {
+                        onSelect(channel)
+                    }
+                }
+            }
+        }
+        .navigationTitle(title)
     }
 }
 
@@ -101,11 +240,13 @@ private enum HomeViewSheet: Identifiable {
     var id: String {
         switch self {
         case .addPlaylist: "AddPlaylist"
-        case .updatePlaylist(let playlist): "UpdatePlaylist\(playlist.id)"
+        case .updatePlaylist(let playlist): "UpdatePlaylist\(playlist.uuid)"
         }
     }
 }
 
 #Preview {
     WatchView(viewModel: AVPlayerViewModel())
+        .environmentObject(PlaylistImportCenter(container: ModelContainerFactory.preview()))
+        .modelContainer(ModelContainerFactory.preview())
 }

@@ -10,10 +10,21 @@ import SwiftUI
 
 @main
 struct FluxoApp: App {
+
+    private let container: ModelContainer
+    @StateObject private var importCenter: PlaylistImportCenter
+
+    init() {
+        let container = ModelContainerFactory.make()
+        self.container = container
+        _importCenter = StateObject(wrappedValue: PlaylistImportCenter(container: container))
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(importCenter)
         }
-        .modelContainer(for: ModelRegistry.all)
+        .modelContainer(container)
     }
 }
