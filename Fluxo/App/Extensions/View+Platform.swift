@@ -7,35 +7,8 @@
 
 import SwiftUI
 
-#if canImport(UIKit)
-import UIKit
-
-typealias PlatformImage = UIImage
-#elseif canImport(AppKit)
-import AppKit
-
-typealias PlatformImage = NSImage
-#endif
-
-extension Image {
-    init(platformImage: PlatformImage) {
-        #if canImport(UIKit)
-        self.init(uiImage: platformImage)
-        #else
-        self.init(nsImage: platformImage)
-        #endif
-    }
-
-    /// Decodes an inline `data:image/...` URL. Returns nil for any other URL or undecodable data.
-    init?(dataURL url: URL) {
-        guard url.absoluteString.hasPrefix("data:image"),
-              let data = try? Data(contentsOf: url),
-              let image = PlatformImage(data: data) else {
-            return nil
-        }
-        self.init(platformImage: image)
-    }
-}
+// Images (logos, posters) go through LogoImage / LogoImageLoader, which decode off the main thread
+// at the displayed size; never decode them synchronously in a view body.
 
 extension Color {
     /// Neutral background used behind channel artwork (the former UIColor.lightGray).

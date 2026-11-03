@@ -18,7 +18,7 @@ struct AddPlaylistView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
-    @EnvironmentObject private var importCenter: PlaylistImportCenter
+    @Environment(PlaylistImportCenter.self) private var importCenter
 
     @State private var name: String = ""
     @State private var url: String = ""
@@ -164,5 +164,5 @@ struct PlaylistImportProgressView: View {
 
 #Preview {
     AddPlaylistView()
-        .environmentObject(PlaylistImportCenter(container: ModelContainerFactory.preview()))
+        .environment(PlaylistImportCenter(container: ModelContainerFactory.preview()))
 }

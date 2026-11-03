@@ -10,9 +10,9 @@ import SwiftUI
 
 struct WatchView: View {
 
-    @EnvironmentObject private var importCenter: PlaylistImportCenter
+    @Environment(PlaylistImportCenter.self) private var importCenter
 
-    @ObservedObject var viewModel: AVPlayerViewModel
+    let viewModel: AVPlayerViewModel
 
     @State private var displayedSheet: HomeViewSheet?
 
@@ -155,23 +155,60 @@ private struct PlaylistRow: View {
 }
 
 /// The groups of one playlist import, one list section each.
+///
+/// Groups are fetched a page at a time: the next page is requested when the last loaded section
+/// appears, so a playlist with thousands of groups only materializes the ones scrolled to.
 private struct ChannelGroupSections: View {
+
+    static let pageSize = 25
+
+    let importID: UUID
+    let onSelect: (PlaylistChannel) -> Void
+
+    @State private var limit = ChannelGroupSections.pageSize
+
+    var body: some View {
+        ChannelGroupSectionsPage(importID: importID, limit: limit, onSelect: onSelect) {
+            limit += Self.pageSize
+        }
+        .onChange(of: importID) {
+            // A refresh switched to new rows: start from the first page again.
+            limit = Self.pageSize
+        }
+    }
+}
+
+private struct ChannelGroupSectionsPage: View {
 
     @Query private var groups: [PlaylistChannelGroup]
 
     private let importID: UUID
+    private let limit: Int
     private let onSelect: (PlaylistChannel) -> Void
+    private let onReachEnd: () -> Void
 
-    init(importID: UUID, onSelect: @escaping (PlaylistChannel) -> Void) {
+    init(importID: UUID, limit: Int, onSelect: @escaping (PlaylistChannel) -> Void, onReachEnd: @escaping () -> Void) {
         self.importID = importID
+        self.limit = limit
         self.onSelect = onSelect
-        _groups = Query(filter: #Predicate { $0.importID == importID }, sort: \.sortIndex)
+        self.onReachEnd = onReachEnd
+        var descriptor = FetchDescriptor<PlaylistChannelGroup>(
+            predicate: #Predicate { $0.importID == importID },
+            sortBy: [SortDescriptor(\.sortIndex)]
+        )
+        descriptor.fetchLimit = limit
+        _groups = Query(descriptor)
     }
 
     var body: some View {
         ForEach(groups) { group in
             Section(header: Text(group.displayName).padding().glassEffect()) {
                 ChannelGroupRow(importID: importID, groupName: group.name, onSelect: onSelect)
+                    .onAppear {
+                        if groups.count >= limit, group.persistentModelID == groups.last?.persistentModelID {
+                            onReachEnd()
+                        }
+                    }
 
                 if group.channelCount > ChannelGroupRow.fetchLimit {
                     NavigationLink("Show all \(group.channelCount.formatted()) channels") {
@@ -216,31 +253,61 @@ private struct ChannelGroupRow: View {
     }
 }
 
-/// Every channel of a group in a lazy grid.
+/// Every channel of a group in a lazy grid, fetched a page at a time as the grid scrolls.
 private struct ChannelGroupView: View {
 
-    @Query private var channels: [PlaylistChannel]
+    static let pageSize = 60
 
-    private let title: String
-    private let onSelect: (PlaylistChannel) -> Void
+    let importID: UUID
+    let groupName: String
+    let title: String
+    let onSelect: (PlaylistChannel) -> Void
 
-    init(importID: UUID, groupName: String, title: String, onSelect: @escaping (PlaylistChannel) -> Void) {
-        self.title = title
-        self.onSelect = onSelect
-        _channels = Query(filter: #Predicate { $0.importID == importID && $0.groupName == groupName }, sort: \.sortIndex)
-    }
+    @State private var limit = ChannelGroupView.pageSize
 
     var body: some View {
         ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), alignment: .top)]) {
-                ForEach(channels) { channel in
-                    ChannelPreview(channel: channel) {
-                        onSelect(channel)
+            ChannelGridPage(importID: importID, groupName: groupName, limit: limit, onSelect: onSelect) {
+                limit += Self.pageSize
+            }
+        }
+        .navigationTitle(title)
+    }
+}
+
+private struct ChannelGridPage: View {
+
+    @Query private var channels: [PlaylistChannel]
+
+    private let limit: Int
+    private let onSelect: (PlaylistChannel) -> Void
+    private let onReachEnd: () -> Void
+
+    init(importID: UUID, groupName: String, limit: Int, onSelect: @escaping (PlaylistChannel) -> Void, onReachEnd: @escaping () -> Void) {
+        self.limit = limit
+        self.onSelect = onSelect
+        self.onReachEnd = onReachEnd
+        var descriptor = FetchDescriptor<PlaylistChannel>(
+            predicate: #Predicate { $0.importID == importID && $0.groupName == groupName },
+            sortBy: [SortDescriptor(\.sortIndex)]
+        )
+        descriptor.fetchLimit = limit
+        _channels = Query(descriptor)
+    }
+
+    var body: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), alignment: .top)]) {
+            ForEach(channels) { channel in
+                ChannelPreview(channel: channel) {
+                    onSelect(channel)
+                }
+                .onAppear {
+                    if channels.count >= limit, channel.persistentModelID == channels.last?.persistentModelID {
+                        onReachEnd()
                     }
                 }
             }
         }
-        .navigationTitle(title)
     }
 }
 
@@ -260,6 +327,6 @@ private enum HomeViewSheet: Identifiable {
 
 #Preview {
     WatchView(viewModel: AVPlayerViewModel())
-        .environmentObject(PlaylistImportCenter(container: ModelContainerFactory.preview()))
+        .environment(PlaylistImportCenter(container: ModelContainerFactory.preview()))
         .modelContainer(ModelContainerFactory.preview())
 }

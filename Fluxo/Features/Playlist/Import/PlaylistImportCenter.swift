@@ -6,12 +6,14 @@
 //
 
 import Foundation
+import Observation
 import SwiftData
 
 /// Main-actor front end for playlist imports: starts, refreshes, cancels and deletes playlists,
 /// and publishes throttled progress for every running import, keyed by playlist UUID.
 @MainActor
-final class PlaylistImportCenter: ObservableObject {
+@Observable
+final class PlaylistImportCenter {
 
     struct Failure: Identifiable {
         let id = UUID()
@@ -19,9 +21,9 @@ final class PlaylistImportCenter: ObservableObject {
         let message: String
     }
 
-    @Published private(set) var progress: [UUID: PlaylistImportProgress] = [:]
+    private(set) var progress: [UUID: PlaylistImportProgress] = [:]
     /// Last error of a background refresh or delete, for the UI to present.
-    @Published var failure: Failure?
+    var failure: Failure?
 
     private struct RunningImport {
         let token: UUID
@@ -29,6 +31,7 @@ final class PlaylistImportCenter: ObservableObject {
     }
 
     private let importer: PlaylistImporter
+    @ObservationIgnored
     private var running: [UUID: RunningImport] = [:]
 
     init(container: ModelContainer) {

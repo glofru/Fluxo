@@ -116,3 +116,37 @@ Tools/EngineSmokeTest/run_avplayer.sh  # AVPlayer pause/resume/skip/go-live on t
 
 Debug builds (`Fluxo/App/Debug/DebugAutoplay.swift`) also accept `-FluxoDebugAutoplayURL <url>`, which plays a stream at
 launch, and `-FluxoDebugRecordSeconds <n>`, which records it for n seconds.
+
+## Memory
+
+- **Logos and posters** (`Fluxo/App/Images`): every image goes through the shared
+  `LogoImageLoader`, shown by the `LogoImage` view. Images are decoded off the main
+  thread with ImageIO directly at the displayed size
+  (`CGImageSourceCreateThumbnailAtIndex`), never at the source resolution. Decoded
+  bitmaps live in a cost-bounded `NSCache` (about 1.5% of RAM, 24 to 96 MB), which is
+  emptied on iOS memory warnings and when the app goes to the background. Downloaded
+  bytes are kept in an on-disk `URLCache` (`Caches/LogoImages`, 200 MB), which you can
+  clear in Settings. Requests for the same image share one load, and a load is cancelled
+  when the last view waiting for it disappears. Inline `data:image` logos are decoded
+  once and then served from memory.
+- **SwiftData**: the Watch list fetches groups 25 at a time and loads the next page when
+  the last section appears. Each group strip fetches 50 channels, and "Show all" pages its
+  grid 60 channels at a time. The player only keeps `PlayableChannel` values, never
+  models. Imports use short-lived background contexts, one for each batch.
+- **Player**: AVPlayer buffers at most 8 s ahead for local (remuxed) streams and 30 s for
+  remote items. Stopping playback releases the player item and the engine session. The
+  time-shift window is limited to 30 min / 512 MB, and never more than a tenth of the
+  free disk space (with a 64 MB minimum). Remuxed on-demand items (local `.ts` files,
+  such as recordings that could not be converted to MP4) are kept whole, so every
+  position stays seekable; they are only played when the copy (about the size of the
+  file) fits in the free space with a 256 MB margin.
+- **Observation**: the player, the timeline, the recordings, the import center and
+  Settings use `@Observable`. A view re-renders only for the properties it reads, so,
+  for example, playback state changes no longer re-render the playlist browser.
+
+Measurement tools (macOS):
+
+```sh
+Tools/ImageLoaderBenchmark/run.sh   # former logo path vs LogoImageLoader, on 127.0.0.1
+Tools/EngineSmokeTest/leaks.sh      # engine sessions under `leaks --atExit`; FOOTPRINT_ONLY=1 prints the footprint per cycle
+```

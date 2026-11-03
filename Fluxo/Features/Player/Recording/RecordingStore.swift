@@ -10,8 +10,8 @@
 //  played through the remux engine instead.
 //
 
-import Combine
 import Foundation
+import Observation
 
 struct Recording: Identifiable, Hashable {
     let url: URL
@@ -28,10 +28,11 @@ struct Recording: Identifiable, Hashable {
 }
 
 @MainActor
-final class RecordingStore: ObservableObject {
+@Observable
+final class RecordingStore {
 
-    @Published private(set) var recordings: [Recording] = []
-    @Published private(set) var lastError: String?
+    private(set) var recordings: [Recording] = []
+    private(set) var lastError: String?
 
     let directory: URL
 

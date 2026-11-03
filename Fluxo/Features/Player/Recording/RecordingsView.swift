@@ -9,7 +9,7 @@ import SwiftUI
 
 struct RecordingsView: View {
 
-    @ObservedObject var store: RecordingStore
+    let store: RecordingStore
     /// A recording of the live stream is running; playing a recording would stop it.
     var isRecordingActive = false
     let onPlay: (Recording) -> Void

@@ -25,13 +25,11 @@ struct ChannelPreview: View {
                 onClick()
             }, label: {
                 ZStack {
-                    Group {
-                        if let logo = channel.logo, let logoUrl = URL(string: logo) {
-                            ChannelPreviewImage(url: logoUrl, name: channel.name ?? "No channel name", isLiveContent: channel.isLiveContent)
-                        } else {
-                            Text("No image preview")
-                        }
-                    }
+                    ChannelArtwork(
+                        logo: channel.logo,
+                        name: channel.name ?? "No channel name",
+                        isLiveContent: channel.isLiveContent
+                    )
                 }
                 .frame(width: channel.isLiveContent ? 250 : 180, height: channel.isLiveContent ? 150 : 266)
                 .background(Color.artworkPlaceholder)
@@ -58,45 +56,31 @@ struct ChannelPreview: View {
     }
 }
 
-private struct ChannelPreviewImage: View {
+/// Logo of a live channel (fitted, centered) or poster of an on-demand item (filling the card).
+/// Decoded at the displayed size by the shared logo loader.
+private struct ChannelArtwork: View {
 
-    let url: URL
+    static let liveLogoSize = CGSize(width: 75, height: 75)
+    static let posterSize = CGSize(width: 180, height: 266)
+
+    let logo: String?
     let name: String
     let isLiveContent: Bool
 
     var body: some View {
-        Group {
-            if let image = Image(dataURL: url) {
-                image
-                    .resizable()
-                    .if(isLiveContent) { image in
-                        image.scaledToFit()
-                    }
-                    .if(!isLiveContent) { image in
-                        image.scaledToFill()
-                    }
-                    .accessibilityLabel(Text(name))
-                    .frame(width: isLiveContent ? 75 : nil, height: isLiveContent ? 75 : nil)
-            } else {
-                AsyncImage(url: url) { result in
-                    if result.error == nil {
-                        if let image = result.image {
-                            image
-                                .resizable()
-                                .if(isLiveContent) { image in
-                                    image.scaledToFit()
-                                }
-                                .if(!isLiveContent) { image in
-                                    image.scaledToFill()
-                                }
-                                .frame(width: isLiveContent ? 75 : nil, height: isLiveContent ? 75 : nil)
-                        } else {
-                            ProgressView()
-                        }
-                    } else {
-                        Text("No image preview")
-                    }
-                }
+        LogoImage(
+            source: logo,
+            size: isLiveContent ? Self.liveLogoSize : Self.posterSize,
+            contentMode: isLiveContent ? .fit : .fill,
+            accessibilityLabel: name
+        ) { phase in
+            switch phase {
+            case .loading:
+                ProgressView()
+            case .unavailable:
+                Text("No image preview")
+                    .font(.caption)
+                    .multilineTextAlignment(.center)
             }
         }
     }

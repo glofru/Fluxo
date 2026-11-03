@@ -7,16 +7,35 @@
 
 import SwiftUI
 
-class SettingsViewModel: ObservableObject {
+@MainActor
+@Observable
+final class SettingsViewModel {
 
     let url = FileManager.default.temporaryDirectory.appendingPathComponent("hls", isDirectory: true)
-    @Published var appFolderSize: Int = 0
+    var appFolderSize: Int = 0
+    /// Bytes of channel logos in the on-disk image cache.
+    var logoCacheSize: Int = 0
 
-    init() {
-        self.appFolderSize = fetchAppFolderSize()
+    /// Cheap on purpose: SwiftUI evaluates the `@State` initial value every time the parent rebuilds
+    /// SettingsView. The sizes are computed by `refresh()` when the view appears.
+    init() {}
+
+    /// Measures the stream folder and the logo cache off the main thread.
+    func refresh() async {
+        let url = url
+        let (folderSize, logoSize) = await Task.detached(priority: .utility) {
+            (Self.folderSize(at: url), LogoImageLoader.shared.diskUsage)
+        }.value
+        appFolderSize = folderSize
+        logoCacheSize = logoSize
     }
 
-    private func fetchAppFolderSize() -> Int {
+    func clearLogoCache() {
+        LogoImageLoader.shared.removeAll()
+        logoCacheSize = LogoImageLoader.shared.diskUsage
+    }
+
+    private nonisolated static func folderSize(at url: URL) -> Int {
         let fileManager = FileManager.default
         guard let enumerator = fileManager.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey], options: [], errorHandler: nil) else {
             return 0
@@ -40,6 +59,6 @@ class SettingsViewModel: ObservableObject {
         } catch {
             // Optionally handle errors if needed
         }
-        appFolderSize = fetchAppFolderSize()
+        appFolderSize = Self.folderSize(at: url)
     }
 }

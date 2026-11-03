@@ -9,7 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
 
-    @ObservedObject var viewModel: AVPlayerViewModel
+    @Bindable var viewModel: AVPlayerViewModel
 
     @Environment(\.scenePhase) private var scenePhase
 
@@ -56,40 +56,20 @@ struct ContentView: View {
 }
 
 struct PlayerBottomAccessory: View {
-    @ObservedObject var viewModel: AVPlayerViewModel
+    static let logoSize = CGSize(width: 40, height: 32)
+
+    let viewModel: AVPlayerViewModel
 
     var body: some View {
         if let channel = viewModel.currentChannel {
             HStack {
-                if let logo = channel.logo, let url = URL(string: logo) {
-                    if let image = Image(dataURL: url) {
-                        image
-                            .resizable()
-                            .scaledToFit()
-                            .clipShape(RoundedRectangle(cornerSize: .init(width: 6, height: 6)))
-                            .padding(.leading, 16)
-                            .padding(.trailing, 6)
-                            .padding(.vertical, 6)
-                            .accessibilityLabel(Text(channel.name ?? "No channel name"))
-                    } else {
-                        AsyncImage(url: url) { result in
-                            if result.error != nil {
-                                EmptyView()
-                            } else if let image = result.image {
-                                    image
-                                        .resizable()
-                                        .scaledToFit()
-                                        .clipShape(RoundedRectangle(cornerSize: .init(width: 6, height: 6)))
-                                        .padding(.leading, 16)
-                                        .padding(.trailing, 6)
-                                        .padding(.vertical, 6)
-                            } else {
-                                ProgressView()
-                            }
-                        }
+                if channel.logo != nil {
+                    LogoImage(source: channel.logo, size: Self.logoSize, accessibilityLabel: channel.name ?? "No channel name") { _ in
+                        Color.clear
                     }
-                } else {
-                    EmptyView()
+                    .clipShape(RoundedRectangle(cornerSize: .init(width: 6, height: 6)))
+                    .padding(.leading, 16)
+                    .padding(.trailing, 6)
                 }
 
                 VStack(alignment: .leading, spacing: 0) {

@@ -11,7 +11,7 @@ import SwiftUI
 /// Full player screen: the video, its state, and the transport, time-shift and recording controls.
 struct WatchChannelView: View {
 
-    @ObservedObject var viewModel: AVPlayerViewModel
+    let viewModel: AVPlayerViewModel
 
     @State private var isShowingRecordings = false
 
@@ -48,7 +48,7 @@ struct WatchChannelView: View {
 }
 
 private struct PlayerHeader: View {
-    @ObservedObject var viewModel: AVPlayerViewModel
+    let viewModel: AVPlayerViewModel
     @Binding var isShowingRecordings: Bool
 
     var body: some View {
@@ -96,7 +96,7 @@ private struct PlayerHeader: View {
 
 /// Connection, buffering and error feedback on top of the video.
 private struct PlayerStatusOverlay: View {
-    @ObservedObject var viewModel: AVPlayerViewModel
+    let viewModel: AVPlayerViewModel
 
     var body: some View {
         switch viewModel.playbackState {
@@ -138,8 +138,8 @@ private struct PlayerStatusOverlay: View {
 
 /// Transport, time-shift and recording controls. Observes the timeline, which changes twice a second.
 private struct PlayerControls: View {
-    @ObservedObject var viewModel: AVPlayerViewModel
-    @ObservedObject var timeline: PlaybackTimeline
+    let viewModel: AVPlayerViewModel
+    let timeline: PlaybackTimeline
 
     var body: some View {
         VStack(spacing: 10) {

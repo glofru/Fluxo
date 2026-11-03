@@ -12,16 +12,16 @@ import SwiftUI
 struct FluxoApp: App {
 
     private let container: ModelContainer
-    @StateObject private var importCenter: PlaylistImportCenter
+    @State private var importCenter: PlaylistImportCenter
     /// The single player of the app. It owns the AVPlayer, the Picture in Picture surface, the remux
     /// engine, the loopback HLS server and the recordings, so there must never be more than one.
-    @StateObject private var player: AVPlayerViewModel
+    @State private var player: AVPlayerViewModel
 
     init() {
         let container = ModelContainerFactory.make()
         self.container = container
-        _importCenter = StateObject(wrappedValue: PlaylistImportCenter(container: container))
-        _player = StateObject(wrappedValue: AVPlayerViewModel())
+        _importCenter = State(initialValue: PlaylistImportCenter(container: container))
+        _player = State(initialValue: AVPlayerViewModel())
     }
 
     var body: some Scene {
@@ -42,6 +42,6 @@ struct FluxoApp: App {
 
     private var mainContent: some View {
         ContentView(viewModel: player)
-            .environmentObject(importCenter)
+            .environment(importCenter)
     }
 }

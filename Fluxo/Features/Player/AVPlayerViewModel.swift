@@ -14,17 +14,19 @@ private let logger = Logger(subsystem: "dev.watermelon.Fluxo", category: "Player
 
 /// Fast-changing playback position. It is a separate object so that only the player controls
 /// re-render while a stream plays, not every view that observes the player model.
+/// With Observation, a view only re-renders for the properties it actually reads.
 @MainActor
-final class PlaybackTimeline: ObservableObject {
-    @Published private(set) var currentTime: TimeInterval = 0
+@Observable
+final class PlaybackTimeline {
+    private(set) var currentTime: TimeInterval = 0
     /// Duration of on-demand items, 0 for live streams.
-    @Published private(set) var duration: TimeInterval = 0
-    @Published private(set) var seekableStart: TimeInterval = 0
-    @Published private(set) var seekableEnd: TimeInterval = 0
+    private(set) var duration: TimeInterval = 0
+    private(set) var seekableStart: TimeInterval = 0
+    private(set) var seekableEnd: TimeInterval = 0
     /// How far playback is behind the live edge of a live stream.
-    @Published private(set) var timeBehindLive: TimeInterval = 0
-    @Published private(set) var isAtLiveEdge = true
-    @Published private(set) var recordingDuration: TimeInterval = 0
+    private(set) var timeBehindLive: TimeInterval = 0
+    private(set) var isAtLiveEdge = true
+    private(set) var recordingDuration: TimeInterval = 0
 
     /// Length of the time-shift window (or of the seekable range of an on-demand item).
     var seekableDuration: TimeInterval {
@@ -66,8 +68,12 @@ final class PlaybackTimeline: ObservableObject {
 /// FluxoApp creates the only instance and the app has a single main scene (a `Window` on macOS,
 /// multiple scenes disabled on iOS), because the loopback port, the PiP surface and the segment
 /// directory can only have one owner.
+///
+/// It is `@Observable`: views re-render only for the properties they read, so e.g. the playlist
+/// browser does not re-render whenever the playback state, seekability or PiP state changes.
 @MainActor
-final class AVPlayerViewModel: ObservableObject {
+@Observable
+final class AVPlayerViewModel {
 
     enum PlaybackState: Equatable {
         case idle
@@ -116,19 +122,19 @@ final class AVPlayerViewModel: ObservableObject {
     static let skipBackwardInterval: TimeInterval = 10
     static let skipForwardInterval: TimeInterval = 30
 
-    @Published var isPresented: Bool = false
+    var isPresented: Bool = false
 
-    @Published private(set) var currentChannel: PlayableChannel?
-    @Published private(set) var playbackState: PlaybackState = .idle
+    private(set) var currentChannel: PlayableChannel?
+    private(set) var playbackState: PlaybackState = .idle
     /// Last error reported by the stream engine or AVPlayer for the current channel.
-    @Published private(set) var streamError: String?
+    private(set) var streamError: String?
     /// The current item is a live stream with a time-shift (DVR) window.
-    @Published private(set) var isTimeShiftAvailable = false
-    @Published private(set) var canSeek = false
-    @Published private(set) var canRecord = false
-    @Published private(set) var isRecording = false
-    @Published private(set) var recordingError: String?
-    @Published private(set) var isPictureInPictureActive = false
+    private(set) var isTimeShiftAvailable = false
+    private(set) var canSeek = false
+    private(set) var canRecord = false
+    private(set) var isRecording = false
+    private(set) var recordingError: String?
+    private(set) var isPictureInPictureActive = false
 
     let player = AVPlayer()
     let timeline = PlaybackTimeline()
@@ -140,17 +146,29 @@ final class AVPlayerViewModel: ObservableObject {
     private let remuxer = StreamRemuxer()
     private let outputDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("hls", isDirectory: true)
 
+    @ObservationIgnored
     private var route: PlaybackRoute = .direct
+    @ObservationIgnored
     private var streamURL: URL?
+    @ObservationIgnored
     private var waitingForFirstSegment = false
+    @ObservationIgnored
     private var attachTask: Task<Void, Never>?
+    @ObservationIgnored
     private var itemCancellables = Set<AnyCancellable>()
+    @ObservationIgnored
     private var cancellables = Set<AnyCancellable>()
+    @ObservationIgnored
     private var timeObserver: Any?
+    @ObservationIgnored
     private var itemRecoveryAttempts = 0
+    @ObservationIgnored
     private var didReachEnd = false
+    @ObservationIgnored
     private var itemFailure: String?
+    @ObservationIgnored
     private var pendingRestoreCompletion: ((Bool) -> Void)?
+    @ObservationIgnored
     private var isPlayerUIVisible = false
 
     init(recordings: RecordingStore? = nil) {
@@ -375,7 +393,7 @@ final class AVPlayerViewModel: ObservableObject {
 
         switch route {
         case .direct:
-            attach(AVPlayerItem(url: url))
+            attach(Self.makeItem(url: url, isLocal: url.isFileURL))
             player.play()
 
         case .remux(let isLive):
@@ -388,12 +406,20 @@ final class AVPlayerViewModel: ObservableObject {
                 isLive: isLive
             )
             if isLive {
-                configuration.maxWindowDuration = 30 * 60
-                configuration.maxWindowBytes = Self.timeShiftDiskBudget(for: outputDirectory)
+                configuration.maxWindowDuration = Self.maxTimeShiftDuration
+                configuration.maxWindowBytes = Self.diskBudget(for: outputDirectory, maximum: Self.maxTimeShiftBytes)
             } else {
-                // On-demand inputs are kept whole so that every position stays seekable.
+                // On-demand inputs (local .ts files) are kept whole, so that every position stays
+                // seekable. The engine reads them at disk speed, so a sliding byte window would delete
+                // segments far ahead of the playhead. The remuxed copy is about the size of the input,
+                // which is known: refuse to start when it would not fit instead.
                 configuration.maxWindowDuration = 0
                 configuration.maxWindowBytes = 0
+                if let message = Self.insufficientSpaceMessage(forRemuxing: url, into: outputDirectory) {
+                    streamError = message
+                    refreshPlaybackState()
+                    return
+                }
             }
 
             guard let streamURL = SimpleHTTPServer.url(forFileNamed: configuration.playlistFileName) else {
@@ -456,7 +482,7 @@ final class AVPlayerViewModel: ObservableObject {
             guard let self, !Task.isCancelled, self.streamURL == streamURL else {
                 return
             }
-            let item = AVPlayerItem(url: streamURL)
+            let item = Self.makeItem(url: streamURL, isLocal: true)
             // Keep reloading the live playlist while paused, so the time-shift window stays current.
             item.canUseNetworkResourcesForLiveStreamingWhilePaused = isLive
             self.attach(item)
@@ -694,9 +720,27 @@ final class AVPlayerViewModel: ObservableObject {
         player.seek(to: CMTime(seconds: seconds, preferredTimescale: 600), toleranceBefore: tolerance, toleranceAfter: tolerance)
     }
 
-    /// Disk budget of the time-shift window: at most 512 MB and never more than a tenth of the free space.
-    private static func timeShiftDiskBudget(for directory: URL) -> Int64 {
-        let maximum: Int64 = 512 * 1024 * 1024
+    /// Longest time-shift (DVR) window of a live stream.
+    static let maxTimeShiftDuration: TimeInterval = 30 * 60
+    /// Disk budget of the time-shift window of a live stream.
+    static let maxTimeShiftBytes: Int64 = 512 * 1024 * 1024
+    /// Free space kept in reserve when an on-demand file is remuxed whole.
+    static let onDemandFreeSpaceMargin: Int64 = 256 * 1024 * 1024
+
+    /// Media AVPlayer buffers ahead of the playhead (in memory). Remuxed streams are read from the local
+    /// disk, so a few seconds are enough; remote items keep more to ride out network hiccups. Without a
+    /// value AVFoundation picks the size itself, which for long on-demand items can be minutes of video.
+    static let localForwardBufferDuration: TimeInterval = 8
+    static let remoteForwardBufferDuration: TimeInterval = 30
+
+    private static func makeItem(url: URL, isLocal: Bool) -> AVPlayerItem {
+        let item = AVPlayerItem(url: url)
+        item.preferredForwardBufferDuration = isLocal ? localForwardBufferDuration : remoteForwardBufferDuration
+        return item
+    }
+
+    /// Disk budget of a remux session: at most `maximum` and never more than a tenth of the free space.
+    private static func diskBudget(for directory: URL, maximum: Int64) -> Int64 {
         let minimum: Int64 = 64 * 1024 * 1024
         let probe = FileManager.default.fileExists(atPath: directory.path) ? directory : FileManager.default.temporaryDirectory
         guard let available = try? probe.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage,
@@ -704,6 +748,24 @@ final class AVPlayerViewModel: ObservableObject {
             return maximum
         }
         return min(maximum, max(minimum, available / 10))
+    }
+
+    /// Returns an error message when the remuxed copy of a local on-demand file (about the size of the
+    /// input) would not fit in the free space of `directory`, keeping `onDemandFreeSpaceMargin` free.
+    private static func insufficientSpaceMessage(forRemuxing input: URL, into directory: URL) -> String? {
+        guard input.isFileURL,
+              let inputSize = try? input.resourceValues(forKeys: [.fileSizeKey]).fileSize else {
+            return nil
+        }
+        let probe = FileManager.default.fileExists(atPath: directory.path) ? directory : FileManager.default.temporaryDirectory
+        guard let available = try? probe.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage,
+              available > 0 else {
+            return nil
+        }
+        guard Int64(inputSize) + onDemandFreeSpaceMargin > available else {
+            return nil
+        }
+        return "Not enough free space to play this recording."
     }
 
     // MARK: - Picture in Picture
