@@ -138,6 +138,10 @@ struct HomeView: View {
             #else
             .padding(.vertical, 12)
             #endif
+            #if DEBUG
+            // Debug harness: the content as if Home were pulled down (rubber-band overscroll).
+            .offset(y: navigation.debugHomeOverscroll)
+            #endif
         }
         .scrollIndicators(.hidden)
         .softScrollEdge()
@@ -325,7 +329,7 @@ struct PlaylistSwitcher: View {
             .contentShape(.capsule)
         }
         .buttonStyle(.plain)
-        .glassEffect(isSelected ? .regular.tint(.accentColor).interactive() : .regular.interactive(), in: .capsule)
+        .glassEffect(isSelected ? .regular.tint(Theme.accent).interactive() : .regular.interactive(), in: .capsule)
         .glassEffectID(isSelected ? Self.selectionGlassID : glassID, in: glassNamespace)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
@@ -367,7 +371,7 @@ private struct PlaylistStatusBanner: View {
                     HStack(spacing: 12) {
                         Image(systemName: "exclamationmark.arrow.trianglehead.2.clockwise.rotate.90")
                             .font(.title3)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(Theme.warning)
                             .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(playlist.name)
@@ -385,8 +389,8 @@ private struct PlaylistStatusBanner: View {
                 }
             }
             .padding(16)
-            // Content, not a control layer: a plain grouped surface rather than glass.
-            .background(.background.secondary, in: .rect(cornerRadius: 22, style: .continuous))
+            // Content, not a control layer: a plain surface rather than glass.
+            .background(Theme.surface, in: .rect(cornerRadius: 22, style: .continuous))
             .padding(.horizontal, HomeLayout.horizontalMargin)
         }
     }
@@ -405,7 +409,7 @@ struct HomeEmptyState: View {
             ZStack {
                 Circle()
                     .fill(
-                        AngularGradient(colors: [.accentColor, .purple, .pink, .orange, .accentColor], center: .center)
+                        AngularGradient(colors: [Theme.accent, Theme.cyan, Theme.lilac, Theme.pink, Theme.accent], center: .center)
                     )
                     .frame(width: 150, height: 150)
                     .blur(radius: 40)
@@ -416,7 +420,7 @@ struct HomeEmptyState: View {
                     .font(.system(size: 54, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(width: 120, height: 120)
-                    .glassEffect(.regular.tint(.accentColor.opacity(0.6)), in: .circle)
+                    .glassEffect(.regular.tint(Theme.accent.opacity(0.6)), in: .circle)
                     .accessibilityHidden(true)
             }
 

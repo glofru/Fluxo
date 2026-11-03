@@ -53,7 +53,7 @@ struct RecordingsView: View {
                                         ShareLink(item: recording.url) {
                                             Label("Share", systemImage: "square.and.arrow.up")
                                         }
-                                        .tint(.blue)
+                                        .tint(Theme.accent)
                                     }
                                 }
                                 .contextMenu {

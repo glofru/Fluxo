@@ -14,11 +14,13 @@ enum PlayerPreferences {
     static let skipBackwardSecondsKey = "player.skipBackwardSeconds"
     static let skipForwardSecondsKey = "player.skipForwardSeconds"
     static let autoPictureInPictureKey = "player.autoPictureInPicture"
+    static let pictureInPictureOnCloseKey = "player.pictureInPictureOnClose"
 
     static let defaultTimeShiftMinutes = 30
     static let defaultSkipBackwardSeconds = 10
     static let defaultSkipForwardSeconds = 30
     static let defaultAutoPictureInPicture = true
+    static let defaultPictureInPictureOnClose = true
 
     /// Lengths offered for the live time-shift (DVR) window, in minutes. There is no "off": a window of 0
     /// means "keep everything" for the engine.
@@ -52,6 +54,11 @@ enum PlayerPreferences {
 
     static var autoPictureInPicture: Bool {
         UserDefaults.fluxo.object(forKey: autoPictureInPictureKey) as? Bool ?? defaultAutoPictureInPicture
+    }
+
+    /// iOS: closing the player screen (its chevron or a swipe down) keeps the video playing in Picture in Picture.
+    static var pictureInPictureOnClose: Bool {
+        UserDefaults.fluxo.object(forKey: pictureInPictureOnCloseKey) as? Bool ?? defaultPictureInPictureOnClose
     }
 
     private static func value(forKey key: String, default defaultValue: Int, allowed: [Int]) -> Int {

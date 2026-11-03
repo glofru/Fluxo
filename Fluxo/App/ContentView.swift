@@ -9,22 +9,24 @@ import SwiftUI
 
 struct ContentView: View {
 
-    @Bindable var viewModel: AVPlayerViewModel
+    let viewModel: AVPlayerViewModel
 
     @Environment(\.scenePhase) private var scenePhase
     @Environment(ChannelLibrary.self) private var library
     @Environment(EPGStore.self) private var epg
     /// Selected tab / sidebar item, navigation paths and search text, shared with code outside the screens.
     @State private var navigation = AppNavigation()
-    /// The player zooms out of the card or the mini player that opened it.
-    @Namespace private var playerNamespace
 
     var body: some View {
         root
-            .environment(\.playerTransitionNamespace, playerNamespace)
-            .playerPresentation(isPresented: $viewModel.isPresented) {
+            // The player grows out of the card or the mini player that opened it, and follows the finger down.
+            .playerPresentation(
+                isPresented: viewModel.isPresented,
+                isVisible: !viewModel.isClosingIntoPictureInPicture,
+                sourceID: viewModel.presentationSourceID,
+                onDismiss: viewModel.closePlayer
+            ) {
                 WatchChannelView(viewModel: viewModel)
-                    .zoomTransition(sourceID: viewModel.presentationSourceID ?? PlayerTransition.miniPlayerID, in: playerNamespace)
             }
             .playlistManagement()
             .guideManagement(epg)
@@ -60,6 +62,7 @@ struct ContentView: View {
             #endif
             .environment(navigation)
             .defaultAppStorage(.fluxo)
+            .tint(Theme.accent)
     }
 
     @ViewBuilder
@@ -113,8 +116,9 @@ struct ContentView: View {
 /// The mini player: the tab bar bottom accessory on iOS, a floating glass bar on macOS.
 ///
 /// Expanded (above the tab bar): artwork, title, a status line (live, time-shifted, recording, PiP, buffering),
-/// play / pause and close. Inline (next to the minimized tab bar): artwork, title and play / pause only.
-/// Tapping it opens the player, which zooms out of it.
+/// play / pause and stop. Inline (next to the minimized tab bar): artwork, title and play / pause only.
+/// A tap or a swipe up opens the player, which grows out of it. The channel name gets all the room the
+/// buttons leave, at the regular text size (it is never shrunk to fit).
 struct PlayerBottomAccessory: View {
 
     let viewModel: AVPlayerViewModel
@@ -126,12 +130,12 @@ struct PlayerBottomAccessory: View {
     var body: some View {
         if let channel = viewModel.currentChannel {
             let isInline = placement == .inline
-            HStack(spacing: isInline ? 10 : 12) {
+            HStack(spacing: isInline ? 8 : 10) {
                 artwork(for: channel, isInline: isInline)
 
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(channel.name ?? "No channel name")
-                        .font(isInline ? .footnote.weight(.semibold) : .subheadline.weight(.semibold))
+                        .font(isInline ? .footnote.weight(.semibold) : Theme.Typography.cardTitle)
                         .lineLimit(1)
                     if !isInline {
                         status
@@ -140,8 +144,8 @@ struct PlayerBottomAccessory: View {
                             .transition(.opacity)
                     }
                 }
-
-                Spacer(minLength: 4)
+                .layoutPriority(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 Button {
                     playPauseTaps += 1
@@ -150,7 +154,7 @@ struct PlayerBottomAccessory: View {
                     Image(systemName: isPaused ? "play.fill" : "pause.fill")
                         .font(isInline ? .body : .title3)
                         .contentTransition(.symbolEffect(.replace))
-                        .frame(width: 36, height: 36)
+                        .frame(width: isInline ? 32 : 36, height: 44)
                         .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
@@ -162,41 +166,51 @@ struct PlayerBottomAccessory: View {
                         viewModel.stop()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.body.weight(.semibold))
-                            .frame(width: 32, height: 36)
+                            .font(.subheadline.weight(.semibold))
+                            .frame(width: 30, height: 44)
                             .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
-                    .accessibilityLabel("Stop playback")
+                    .accessibilityLabel("Stop Playback")
                 }
             }
-            .padding(.leading, isInline ? 6 : 10)
-            .padding(.trailing, isInline ? 4 : 10)
-            .frame(maxHeight: .infinity)
+            .padding(.leading, isInline ? 6 : 8)
+            .padding(.trailing, isInline ? 4 : 8)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(.rect)
+            // A tap anywhere but the buttons, or a swipe up, opens the player. The swipe is simultaneous so that
+            // it never blocks the tab bar's own gestures.
             .onTapGesture(perform: openPlayer)
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 8)
+                    .onEnded { value in
+                        let upward = -value.translation.height
+                        if upward > 24 || -value.velocity.height > 400, upward > abs(value.translation.width) {
+                            openPlayer()
+                        }
+                    }
+            )
             .playerTransitionSource(id: PlayerTransition.miniPlayerID, cornerRadius: 24)
             .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("miniPlayer")
             .accessibilityAction(named: "Open Player", openPlayer)
             .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: placement)
         } else {
-            // Only reached on iOS 26.0, which cannot hide the accessory.
-            Label("Not Playing", systemImage: "play.tv")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Not reached: the accessory is disabled while nothing plays (`playerAccessory(isVisible:)`).
+            Color.clear
+                .accessibilityHidden(true)
         }
     }
 
     private func openPlayer() {
         viewModel.presentationSourceID = nil
-        viewModel.isPresented = true
+        viewModel.presentPlayer()
     }
 
     @ViewBuilder
     private func artwork(for channel: PlayableChannel, isInline: Bool) -> some View {
-        let size = isInline ? CGSize(width: 30, height: 30) : CGSize(width: 40, height: 40)
+        let size = isInline ? CGSize(width: 28, height: 28) : CGSize(width: 36, height: 36)
         let name = channel.name ?? ""
         ZStack {
             if channel.logo != nil {
@@ -213,7 +227,7 @@ struct PlayerBottomAccessory: View {
         }
         .frame(width: size.width, height: size.height)
         .background(.fill.tertiary)
-        .clipShape(.rect(cornerRadius: isInline ? 8 : 10, style: .continuous))
+        .clipShape(.rect(cornerRadius: isInline ? 7 : 9, style: .continuous))
         .accessibilityHidden(true)
     }
 
@@ -226,7 +240,7 @@ struct PlayerBottomAccessory: View {
                 Image(systemName: "record.circle.fill")
                     .symbolEffect(.pulse, options: .repeating, isActive: !reduceMotion)
             }
-            .foregroundStyle(.red)
+            .foregroundStyle(Theme.recording)
         } else if viewModel.isPictureInPictureActive {
             Label("Picture in Picture", systemImage: "pip")
                 .foregroundStyle(.secondary)
@@ -235,12 +249,7 @@ struct PlayerBottomAccessory: View {
                 .foregroundStyle(.secondary)
         } else if isLive && viewModel.playbackState == .playing {
             HStack(spacing: 6) {
-                Text("LIVE")
-                    .font(.caption2.weight(.heavy))
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1)
-                    .background(.red, in: .capsule)
-                    .foregroundStyle(.white)
+                LiveBadge(compact: true)
                 if let group = viewModel.currentItem?.groupName, !group.isEmpty {
                     Text(group)
                         .foregroundStyle(.secondary)

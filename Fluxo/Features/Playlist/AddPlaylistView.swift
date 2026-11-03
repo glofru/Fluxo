@@ -156,7 +156,7 @@ struct AddPlaylistView: View {
             } footer: {
                 if showsValidation, let message = validation.message {
                     Label(message, systemImage: "exclamationmark.circle.fill")
-                        .foregroundStyle(.red)
+                        .foregroundStyle(Theme.error)
                 } else {
                     Text("M3U and M3U8 playlists over HTTP or HTTPS. Channels, groups and logos are imported on this device.")
                 }
@@ -187,7 +187,7 @@ struct AddPlaylistView: View {
                         }
                     } icon: {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.yellow)
+                            .foregroundStyle(Theme.error)
                     }
                     Button("Try Again", systemImage: "arrow.clockwise", action: submit)
                         .disabled(!canSubmit)

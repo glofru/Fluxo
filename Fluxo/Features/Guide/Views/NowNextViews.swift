@@ -136,15 +136,14 @@ struct GuideTimeColumnText: View {
 }
 
 extension Color {
-    /// The "now" marker of the guide (now line, current time, LIVE badges). Red, as in most TV guides; one place
-    /// to change it for the app theme.
-    static let guideNow = Color.red
+    /// The "now" marker of the guide (now line, current time, LIVE badges): the theme's live color.
+    static let guideNow = Theme.live
 }
 
 /// A thin progress bar of a programme on air.
 struct ProgrammeProgressBar: View {
     let progress: Double
-    var tint: Color = .accentColor
+    var tint: Color = Theme.accent
     var height: CGFloat = 3
 
     var body: some View {

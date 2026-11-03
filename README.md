@@ -5,7 +5,8 @@ Fluxo is a SwiftUI IPTV / M3U player for iOS and macOS.
 ## Building
 
 Open `Fluxo.xcodeproj` in Xcode 26 or later and run the `Fluxo` scheme.
-The app needs iOS 26 / macOS 26.
+The app needs iOS 26.1 / macOS 26 (iOS 26.1 is the first release that can hide the tab bar accessory, so
+the mini player shows only while something plays).
 
 Live streams go through a small C remux engine
 (`Fluxo/Features/Player/Engine`) built on FFmpeg's libavformat, libavcodec
@@ -110,12 +111,21 @@ Tools/PlaylistBenchmark/run.sh             # ENTRIES=20000 for a quicker run
   playlist + stream URL, so they survive refreshes (which rewrite channel rows),
   and they are deleted with their playlist. The history keeps the 200 most recent
   entries.
-- **Search** debounces typing by 250 ms and runs the name query on a background
-  context, with a limit, over the selected playlist or all of them.
+- **Search** is token based (`SearchMatcher`, `ChannelSearchIndex`): every word of the query must
+  match a word of a channel or group name, in any order ("Sky F1" finds "Sky Sport F1", "f1 sky"
+  too), ignoring case, accents, width and punctuation ("IT | Sky-Sport" = "it sky sport"). A word
+  matches exactly, as a prefix, inside a word, across words ("skysport"), or, for words of 4+
+  letters, with one typo (two from 8 letters; digits never). Results are ranked: the exact name,
+  then names that start with the query, then by match quality, words in order and fewer extra words.
+  The names of each visible import are read once into memory (on a background context, about a
+  second for 100k channels, started when Search appears), and each keystroke then scans them in
+  about 5 ms (50 ms for a typo search), 250 ms after the last keystroke. Only the best 150 channels
+  and 20 groups are fetched from the store.
 - **macOS** uses a sidebar (Home, TV Guide, Search, Favorites, Recently Watched,
   Recordings, and each playlist) and a Settings window (Cmd-,). iOS uses tabs.
 
-To check every Home and Search query against an on-disk store (100k channels):
+To check every Home and Search query against an on-disk store (100k channels), including the token
+search (matches, ranking, typos) and its timings:
 
 ```sh
 CHANNELS=100000 Tools/HomeQueriesCheck/run.sh
@@ -150,6 +160,14 @@ CHANNELS=100000 Tools/HomeQueriesCheck/run.sh
   deleted from the player, the Home toolbar or the macOS sidebar. The conversion writes a
   hidden temporary file that is renamed when complete. Recordings interrupted
   by a crash are converted at the next launch.
+- **Player screen (iOS)** (`PlayerPresentation`): a layer above the tabs rather than a full-screen
+  cover. It grows out of the card or mini player that opened it, follows the finger 1:1 when dragged
+  down (the app shows dimmed behind it; dragging up rubber-bands), and closes when released past a
+  fifth of the screen or flicked down, or springs back. The timeline scrubber has its own drag, so
+  scrubbing never moves the screen. The mini player opens it with a tap or a swipe up.
+- **Theme** (`App/Design/Theme.swift`): the colors of the app icon as asset colors (light and dark):
+  Fluxo Violet is the accent, Flux Pink marks live TV, Signal Cyan time-shift; content surfaces, the
+  timeline gradient and the type scale are defined there too.
 - **One player per app**: `FluxoApp` owns the only `AVPlayerViewModel`. The
   main UI is a single `Window` on macOS, and multiple scenes are disabled on
   iOS, because the loopback port, the PiP surface and the segment directory can
@@ -162,7 +180,8 @@ CHANNELS=100000 Tools/HomeQueriesCheck/run.sh
   belong to the view model, so PiP keeps running when the player screen closes, and the
   PiP button of the player (or Playback > Picture in Picture, ⌥⌘P) starts it. Stopping
   PiP presents the player again. On iOS PiP also starts automatically when you leave the
-  app while a video plays (a Settings toggle), the audio session uses `.playback` /
+  app while a video plays, and when you close the player (the chevron or a swipe down) while
+  it plays (two Settings toggles); the X at the top right stops playback. The audio session uses `.playback` /
   `.moviePlayback` and the `audio` background mode. `NowPlayingController` publishes the
   channel to the Lock Screen / Now Playing menu and handles its play, pause, skip and
   next / previous channel commands.

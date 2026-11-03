@@ -18,21 +18,16 @@ extension Color {
 extension View {
 
     /// Shows the mini player: as a tab bar bottom accessory on iOS (the tab bar minimizes while scrolling down
-    /// and the accessory then moves inline), as a floating glass bar on other platforms.
+    /// and the accessory then moves inline), as a floating glass bar on other platforms. Nothing shows, not even
+    /// an empty accessory, while `isVisible` is false.
     @ViewBuilder
     func playerAccessory<Accessory: View>(isVisible: Bool, @ViewBuilder accessory: () -> Accessory) -> some View {
         #if os(iOS)
-        let minimizing = self.tabBarMinimizeBehavior(.onScrollDown)
-        if #available(iOS 26.1, *) {
-            minimizing.tabViewBottomAccessory(isEnabled: isVisible) {
+        self
+            .tabBarMinimizeBehavior(.onScrollDown)
+            .tabViewBottomAccessory(isEnabled: isVisible) {
                 accessory()
             }
-        } else {
-            // iOS 26.0 always shows the accessory: the accessory itself shows a "Not Playing" state.
-            minimizing.tabViewBottomAccessory {
-                accessory()
-            }
-        }
         #else
         self.safeAreaInset(edge: .bottom) {
             if isVisible {
@@ -42,30 +37,6 @@ extension View {
                     .padding(.bottom, 12)
             }
         }
-        #endif
-    }
-
-    /// Presents the player full screen on iOS, and over the whole main window on macOS (the window's
-    /// toolbar is hidden meanwhile, and the browser underneath keeps its state).
-    @ViewBuilder
-    func playerPresentation<Content: View>(isPresented: Binding<Bool>, @ViewBuilder content: @escaping () -> Content) -> some View {
-        #if os(macOS)
-        let isShowing = isPresented.wrappedValue
-        ZStack {
-            self
-                .toolbar(isShowing ? .hidden : .automatic, for: .windowToolbar)
-                .allowsHitTesting(!isShowing)
-                .accessibilityHidden(isShowing)
-
-            if isShowing {
-                content()
-                    .transition(.opacity)
-                    .zIndex(1)
-            }
-        }
-        .animation(.easeInOut(duration: 0.2), value: isShowing)
-        #else
-        self.fullScreenCover(isPresented: isPresented, content: content)
         #endif
     }
 

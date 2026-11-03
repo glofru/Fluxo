@@ -10,8 +10,10 @@ import SwiftUI
 
 /// Full player screen: the video edge to edge, with controls that fade out while the video plays.
 ///
-/// - Top bar: close, channel logo and name, status (connecting / buffering / live / time-shifted / recording),
-///   Picture in Picture, AirPlay and a menu (fill / fit, recordings, stop).
+/// - Top bar: close (the chevron: playback continues, on iOS in Picture in Picture), Picture in Picture,
+///   AirPlay, a menu (fill / fit, recordings) and stop (the X, top right), then the channel logo and name and
+///   its status (connecting / buffering / live / time-shifted / recording). On compact widths the name gets a
+///   row of its own, so it stays readable on small iPhones.
 /// - Bottom bar: the timeline (on-demand position or time-shift window), channel down / up within the group,
 ///   skip back / forward, play / pause, Go Live and record.
 ///
@@ -52,7 +54,7 @@ struct WatchChannelView: View {
 
             // Escape closes the player even while the controls are hidden.
             Button("Close Player") {
-                viewModel.isPresented = false
+                viewModel.closePlayer()
             }
             .keyboardShortcut(.cancelAction)
             .opacity(0)
@@ -72,13 +74,9 @@ struct WatchChannelView: View {
                 .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98)))
             }
         }
-        #if os(macOS)
-        // The player is an overlay inside the main window: only its own subtree goes dark, so the window
-        // (and the browser underneath) keeps the system appearance.
+        // The player is a layer over the app (see `PlayerPresentation`): only its own subtree goes dark, so the
+        // app underneath keeps the system appearance (it shows while the player is dragged down).
         .environment(\.colorScheme, .dark)
-        #else
-        .preferredColorScheme(.dark)
-        #endif
         .animation(.easeInOut(duration: 0.25), value: controlsVisible)
         .task(id: AutoHide(interaction: interactionCount, canHide: canAutoHide)) {
             guard canAutoHide else {
@@ -102,6 +100,18 @@ struct WatchChannelView: View {
                 showControls()
             }
         }
+        // Back on screen from Picture in Picture (or reopened while handing the video to it, when this screen
+        // stays mounted off screen): show the controls, they may have hidden during the hand-off.
+        .onChange(of: viewModel.isClosingIntoPictureInPicture) { _, isClosing in
+            if !isClosing {
+                showControls()
+            }
+        }
+        .onChange(of: viewModel.isPictureInPictureActive) { _, isActive in
+            if !isActive {
+                showControls()
+            }
+        }
         #if os(macOS)
         .onContinuousHover { phase in
             if case .active = phase, hoverThrottle.shouldReport() {
@@ -109,7 +119,10 @@ struct WatchChannelView: View {
             }
         }
         #else
-        .statusBarHidden(!controlsVisible)
+        // The status bar takes the app's style (dark text in light mode), which would be unreadable over the
+        // video: it stays hidden while the player is on screen, and comes back as soon as the player moves off
+        // it to hand the video to Picture in Picture.
+        .statusBarHidden(!viewModel.isClosingIntoPictureInPicture)
         .persistentSystemOverlays(controlsVisible ? .automatic : .hidden)
         #endif
         .sensoryFeedback(.selection, trigger: viewModel.currentChannel?.id)
@@ -183,14 +196,42 @@ private final class HoverThrottle {
 
 // MARK: - Chrome
 
-/// Glass for the player's floating controls: interactive, identified in the cluster's namespace so it morphs
-/// when a control appears, disappears or changes state, and optionally merged with its neighbours.
-private extension View {
-    func playerGlass(_ glass: Glass = .regular, in shape: some Shape = Circle(), id: String, union: String? = nil, namespace: Namespace.ID) -> some View {
-        self
-            .glassEffect(glass.interactive(), in: shape)
-            .glassEffectUnion(id: union, namespace: namespace)
-            .glassEffectID(id, in: namespace)
+/// Feedback of icon buttons that sit on a shared glass capsule: a soft circle lights up under the finger.
+/// (A glass shape per button cannot be used there: it would not line up with the capsule.)
+private struct PlayerIconButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background {
+                Circle()
+                    .fill(.white.opacity(configuration.isPressed ? 0.18 : 0))
+                    .padding(3)
+            }
+            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+    }
+}
+
+/// A round glass control: the glass is drawn in exactly the button's frame, which is also its hit area.
+private struct PlayerCircleButton: View {
+    let title: String
+    let systemImage: String
+    var size: CGFloat = PlayerTopBar.buttonSize
+    var font: Font = .body.weight(.semibold)
+    var glass: Glass = .regular
+    var help: String?
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(font)
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: size, height: size)
+                .contentShape(.circle)
+        }
+        .buttonStyle(.plain)
+        .glassEffect(glass.interactive(), in: .circle)
+        .accessibilityLabel(title)
+        .help(help ?? title)
     }
 }
 
@@ -211,11 +252,11 @@ private struct PlayerChrome: View {
         .background {
             // Scrims keep the title and the timeline legible on bright video (stronger without transparency).
             VStack(spacing: 0) {
-                LinearGradient(colors: [.black.opacity(reduceTransparency ? 0.9 : 0.7), .clear], startPoint: .top, endPoint: .bottom)
-                    .frame(height: 170)
+                LinearGradient(colors: [Theme.Player.scrim(reduceTransparency: reduceTransparency), .clear], startPoint: .top, endPoint: .bottom)
+                    .frame(height: 220)
                 Spacer(minLength: 0)
-                LinearGradient(colors: [.clear, .black.opacity(reduceTransparency ? 0.92 : 0.75)], startPoint: .top, endPoint: .bottom)
-                    .frame(height: 260)
+                LinearGradient(colors: [.clear, Theme.Player.scrim(reduceTransparency: reduceTransparency)], startPoint: .top, endPoint: .bottom)
+                    .frame(height: 280)
             }
             .ignoresSafeArea()
             .allowsHitTesting(false)
@@ -226,28 +267,79 @@ private struct PlayerChrome: View {
 private struct PlayerTopBar: View {
     static let logoSize = CGSize(width: 56, height: 38)
     static let buttonSize: CGFloat = 44
+    static let edgePadding: CGFloat = 16
 
     let viewModel: AVPlayerViewModel
     @Binding var isShowingRecordings: Bool
     let interacted: () -> Void
 
-    @Namespace private var glassNamespace
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    /// Room the window's corners need: on iPad, a window shows its controls (close, minimize, full screen) in
+    /// a top corner, over the app's content. Zero otherwise.
+    @State private var cornerInsets = RectangleCornerInsets()
 
     var body: some View {
-        HStack(spacing: 12) {
-            Button {
-                viewModel.isPresented = false
-            } label: {
-                Image(systemName: closeSymbol)
-                    .font(.body.weight(.semibold))
-                    .frame(width: Self.buttonSize, height: Self.buttonSize)
-                    .contentShape(.circle)
+        Group {
+            if horizontalSizeClass == .compact {
+                // Phones: the buttons on one row, the channel on the next one, with the whole width for its name.
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(spacing: 10) {
+                        closeButton
+                        Spacer(minLength: 8)
+                        actions
+                        stopButton
+                    }
+                    title(lineLimit: 2)
+                }
+            } else {
+                HStack(spacing: 12) {
+                    closeButton
+                    title(lineLimit: 1)
+                    Spacer(minLength: 8)
+                    actions
+                    stopButton
+                }
             }
-            .buttonStyle(.plain)
-            .glassEffect(.regular.interactive(), in: .circle)
-            .accessibilityLabel("Close Player")
-            .help("Close the player (playback continues)")
+        }
+        .font(.body.weight(.medium))
+        // The buttons move aside for the window controls (and the window's rounded corners) rather than sitting
+        // under them.
+        .padding(.leading, max(Self.edgePadding, cornerInsets.topLeading.width))
+        .padding(.trailing, max(Self.edgePadding, cornerInsets.topTrailing.width))
+        .padding(.top, 8)
+        .onGeometryChange(for: RectangleCornerInsets.self) { proxy in
+            proxy.containerCornerInsets
+        } action: { insets in
+            cornerInsets = insets
+        }
+    }
 
+    /// Closes the screen; playback continues (in Picture in Picture on iOS, when it can).
+    private var closeButton: some View {
+        PlayerCircleButton(title: "Close Player", systemImage: "chevron.down", help: closeHelp) {
+            viewModel.closePlayer()
+        }
+        .accessibilityIdentifier("player.close")
+    }
+
+    /// Stops playback and closes the player.
+    private var stopButton: some View {
+        PlayerCircleButton(title: "Stop Playback", systemImage: "xmark", help: "Stop playback and close the player") {
+            viewModel.stop()
+        }
+        .accessibilityIdentifier("player.stop")
+    }
+
+    private var closeHelp: String {
+        #if os(macOS)
+        return "Close the player (playback continues)"
+        #else
+        return "Close the player (playback continues in Picture in Picture)"
+        #endif
+    }
+
+    private func title(lineLimit: Int) -> some View {
+        HStack(spacing: 12) {
             if let logo = viewModel.currentChannel?.logo {
                 LogoImage(source: logo, size: Self.logoSize) { _ in
                     Color.clear
@@ -260,92 +352,74 @@ private struct PlayerTopBar: View {
             VStack(alignment: .leading, spacing: 4) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(viewModel.currentChannel?.name ?? "No channel")
-                        .font(.headline)
-                        .lineLimit(1)
+                        .font(Theme.Typography.playerTitle)
+                        .lineLimit(lineLimit)
+                        .fixedSize(horizontal: false, vertical: true)
                     PlayerStatusBadges(viewModel: viewModel, timeline: viewModel.timeline)
                 }
                 .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.isHeader)
                 // Now / next from the TV guide (live channels with a guide only).
                 PlayerProgrammeInfo(item: viewModel.currentItem)
             }
-
-            Spacer(minLength: 8)
-
-            // One glass capsule for the secondary actions.
-            GlassEffectContainer(spacing: 4) {
-                HStack(spacing: 0) {
-                    if viewModel.isPictureInPictureSupported {
-                        Button {
-                            interacted()
-                            viewModel.togglePictureInPicture()
-                        } label: {
-                            Image(systemName: viewModel.isPictureInPictureActive ? "pip.exit" : "pip.enter")
-                                .contentTransition(.symbolEffect(.replace))
-                                .frame(width: Self.buttonSize, height: Self.buttonSize)
-                                .contentShape(.circle)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(!viewModel.isPictureInPicturePossible && !viewModel.isPictureInPictureActive)
-                        .playerGlass(id: "top.pip", union: "top.actions", namespace: glassNamespace)
-                        .accessibilityLabel(viewModel.isPictureInPictureActive ? "Exit Picture in Picture" : "Picture in Picture")
-                        .help("Picture in Picture")
-                    }
-
-                    RoutePicker(player: viewModel.player)
-                        .frame(width: Self.buttonSize, height: Self.buttonSize)
-                        .playerGlass(id: "top.airplay", union: "top.actions", namespace: glassNamespace)
-                        .accessibilityLabel("AirPlay")
-                        .help("AirPlay")
-
-                    #if os(macOS)
-                    Button {
-                        interacted()
-                        NSApp.keyWindow?.toggleFullScreen(nil)
-                    } label: {
-                        Image(systemName: "arrow.up.left.and.arrow.down.right")
-                            .frame(width: Self.buttonSize, height: Self.buttonSize)
-                            .contentShape(.circle)
-                    }
-                    .buttonStyle(.plain)
-                    .playerGlass(id: "top.fullscreen", union: "top.actions", namespace: glassNamespace)
-                    .accessibilityLabel("Full Screen")
-                    .help("Enter or exit full screen")
-                    #endif
-
-                    Menu {
-                        Button(viewModel.fillsScreen ? "Fit to Screen" : "Fill Screen", systemImage: viewModel.fillsScreen ? "rectangle.arrowtriangle.2.inward" : "rectangle.arrowtriangle.2.outward") {
-                            viewModel.toggleFillsScreen()
-                        }
-                        Button("Recordings", systemImage: "film.stack") {
-                            isShowingRecordings = true
-                        }
-                        Divider()
-                        Button("Stop Playback", systemImage: "stop.fill", role: .destructive) {
-                            viewModel.stop()
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis")
-                            .frame(width: Self.buttonSize, height: Self.buttonSize)
-                            .contentShape(.circle)
-                    }
-                    .menuIndicator(.hidden)
-                    .buttonStyle(.plain)
-                    .playerGlass(id: "top.more", union: "top.actions", namespace: glassNamespace)
-                    .accessibilityLabel("More")
-                }
-            }
         }
-        .font(.body.weight(.medium))
-        .padding(.horizontal)
-        .padding(.top, 8)
     }
 
-    private var closeSymbol: String {
-        #if os(macOS)
-        return "xmark"
-        #else
-        return "chevron.down"
-        #endif
+    /// Picture in Picture, AirPlay (and full screen on macOS) and the menu, on one glass capsule.
+    private var actions: some View {
+        HStack(spacing: 0) {
+            if viewModel.isPictureInPictureSupported {
+                Button {
+                    interacted()
+                    viewModel.togglePictureInPicture()
+                } label: {
+                    Image(systemName: viewModel.isPictureInPictureActive ? "pip.exit" : "pip.enter")
+                        .contentTransition(.symbolEffect(.replace))
+                        .frame(width: Self.buttonSize, height: Self.buttonSize)
+                        .contentShape(.circle)
+                }
+                .buttonStyle(PlayerIconButtonStyle())
+                .disabled(!viewModel.isPictureInPicturePossible && !viewModel.isPictureInPictureActive)
+                .accessibilityLabel(viewModel.isPictureInPictureActive ? "Exit Picture in Picture" : "Picture in Picture")
+                .help("Picture in Picture")
+            }
+
+            RoutePicker(player: viewModel.player)
+                .frame(width: Self.buttonSize, height: Self.buttonSize)
+                .accessibilityLabel("AirPlay")
+                .help("AirPlay")
+
+            #if os(macOS)
+            Button {
+                interacted()
+                NSApp.keyWindow?.toggleFullScreen(nil)
+            } label: {
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    .frame(width: Self.buttonSize, height: Self.buttonSize)
+                    .contentShape(.circle)
+            }
+            .buttonStyle(PlayerIconButtonStyle())
+            .accessibilityLabel("Full Screen")
+            .help("Enter or exit full screen")
+            #endif
+
+            Menu {
+                Button(viewModel.fillsScreen ? "Fit to Screen" : "Fill Screen", systemImage: viewModel.fillsScreen ? "rectangle.arrowtriangle.2.inward" : "rectangle.arrowtriangle.2.outward") {
+                    viewModel.toggleFillsScreen()
+                }
+                Button("Recordings", systemImage: "film.stack") {
+                    isShowingRecordings = true
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .frame(width: Self.buttonSize, height: Self.buttonSize)
+                    .contentShape(.circle)
+            }
+            .menuIndicator(.hidden)
+            .buttonStyle(.plain)
+            .accessibilityLabel("More")
+        }
+        .glassEffect(.regular.interactive(), in: .capsule)
     }
 }
 
@@ -357,7 +431,7 @@ private struct PlayerStatusBadges: View {
 
     var body: some View {
         status
-            .font(.caption.weight(.semibold).monospacedDigit())
+            .font(Theme.Typography.playerStatus.monospacedDigit())
     }
 
     @ViewBuilder
@@ -368,9 +442,9 @@ private struct PlayerStatusBadges: View {
         case .buffering:
             busyBadge("Buffering…")
         case .reconnecting:
-            PlayerBadge(text: viewModel.playbackState.label, systemImage: "wifi.exclamationmark", tint: .orange)
+            PlayerBadge(text: viewModel.playbackState.label, systemImage: "wifi.exclamationmark", tint: Theme.warning)
         case .failed:
-            PlayerBadge(text: "Error", systemImage: "exclamationmark.triangle.fill", tint: .yellow)
+            PlayerBadge(text: "Error", systemImage: "exclamationmark.triangle.fill", tint: Theme.error)
         case .ended:
             PlayerBadge(text: "Ended", systemImage: "checkmark.circle", tint: .secondary)
         case .idle:
@@ -423,24 +497,12 @@ private struct PlayerBadge: View {
     }
 }
 
-private struct LiveBadge: View {
-    var body: some View {
-        Text("LIVE")
-            .font(.caption2.weight(.heavy))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(.red, in: .capsule)
-            .foregroundStyle(.white)
-            .accessibilityLabel("Live")
-    }
-}
-
 // MARK: - Bottom bar
 
 /// The floating glass controls: record on the leading side, the transport in the middle and the live
 /// control on the trailing side. They share one `GlassEffectContainer`, so the glass morphs when the state
 /// changes: play / pause retints, the record button stretches into the recording timer, the LIVE indicator
-/// turns into "Go Live" when the stream is time-shifted, and the channel buttons merge into the skip capsules.
+/// turns into "Go Live" when the stream is time-shifted, and the skip capsules grow to take the channel buttons.
 private struct PlayerBottomBar: View {
     let viewModel: AVPlayerViewModel
     @Binding var isScrubbing: Bool
@@ -457,10 +519,11 @@ private struct PlayerBottomBar: View {
                 } label: {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(Theme.error)
                         .lineLimit(2)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
+                        .contentShape(.capsule)
                 }
                 .buttonStyle(.plain)
                 .glassEffect(.regular.interactive(), in: .capsule)
@@ -522,65 +585,124 @@ private struct PlayerBottomBar: View {
     }
 }
 
-/// Position in an on-demand item, or in the time-shift window of a live stream.
-/// Observes the timeline, which changes twice a second.
+/// Position in an on-demand item, or in the time-shift window of a live stream, with a scrubber that follows
+/// the finger. Observes the timeline, which changes twice a second.
+///
+/// The scrubber is drawn here rather than with `Slider`: its drag has priority over the player's swipe-down,
+/// starts on touch (a tap seeks), has a 44 pt tall hit area around a thin track, and freezes the range while
+/// it is dragged, so the live edge moving forward never pulls the knob away from the finger.
 private struct PlayerTimelineBar: View {
+    static let hitHeight: CGFloat = 44
+
     let viewModel: AVPlayerViewModel
     let timeline: PlaybackTimeline
     @Binding var isScrubbing: Bool
     let interacted: () -> Void
 
     @State private var scrubPosition: Double = 0
+    /// The range at the start of the drag.
+    @State private var scrubRange: ClosedRange<Double>?
 
     var body: some View {
         if viewModel.canSeek {
-            let lower = timeline.seekableStart
-            let upper = max(lower + 1, timeline.seekableEnd)
-            let position = isScrubbing ? scrubPosition : min(max(timeline.currentTime, lower), upper)
             let isLive = viewModel.isTimeShiftAvailable
+            // A time-shifted live stream ends at its live point (where "Go Live" seeks, the live latency before
+            // the end of what is buffered), so the knob sits at the end of the bar while playing live.
+            let end = isLive ? timeline.seekableEnd - timeline.liveLatency : timeline.seekableEnd
+            let liveRange = timeline.seekableStart...max(timeline.seekableStart + 1, end)
+            let range = isScrubbing ? (scrubRange ?? liveRange) : liveRange
+            let position = isScrubbing ? scrubPosition : min(max(timeline.currentTime, range.lowerBound), range.upperBound)
+            let lower = range.lowerBound
+            let upper = range.upperBound
+            // Behind the live point, as "-m:ss Go Live" shows it (0 while the LIVE indicator shows).
+            let behindLive = isScrubbing
+                ? max(0, upper - position)
+                : (timeline.isAtLiveEdge ? 0 : timeline.timeBehindLive)
 
             HStack(spacing: 12) {
-                Text(isLive ? "-\(PlayerTime.format(upper - position))" : PlayerTime.format(position))
+                Text(isLive ? "-\(PlayerTime.format(behindLive))" : PlayerTime.format(position))
                     .frame(minWidth: 52, alignment: .leading)
+                    .accessibilityHidden(true)
 
-                Slider(
-                    value: Binding(
-                        get: { position },
-                        set: { value in
-                            scrubPosition = value
-                            interacted()
-                            if !isScrubbing {
-                                // Keyboard and accessibility adjustments have no editing phase.
+                scrubber(position: position, range: range)
+                    .accessibilityRepresentation {
+                        Slider(
+                            value: Binding(get: { position }, set: { value in
+                                interacted()
                                 viewModel.seek(toSeconds: value)
-                            }
-                        }
-                    ),
-                    in: lower...upper
-                ) { editing in
-                    if editing {
-                        scrubPosition = position
-                        isScrubbing = true
-                    } else {
-                        viewModel.seek(toSeconds: scrubPosition)
-                        isScrubbing = false
+                            }),
+                            in: range
+                        )
+                        .accessibilityLabel(isLive ? "Time-shift position" : "Playback position")
+                        .accessibilityValue(isLive ? "\(PlayerTime.spoken(behindLive)) behind live" : "\(PlayerTime.spoken(position)) of \(PlayerTime.spoken(upper))")
                     }
-                }
-                .tint(isLive ? .red : .white)
-                .accessibilityLabel(isLive ? "Time-shift position" : "Playback position")
-                .accessibilityValue(isLive ? "\(PlayerTime.spoken(upper - position)) behind live" : "\(PlayerTime.spoken(position)) of \(PlayerTime.spoken(upper))")
+                    .accessibilityIdentifier("player.scrubber")
 
                 Text(isLive ? PlayerTime.format(upper - lower) : "-\(PlayerTime.format(upper - position))")
                     .frame(minWidth: 52, alignment: .trailing)
                     .accessibilityLabel(isLive ? "Time-shift buffer \(PlayerTime.spoken(upper - lower))" : "\(PlayerTime.spoken(upper - position)) remaining")
             }
-            .font(.caption.monospacedDigit())
-            .foregroundStyle(.white.opacity(0.9))
+            .font(Theme.Typography.timecode)
+            .foregroundStyle(Theme.Player.secondaryLabel)
         }
+    }
+
+    private func scrubber(position: Double, range: ClosedRange<Double>) -> some View {
+        GeometryReader { proxy in
+            let width = max(1, proxy.size.width)
+            let span = max(0.001, range.upperBound - range.lowerBound)
+            let fraction = min(1, max(0, (position - range.lowerBound) / span))
+            let trackHeight: CGFloat = isScrubbing ? 8 : 5
+            let knob: CGFloat = isScrubbing ? 22 : 14
+
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Theme.Player.track)
+                    .frame(height: trackHeight)
+                // The streams of the icon, revealed up to the position.
+                Capsule()
+                    .fill(Theme.streamGradient)
+                    .frame(height: trackHeight)
+                    .mask(alignment: .leading) {
+                        Rectangle()
+                            .frame(width: width * fraction)
+                    }
+                Circle()
+                    .fill(.white)
+                    .frame(width: knob, height: knob)
+                    .shadow(color: .black.opacity(0.35), radius: 3, y: 1)
+                    .offset(x: width * fraction - knob / 2)
+            }
+            .frame(width: width, height: Self.hitHeight)
+            .contentShape(.rect)
+            .highPriorityGesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        if !isScrubbing {
+                            scrubRange = range
+                            isScrubbing = true
+                        }
+                        let frozen = scrubRange ?? range
+                        let location = min(max(0, value.location.x), width) / width
+                        scrubPosition = frozen.lowerBound + location * (frozen.upperBound - frozen.lowerBound)
+                        interacted()
+                    }
+                    .onEnded { _ in
+                        viewModel.seek(toSeconds: scrubPosition)
+                        isScrubbing = false
+                        scrubRange = nil
+                        interacted()
+                    }
+            )
+            .animation(.snappy(duration: 0.2), value: isScrubbing)
+        }
+        .frame(height: Self.hitHeight)
+        .sensoryFeedback(.selection, trigger: isScrubbing)
     }
 }
 
-/// Channel down / up, skip back / forward and play / pause. Channel and skip buttons merge into one glass
-/// capsule on each side; play / pause is a larger circle, tinted with the accent color while paused.
+/// Channel down / up, skip back / forward and play / pause. Channel and skip buttons share one glass capsule
+/// on each side; play / pause is a larger circle, tinted with the accent color while paused.
 private struct PlayerTransport: View {
     static let buttonSize: CGFloat = 48
     static let playSize: CGFloat = 66
@@ -609,16 +731,18 @@ private struct PlayerTransport: View {
         HStack(spacing: 14) {
             HStack(spacing: 0) {
                 if viewModel.canZap {
-                    transportButton("Previous Channel", systemImage: "backward.end.fill", help: "Previous channel in this group", id: "transport.previous", union: "transport.back") {
+                    transportButton("Previous Channel", systemImage: "backward.end.fill", help: "Previous channel in this group") {
                         viewModel.previousChannel()
                     }
                 }
 
-                transportButton("Back \(back) seconds", systemImage: "gobackward.\(back)", help: "Back \(back) seconds", id: "transport.back", union: "transport.back") {
+                transportButton("Back \(back) seconds", systemImage: "gobackward.\(back)", help: "Back \(back) seconds") {
                     viewModel.skipBackward()
                 }
                 .disabled(!viewModel.canSeek)
             }
+            .glassEffect(.regular.interactive(), in: .capsule)
+            .glassEffectID("transport.back", in: namespace)
 
             Button {
                 interacted()
@@ -632,27 +756,30 @@ private struct PlayerTransport: View {
                     .contentShape(.circle)
             }
             .buttonStyle(.plain)
-            .playerGlass(isPaused ? .regular.tint(.accentColor) : .regular, id: "transport.play", namespace: namespace)
+            .glassEffect(isPaused ? .regular.tint(Theme.accent).interactive() : .regular.interactive(), in: .circle)
+            .glassEffectID("transport.play", in: namespace)
             .sensoryFeedback(.impact(weight: .light), trigger: playPauseTaps)
             .accessibilityLabel(isPaused ? "Play" : "Pause")
             .help(isPaused ? "Play" : "Pause")
 
             HStack(spacing: 0) {
-                transportButton("Forward \(forward) seconds", systemImage: "goforward.\(forward)", help: "Forward \(forward) seconds", id: "transport.forward", union: "transport.forward") {
+                transportButton("Forward \(forward) seconds", systemImage: "goforward.\(forward)", help: "Forward \(forward) seconds") {
                     viewModel.skipForward()
                 }
                 .disabled(!viewModel.canSeek || (viewModel.isTimeShiftAvailable && timeline.isAtLiveEdge))
 
                 if viewModel.canZap {
-                    transportButton("Next Channel", systemImage: "forward.end.fill", help: "Next channel in this group", id: "transport.next", union: "transport.forward") {
+                    transportButton("Next Channel", systemImage: "forward.end.fill", help: "Next channel in this group") {
                         viewModel.nextChannel()
                     }
                 }
             }
+            .glassEffect(.regular.interactive(), in: .capsule)
+            .glassEffectID("transport.forward", in: namespace)
         }
     }
 
-    private func transportButton(_ label: String, systemImage: String, help: String, id: String, union: String, action: @escaping () -> Void) -> some View {
+    private func transportButton(_ label: String, systemImage: String, help: String, action: @escaping () -> Void) -> some View {
         Button {
             interacted()
             action()
@@ -662,8 +789,7 @@ private struct PlayerTransport: View {
                 .frame(width: Self.buttonSize, height: Self.buttonSize)
                 .contentShape(.circle)
         }
-        .buttonStyle(.plain)
-        .playerGlass(id: id, union: union, namespace: namespace)
+        .buttonStyle(PlayerIconButtonStyle())
         .accessibilityLabel(label)
         .help(help)
     }
@@ -687,7 +813,7 @@ private struct RecordControl: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "record.circle.fill")
-                        .foregroundStyle(.red)
+                        .foregroundStyle(Theme.recording)
                         .symbolEffect(.pulse, options: .repeating, isActive: !reduceMotion)
                     Text("REC \(PlayerTime.format(timeline.recordingDuration))")
                         .monospacedDigit()
@@ -699,7 +825,8 @@ private struct RecordControl: View {
                 .contentShape(.capsule)
             }
             .buttonStyle(.plain)
-            .playerGlass(.regular.tint(.red.opacity(0.45)), in: .capsule, id: "record", namespace: namespace)
+            .glassEffect(.regular.tint(Theme.recording.opacity(0.45)).interactive(), in: .capsule)
+            .glassEffectID("record", in: namespace)
             .accessibilityLabel("Stop Recording")
             .accessibilityValue(PlayerTime.spoken(timeline.recordingDuration))
             .help("Stop recording")
@@ -710,7 +837,7 @@ private struct RecordControl: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "record.circle")
-                        .foregroundStyle(.red)
+                        .foregroundStyle(Theme.recording)
                     Text("Record")
                 }
                 .padding(.horizontal, 16)
@@ -718,14 +845,15 @@ private struct RecordControl: View {
                 .contentShape(.capsule)
             }
             .buttonStyle(.plain)
-            .playerGlass(in: .capsule, id: "record", namespace: namespace)
+            .glassEffect(.regular.interactive(), in: .capsule)
+            .glassEffectID("record", in: namespace)
             .accessibilityLabel("Record")
             .help("Record this channel")
         }
     }
 }
 
-/// Time-shifted live streams: a red-tinted LIVE indicator at the live edge, which morphs into a
+/// Time-shifted live streams: a LIVE indicator in the live color at the live edge, which morphs into a
 /// "-m:ss · Go Live" button when playback is behind live.
 private struct LiveControl: View {
     let viewModel: AVPlayerViewModel
@@ -737,9 +865,11 @@ private struct LiveControl: View {
     @State private var goLiveTaps = 0
 
     var body: some View {
-        let isAtLive = timeline.isAtLiveEdge && viewModel.playbackState == .playing
+        // Live unless paused: buffering at the live point is still live (it never shows "-0:00 Go Live").
+        let isAtLive = timeline.isAtLiveEdge && viewModel.playbackState != .paused
         Group {
-            if viewModel.isTimeShiftAvailable {
+            // Not after a failure: there is no live edge to go back to until the channel plays again.
+            if viewModel.isTimeShiftAvailable, !Self.hasFailed(viewModel.playbackState) {
                 if isAtLive {
                     HStack(spacing: 6) {
                         Image(systemName: "dot.radiowaves.left.and.right")
@@ -749,7 +879,7 @@ private struct LiveControl: View {
                     }
                     .padding(.horizontal, 16)
                     .frame(height: PlayerTransport.buttonSize)
-                    .glassEffect(.regular.tint(.red.opacity(0.55)), in: .capsule)
+                    .glassEffect(.regular.tint(Theme.live.opacity(0.6)), in: .capsule)
                     .glassEffectID("live", in: namespace)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("Live")
@@ -762,7 +892,7 @@ private struct LiveControl: View {
                         HStack(spacing: 8) {
                             Text("-\(PlayerTime.format(timeline.timeBehindLive))")
                                 .monospacedDigit()
-                                .foregroundStyle(.yellow)
+                                .foregroundStyle(Theme.timeShift)
                             Text("Go Live")
                             Image(systemName: "forward.end.alt.fill")
                                 .font(.caption)
@@ -772,7 +902,8 @@ private struct LiveControl: View {
                         .contentShape(.capsule)
                     }
                     .buttonStyle(.plain)
-                    .playerGlass(in: .capsule, id: "live", namespace: namespace)
+                    .glassEffect(.regular.interactive(), in: .capsule)
+                    .glassEffectID("live", in: namespace)
                     .accessibilityLabel("Go Live")
                     .accessibilityValue("\(PlayerTime.spoken(timeline.timeBehindLive)) behind live")
                     .help("Jump to the live edge")
@@ -781,6 +912,13 @@ private struct LiveControl: View {
         }
         .animation(reduceMotion ? nil : .smooth(duration: 0.4), value: isAtLive)
         .sensoryFeedback(.impact(weight: .medium), trigger: goLiveTaps)
+    }
+
+    private static func hasFailed(_ state: AVPlayerViewModel.PlaybackState) -> Bool {
+        if case .failed = state {
+            return true
+        }
+        return false
     }
 }
 
@@ -808,7 +946,7 @@ private struct PlayerStatusOverlay: View {
         case .failed(let message):
             PlayerMessageCard(
                 systemImage: "exclamationmark.triangle.fill",
-                tint: .yellow,
+                tint: Theme.error,
                 title: "Can't Play This Channel",
                 message: message
             ) {
@@ -898,7 +1036,7 @@ private struct RoutePicker: UIViewRepresentable {
         let view = AVRoutePickerView()
         view.prioritizesVideoDevices = true
         view.tintColor = .white
-        view.activeTintColor = .systemBlue
+        view.activeTintColor = UIColor(Theme.accent)
         return view
     }
 

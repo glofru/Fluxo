@@ -350,16 +350,18 @@ struct CompactChannelCard: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 2) {
+                    // Two lines: long IPTV names ("Test Pattern (MPEG-TS)") stay readable on small phones.
                     Text(item.displayName)
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
+                        .font(Theme.Typography.cardTitle)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                     if let watchedAt {
                         Text(watchedAt, format: .relative(presentation: .named))
-                            .font(.caption)
+                            .font(Theme.Typography.cardSubtitle)
                             .foregroundStyle(.secondary)
                     }
                 }
-                .frame(width: 150, alignment: .leading)
+                .frame(width: 160, alignment: .leading)
 
                 Image(systemName: "play.fill")
                     .font(.caption)
@@ -367,10 +369,11 @@ struct CompactChannelCard: View {
                     .accessibilityHidden(true)
             }
             .padding(10)
+            .frame(minHeight: 66)
             // A content surface: glass is kept for the controls and navigation layer.
-            .background(.background.secondary, in: shape)
+            .background(Theme.surface, in: shape)
             .overlay {
-                shape.strokeBorder(.primary.opacity(0.06))
+                shape.strokeBorder(Theme.surfaceStroke)
             }
             .contentShape(shape)
             .playerTransitionSource(id: sourceID, cornerRadius: 18)

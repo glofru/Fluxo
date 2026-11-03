@@ -18,6 +18,8 @@ xcrun swiftc -O -swift-version 5 -parse-as-library -o "$OUT/check" \
     "$ROOT/Fluxo/Features/Library/ChannelLibrary.swift" \
     "$ROOT/Fluxo/Features/Library/ChannelZapper.swift" \
     "$ROOT/Fluxo/Features/Home/HomeQueries.swift" \
+    "$ROOT/Fluxo/Features/Search/SearchMatcher.swift" \
+    "$ROOT/Fluxo/Features/Search/ChannelSearchIndex.swift" \
     "$ROOT/Fluxo/App/Database/ModelRegistry.swift" \
     "$ROOT/Fluxo/Features/Guide/Model/EPGModels.swift" \
     "$ROOT/Fluxo/Features/Guide/Model/GuideValues.swift" \

@@ -49,7 +49,7 @@ struct ChannelPreview: View {
                         if isFavorite {
                             Image(systemName: "star.fill")
                                 .font(.caption.bold())
-                                .foregroundStyle(.yellow)
+                                .foregroundStyle(Theme.favorite)
                                 .padding(6)
                                 .background(.thinMaterial, in: .circle)
                                 .padding(8)
@@ -64,7 +64,7 @@ struct ChannelPreview: View {
                             .clipShape(borderShape)
                     }
                     .overlay {
-                        borderShape.strokeBorder(.primary.opacity(0.08))
+                        borderShape.strokeBorder(Theme.surfaceStroke)
                     }
                     .overlay(alignment: .bottomLeading) {
                         if item.kind != .live {
@@ -80,7 +80,7 @@ struct ChannelPreview: View {
                     .animation(reduceMotion ? nil : .spring(duration: 0.3, bounce: 0.4), value: isFavorite)
 
                 Text(item.displayName)
-                    .font(.subheadline.weight(.semibold))
+                    .font(Theme.Typography.cardTitle)
                     .lineLimit(2, reservesSpace: true)
                     .multilineTextAlignment(.leading)
 

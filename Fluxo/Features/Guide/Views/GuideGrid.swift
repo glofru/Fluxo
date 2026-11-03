@@ -498,7 +498,7 @@ private struct GuideProgrammeCell: View {
 
     private func background(isOnAir: Bool, isOver: Bool) -> AnyShapeStyle {
         if isOnAir {
-            return AnyShapeStyle(Color.accentColor.opacity(0.22))
+            return AnyShapeStyle(Theme.accent.opacity(0.22))
         }
         return isOver ? AnyShapeStyle(.fill.quaternary) : AnyShapeStyle(.fill.tertiary)
     }

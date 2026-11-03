@@ -95,7 +95,7 @@ struct RemindersView: View {
                 }
             } icon: {
                 Image(systemName: "bell.slash.fill")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Theme.warning)
             }
             #if os(iOS)
             Button("Open Settings") {

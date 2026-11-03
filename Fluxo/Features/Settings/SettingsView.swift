@@ -18,6 +18,7 @@ struct SettingsView: View {
     @AppStorage(PlayerPreferences.skipBackwardSecondsKey) private var skipBackwardSeconds = PlayerPreferences.defaultSkipBackwardSeconds
     @AppStorage(PlayerPreferences.skipForwardSecondsKey) private var skipForwardSeconds = PlayerPreferences.defaultSkipForwardSeconds
     @AppStorage(PlayerPreferences.autoPictureInPictureKey) private var autoPictureInPicture = PlayerPreferences.defaultAutoPictureInPicture
+    @AppStorage(PlayerPreferences.pictureInPictureOnCloseKey) private var pictureInPictureOnClose = PlayerPreferences.defaultPictureInPictureOnClose
 
     @State private var viewModel = SettingsViewModel()
     @State private var confirmation: Confirmation?
@@ -34,6 +35,9 @@ struct SettingsView: View {
     var body: some View {
         Form {
             playbackSection
+            #if !os(macOS)
+            pictureInPictureSection
+            #endif
             GuideSettingsSection()
             recordingsSection
             storageSection
@@ -95,16 +99,25 @@ struct SettingsView: View {
                     Text("\(seconds) seconds").tag(seconds)
                 }
             }
-
-            #if !os(macOS)
-            Toggle("Start Picture in Picture automatically", isOn: $autoPictureInPicture)
-            #endif
         } header: {
             Text("Playback")
         } footer: {
             Text("How far back you can go in a live channel. Applies the next time a channel starts. The buffer uses at most \(Self.bytes(PlayerPreferences.timeShiftBytes)) and never more than a tenth of the free space.")
         }
     }
+
+    #if !os(macOS)
+    private var pictureInPictureSection: some View {
+        Section {
+            Toggle("Start Picture in Picture automatically", isOn: $autoPictureInPicture)
+            Toggle("Picture in Picture when closing the player", isOn: $pictureInPictureOnClose)
+        } header: {
+            Text("Picture in Picture")
+        } footer: {
+            Text("Start automatically: the video continues in a small window when you leave Fluxo. When closing the player: the chevron or a swipe down moves the video into a small window. The X always stops playback.")
+        }
+    }
+    #endif
 
     private var recordingsSection: some View {
         let store = player.recordings

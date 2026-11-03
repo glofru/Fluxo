@@ -118,10 +118,10 @@ private struct PlaybackMenuItems: View {
 
         Button("Show Player") {
             player.presentationSourceID = nil
-            player.isPresented = true
+            player.presentPlayer()
         }
         .keyboardShortcut("p", modifiers: [.command, .shift])
-        .disabled(!hasChannel || player.isPresented || player.isPictureInPictureActive)
+        .disabled(!hasChannel || player.isPresented)
 
         Button("Stop Playback") {
             player.stop()

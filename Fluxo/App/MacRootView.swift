@@ -203,7 +203,7 @@ private struct PlaylistSidebarRow: View {
                 } else {
                     Text("No channels yet")
                         .font(.caption)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Theme.warning)
                 }
             }
         } icon: {

@@ -304,7 +304,7 @@ private struct GuideDayBar: View {
                             .padding(.vertical, 7)
                     }
                     .buttonStyle(.plain)
-                    .glassEffect(.regular.tint(.accentColor).interactive(), in: .capsule)
+                    .glassEffect(.regular.tint(Theme.accent).interactive(), in: .capsule)
                     .accessibilityHint("Scrolls the guide to the current time")
 
                     ForEach(days, id: \.self) { date in
@@ -320,7 +320,7 @@ private struct GuideDayBar: View {
                                 .padding(.vertical, 7)
                         }
                         .buttonStyle(.plain)
-                        .glassEffect(isSelected ? .regular.tint(.accentColor.opacity(0.35)).interactive() : .regular.interactive(), in: .capsule)
+                        .glassEffect(isSelected ? .regular.tint(Theme.accent.opacity(0.35)).interactive() : .regular.interactive(), in: .capsule)
                         .glassEffectID(isSelected ? "selected" : date.description, in: glassNamespace)
                         .accessibilityAddTraits(isSelected ? .isSelected : [])
                     }

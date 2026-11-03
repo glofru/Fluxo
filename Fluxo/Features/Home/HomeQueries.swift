@@ -112,6 +112,9 @@ enum HomeQueries {
 
     // MARK: - Search
 
+    // The Search screen ranks tokens in memory (`ChannelSearchIndex`). These are plain SQL filters on the whole
+    // text, for lookups that need no ranking.
+
     /// Channels whose name contains `term` (case and diacritic insensitive), optionally of one kind.
     static func searchChannels(term: String, importIDs: [UUID], kind: ChannelContentKind?, limit: Int) -> FetchDescriptor<PlaylistChannel> {
         let predicate: Predicate<PlaylistChannel>

@@ -10,6 +10,7 @@ library that never touches a real one. Everything here runs on the Mac; nothing 
 | `shot.sh` | Screenshots every display of a kept clone (`--front` first brings a running Fluxo to the front). |
 | `cleanup.sh` | Deletes clones by name prefix (`fluxo-…` only). |
 | `test-stream.sh` | Loopback-only test streams for the player: live HLS, live raw MPEG-TS, on-demand MP4 / TS, and an M3U playlist of them. |
+| `gesture-tests.sh` | Real touches on a kept clone (`GestureTests/`, an XCUITest bundle that drives the installed app): mini player tap and swipe up, the player's drag down (follows, springs back, closes on a long drag or a flick, ignores horizontal drags), scrubbing that never closes the player, the X that stops playback, and nothing above the tab bar while nothing plays (at launch, back from the background, after stopping with the tab bar minimized, after a relaunch). Needs `test-stream.sh`; quit Fluxo on other booted clones first, since every simulator shares the Mac's loopback interface and so the player's local stream port. |
 | `contact_sheet.swift` | Combines screenshots into one labelled grid (`run.sh` does it when a run makes several). |
 
 The app side is in `Fluxo/App/Debug` (`DebugLaunchOptions`, `DebugHarness`, `DebugRoutes`, `DebugSeeder`,
@@ -129,6 +130,10 @@ first that contains the text.
 | `mini-player:<channel>` | Plays a channel with the player closed, so the mini player shows. |
 | `play-url:<url>` | Plays any URL full screen. |
 | `close-player`, `stop` | Closes the player screen (playback continues); stops playback. |
+| `dismiss-player` | Closes the player like its chevron or a swipe down (into Picture in Picture when the device supports it; the Simulator does not, so the mini player shows). |
+| `open-player` | Opens the player for what plays, like a tap on the mini player. |
+| `player-drag:<points>` | Holds the player screen dragged down by that many points, as a finger would (`player-drag:0` releases it). |
+| `overscroll:<points>` | Shows Home as if pulled down by that many points (the billboard stretches over the gap); `overscroll:0` resets it. |
 | `pip` | Starts Picture in Picture once the item allows it. |
 | `add-playlist`, `edit-playlist:<name>`, `delete-playlist:<name>` | The Add / Edit Playlist sheet; the delete confirmation (nothing is deleted). |
 | `wait:<seconds>` | Waits before the next route. |
@@ -210,7 +215,9 @@ show content has to come from the app (e.g. a scene for that display) or from Si
 
 ## Driving the simulator (taps and swipes)
 
-`simctl` cannot tap or swipe. The Xcode MCP `DeviceInteraction*` tools (`DeviceInteractionStartSession`,
+`gesture-tests.sh` drives a kept clone with real touches through XCUITest (no approval needed): add a test to
+`GestureTests/GestureTests.swift` for any gesture to check; it launches Fluxo with the harness arguments and
+writes screenshots. Otherwise `simctl` cannot tap or swipe. The Xcode MCP `DeviceInteraction*` tools (`DeviceInteractionStartSession`,
 then `DeviceInteractionSynthesize` with commands such as `t 100 200`, which also returns a screenshot and the
 UI hierarchy) can, but only after this agent has been approved in Xcode: the first call answers "This
 agent isn't approved to use Xcode's tools yet. Call XcodeOpenWorkspace or XcodeNewProject first", and

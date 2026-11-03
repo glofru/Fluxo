@@ -58,6 +58,11 @@ final class AppNavigation {
     /// The Recordings sheet of Home (iOS; macOS lists recordings in the sidebar).
     var isShowingRecordings = false
 
+    #if DEBUG
+    /// Debug harness (`overscroll:<points>`): Home's content is pushed down as if pulled by this much.
+    var debugHomeOverscroll: CGFloat = 0
+    #endif
+
     /// Shows `destination` from its root.
     func show(_ destination: Destination) {
         #if os(macOS)

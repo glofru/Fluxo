@@ -135,6 +135,19 @@ struct FeaturedCarousel: View {
             .scrollPosition(id: $currentID)
             .scrollIndicators(.hidden)
             .frame(height: topInset + Self.billboardHeight)
+            // One backdrop for every page, behind the pager rather than inside it: the pager clips its pages,
+            // and the backdrop has to grow above the billboard when Home is pulled down. It cross-fades to the
+            // artwork of the page that settles.
+            .background {
+                let current = items.first { $0.id == currentID } ?? items[0]
+                ZStack {
+                    BillboardBackdrop(item: current)
+                        .id(current.id)
+                        .transition(.opacity)
+                }
+                .animation(.easeInOut(duration: 0.45), value: current.id)
+                .accessibilityHidden(true)
+            }
             .overlay(alignment: .bottom) {
                 PageIndicator(ids: items.map(\.id), currentID: $currentID)
                     .padding(.bottom, 4)
@@ -172,7 +185,8 @@ struct FeaturedCarousel: View {
     }
 }
 
-/// One full-bleed billboard page: the blurred artwork behind, the artwork, the title and glass actions.
+/// One full-bleed billboard page: the artwork, the title and glass actions (the blurred backdrop is shared by
+/// the pages, see `FeaturedCarousel.billboard`).
 private struct BillboardPage: View {
 
     static let posterSize = CGSize(width: 112, height: 166)
@@ -189,8 +203,7 @@ private struct BillboardPage: View {
     var body: some View {
         let isFavorite = library.isFavorite(item)
         ZStack(alignment: .bottomLeading) {
-            BillboardBackdrop(item: item)
-                .accessibilityHidden(true)
+            Color.clear
 
             VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .bottom, spacing: 16) {
@@ -206,9 +219,9 @@ private struct BillboardPage: View {
                             .textCase(.uppercase)
                             .foregroundStyle(.tint)
                         Text(item.displayName)
-                            .font(.title.bold())
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.7)
+                            .font(Theme.Typography.heroTitle)
+                            .lineLimit(3)
+                            .minimumScaleFactor(0.85)
                         if !item.groupName.isEmpty {
                             Text(item.groupName)
                                 .font(.subheadline)
@@ -237,7 +250,7 @@ private struct BillboardPage: View {
                             } label: {
                                 Image(systemName: isFavorite ? "star.fill" : "star")
                                     .font(.headline)
-                                    .foregroundStyle(isFavorite ? Color.yellow : Color.primary)
+                                    .foregroundStyle(isFavorite ? Theme.favorite : Color.primary)
                                     .contentTransition(.symbolEffect(.replace))
                                     .frame(width: 22, height: 22)
                             }
@@ -293,8 +306,11 @@ private struct BillboardPage: View {
     }
 }
 
-/// Blurred, tiny-decoded artwork on an accent gradient, faded into the screen background at the bottom (and
+/// Blurred, tiny-decoded artwork on the brand gradient, faded into the screen background at the bottom (and
 /// slightly at the top, so the status bar and the toolbar stay legible in light and dark mode).
+///
+/// When Home is pulled down (pull to refresh), the backdrop stretches upward from its bottom edge so it always
+/// fills the gap above the content: the top of the screen shows the blurred cover, never an empty background.
 private struct BillboardBackdrop: View {
 
     /// Decoded tiny and blurred: a few kilobytes instead of a full-size bitmap.
@@ -308,11 +324,6 @@ private struct BillboardBackdrop: View {
         ZStack {
             artwork
                 .clipped()
-                // Stretches with the pull-to-refresh overscroll instead of leaving a gap above it.
-                .visualEffect { content, proxy in
-                    let overscroll = max(0, proxy.frame(in: .scrollView(axis: .vertical)).minY)
-                    return content.scaleEffect(1 + overscroll / max(1, proxy.size.height), anchor: .bottom)
-                }
                 .backgroundExtensionEffect()
 
             LinearGradient(
@@ -328,12 +339,18 @@ private struct BillboardBackdrop: View {
             )
             .allowsHitTesting(false)
         }
+        .visualEffect { content, proxy in
+            // How far the top of the billboard has been pulled below the top of the scroll view.
+            let overscroll = max(0, proxy.frame(in: .scrollView(axis: .vertical)).minY)
+            let height = max(1, proxy.size.height)
+            return content.scaleEffect(x: 1 + overscroll / height * 0.35, y: 1 + overscroll / height, anchor: .bottom)
+        }
     }
 
     private var artwork: some View {
         GeometryReader { proxy in
             ZStack {
-                LinearGradient(colors: [.accentColor, .indigo, .purple.opacity(0.8)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                Theme.brandGradient
 
                 if let item {
                     LogoImage(source: item.logo, size: Self.decodeSize, contentMode: .fill) { _ in
@@ -397,7 +414,7 @@ private struct FeaturedCard: View {
                         .font(.headline)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 9)
-                        .glassEffect(.regular.tint(.accentColor).interactive(), in: .capsule)
+                        .glassEffect(.regular.tint(Theme.accent).interactive(), in: .capsule)
                         .padding(.top, 4)
                 }
                 .foregroundStyle(.white)
@@ -415,7 +432,7 @@ private struct FeaturedCard: View {
             .overlay(alignment: .topTrailing) {
                 if isFavorite {
                     Image(systemName: "star.fill")
-                        .foregroundStyle(.yellow)
+                        .foregroundStyle(Theme.favorite)
                         .padding(8)
                         .glassEffect(.regular, in: .circle)
                         .padding(14)
@@ -451,7 +468,7 @@ private struct FeaturedCard: View {
     private var backdrop: some View {
         GeometryReader { proxy in
             ZStack {
-                LinearGradient(colors: [.accentColor.opacity(0.9), .indigo.opacity(0.8)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                Theme.brandGradient
 
                 LogoImage(source: item.logo, size: Self.backdropSize, contentMode: .fill) { _ in
                     Color.clear

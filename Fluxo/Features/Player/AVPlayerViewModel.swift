@@ -23,8 +23,11 @@ final class PlaybackTimeline {
     private(set) var duration: TimeInterval = 0
     private(set) var seekableStart: TimeInterval = 0
     private(set) var seekableEnd: TimeInterval = 0
-    /// How far playback is behind the live edge of a live stream.
+    /// How far playback is behind the live point of a live stream: the end of the seekable range minus the
+    /// player's live latency (`liveLatency`), which is where playback sits when it plays live. 0 at live.
     private(set) var timeBehindLive: TimeInterval = 0
+    /// How far behind the end of the seekable range the player plays live (a few segments for HLS).
+    private(set) var liveLatency: TimeInterval = 0
     private(set) var isAtLiveEdge = true
     private(set) var recordingDuration: TimeInterval = 0
 
@@ -33,13 +36,14 @@ final class PlaybackTimeline {
         max(0, seekableEnd - seekableStart)
     }
 
-    func update(currentTime: TimeInterval, duration: TimeInterval, seekableStart: TimeInterval, seekableEnd: TimeInterval, timeBehindLive: TimeInterval, isAtLiveEdge: Bool) {
+    func update(currentTime: TimeInterval, duration: TimeInterval, seekableStart: TimeInterval, seekableEnd: TimeInterval, timeBehindLive: TimeInterval, liveLatency: TimeInterval, isAtLiveEdge: Bool) {
         // Half a second of resolution is enough for the controls and avoids needless renders.
         assignIfChanged(\.currentTime, currentTime)
         assignIfChanged(\.duration, duration)
         assignIfChanged(\.seekableStart, seekableStart)
         assignIfChanged(\.seekableEnd, seekableEnd)
         assignIfChanged(\.timeBehindLive, timeBehindLive)
+        assignIfChanged(\.liveLatency, liveLatency)
         if self.isAtLiveEdge != isAtLiveEdge {
             self.isAtLiveEdge = isAtLiveEdge
         }
@@ -50,7 +54,7 @@ final class PlaybackTimeline {
     }
 
     func reset() {
-        update(currentTime: 0, duration: 0, seekableStart: 0, seekableEnd: 0, timeBehindLive: 0, isAtLiveEdge: true)
+        update(currentTime: 0, duration: 0, seekableStart: 0, seekableEnd: 0, timeBehindLive: 0, liveLatency: 0, isAtLiveEdge: true)
         recordingDuration = 0
     }
 
@@ -129,10 +133,16 @@ final class AVPlayerViewModel {
     }
 
     var isPresented: Bool = false
-    /// The view the full-screen player zooms out of (iOS), see `playerTransitionSource(id:)`. nil: the mini
+    /// The player screen was closed and Picture in Picture is taking the video over: the screen stays mounted
+    /// (off screen, the video layer must stay in a window until PiP has started), see `closePlayer()`.
+    private(set) var isClosingIntoPictureInPicture = false
+    /// The view the full-screen player grows out of (iOS), see `playerTransitionSource(id:)`. nil: the mini
     /// player. Only read when the player is presented.
     @ObservationIgnored
     var presentationSourceID: String?
+    /// Identifies the latest `closePlayer()` that asked for PiP, so an older timeout never ends a newer one.
+    @ObservationIgnored
+    private var closingAttempt = 0
 
     private(set) var currentChannel: PlayableChannel?
     /// The playlist entry being played, when it was started from a card, a row or by zapping (not for
@@ -286,8 +296,62 @@ final class AVPlayerViewModel {
         start(channel, url: url)
     }
 
+    /// Opens the player screen for the current channel. While Picture in Picture runs, PiP is stopped instead
+    /// and AVKit restores the screen (see `onRestoreUserInterface`), so the video animates back into it.
+    func presentPlayer() {
+        guard currentChannel != nil else {
+            return
+        }
+        if isPictureInPictureActive {
+            surface.stopPictureInPicture()
+            // AVKit normally asks to restore the screen at once; present it anyway if it does not.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                guard let self, self.currentChannel != nil, !self.isPictureInPictureActive, !self.isPresented else {
+                    return
+                }
+                self.presentationSourceID = nil
+                self.isPresented = true
+            }
+        } else {
+            isPresented = true
+        }
+    }
+
+    /// Closes the player screen; playback continues. On iOS the video moves into Picture in Picture when it can
+    /// (Settings › Playback), otherwise it continues in the mini player.
+    func closePlayer() {
+        guard isPresented, !isClosingIntoPictureInPicture else {
+            return
+        }
+        #if os(iOS)
+        if PlayerPreferences.pictureInPictureOnClose, !isPictureInPictureActive, playbackState == .playing || playbackState == .buffering, surface.startPictureInPicture() {
+            // `onPictureInPictureActiveChange` closes the screen once PiP runs; never wait longer than this.
+            isClosingIntoPictureInPicture = true
+            closingAttempt &+= 1
+            let attempt = closingAttempt
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                guard let self, self.closingAttempt == attempt else {
+                    return
+                }
+                self.finishClosingIntoPictureInPicture()
+            }
+            return
+        }
+        #endif
+        isPresented = false
+    }
+
+    private func finishClosingIntoPictureInPicture() {
+        guard isClosingIntoPictureInPicture else {
+            return
+        }
+        isClosingIntoPictureInPicture = false
+        isPresented = false
+    }
+
     /// Stops playback completely and closes the player.
     func stop() {
+        isClosingIntoPictureInPicture = false
         completePendingRestore(false)
         surface.stopPictureInPicture()
         tearDownPlayback()
@@ -824,8 +888,13 @@ final class AVPlayerViewModel {
         let seekableStart = range?.start ?? 0
         let seekableEnd = range?.end ?? 0
         let isLive = isTimeShiftAvailable || item.duration.isIndefinite
-        let behind = isLive ? max(0, seekableEnd - current) : 0
-        let atLiveEdge = !isLive || behind <= liveOffset(of: item) + 5
+        // Measured from the live point (where `goLive()` seeks), so the timeline, "-m:ss Go Live" and the LIVE
+        // indicator agree: a scrub a few seconds back shows "Go Live" with the same time as the timeline.
+        let latency = isLive ? liveOffset(of: item) : 0
+        let behind = isLive ? max(0, seekableEnd - latency - current) : 0
+        // With some hysteresis, so that playback hovering around the tolerance does not flip LIVE and Go Live.
+        let tolerance = Self.liveEdgeTolerance(latency: latency) + (timeline.isAtLiveEdge ? 1.5 : 0)
+        let atLiveEdge = !isLive || behind <= tolerance
 
         timeline.update(
             currentTime: current,
@@ -833,6 +902,7 @@ final class AVPlayerViewModel {
             seekableStart: seekableStart,
             seekableEnd: seekableEnd,
             timeBehindLive: behind,
+            liveLatency: latency,
             isAtLiveEdge: atLiveEdge
         )
         let seekable = (range.map { $0.end - $0.start } ?? 0) > 2
@@ -848,6 +918,13 @@ final class AVPlayerViewModel {
         }
         let start = range.start.seconds
         return (start, start + range.duration.seconds)
+    }
+
+    /// How far behind the live point still counts as live. The seekable range grows a segment at a time, so
+    /// playing live drifts by up to one segment (about a third of the recommended latency, which is three
+    /// segments) before the next one arrives.
+    static func liveEdgeTolerance(latency: TimeInterval) -> TimeInterval {
+        max(3, latency / 3 + 1)
     }
 
     /// Distance from the live edge AVPlayer recommends for smooth live playback.
@@ -928,6 +1005,7 @@ final class AVPlayerViewModel {
             if isActive {
                 // Let the user browse while the video plays in PiP. The surface (and with it the
                 // controller that drives PiP) stays alive in this model.
+                self.isClosingIntoPictureInPicture = false
                 self.isPresented = false
             }
         }
@@ -957,7 +1035,16 @@ final class AVPlayerViewModel {
             }
         }
         surface.onPictureInPictureError = { [weak self] error in
-            self?.streamError = error.localizedDescription
+            guard let self else {
+                return
+            }
+            if self.isClosingIntoPictureInPicture {
+                // Closing the screen was asking for PiP: just close it, playback goes on in the mini player.
+                logger.error("Picture in Picture did not start on close: \(error.localizedDescription, privacy: .public)")
+                self.finishClosingIntoPictureInPicture()
+            } else {
+                self.streamError = error.localizedDescription
+            }
         }
         surface.onPictureInPicturePossibleChange = { [weak self] isPossible in
             self?.updatePictureInPicturePossible(isPossible)

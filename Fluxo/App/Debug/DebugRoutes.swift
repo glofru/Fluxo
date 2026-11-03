@@ -223,6 +223,28 @@ enum DebugRoutes {
         DebugRoute("close-player", "Closes the player screen; playback continues in the mini player.") { context, _ in
             context.player.isPresented = false
         },
+        DebugRoute("dismiss-player", "Closes the player like its chevron or a swipe down (iOS: into Picture in Picture when it can).") { context, _ in
+            await context.wait(timeout: 10) { context.player.isPictureInPicturePossible }
+            context.player.closePlayer()
+            await context.wait(timeout: 4) { !context.player.isPresented }
+        },
+        DebugRoute("player-drag:<points>", "Holds the player screen dragged down by <points>, as a finger would (0 releases it).") { _, argument in
+            guard let points = Double(argument) else {
+                throw DebugRouteError.invalidArgument("player-drag", argument)
+            }
+            NotificationCenter.default.post(name: .fluxoDebugPlayerDrag, object: CGFloat(points))
+        },
+        DebugRoute("open-player", "Opens the player screen for what plays (from Picture in Picture too), like a tap on the mini player.") { context, _ in
+            context.player.presentPlayer()
+            await context.wait(timeout: 4) { context.player.isPresented }
+        },
+        DebugRoute("overscroll:<points>", "Home pulled down by <points> (the billboard stretches over the gap).") { context, argument in
+            guard let points = Double(argument) else {
+                throw DebugRouteError.invalidArgument("overscroll", argument)
+            }
+            context.navigation.show(.home)
+            context.navigation.debugHomeOverscroll = CGFloat(points)
+        },
         DebugRoute("stop", "Stops playback.") { context, _ in
             context.player.stop()
         },

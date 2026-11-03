@@ -101,6 +101,9 @@ enum HomeQueriesCheck {
         let groups = try timed("search groups 'sport'") { try context.fetch(HomeQueries.searchGroups(term: "SPORT", importIDs: [importA, importB], kind: nil, limit: 20)) }
         expect(!groups.isEmpty && groups.allSatisfy { $0.name.localizedCaseInsensitiveContains("sport") }, "group search found \(groups.count)")
 
+        print("== token search (\(channelTotal) realistic names)")
+        try checkTokenSearch(container: container, channelTotal: channelTotal, importB: importB)
+
         print("== library")
         try checkLibrary(container: container, playlistA: playlistA, importA: importA, playlistB: playlistB, importB: importB)
 
@@ -194,6 +197,105 @@ enum HomeQueriesCheck {
         try context.save()
     }
 
+    /// Seeds a playlist of IPTV-style names (country prefixes, quality tags, numbered feeds) and checks the
+    /// token search of `ChannelSearchIndex` / `SearchMatcher` on it: matches, ranking, typos and speed.
+    static func checkTokenSearch(container: ModelContainer, channelTotal: Int, importB: UUID) throws {
+        let playlistC = UUID()
+        let importC = UUID()
+        let brands = [
+            "Sky Sport F1", "Sky Sport MotoGP", "Sky Sport Calcio", "Sky Sport Uno", "Sky Cinema Uno", "Sky TG24", "Sky Atlantic",
+            "BBC One", "BBC Two", "BBC News", "ITV 1", "Channel 4", "Rai 1", "Rai 2", "Rai Sport", "Canale 5", "Italia 1",
+            "Rete 4", "Eurosport 1", "Eurosport 2", "DAZN 1", "DAZN 2", "beIN Sports 1", "beIN Sports 2", "Canal+ Sport",
+            "Canal+ Cinéma", "TF1", "France 2", "M6", "ZDF", "Das Erste", "RTL", "ProSieben", "Antena 3", "La 1", "Telecinco",
+            "Discovery Channel", "National Geographic", "History", "Cartoon Network", "Nickelodeon", "MTV Hits", "CNN International",
+            "Al Jazeera English", "NHK World", "Euronews", "Mediaset Extra", "Real Time", "Food Network", "HGTV",
+        ]
+        let prefixes = ["", "IT | ", "UK: ", "DE - ", "FR ", "ES| ", "[US] ", "VIP "]
+        let suffixes = ["", " HD", " FHD", " 4K", " SD", " (Backup)", " HEVC", " +1"]
+        let context = ModelContext(container)
+        context.autosaveEnabled = false
+        let playlist = Playlist(uuid: playlistC, name: "Realistic", url: URL(fileURLWithPath: "/realistic.m3u"), createdOn: .now)
+        playlist.currentImportID = importC
+        context.insert(playlist)
+        var groups: [PlaylistChannelGroup] = []
+        let groupNames = ["Sport", "Cinema", "News", "Kids", "Documentari", "Intrattenimento", "UK | Sport", "Deutschland", "France", "España"]
+        for (index, name) in groupNames.enumerated() {
+            groups.append(PlaylistChannelGroup(uuid: UUID(), name: name, sortIndex: index, channelCount: channelTotal / groupNames.count, importID: importC, playlistID: playlistC))
+        }
+        try timed("seed realistic names") {
+            for index in 0..<channelTotal {
+                // The plain brand names come first, so each one exists exactly once without prefix and suffix.
+                let brand = brands[index % brands.count]
+                let round = index / brands.count
+                let name = prefixes[round % prefixes.count] + brand + suffixes[(round / prefixes.count) % suffixes.count] + (round >= 64 ? " \(round)" : "")
+                context.insert(PlaylistChannel(
+                    uuid: UUID(), name: name, groupName: groupNames[index % groupNames.count], url: URL(string: "https://realistic/\(index)"),
+                    sortIndex: index, importID: importC, playlistID: playlistC
+                ))
+                if index % 10_000 == 9_999 {
+                    try context.save()
+                }
+            }
+            playlist.groups = groups
+            try context.save()
+        }
+
+        let index = timed("build index (\(channelTotal) names)") { ChannelSearchIndex.build(importID: importC, container: container) }
+        expect(index.channels.count == channelTotal && index.groups.count == groupNames.count, "index holds \(index.channels.count) channels, \(index.groups.count) groups")
+        let indexB = ChannelSearchIndex.build(importID: importB, container: container)
+
+        func names(_ text: String, kind: ChannelContentKind? = nil, limit: Int = 150, sources: [ImportSearchIndex]? = nil) -> [String] {
+            let sources = (sources ?? [index]).map { ($0.importID, $0.channels) }
+            let hits = timed("search '\(text)'") { ChannelSearchIndex.rank(sources, query: SearchQuery(text), kind: kind?.rawValue, limit: limit) }
+            let rows = ChannelSearchIndex.channels(for: hits, in: ModelContext(container))
+            return rows.compactMap(\.name)
+        }
+
+        let skyF1 = names("Sky F1")
+        expect(skyF1.first == "Sky Sport F1", "'Sky F1' ranks 'Sky Sport F1' first (got \(skyF1.first ?? "nothing"))")
+        expect(!skyF1.isEmpty && skyF1.allSatisfy { $0.contains("Sky Sport F1") }, "'Sky F1' finds only Sky Sport F1 feeds (\(skyF1.count))")
+        expect(names("sky sport f1").first == "Sky Sport F1", "the exact name ranks first")
+        expect(names("f1 sky").first == "Sky Sport F1", "tokens in any order")
+        expect(names("SKY  sport, F1!").first == "Sky Sport F1", "case and punctuation insensitive")
+        expect(names("skysport").contains { $0.hasPrefix("Sky Sport") }, "joined words: 'skysport'")
+        expect(names("canal cinema").contains("Canal+ Cinéma"), "diacritics and symbols: 'canal cinema'")
+        expect(names("it sky calcio").first == "IT | Sky Sport Calcio", "prefix tag as a token: 'it sky calcio'")
+        expect(names("eurosprot 2").first == "Eurosport 2", "typo: 'eurosprot 2' (got \(names("eurosprot 2").first ?? "nothing"))")
+        expect(names("discovry").first == "Discovery Channel", "typo while typing: 'discovry'")
+        expect(names("natonal geo").first == "National Geographic", "typo + prefix: 'natonal geo'")
+        let dazn3 = names("dazn 3")
+        expect(dazn3.allSatisfy { $0.split(separator: " ").contains { $0.hasPrefix("3") } }, "digits are not fuzzy: 'dazn 3' never finds a plain 'DAZN 1' / 'DAZN 2'")
+        expect(names("bbc").count == 150, "a short query fills the limit")
+        expect(names("zzzz qqqq").isEmpty, "no false positives for nonsense")
+        expect(names("cafe", sources: [indexB]).first == "Café Crème TV", "diacritic-insensitive: 'cafe'")
+        expect(names("crème café", sources: [indexB]).first == "Café Crème TV", "accented query, any order")
+        let prefixRanking = names("rai")
+        expect(prefixRanking.first == "Rai 1" || prefixRanking.first == "Rai 2", "word matches before infix matches ('rai' → \(prefixRanking.first ?? "nothing"))")
+        _ = names("s")
+        _ = names("sport")
+        _ = names("sprot")
+
+        let groupHits = ChannelSearchIndex.rank([(importC, index.groups)], query: SearchQuery("sport"), kind: nil, limit: 20)
+        let groupRows = ChannelSearchIndex.groups(for: groupHits, in: ModelContext(container)).map(\.name)
+        expect(groupRows.first == "Sport" && groupRows.contains("UK | Sport"), "group search: \(groupRows)")
+        let spanish = ChannelSearchIndex.rank([(importC, index.groups)], query: SearchQuery("espana"), kind: nil, limit: 20)
+        expect(spanish.count == 1, "group search without the tilde: 'espana'")
+
+        // A stale keystroke's search (its task cancelled) stops at once instead of ranking every name.
+        let sources = [(importC, index.channels)]
+        let result = CancelledRankResult()
+        let done = DispatchSemaphore(value: 0)
+        Task.detached {
+            withUnsafeCurrentTask { $0?.cancel() }
+            let start = Date()
+            let hits = ChannelSearchIndex.rank(sources, query: SearchQuery("sprot"), kind: nil, limit: 150)
+            result.store(count: hits.count, seconds: Date().timeIntervalSince(start))
+            done.signal()
+        }
+        done.wait()
+        expect(result.count == 0, "a cancelled search returns nothing (got \(result.count) hits in \(String(format: "%.1f", result.seconds * 1000)) ms)")
+    }
+
     static func checkLibrary(container: ModelContainer, playlistA: UUID, importA: UUID, playlistB: UUID, importB: UUID) throws {
         let library = ChannelLibrary(container: container)
         let context = container.mainContext
@@ -263,5 +365,27 @@ enum HomeQueriesCheck {
         let orphan = ChannelItem(id: UUID(), playlistID: UUID(), name: "Gone", logo: nil, url: first.url, groupName: first.groupName, kind: .live)
         expect(zapper.neighbor(of: orphan, offset: 1) == nil, "no neighbor once the playlist is gone")
         expect(next.map { $0.groupName == first.groupName } == true, "zapping stays inside the group")
+    }
+}
+
+/// The outcome of the cancelled ranking of `checkTokenSearch`, handed from its task to the main thread.
+final class CancelledRankResult: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedCount = -1
+    private var storedSeconds: TimeInterval = 0
+
+    func store(count: Int, seconds: TimeInterval) {
+        lock.withLock {
+            storedCount = count
+            storedSeconds = seconds
+        }
+    }
+
+    var count: Int {
+        lock.withLock { storedCount }
+    }
+
+    var seconds: TimeInterval {
+        lock.withLock { storedSeconds }
     }
 }

@@ -75,6 +75,10 @@ struct SearchView: View {
                 .task(id: request) {
                     await run(request)
                 }
+                .task(id: libraryScope.importIDs) {
+                    // Reads the names once, so the first search is as fast as the next ones.
+                    await ChannelSearchIndex.shared.prewarm(importIDs: libraryScope.importIDs, container: modelContext.container)
+                }
                 .channelDestinations()
         }
     }
@@ -166,12 +170,23 @@ enum ChannelSearch {
         }
     }
 
+    /// Token search over the in-memory index (see `ChannelSearchIndex` and `SearchMatcher`): every word of
+    /// the query must match a word of the name, in any order, with typos allowed for longer words; the best
+    /// matches come first.
     static func run(_ request: Request, container: ModelContainer) async -> Results {
-        await Task.detached(priority: .userInitiated) {
+        let hits = await ChannelSearchIndex.shared.search(
+            request.term,
+            importIDs: request.importIDs,
+            kind: request.kind,
+            channelLimit: channelLimit,
+            groupLimit: groupLimit,
+            container: container
+        )
+        return await Task.detached(priority: .userInitiated) {
             let context = ModelContext(container)
-            let groups = (try? context.fetch(HomeQueries.searchGroups(term: request.term, importIDs: request.importIDs, kind: request.kind, limit: groupLimit))) ?? []
-            let channels = (try? context.fetch(HomeQueries.searchChannels(term: request.term, importIDs: request.importIDs, kind: request.kind, limit: channelLimit))) ?? []
-            return Results(request: request, channels: channels.map(ChannelItem.init), groups: groups.map(GroupItem.init))
+            let channels = ChannelSearchIndex.channels(for: hits.channels, in: context).map(ChannelItem.init)
+            let groups = ChannelSearchIndex.groups(for: hits.groups, in: context).map(GroupItem.init)
+            return Results(request: request, channels: channels, groups: groups)
         }.value
     }
 }
@@ -268,7 +283,7 @@ private struct SearchResultRow: View {
 
                 if isFavorite {
                     Image(systemName: "star.fill")
-                        .foregroundStyle(.yellow)
+                        .foregroundStyle(Theme.favorite)
                         .accessibilityLabel("Favorite")
                 }
             }
@@ -283,7 +298,7 @@ private struct SearchResultRow: View {
                 Button(isFavorite ? "Unfavorite" : "Favorite", systemImage: isFavorite ? "star.slash" : "star") {
                     library.toggleFavorite(item)
                 }
-                .tint(.yellow)
+                .tint(Theme.favorite)
             }
         }
     }

@@ -154,6 +154,16 @@ final class PlayerSurface: NSObject {
         }
     }
 
+    /// Starts Picture in Picture when it can start now; returns whether it was asked to.
+    @discardableResult
+    func startPictureInPicture() -> Bool {
+        guard let pictureInPicture, !pictureInPicture.isPictureInPictureActive, pictureInPicture.isPictureInPicturePossible else {
+            return false
+        }
+        pictureInPicture.startPictureInPicture()
+        return true
+    }
+
     func stopPictureInPicture() {
         if pictureInPicture?.isPictureInPictureActive == true {
             pictureInPicture?.stopPictureInPicture()

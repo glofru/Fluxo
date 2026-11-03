@@ -174,12 +174,12 @@ private struct GuideSearchRow: View {
                         await epg.reminders.toggle(programme, on: result.channel)
                     }
                 }
-                .tint(.accentColor)
+                .tint(Theme.accent)
             } else {
                 Button("Watch", systemImage: "play.fill") {
                     playChannel(result.channel)
                 }
-                .tint(.green)
+                .tint(Theme.live)
             }
         }
     }
