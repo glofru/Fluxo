@@ -7,14 +7,14 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		991C73082E1B3D57004AF87A /* libavformat.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 991C73012E1B3D57004AF87A /* libavformat.framework */; platformFilters = (ios, ); };
-		991C730A2E1B3D57004AF87A /* libswresample.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 991C73032E1B3D57004AF87A /* libswresample.framework */; platformFilters = (ios, ); };
-		991C730B2E1B3D57004AF87A /* libavutil.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 991C73042E1B3D57004AF87A /* libavutil.framework */; platformFilters = (ios, ); };
-		991C730D2E1B3D57004AF87A /* libavcodec.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 991C73062E1B3D57004AF87A /* libavcodec.framework */; platformFilters = (ios, ); };
-		991C73512E1B3E38004AF87A /* libswresample.framework in CopyFiles */ = {isa = PBXBuildFile; fileRef = 991C734A2E1B3E37004AF87A /* libswresample.framework */; platformFilters = (ios, ); settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		991C73522E1B3E38004AF87A /* libavcodec.framework in CopyFiles */ = {isa = PBXBuildFile; fileRef = 991C734B2E1B3E37004AF87A /* libavcodec.framework */; platformFilters = (ios, ); settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		991C73532E1B3E38004AF87A /* libavutil.framework in CopyFiles */ = {isa = PBXBuildFile; fileRef = 991C734C2E1B3E37004AF87A /* libavutil.framework */; platformFilters = (ios, ); settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		991C73552E1B3E38004AF87A /* libavformat.framework in CopyFiles */ = {isa = PBXBuildFile; fileRef = 991C734E2E1B3E38004AF87A /* libavformat.framework */; platformFilters = (ios, ); settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		991C73082E1B3D57004AF87A /* libavformat.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 991C73012E1B3D57004AF87A /* libavformat.framework */; platformFilter = ios; };
+		991C730A2E1B3D57004AF87A /* libswresample.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 991C73032E1B3D57004AF87A /* libswresample.framework */; platformFilter = ios; };
+		991C730B2E1B3D57004AF87A /* libavutil.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 991C73042E1B3D57004AF87A /* libavutil.framework */; platformFilter = ios; };
+		991C730D2E1B3D57004AF87A /* libavcodec.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 991C73062E1B3D57004AF87A /* libavcodec.framework */; platformFilter = ios; };
+		991C73512E1B3E38004AF87A /* libswresample.framework in CopyFiles */ = {isa = PBXBuildFile; fileRef = 991C734A2E1B3E37004AF87A /* libswresample.framework */; platformFilter = ios; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		991C73522E1B3E38004AF87A /* libavcodec.framework in CopyFiles */ = {isa = PBXBuildFile; fileRef = 991C734B2E1B3E37004AF87A /* libavcodec.framework */; platformFilter = ios; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		991C73532E1B3E38004AF87A /* libavutil.framework in CopyFiles */ = {isa = PBXBuildFile; fileRef = 991C734C2E1B3E37004AF87A /* libavutil.framework */; platformFilter = ios; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		991C73552E1B3E38004AF87A /* libavformat.framework in CopyFiles */ = {isa = PBXBuildFile; fileRef = 991C734E2E1B3E38004AF87A /* libavformat.framework */; platformFilter = ios; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		993BF4A62DF63B8300F21206 /* .swiftlint.yml in Resources */ = {isa = PBXBuildFile; fileRef = 993BF4A52DF63B8300F21206 /* .swiftlint.yml */; };
 		993BF4AD2DF6981900F21206 /* ModelRegisty.stencil in Resources */ = {isa = PBXBuildFile; fileRef = 993BF4AB2DF6980F00F21206 /* ModelRegisty.stencil */; };
 		997F92342E1A3931008E2656 /* FlyingFox in Frameworks */ = {isa = PBXBuildFile; productRef = 997F92332E1A3931008E2656 /* FlyingFox */; };
@@ -419,6 +419,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 4MJXMYZ3D9;
+				"DEVELOPMENT_TEAM[sdk=macosx*]" = 4MJXMYZ3D9;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -432,8 +433,8 @@
 				"HEADER_SEARCH_PATHS[sdk=iphonesimulator*]" = "$(SRCROOT)/fmpeg-arm64/ffmpeg/include";
 				"HEADER_SEARCH_PATHS[sdk=macosx*]" = "$(FFMPEG_MACOS_PREFIX)/include";
 				INFOPLIST_FILE = Fluxo/Info.plist;
-				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
-				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = NO;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = NO;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
@@ -453,15 +454,16 @@
 					"$(FFMPEG_MACOS_PREFIX)/lib",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
 				"OTHER_LDFLAGS[sdk=macosx*]" = (
 					"$(inherited)",
 					"-lavformat",
 					"-lavcodec",
 					"-lavutil",
 				);
-				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.watermelon.Fluxo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
@@ -486,6 +488,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 4MJXMYZ3D9;
+				"DEVELOPMENT_TEAM[sdk=macosx*]" = 4MJXMYZ3D9;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -499,8 +502,8 @@
 				"HEADER_SEARCH_PATHS[sdk=iphonesimulator*]" = "$(SRCROOT)/fmpeg-arm64/ffmpeg/include";
 				"HEADER_SEARCH_PATHS[sdk=macosx*]" = "$(FFMPEG_MACOS_PREFIX)/include";
 				INFOPLIST_FILE = Fluxo/Info.plist;
-				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
-				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = NO;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = NO;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
@@ -520,15 +523,16 @@
 					"$(FFMPEG_MACOS_PREFIX)/lib",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
 				"OTHER_LDFLAGS[sdk=macosx*]" = (
 					"$(inherited)",
 					"-lavformat",
 					"-lavcodec",
 					"-lavutil",
 				);
-				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.watermelon.Fluxo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";

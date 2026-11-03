@@ -59,8 +59,7 @@ struct WatchView: View {
                 ForEach(playlists) { playlist in
                     if let importID = playlist.currentImportID {
                         ChannelGroupSections(importID: importID) { channel in
-                            viewModel.currentChannel = PlayableChannel(channel)
-                            viewModel.isPresented = true
+                            viewModel.play(PlayableChannel(channel))
                         }
                     }
                 }
@@ -69,6 +68,13 @@ struct WatchView: View {
             .headerProminence(.increased)
             .navigationTitle("Watch")
             .toolbar {
+                Button(action: {
+                    displayedSheet = .recordings
+                }, label: {
+                    Image(systemName: "film.stack")
+                        .accessibilityLabel("Recordings")
+                })
+
                 Button(action: {
                     displayedSheet = .addPlaylist
                 }, label: {
@@ -84,6 +90,11 @@ struct WatchView: View {
                 case .updatePlaylist(let playlist):
                     AddPlaylistView(playlist: playlist)
                         .presentationDetents([.medium])
+                case .recordings:
+                    RecordingsView(store: viewModel.recordings, isRecordingActive: viewModel.isRecording) { recording in
+                        displayedSheet = nil
+                        viewModel.playRecording(recording)
+                    }
                 }
             }
             .alert("Delete playlist", isPresented: .init(get: { playlistToDelete != nil }, set: { _ in playlistToDelete = nil }), presenting: playlistToDelete) { playlist in
@@ -236,10 +247,12 @@ private struct ChannelGroupView: View {
 private enum HomeViewSheet: Identifiable {
     case addPlaylist
     case updatePlaylist(Playlist)
+    case recordings
 
     var id: String {
         switch self {
         case .addPlaylist: "AddPlaylist"
+        case .recordings: "Recordings"
         case .updatePlaylist(let playlist): "UpdatePlaylist\(playlist.uuid)"
         }
     }

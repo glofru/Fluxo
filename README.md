@@ -65,3 +65,54 @@ run the parser edge-case self test:
 ```sh
 Tools/PlaylistBenchmark/run.sh             # ENTRIES=20000 for a quicker run
 ```
+
+## Player
+
+- **Routing** (`PlaybackRoute`): HLS playlists and MP4/MOV files play directly in
+  AVPlayer. Raw MPEG-TS channels (no extension or `.ts`, or `udp://`, `rtmp://`,
+  `rtsp://`, `srt://`) go through the remux engine, which writes local HLS that
+  AVPlayer reads from the loopback server (`127.0.0.1:19123` only).
+  Live channels with `.m3u8` URLs play directly in AVPlayer, so they use the
+  DVR window of the source playlist (if it has one) and cannot be recorded.
+  An on-demand `.ts` file served over HTTP ends normally once its last byte is
+  read; any other end of a live input is treated as a dropped connection.
+- **Deterministic start**: the engine has its own HLS segmenter and reports each
+  completed segment. The player item is created once, after the first segment
+  exists and the server is listening. There is no polling.
+- **Time shift (DVR)**: live channels keep a sliding window of at most 30
+  minutes and at most 512 MB, or a tenth of the free disk space if that is
+  smaller. Segments that leave the window are deleted. You can pause, resume,
+  skip back 10 s or forward 30 s, and go back to live (`AVPlayerViewModel`).
+- **Reconnection**: when a live input drops or ends, the engine reconnects with
+  backoff (0.5 s to 8 s, 10 attempts). Buffered media keeps playing in the
+  meantime, and the playlist continues with `EXT-X-DISCONTINUITY`.
+- **Recording**: the record button writes the live stream to
+  `Documents/Recordings/<channel>-<date>.ts`, which is a second output of the
+  engine. When the recording stops, it is converted to `.mp4` (stream copy) so
+  that you can play it and seek in it. Recordings can be listed, played and
+  deleted from the player or from the Watch toolbar. The conversion writes a
+  hidden temporary file that is renamed when complete. Recordings interrupted
+  by a crash are converted at the next launch.
+- **One player per app**: `FluxoApp` owns the only `AVPlayerViewModel`. The
+  main UI is a single `Window` on macOS, and multiple scenes are disabled on
+  iOS, because the loopback port, the PiP surface and the segment directory can
+  have only one owner. Startup cleanup (leftover segments, interrupted
+  recordings) runs once per process, before the first session starts, and only
+  in the instance that holds `tmp/fluxo-instance.lock`, so a second copy of the
+  app sharing the same container never deletes files the first one writes.
+- **Picture in Picture**: the `AVPlayerViewController` (iOS) or `AVPlayerView`
+  (macOS) belongs to the view model (`PlayerSurface`), so PiP keeps running when
+  the player screen closes. Stopping PiP presents the player again. On iOS the
+  audio session uses `.playback` / `.moviePlayback` and the `audio`
+  background mode.
+
+Engine smoke tests (macOS, Homebrew FFmpeg). They serve a generated live
+stream on 127.0.0.1:
+
+```sh
+Tools/EngineSmokeTest/run.sh           # window cleanup, reconnection, recording + MP4 conversion
+Tools/EngineSmokeTest/run_avplayer.sh  # AVPlayer pause/resume/skip/go-live on the engine output
+```
+
+Debug builds (`Fluxo/App/Debug/DebugAutoplay.swift`) also accept `-FluxoDebugAutoplayURL <url>`, which plays a stream at
+launch, and `-FluxoDebugRecordSeconds <n>`, which records it for n seconds.

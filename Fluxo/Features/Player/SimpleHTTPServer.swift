@@ -7,30 +7,41 @@
 
 import FlyingFox
 import Foundation
+import OSLog
+
+private let logger = Logger(subsystem: "dev.watermelon.Fluxo", category: "HTTPServer")
 
 /// Serves the HLS files produced by the remux engine to AVPlayer.
 ///
 /// The server only listens on the IPv4 loopback interface (127.0.0.1): it is reachable from this
 /// device alone and never from the local network. It serves flat file names from a single directory
 /// and only the HLS file types it knows.
+@MainActor
 final class SimpleHTTPServer {
-    static let host = "127.0.0.1"
-    static let port: UInt16 = 19123
+    nonisolated static let host = "127.0.0.1"
+    nonisolated static let port: UInt16 = 19123
 
     private var task: Task<Void, Never>?
     private var server: HTTPServer?
     private var root: URL?
+    /// Shutdown of the previous server; the next server waits for it so that the port is free.
+    private var pendingStop: Task<Void, Never>?
 
     var isRunning: Bool {
         task != nil
     }
 
     deinit {
-        stop()
+        task?.cancel()
+        if let server {
+            Task {
+                await server.stop()
+            }
+        }
     }
 
     /// Returns the loopback URL AVPlayer has to use for a file of the served directory.
-    static func url(forFileNamed fileName: String) -> URL? {
+    nonisolated static func url(forFileNamed fileName: String) -> URL? {
         var components = URLComponents()
         components.scheme = "http"
         components.host = host
@@ -40,6 +51,8 @@ final class SimpleHTTPServer {
     }
 
     /// Starts serving `root`. Calling it again for the same directory while running is a no-op.
+    /// If the server stopped on its own (e.g. iOS reclaimed the socket while the app was suspended),
+    /// calling it again starts a new server.
     func start(root: URL) {
         if task != nil, self.root == root {
             return
@@ -50,23 +63,44 @@ final class SimpleHTTPServer {
         do {
             address = try .inet(ip4: Self.host, port: Self.port)
         } catch {
-            print("HTTP server: invalid loopback address: \(error)")
+            logger.error("Invalid loopback address: \(error.localizedDescription, privacy: .public)")
             return
         }
 
         let server = HTTPServer(address: address)
         self.server = server
         self.root = root
-        self.task = Task {
+        let previousStop = pendingStop
+        self.task = Task { @MainActor [weak self] in
             await server.appendRoute("GET /*") { request in
                 Self.response(for: request, root: root)
+            }
+            // stop() releases the socket asynchronously: binding before it is closed would fail.
+            await previousStop?.value
+            guard !Task.isCancelled else {
+                return
             }
             do {
                 try await server.run()
             } catch {
-                print("HTTP server stopped: \(error)")
+                logger.info("Server stopped: \(error.localizedDescription, privacy: .public)")
             }
+            // Forget a server that is no longer listening so that the next start creates a new one.
+            guard let self, self.server === server else {
+                return
+            }
+            self.task = nil
+            self.server = nil
+            self.root = nil
         }
+    }
+
+    /// Waits until the server accepts connections (at most `timeout` seconds).
+    func waitUntilListening(timeout: TimeInterval = 3) async {
+        guard let server else {
+            return
+        }
+        try? await server.waitUntilListening(timeout: timeout)
     }
 
     func stop() {
@@ -76,13 +110,15 @@ final class SimpleHTTPServer {
         self.server = nil
         root = nil
         if let server {
-            Task {
+            let previousStop = pendingStop
+            pendingStop = Task {
+                await previousStop?.value
                 await server.stop()
             }
         }
     }
 
-    private static func response(for request: HTTPRequest, root: URL) -> HTTPResponse {
+    private nonisolated static func response(for request: HTTPRequest, root: URL) -> HTTPResponse {
         // Only flat file names are served: no directories and no path traversal.
         let fileName = String(request.path.drop(while: { $0 == "/" }))
         guard !fileName.isEmpty,
@@ -106,7 +142,7 @@ final class SimpleHTTPServer {
         return HTTPResponse(statusCode: .ok, headers: headers, body: contents)
     }
 
-    private static func contentType(forFileNamed fileName: String) -> String? {
+    private nonisolated static func contentType(forFileNamed fileName: String) -> String? {
         switch (fileName as NSString).pathExtension.lowercased() {
         case "m3u8":
             return "application/vnd.apple.mpegurl"

@@ -9,7 +9,9 @@ import SwiftUI
 
 struct ContentView: View {
 
-    @StateObject private var viewModel = AVPlayerViewModel()
+    @ObservedObject var viewModel: AVPlayerViewModel
+
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         TabView {
@@ -34,6 +36,22 @@ struct ContentView: View {
         .playerPresentation(isPresented: $viewModel.isPresented) {
             WatchChannelView(viewModel: viewModel)
         }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                viewModel.sceneDidBecomeActive()
+            }
+        }
+        #if os(macOS)
+        .onDisappear {
+            // The main window was closed: nothing shows the player any more, unless it is in PiP.
+            if !viewModel.isPictureInPictureActive {
+                viewModel.stop()
+            }
+        }
+        #endif
+        #if DEBUG
+        .debugAutoplay(viewModel)
+        #endif
     }
 }
 
@@ -74,10 +92,36 @@ struct PlayerBottomAccessory: View {
                     EmptyView()
                 }
 
-                Text(channel.name ?? "No channel name")
-                    .bold()
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(channel.name ?? "No channel name")
+                        .bold()
+                        .lineLimit(1)
+                    if viewModel.isPictureInPictureActive || viewModel.isRecording || viewModel.playbackState.isBusy {
+                        Text(accessoryStatus)
+                            .font(.caption2)
+                            .foregroundStyle(viewModel.isRecording ? .red : .secondary)
+                    }
+                }
 
                 Spacer()
+
+                Button {
+                    viewModel.togglePlayPause()
+                } label: {
+                    Image(systemName: isPaused ? "play.fill" : "pause.fill")
+                        .accessibilityLabel(isPaused ? "Play" : "Pause")
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 8)
+
+                Button {
+                    viewModel.stop()
+                } label: {
+                    Image(systemName: "xmark")
+                        .accessibilityLabel("Stop playback")
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 16)
             }
             .ignoresSafeArea(.all)
             .onTapGesture {
@@ -87,8 +131,27 @@ struct PlayerBottomAccessory: View {
             EmptyView()
         }
     }
+
+    private var isPaused: Bool {
+        switch viewModel.playbackState {
+        case .paused, .ended, .failed, .idle:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private var accessoryStatus: String {
+        if viewModel.isRecording {
+            return "Recording"
+        }
+        if viewModel.isPictureInPictureActive {
+            return "Picture in Picture"
+        }
+        return viewModel.playbackState.label
+    }
 }
 
 #Preview {
-    ContentView()
+    ContentView(viewModel: AVPlayerViewModel())
 }
