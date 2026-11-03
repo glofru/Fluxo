@@ -10,27 +10,27 @@ import SwiftUI
 
 #if os(macOS)
 
-/// macOS player. Shows the long-lived AVPlayerView of the view model's PlayerSurface, so that
-/// Picture in Picture survives the player sheet being closed.
+/// Shows the long-lived video view of the view model's PlayerSurface, so that Picture in Picture
+/// survives the player screen being closed. The controls are SwiftUI views on top of it.
 struct AVVideoPlayer: NSViewRepresentable {
     let surface: PlayerSurface
 
     func makeNSView(context: Context) -> PlayerContainerView {
         let container = PlayerContainerView(surface: surface)
-        container.attachPlayerView()
+        container.attachVideoView()
         return container
     }
 
     func updateNSView(_ nsView: PlayerContainerView, context: Context) {
         // Only reclaim the view when no other player screen shows it (e.g. it was parked for PiP).
         // Taking it from a newer screen here would leave that screen blank.
-        if surface.playerView.superview == nil || surface.isPlayerViewParked {
-            nsView.attachPlayerView()
+        if surface.videoView.superview == nil || surface.isVideoViewParked {
+            nsView.attachVideoView()
         }
     }
 }
 
-/// One container per player screen. The shared AVPlayerView moves into the newest container.
+/// One container per player screen. The shared video view moves into the newest container.
 final class PlayerContainerView: NSView {
     private let surface: PlayerSurface
 
@@ -44,60 +44,71 @@ final class PlayerContainerView: NSView {
         fatalError("init(coder:) is not supported")
     }
 
-    func attachPlayerView() {
-        let playerView = surface.playerView
-        guard playerView.superview !== self else {
+    func attachVideoView() {
+        let videoView = surface.videoView
+        guard videoView.superview !== self else {
             return
         }
-        surface.unparkPlayerView()
-        playerView.removeFromSuperview()
-        playerView.translatesAutoresizingMaskIntoConstraints = false
-        playerView.alphaValue = 1
-        addSubview(playerView)
+        surface.unparkVideoView()
+        videoView.removeFromSuperview()
+        videoView.translatesAutoresizingMaskIntoConstraints = false
+        videoView.alphaValue = 1
+        addSubview(videoView)
         NSLayoutConstraint.activate([
-            playerView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            playerView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            playerView.topAnchor.constraint(equalTo: topAnchor),
-            playerView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            videoView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            videoView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            videoView.topAnchor.constraint(equalTo: topAnchor),
+            videoView.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
     }
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {
         super.viewWillMove(toWindow: newWindow)
-        // The player sheet is closing while PiP plays: keep the AVPlayerView inside a window (the
-        // one the sheet was attached to) so that AppKit keeps driving PiP and can restore it.
-        guard newWindow == nil, let window, surface.playerView.superview === self, surface.isPictureInPictureActive else {
+        // The player screen is closing while PiP plays: keep the video view inside a window (the main
+        // window, or the one a sheet was attached to) so that AppKit keeps driving PiP and can restore it.
+        guard newWindow == nil, let window, surface.videoView.superview === self, surface.isPictureInPictureActive else {
             return
         }
-        surface.parkPlayerView(in: window.sheetParent ?? window)
+        surface.parkVideoView(in: window.sheetParent ?? window)
     }
 }
 
 #else
 
-/// iOS / visionOS player. Embeds the long-lived AVPlayerViewController of the view model's
-/// PlayerSurface, so that Picture in Picture survives the player cover being dismissed.
+/// iOS / visionOS player. Embeds the long-lived video view of the view model's PlayerSurface, so that
+/// Picture in Picture survives the player cover being dismissed.
 ///
-/// Every player screen gets its own host controller and the shared AVPlayerViewController is a child
-/// of the newest host. SwiftUI only ever tears down a host, so closing and quickly reopening the
-/// player cannot remove the shared controller from the screen that shows it now.
-struct AVVideoPlayer: UIViewControllerRepresentable {
+/// Every player screen gets its own container and the shared video view moves into the newest one.
+/// SwiftUI only ever tears down a container, so closing and quickly reopening the player cannot remove
+/// the video view from the screen that shows it now.
+struct AVVideoPlayer: UIViewRepresentable {
     let surface: PlayerSurface
 
-    func makeUIViewController(context: Context) -> PlayerHostViewController {
-        PlayerHostViewController(surface: surface)
+    func makeUIView(context: Context) -> PlayerContainerView {
+        let container = PlayerContainerView(surface: surface)
+        container.attachVideoView()
+        return container
     }
 
-    func updateUIViewController(_ uiViewController: PlayerHostViewController, context: Context) {
+    func updateUIView(_ uiView: PlayerContainerView, context: Context) {
+        if surface.videoView.superview == nil {
+            uiView.attachVideoView()
+        }
     }
 }
 
-final class PlayerHostViewController: UIViewController {
+final class PlayerContainerView: UIView {
     private let surface: PlayerSurface
 
     init(surface: PlayerSurface) {
         self.surface = surface
-        super.init(nibName: nil, bundle: nil)
+        super.init(frame: .zero)
+        backgroundColor = .black
+        isUserInteractionEnabled = false
     }
 
     @available(*, unavailable)
@@ -105,33 +116,28 @@ final class PlayerHostViewController: UIViewController {
         fatalError("init(coder:) is not supported")
     }
 
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        view.backgroundColor = .black
-        embedPlayer()
-    }
-
-    private func embedPlayer() {
-        let controller = surface.controller
-        guard controller.parent !== self else {
+    func attachVideoView() {
+        let videoView = surface.videoView
+        guard videoView.superview !== self else {
             return
         }
-        // The controller can only have one parent: take it from a previous player screen.
-        if controller.parent != nil {
-            controller.willMove(toParent: nil)
-            controller.view.removeFromSuperview()
-            controller.removeFromParent()
-        }
-        addChild(controller)
-        controller.view.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(controller.view)
+        videoView.removeFromSuperview()
+        videoView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(videoView)
         NSLayoutConstraint.activate([
-            controller.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            controller.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            controller.view.topAnchor.constraint(equalTo: view.topAnchor),
-            controller.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            videoView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            videoView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            videoView.topAnchor.constraint(equalTo: topAnchor),
+            videoView.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
-        controller.didMove(toParent: self)
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        // A newer screen may have released the view meanwhile (e.g. it was closed first).
+        if window != nil, surface.videoView.superview == nil {
+            attachVideoView()
+        }
     }
 }
 

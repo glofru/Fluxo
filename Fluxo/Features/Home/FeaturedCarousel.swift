@@ -190,8 +190,12 @@ private struct FeaturedCard: View {
     private var artwork: some View {
         let isPoster = item.kind.usesPosterArtwork
         let size = isPoster ? Self.posterSize : Self.logoSize
-        LogoImage(source: item.logo, size: size, contentMode: isPoster ? .fill : .fit, accessibilityLabel: item.displayName) { _ in
-            ArtworkPlaceholder(name: item.displayName, kind: item.kind)
+        LogoImage(source: item.logo, size: size, contentMode: isPoster ? .fill : .fit, accessibilityLabel: item.displayName) { phase in
+            if phase == .unavailable {
+                ArtworkPlaceholder(name: item.displayName, kind: item.kind)
+            } else {
+                Color.clear
+            }
         }
         .padding(isPoster ? 0 : 10)
         .background(isPoster ? AnyShapeStyle(Color.clear) : AnyShapeStyle(.ultraThinMaterial), in: .rect(cornerRadius: 16))

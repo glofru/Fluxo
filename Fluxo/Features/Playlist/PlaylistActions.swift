@@ -32,6 +32,11 @@ final class PlaylistActions {
     /// Playlist waiting for the delete confirmation.
     var playlistToDelete: Playlist?
 
+    /// True while the add / rename sheet or the delete confirmation is on screen.
+    var isPresenting: Bool {
+        sheet != nil || playlistToDelete != nil
+    }
+
     func add() {
         sheet = .add
     }
@@ -65,7 +70,7 @@ struct PlaylistMenuItems: View {
             }
         }
 
-        Button("Rename", systemImage: "pencil") {
+        Button("Edit Playlist…", systemImage: "pencil") {
             actions.edit(playlist)
         }
 

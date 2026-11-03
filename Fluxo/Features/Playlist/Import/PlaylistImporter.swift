@@ -63,7 +63,7 @@ enum PlaylistImportError: LocalizedError {
 /// after every batch). The UI only receives throttled progress values.
 actor PlaylistImporter {
 
-    private static let logger = Logger(subsystem: "com.glofru.Fluxo", category: "PlaylistImporter")
+    private static let logger = Logger(subsystem: "dev.watermelon.Fluxo", category: "PlaylistImporter")
 
     private let container: ModelContainer
     private let batchSize: Int

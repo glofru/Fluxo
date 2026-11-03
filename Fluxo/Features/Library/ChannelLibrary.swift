@@ -85,9 +85,13 @@ final class ChannelLibrary {
     /// Watch history entries kept; older ones are trimmed.
     static let historyLimit = 200
 
-    private static let logger = Logger(subsystem: "com.glofru.Fluxo", category: "ChannelLibrary")
+    private static let logger = Logger(subsystem: "dev.watermelon.Fluxo", category: "ChannelLibrary")
 
     private(set) var favoriteKeys: Set<String> = []
+
+    /// Bumped on every user toggle, so a single view can play haptic feedback for it (rather than every
+    /// card whose favorite state changes when favorites reload or a playlist is deleted).
+    private(set) var favoriteToggleCount = 0
 
     @ObservationIgnored
     private let context: ModelContext
@@ -106,6 +110,7 @@ final class ChannelLibrary {
 
     func toggleFavorite(_ item: ChannelItem) {
         setFavorite(!isFavorite(item), for: item)
+        favoriteToggleCount &+= 1
     }
 
     func setFavorite(_ isFavorite: Bool, for item: ChannelItem) {

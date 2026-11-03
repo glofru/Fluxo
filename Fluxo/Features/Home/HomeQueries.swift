@@ -42,6 +42,61 @@ enum HomeQueries {
         return descriptor
     }
 
+    // MARK: - Channel zapping
+
+    /// The visible import of a playlist is `Playlist.currentImportID`.
+    static func playlist(uuid: UUID) -> FetchDescriptor<Playlist> {
+        var descriptor = FetchDescriptor<Playlist>(predicate: #Predicate { $0.uuid == uuid })
+        descriptor.fetchLimit = 1
+        return descriptor
+    }
+
+    /// One channel of a group, by row UUID.
+    static func channel(importID: UUID, groupName: String, uuid: UUID) -> FetchDescriptor<PlaylistChannel> {
+        var descriptor = FetchDescriptor<PlaylistChannel>(
+            predicate: #Predicate { $0.importID == importID && $0.groupName == groupName && $0.uuid == uuid }
+        )
+        descriptor.fetchLimit = 1
+        return descriptor
+    }
+
+    /// One channel of a group, by stream URL (bookmarks keep the URL; row UUIDs change on every refresh).
+    static func channel(importID: UUID, groupName: String, url: URL) -> FetchDescriptor<PlaylistChannel> {
+        let url: URL? = url
+        var descriptor = FetchDescriptor<PlaylistChannel>(
+            predicate: #Predicate { $0.importID == importID && $0.groupName == groupName && $0.url == url },
+            sortBy: [SortDescriptor(\.sortIndex)]
+        )
+        descriptor.fetchLimit = 1
+        return descriptor
+    }
+
+    /// The playable channel of the group right after (`forward`) or right before `sortIndex`.
+    static func adjacentChannel(importID: UUID, groupName: String, sortIndex: Int, forward: Bool) -> FetchDescriptor<PlaylistChannel> {
+        let predicate: Predicate<PlaylistChannel>
+        if forward {
+            predicate = #Predicate { $0.importID == importID && $0.groupName == groupName && $0.sortIndex > sortIndex && $0.url != nil }
+        } else {
+            predicate = #Predicate { $0.importID == importID && $0.groupName == groupName && $0.sortIndex < sortIndex && $0.url != nil }
+        }
+        var descriptor = FetchDescriptor<PlaylistChannel>(
+            predicate: predicate,
+            sortBy: [SortDescriptor(\.sortIndex, order: forward ? .forward : .reverse)]
+        )
+        descriptor.fetchLimit = 1
+        return descriptor
+    }
+
+    /// The first or last playable channel of a group (zapping wraps around).
+    static func edgeChannel(importID: UUID, groupName: String, first: Bool) -> FetchDescriptor<PlaylistChannel> {
+        var descriptor = FetchDescriptor<PlaylistChannel>(
+            predicate: #Predicate { $0.importID == importID && $0.groupName == groupName && $0.url != nil },
+            sortBy: [SortDescriptor(\.sortIndex, order: first ? .forward : .reverse)]
+        )
+        descriptor.fetchLimit = 1
+        return descriptor
+    }
+
     /// Candidates for the featured carousel: channels with artwork, on-demand ones (posters) or live ones.
     /// Use `fetchCount` on it, then pick a window with `fetchOffset` / `fetchLimit`.
     static func featured(importIDs: [UUID], onDemand: Bool) -> FetchDescriptor<PlaylistChannel> {

@@ -8,6 +8,62 @@
 import SwiftData
 import SwiftUI
 
+/// Validation of the URL typed in the playlist form.
+enum PlaylistURLValidation: Equatable {
+    case empty
+    case invalid(String)
+    case valid(URL)
+
+    init(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            self = .empty
+            return
+        }
+        guard trimmed.contains("://") else {
+            self = .invalid("Start the address with http:// or https://.")
+            return
+        }
+        guard let components = URLComponents(string: trimmed), let scheme = components.scheme?.lowercased() else {
+            self = .invalid("This is not a valid web address.")
+            return
+        }
+        guard scheme == "http" || scheme == "https" else {
+            self = .invalid("Only http:// and https:// playlists are supported.")
+            return
+        }
+        guard let host = components.host, !host.isEmpty, let url = components.url else {
+            self = .invalid("The address has no server name.")
+            return
+        }
+        self = .valid(url)
+    }
+
+    var url: URL? {
+        if case .valid(let url) = self {
+            return url
+        }
+        return nil
+    }
+
+    var message: String? {
+        if case .invalid(let message) = self {
+            return message
+        }
+        return nil
+    }
+
+    /// A readable default name for a playlist at `url`, e.g. "example.com" or "playlist" from the file name.
+    static func suggestedName(for url: URL) -> String {
+        let file = url.deletingPathExtension().lastPathComponent
+        if !file.isEmpty, file != "/", !["get", "playlist", "index", "get.php"].contains(file.lowercased()) {
+            return file
+        }
+        return url.host() ?? "Playlist"
+    }
+}
+
+/// Add a playlist (name + M3U URL, imported right away) or edit one (name and URL; a new URL is re-imported).
 struct AddPlaylistView: View {
 
     private enum Field {
@@ -15,138 +71,245 @@ struct AddPlaylistView: View {
         case url
     }
 
-    @Environment(\.modelContext) private var modelContext
-    @Environment(\.dismiss) private var dismiss
-
-    @Environment(PlaylistImportCenter.self) private var importCenter
-
-    @State private var name: String = ""
-    @State private var url: String = ""
-    @State private var actualUrl: URL?
-    @State private var loading = false
-    @State private var error: String?
-    @State private var importTask: Task<Void, Never>?
-    @State private var importingPlaylistID: UUID?
-
-    private var showUrlError: Bool {
-        !url.isEmpty && actualUrl == nil
+    private enum Phase: Equatable {
+        case editing
+        case importing(UUID)
+        case failed(String)
     }
-
-    private var title: String {
-        if playlist != nil {
-            return "Rename Playlist"
-        }
-
-        return "Add Playlist"
-    }
-
-    @FocusState private var focusField: Field?
 
     var playlist: Playlist?
 
-    var body: some View {
-        VStack(alignment: .center) {
-            Text("Support M3U playlists")
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+    @Environment(PlaylistImportCenter.self) private var importCenter
 
-            FluxoTextField("Name", text: .init(get: { name }, set: { name = $0.trimmingCharacters(in: .whitespacesAndNewlines) }), placeholder: "Name of the playlist")
-                .focused($focusField, equals: .name)
-                .onSubmit {
-                    focusField = .url
-                }
-                .onAppear {
-                    focusField = .name
-                }
-                .submitLabel(.next)
-                .textFieldStyle(.roundedBorder)
-                .disabled(loading)
+    @State private var name = ""
+    @State private var urlText = ""
+    /// Shows the URL error only once the user left the field or tried to submit.
+    @State private var showsValidation = false
+    @State private var phase: Phase = .editing
+    @State private var importTask: Task<Void, Never>?
+    @State private var didFinish = false
+    @FocusState private var focusedField: Field?
 
-            FluxoTextField("URL", text: .init(get: { url }, set: { url = $0; actualUrl = URL(string: $0) }), placeholder: "https://myplaylist.com/playlist.m3u", error: showUrlError ? "InvalidURL" : nil)
-                .focused($focusField, equals: .url)
-                .textContentType(.URL)
-                .urlKeyboard()
-                .disabled(loading || playlist != nil)
+    private var validation: PlaylistURLValidation {
+        PlaylistURLValidation(urlText)
+    }
 
-            FluxoButton(label: playlist == nil ? "Add Playlist" : "Save", loading: loading) {
-                guard let actualUrl, !name.isEmpty else {
-                    return
-                }
-
-                if let playlist {
-                    playlist.name = name
-                    playlist.url = actualUrl
-                    try? modelContext.save()
-                    dismiss()
-                    return
-                }
-
-                startImport(name: name, url: actualUrl)
-            }
-            .disabled(loading || actualUrl == nil || name.isEmpty)
-
-            if loading {
-                PlaylistImportProgressView(progress: importingPlaylistID.flatMap { importCenter.progress[$0] } ?? .connecting)
-            }
-
-            Spacer()
+    private var isImporting: Bool {
+        if case .importing = phase {
+            return true
         }
-        .textFieldStyle(.roundedBorder)
-        .padding()
-        .navigationTitle(title)
+        return false
+    }
+
+    private var isEditing: Bool {
+        playlist != nil
+    }
+
+    private var canSubmit: Bool {
+        validation.url != nil && !isImporting
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                TextField("Name", text: $name, prompt: Text(namePlaceholder))
+                    .focused($focusedField, equals: .name)
+                    .submitLabel(.next)
+                    .onSubmit {
+                        focusedField = .url
+                    }
+
+                HStack(spacing: 8) {
+                    TextField("URL", text: $urlText, prompt: Text("https://example.com/playlist.m3u"))
+                        .focused($focusedField, equals: .url)
+                        .textContentType(.URL)
+                        .urlKeyboard()
+                        .submitLabel(.go)
+                        .onSubmit(submit)
+
+                    if !urlText.isEmpty && !isImporting {
+                        Button {
+                            urlText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Clear URL")
+                    }
+
+                    PasteButton(payloadType: String.self) { strings in
+                        guard let text = strings.first?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+                            return
+                        }
+                        urlText = text
+                        showsValidation = true
+                    }
+                    .labelStyle(.iconOnly)
+                    .buttonBorderShape(.capsule)
+                    .disabled(isImporting)
+                }
+            } header: {
+                Text("Playlist")
+            } footer: {
+                if showsValidation, let message = validation.message {
+                    Label(message, systemImage: "exclamationmark.circle.fill")
+                        .foregroundStyle(.red)
+                } else {
+                    Text("M3U and M3U8 playlists over HTTP or HTTPS. Channels, groups and logos are imported on this device.")
+                }
+            }
+            .disabled(isImporting)
+
+            switch phase {
+            case .editing:
+                EmptyView()
+
+            case .importing(let uuid):
+                Section("Importing") {
+                    PlaylistImportProgressView(progress: importCenter.progress[uuid] ?? .connecting)
+                    Button("Cancel Import", systemImage: "xmark.circle", role: .destructive) {
+                        cancelImport()
+                    }
+                }
+
+            case .failed(let message):
+                Section {
+                    Label {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("The playlist couldn't be imported")
+                                .font(.headline)
+                            Text(message)
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        }
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.yellow)
+                    }
+                    Button("Try Again", systemImage: "arrow.clockwise", action: submit)
+                        .disabled(!canSubmit)
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .navigationTitle(isEditing ? "Edit Playlist" : "Add Playlist")
         .inlineNavigationBar()
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                Button(action: {
+                Button("Cancel") {
                     // Cancelling stops the download and removes everything imported so far.
                     importTask?.cancel()
                     dismiss()
-                }, label: {
-                    Text("Cancel")
-                })
+                }
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                if isImporting {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Button(isEditing ? "Save" : "Add", action: submit)
+                        .disabled(!canSubmit)
+                }
             }
         }
         // Keep the sheet up while importing so the import is either finished or explicitly cancelled.
-        .interactiveDismissDisabled(loading)
-        .alert(isPresented: .init(get: { error != nil }, set: { _ in error = nil })) {
-            Alert(title: Text("Error"), message: Text(error ?? ""))
+        .interactiveDismissDisabled(isImporting)
+        .onChange(of: focusedField) { previous, _ in
+            if previous == .url {
+                showsValidation = true
+            }
         }
-        .onAppear {
-            guard let playlist else {
-                #if DEBUG
-                // Debug builds start with a small public playlist to speed up testing.
-                self.name = "Test"
-                self.url = "https://raw.githubusercontent.com/joaoguidugli/FTA-IPTV-Brasil/master/playlist.m3u8"
-                self.actualUrl = URL(string: self.url)
-                #endif
+        .sensoryFeedback(.success, trigger: didFinish)
+        .sensoryFeedback(.error, trigger: phase) { _, new in
+            if case .failed = new {
+                return true
+            }
+            return false
+        }
+        .onAppear(perform: prefill)
+    }
+
+    private var namePlaceholder: String {
+        validation.url.map(PlaylistURLValidation.suggestedName(for:)) ?? "My playlist"
+    }
+
+    private func prefill() {
+        guard let playlist else {
+            #if DEBUG
+            // Debug builds start with a small public playlist to speed up testing.
+            if urlText.isEmpty {
+                name = "Test"
+                urlText = "https://raw.githubusercontent.com/joaoguidugli/FTA-IPTV-Brasil/master/playlist.m3u8"
+            }
+            #endif
+            focusedField = .url
+            return
+        }
+        name = playlist.name
+        urlText = playlist.url.absoluteString
+        focusedField = .name
+    }
+
+    private func submit() {
+        showsValidation = true
+        guard let url = validation.url, !isImporting else {
+            return
+        }
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalName = trimmedName.isEmpty ? PlaylistURLValidation.suggestedName(for: url) : trimmedName
+
+        if let playlist {
+            let urlChanged = playlist.url != url
+            playlist.name = finalName
+            playlist.url = url
+            do {
+                try modelContext.save()
+            } catch {
+                phase = .failed(error.localizedDescription)
                 return
             }
-
-            self.name = playlist.name
-            self.url = playlist.url.absoluteString
-            self.actualUrl = URL(string: url)
+            if urlChanged {
+                // A different address: download it again (the current channels stay until it succeeds). An
+                // update that is still downloading the old address is replaced.
+                importCenter.restartRefresh(playlist)
+            }
+            didFinish.toggle()
+            dismiss()
+            return
         }
+
+        startImport(name: finalName, url: url)
     }
 
     private func startImport(name: String, url: URL) {
         let uuid = UUID()
-        loading = true
-        importingPlaylistID = uuid
+        phase = .importing(uuid)
+        focusedField = nil
 
         importTask = Task {
             defer {
-                loading = false
-                importingPlaylistID = nil
                 importTask = nil
             }
-
             do {
                 try await importCenter.addPlaylist(uuid: uuid, name: name, url: url)
+                phase = .editing
+                didFinish.toggle()
                 dismiss()
             } catch is CancellationError {
-                // The user cancelled; the sheet is already being dismissed.
+                // Cancelled from the form: back to editing. (Cancel in the toolbar dismisses the sheet.)
+                phase = .editing
             } catch {
-                self.error = error.localizedDescription
+                phase = .failed(error.localizedDescription)
             }
         }
+    }
+
+    private func cancelImport() {
+        importTask?.cancel()
+        phase = .editing
     }
 }
 
@@ -156,16 +319,23 @@ struct PlaylistImportProgressView: View {
 
     var body: some View {
         if let fraction = progress.fractionCompleted {
-            ProgressView(progress.message, value: fraction, total: 1)
-                .progressViewStyle(.linear)
+            ProgressView(value: fraction, total: 1) {
+                Text(progress.message)
+            } currentValueLabel: {
+                Text(fraction, format: .percent.precision(.fractionLength(0)))
+                    .monospacedDigit()
+            }
+            .progressViewStyle(.linear)
         } else {
-            ProgressView(progress.message)
-                .progressViewStyle(.linear)
+            ProgressView {
+                Text(progress.message)
+            }
+            .progressViewStyle(.linear)
         }
     }
 }
 
-#Preview {
+#Preview("Add") {
     NavigationStack {
         AddPlaylistView()
     }

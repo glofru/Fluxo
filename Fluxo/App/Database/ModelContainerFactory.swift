@@ -11,7 +11,7 @@ import SwiftData
 
 enum ModelContainerFactory {
 
-    private static let logger = Logger(subsystem: "com.glofru.Fluxo", category: "Database")
+    private static let logger = Logger(subsystem: "dev.watermelon.Fluxo", category: "Database")
 
     /// Opens the app store. If an existing store cannot be opened with the current schema (e.g. a pre-release
     /// layout that lightweight migration cannot map), it is moved aside and a fresh store is created instead of

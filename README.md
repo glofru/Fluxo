@@ -105,10 +105,12 @@ CHANNELS=100000 Tools/HomeQueriesCheck/run.sh
 - **Deterministic start**: the engine has its own HLS segmenter and reports each
   completed segment. The player item is created once, after the first segment
   exists and the server is listening. There is no polling.
-- **Time shift (DVR)**: live channels keep a sliding window of at most 30
-  minutes and at most 512 MB, or a tenth of the free disk space if that is
-  smaller. Segments that leave the window are deleted. You can pause, resume,
-  skip back 10 s or forward 30 s, and go back to live (`AVPlayerViewModel`).
+- **Time shift (DVR)**: live channels keep a sliding window of 30 minutes by
+  default (5 to 120 minutes in Settings, `PlayerPreferences`), with a disk budget of
+  512 MB per 30 minutes, or a tenth of the free disk space if that is smaller.
+  Segments that leave the window are deleted. You can pause, resume, scrub, skip
+  back or forward (10 s / 30 s by default, configurable), and go back to live
+  (`AVPlayerViewModel`).
 - **Reconnection**: when a live input drops or ends, the engine reconnects with
   backoff (0.5 s to 8 s, 10 attempts). Buffered media keeps playing in the
   meantime, and the playlist continues with `EXT-X-DISCONTINUITY`.
@@ -116,7 +118,7 @@ CHANNELS=100000 Tools/HomeQueriesCheck/run.sh
   `Documents/Recordings/<channel>-<date>.ts`, which is a second output of the
   engine. When the recording stops, it is converted to `.mp4` (stream copy) so
   that you can play it and seek in it. Recordings can be listed, played and
-  deleted from the player or from the Watch toolbar. The conversion writes a
+  deleted from the player, the Home toolbar or the macOS sidebar. The conversion writes a
   hidden temporary file that is renamed when complete. Recordings interrupted
   by a crash are converted at the next launch.
 - **One player per app**: `FluxoApp` owns the only `AVPlayerViewModel`. The
@@ -126,11 +128,15 @@ CHANNELS=100000 Tools/HomeQueriesCheck/run.sh
   recordings) runs once per process, before the first session starts, and only
   in the instance that holds `tmp/fluxo-instance.lock`, so a second copy of the
   app sharing the same container never deletes files the first one writes.
-- **Picture in Picture**: the `AVPlayerViewController` (iOS) or `AVPlayerView`
-  (macOS) belongs to the view model (`PlayerSurface`), so PiP keeps running when
-  the player screen closes. Stopping PiP presents the player again. On iOS the
-  audio session uses `.playback` / `.moviePlayback` and the `audio`
-  background mode.
+- **Picture in Picture**: the player draws its own controls, so the video is a bare
+  `AVPlayerLayer` driven by an `AVPictureInPictureController` (`PlayerSurface`). Both
+  belong to the view model, so PiP keeps running when the player screen closes, and the
+  PiP button of the player (or Playback > Picture in Picture, ⌥⌘P) starts it. Stopping
+  PiP presents the player again. On iOS PiP also starts automatically when you leave the
+  app while a video plays (a Settings toggle), the audio session uses `.playback` /
+  `.moviePlayback` and the `audio` background mode. `NowPlayingController` publishes the
+  channel to the Lock Screen / Now Playing menu and handles its play, pause, skip and
+  next / previous channel commands.
 
 Engine smoke tests (macOS, Homebrew FFmpeg). They serve a generated live
 stream on 127.0.0.1:
@@ -141,7 +147,46 @@ Tools/EngineSmokeTest/run_avplayer.sh  # AVPlayer pause/resume/skip/go-live on t
 ```
 
 Debug builds (`Fluxo/App/Debug/DebugAutoplay.swift`) also accept `-FluxoDebugAutoplayURL <url>`, which plays a stream at
-launch, and `-FluxoDebugRecordSeconds <n>`, which records it for n seconds.
+launch, `-FluxoDebugRecordSeconds <n>`, which records it for n seconds, and `-FluxoDebugPictureInPicture YES`, which
+starts Picture in Picture once it is possible and stops it 6 seconds later. The shared scheme builds Release, so build
+these with `-configuration Debug`.
+
+## User interface
+
+- **Player screen** (`Features/Watch/WatchChannelView.swift`): the video fills the screen
+  (iOS full-screen cover; on macOS it covers the main window, whose toolbar is hidden
+  meanwhile). The top bar shows close, the channel logo and name, the status (connecting,
+  buffering, reconnecting, `LIVE`, time-shifted `-m:ss`, paused, ended, error) and the
+  recording indicator, plus PiP, AirPlay, full screen (macOS) and a menu (fill / fit,
+  recordings, stop). The bottom bar has a scrubber (on-demand position, or the time-shift
+  window of a live channel), channel down / up, skip back / forward, play / pause, Record
+  and Go Live. Controls fade out after 4 s of playback without interaction and come back on
+  a tap or mouse move; they stay up while paused, buffering, failed, scrubbing or with
+  VoiceOver on. Errors and the end of a stream show a card with Try Again / Play Again.
+- **Channel zapping** (`ChannelZapper`): channel up / down plays the next / previous
+  channel of the group of the playing channel, in playlist order, wrapping around. Each
+  step is one indexed single-row fetch. It is offered for live channels started from a
+  playlist (not recordings) and disabled while recording.
+- **Cards**: live channels are 5:3 logo cards, movies and series 2:3 posters. Without
+  usable artwork a card shows the channel's initials on a gradient whose color is derived
+  from the name. Cards lift on hover and keyboard focus (macOS) and under the iPad pointer,
+  and have a combined VoiceOver label (name, kind, playlist, favorite) and a favorite action.
+- **Add / edit playlist**: a form with URL validation (http/https and a host), paste from
+  the clipboard, a name suggested from the URL, determinate or indeterminate import progress
+  with Cancel Import, and an error section with Try Again. Editing can change the URL, which
+  re-imports the playlist.
+- **Settings** (a tab on iOS, the Settings window ⌘, on macOS): time-shift length, skip
+  intervals, automatic PiP (iOS), recordings count / size / location (Show in Finder on macOS,
+  the Files app on iOS through `UIFileSharingEnabled`), delete all recordings, temporary stream
+  files, logo cache, watch history, and the app and FFmpeg versions.
+- **Recordings**: play, share, Show in Finder (macOS), delete, delete all.
+- **Menu bar** (macOS, and the iPad menu bar): File > Add Playlist… (⌘N), Refresh All
+  Playlists (⌘R); Playback > Play/Pause (Space), Skip Back / Forward (⌘← / ⌘→), Go Live (⌘L),
+  Channel Up / Down (⌘↑ / ⌘↓), Record (⇧⌘R), Picture in Picture (⌥⌘P), Fill Video, Show
+  Player (⇧⌘P), Stop Playback (⌘.). Shortcuts that would clash with text editing (Space, the
+  arrows) are only enabled while the player is on screen. Escape closes the player.
+- **Haptics** (iOS): channel changes, recording start / stop, favorites, and the result of a
+  playlist import.
 
 ## Memory
 

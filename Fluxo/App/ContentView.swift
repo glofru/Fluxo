@@ -13,7 +13,6 @@ struct ContentView: View {
 
     @Environment(\.scenePhase) private var scenePhase
     @Environment(ChannelLibrary.self) private var library
-    @State private var playlistActions = PlaylistActions()
 
     var body: some View {
         root
@@ -21,8 +20,8 @@ struct ContentView: View {
                 WatchChannelView(viewModel: viewModel)
             }
             .playlistManagement()
-            .environment(playlistActions)
             .environment(\.playChannel, PlayChannelAction(library: library, player: viewModel))
+            .sensoryFeedback(.selection, trigger: library.favoriteToggleCount)
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active {
                     viewModel.sceneDidBecomeActive()
@@ -60,7 +59,7 @@ struct ContentView: View {
 
             Tab("Settings", systemImage: "gear") {
                 NavigationStack {
-                    SettingsView()
+                    SettingsView(player: viewModel)
                         .navigationTitle("Settings")
                 }
             }
@@ -125,7 +124,11 @@ struct PlayerBottomAccessory: View {
                 .padding(.trailing, 16)
             }
             .ignoresSafeArea(.all)
+            .contentShape(.rect)
             .onTapGesture {
+                viewModel.isPresented = true
+            }
+            .accessibilityAction(named: "Open Player") {
                 viewModel.isPresented = true
             }
         } else {

@@ -2,22 +2,78 @@
 //  PlayerSurface.swift
 //  Fluxo
 //
-//  Owns the platform player view (AVPlayerViewController on iOS, AVPlayerView on macOS) for the
-//  whole life of the player, independently of the SwiftUI views that display it.
+//  Owns the video view (an AVPlayerLayer) and the Picture in Picture controller for the whole life of
+//  the player, independently of the SwiftUI views that display them.
 //
-//  Picture in Picture needs this: when the player screen is dismissed while PiP runs, SwiftUI tears
-//  down its views, but the controller that drives PiP must stay alive so that PiP keeps playing and
-//  the user interface can be restored when PiP stops.
+//  The player screen draws its own controls (title, status, time-shift, recording, channel zapping), so
+//  the video is a bare AVPlayerLayer and PiP is driven by an AVPictureInPictureController, which can be
+//  started from a button. Picture in Picture needs this object to outlive the player screen: when the
+//  screen is dismissed while PiP runs, SwiftUI tears down its views, but the PiP controller and its layer
+//  must stay alive so that PiP keeps playing and the screen can be restored when PiP stops.
 //
 
 import AVKit
 import SwiftUI
+
+#if os(macOS)
+typealias PlatformView = NSView
+#else
+typealias PlatformView = UIView
+#endif
+
+/// A view backed by an AVPlayerLayer.
+final class PlayerLayerView: PlatformView {
+
+    #if os(macOS)
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        playerLayer.backgroundColor = NSColor.black.cgColor
+    }
+
+    override func makeBackingLayer() -> CALayer {
+        AVPlayerLayer()
+    }
+
+    // Mouse events go to the SwiftUI controls on top of the video.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+
+    #else
+
+    override class var layerClass: AnyClass {
+        AVPlayerLayer.self
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .black
+        isUserInteractionEnabled = false
+    }
+
+    #endif
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    var playerLayer: AVPlayerLayer {
+        // swiftlint:disable:next force_cast
+        layer as! AVPlayerLayer
+    }
+}
 
 @MainActor
 final class PlayerSurface: NSObject {
 
     /// Called on the main thread when Picture in Picture starts (true) or stops (false).
     var onPictureInPictureActiveChange: ((Bool) -> Void)?
+
+    /// Called on the main thread when PiP can or can no longer be started (e.g. once the item is ready).
+    var onPictureInPicturePossibleChange: ((Bool) -> Void)?
 
     /// Called on the main thread when PiP asks to restore the player UI. The handler must present the
     /// player and then call the completion with true (or false when it cannot be restored).
@@ -29,21 +85,104 @@ final class PlayerSurface: NSObject {
     /// True while Picture in Picture runs.
     private(set) var isPictureInPictureActive = false
 
-    #if os(macOS)
+    /// The long-lived video view. Player screens embed it (see AVVideoPlayer); it moves into the newest one.
+    let videoView: PlayerLayerView
 
-    let playerView: AVPlayerView
+    private let pictureInPicture: AVPictureInPictureController?
+    private var possibleObservation: NSKeyValueObservation?
 
-    /// Invisible host in the main window that keeps the player view in a window while PiP runs
-    /// with the player sheet closed.
-    private var parkingView: NSView?
+    init(player: AVPlayer) {
+        let view = PlayerLayerView(frame: .zero)
+        view.playerLayer.player = player
+        view.playerLayer.videoGravity = .resizeAspect
+        videoView = view
 
-    var isPlayerViewParked: Bool {
-        parkingView != nil && playerView.superview === parkingView
+        if AVPictureInPictureController.isPictureInPictureSupported() {
+            pictureInPicture = AVPictureInPictureController(playerLayer: view.playerLayer)
+        } else {
+            pictureInPicture = nil
+        }
+        super.init()
+
+        pictureInPicture?.delegate = self
+        #if !os(macOS)
+        pictureInPicture?.canStartPictureInPictureAutomaticallyFromInline = PlayerPreferences.autoPictureInPicture
+        #endif
+        possibleObservation = pictureInPicture?.observe(\.isPictureInPicturePossible, options: [.initial, .new]) { [weak self] controller, _ in
+            let isPossible = controller.isPictureInPicturePossible
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    self?.onPictureInPicturePossibleChange?(isPossible)
+                }
+            }
+        }
     }
 
-    /// Moves the player view into an invisible host of `window` (it stays in a window, so AppKit
-    /// keeps driving Picture in Picture and can restore it).
-    func parkPlayerView(in window: NSWindow) {
+    /// False on devices without Picture in Picture.
+    var isPictureInPictureSupported: Bool {
+        pictureInPicture != nil
+    }
+
+    var isPictureInPicturePossible: Bool {
+        pictureInPicture?.isPictureInPicturePossible ?? false
+    }
+
+    /// iOS starts PiP by itself when the app goes to the background while a video plays inline.
+    var startsPictureInPictureAutomatically: Bool {
+        get {
+            #if os(macOS)
+            return false
+            #else
+            return pictureInPicture?.canStartPictureInPictureAutomaticallyFromInline ?? false
+            #endif
+        }
+        set {
+            #if !os(macOS)
+            pictureInPicture?.canStartPictureInPictureAutomaticallyFromInline = newValue
+            #endif
+        }
+    }
+
+    func togglePictureInPicture() {
+        guard let pictureInPicture else {
+            return
+        }
+        if pictureInPicture.isPictureInPictureActive {
+            pictureInPicture.stopPictureInPicture()
+        } else if pictureInPicture.isPictureInPicturePossible {
+            pictureInPicture.startPictureInPicture()
+        }
+    }
+
+    func stopPictureInPicture() {
+        if pictureInPicture?.isPictureInPictureActive == true {
+            pictureInPicture?.stopPictureInPicture()
+        }
+    }
+
+    /// Aspect fit (letterboxed) or aspect fill (cropped to the screen).
+    var fillsScreen: Bool {
+        get {
+            videoView.playerLayer.videoGravity == .resizeAspectFill
+        }
+        set {
+            videoView.playerLayer.videoGravity = newValue ? .resizeAspectFill : .resizeAspect
+        }
+    }
+
+    #if os(macOS)
+
+    /// Invisible host in the main window that keeps the video view in a window while PiP runs
+    /// with the player screen closed.
+    private var parkingView: NSView?
+
+    var isVideoViewParked: Bool {
+        parkingView != nil && videoView.superview === parkingView
+    }
+
+    /// Moves the video view into an invisible host of `window` (it stays in a window, so AppKit keeps
+    /// driving Picture in Picture and can restore it).
+    func parkVideoView(in window: NSWindow) {
         guard let contentView = window.contentView else {
             return
         }
@@ -54,85 +193,53 @@ final class PlayerSurface: NSObject {
             contentView.addSubview(parking)
         }
         parkingView = parking
-        playerView.removeFromSuperview()
-        playerView.translatesAutoresizingMaskIntoConstraints = true
-        playerView.frame = parking.bounds
-        parking.addSubview(playerView)
+        videoView.removeFromSuperview()
+        videoView.translatesAutoresizingMaskIntoConstraints = true
+        videoView.frame = parking.bounds
+        parking.addSubview(videoView)
     }
 
-    /// Removes the invisible host (the player view leaves it too when it is still parked).
-    func unparkPlayerView() {
+    /// Removes the invisible host (the video view leaves it too when it is still parked).
+    func unparkVideoView() {
         guard let parking = parkingView else {
             return
         }
-        if playerView.superview === parking {
-            playerView.removeFromSuperview()
+        if videoView.superview === parking {
+            videoView.removeFromSuperview()
         }
         parking.removeFromSuperview()
         parkingView = nil
     }
 
-    init(player: AVPlayer) {
-        let view = AVPlayerView()
-        view.player = player
-        view.controlsStyle = .floating
-        view.allowsPictureInPicturePlayback = true
-        view.showsFullScreenToggleButton = true
-        view.showsFrameSteppingButtons = false
-        view.updatesNowPlayingInfoCenter = true
-        view.videoGravity = .resizeAspect
-        playerView = view
-        super.init()
-        view.pictureInPictureDelegate = self
-    }
-
-    #else
-
-    let controller: AVPlayerViewController
-
-    init(player: AVPlayer) {
-        let controller = AVPlayerViewController()
-        controller.player = player
-        controller.allowsPictureInPicturePlayback = true
-        controller.canStartPictureInPictureAutomaticallyFromInline = true
-        controller.updatesNowPlayingInfoCenter = true
-        controller.videoGravity = .resizeAspect
-        self.controller = controller
-        super.init()
-        controller.delegate = self
-    }
-
     #endif
 }
 
-#if os(macOS)
+extension PlayerSurface: @preconcurrency AVPictureInPictureControllerDelegate {
 
-extension PlayerSurface: @preconcurrency AVPlayerViewPictureInPictureDelegate {
-
-    func playerViewDidStartPicture(inPicture playerView: AVPlayerView) {
+    func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
         isPictureInPictureActive = true
         onPictureInPictureActiveChange?(true)
     }
 
-    func playerViewDidStopPicture(inPicture playerView: AVPlayerView) {
+    func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
         isPictureInPictureActive = false
+        #if os(macOS)
         // PiP ended without the player screen coming back: nothing shows the view any more.
-        if isPlayerViewParked {
-            unparkPlayerView()
+        if isVideoViewParked {
+            unparkVideoView()
         }
+        #endif
         onPictureInPictureActiveChange?(false)
     }
 
-    func playerView(_ playerView: AVPlayerView, failedToStartPictureInPictureWithError error: Error) {
+    func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
         onPictureInPictureError?(error)
     }
 
-    func playerViewShouldAutomaticallyDismissAtPicture(inPictureStart playerView: AVPlayerView) -> Bool {
-        // The view model dismisses the player sheet itself.
-        false
-    }
-
-    func playerView(_ playerView: AVPlayerView, restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void) {
+    func pictureInPictureController(
+        _ pictureInPictureController: AVPictureInPictureController,
+        restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void
+    ) {
         guard let onRestoreUserInterface else {
             completionHandler(false)
             return
@@ -140,37 +247,3 @@ extension PlayerSurface: @preconcurrency AVPlayerViewPictureInPictureDelegate {
         onRestoreUserInterface(completionHandler)
     }
 }
-
-#else
-
-extension PlayerSurface: @preconcurrency AVPlayerViewControllerDelegate {
-
-    func playerViewControllerDidStartPictureInPicture(_ playerViewController: AVPlayerViewController) {
-        isPictureInPictureActive = true
-        onPictureInPictureActiveChange?(true)
-    }
-
-    func playerViewControllerDidStopPictureInPicture(_ playerViewController: AVPlayerViewController) {
-        isPictureInPictureActive = false
-        onPictureInPictureActiveChange?(false)
-    }
-
-    func playerViewController(_ playerViewController: AVPlayerViewController, failedToStartPictureInPictureWithError error: Error) {
-        onPictureInPictureError?(error)
-    }
-
-    func playerViewControllerShouldAutomaticallyDismissAtPictureInPictureStart(_ playerViewController: AVPlayerViewController) -> Bool {
-        // The controller is embedded in SwiftUI: the view model dismisses the player cover itself.
-        false
-    }
-
-    func playerViewController(_ playerViewController: AVPlayerViewController, restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void) {
-        guard let onRestoreUserInterface else {
-            completionHandler(false)
-            return
-        }
-        onRestoreUserInterface(completionHandler)
-    }
-}
-
-#endif

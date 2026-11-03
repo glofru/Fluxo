@@ -16,6 +16,7 @@ xcrun swiftc -O -swift-version 5 -parse-as-library -o "$OUT/check" \
     "$ROOT/Fluxo/Features/Playlist/ChannelContentKind.swift" \
     "$ROOT/Fluxo/Features/Library/ChannelBookmark.swift" \
     "$ROOT/Fluxo/Features/Library/ChannelLibrary.swift" \
+    "$ROOT/Fluxo/Features/Library/ChannelZapper.swift" \
     "$ROOT/Fluxo/Features/Home/HomeQueries.swift" \
     "$ROOT/Fluxo/App/Database/ModelRegisty.generated.swift" \
     "$HERE/main.swift" 2> "$OUT/build.log" || { cat "$OUT/build.log"; exit 1; }

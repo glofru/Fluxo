@@ -62,21 +62,41 @@ final class PlaylistImportCenter {
 
     /// Re-downloads the playlist and replaces its channels. The current channels stay visible until the new ones
     /// are stored; on failure they are kept and `failure` is set.
+    /// A refresh requested while one is already running is ignored.
     func refresh(_ playlist: Playlist) {
+        refresh(playlist, restartingRunningImport: false)
+    }
+
+    /// Like `refresh`, but an import that is already running (e.g. still downloading the playlist's previous URL)
+    /// is cancelled and a new one starts once it ended.
+    func restartRefresh(_ playlist: Playlist) {
+        refresh(playlist, restartingRunningImport: true)
+    }
+
+    private func refresh(_ playlist: Playlist, restartingRunningImport: Bool) {
         let uuid = playlist.uuid
         let name = playlist.name
-        guard running[uuid] == nil else {
+        let url = playlist.url
+        guard let pending = running[uuid] else {
+            reportFailures(of: startImport(playlistUUID: uuid, url: url), playlistName: name)
             return
         }
-        let task = startImport(playlistUUID: uuid, url: playlist.url)
+        guard restartingRunningImport else {
+            return
+        }
+        pending.task.cancel()
+        progress[uuid] = .connecting
         Task { [weak self] in
-            do {
-                _ = try await task.value
-            } catch is CancellationError {
-                // Cancelled by the user: nothing to report.
-            } catch {
-                self?.failure = Failure(playlistName: name, message: error.localizedDescription)
+            // The cancelled import discards its own rows; wait for it so the two never overlap.
+            _ = await pending.task.result
+            guard let self else {
+                return
             }
+            if let current = self.running[uuid], current.token != pending.token {
+                // Another refresh started meanwhile; it already reads the new URL.
+                return
+            }
+            self.reportFailures(of: self.startImport(playlistUUID: uuid, url: url), playlistName: name)
         }
     }
 
@@ -101,6 +121,18 @@ final class PlaylistImportCenter {
     }
 
     // MARK: - Private
+
+    private func reportFailures(of task: Task<PlaylistImportSummary, Error>, playlistName: String) {
+        Task { [weak self] in
+            do {
+                _ = try await task.value
+            } catch is CancellationError {
+                // Cancelled by the user: nothing to report.
+            } catch {
+                self?.failure = Failure(playlistName: playlistName, message: error.localizedDescription)
+            }
+        }
+    }
 
     private func startImport(playlistUUID: UUID, url: URL) -> Task<PlaylistImportSummary, Error> {
         let token = UUID()

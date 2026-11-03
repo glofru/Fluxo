@@ -19,6 +19,7 @@ struct RecordingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var recordingToDelete: Recording?
     @State private var recordingToPlay: Recording?
+    @State private var isConfirmingDeleteAll = false
 
     var body: some View {
         NavigationStack {
@@ -30,30 +31,37 @@ struct RecordingsView: View {
                         description: Text("Use the record button while watching a live channel.")
                     )
                 } else {
-                    List(store.recordings) { recording in
-                        Button {
-                            requestPlay(recording)
-                        } label: {
-                            RecordingRow(recording: recording)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(recording.isFinalizing)
-                        .swipeActions {
-                            Button("Delete", systemImage: "trash", role: .destructive) {
-                                recordingToDelete = recording
+                    List {
+                        Section {
+                            ForEach(store.recordings) { recording in
+                                Button {
+                                    requestPlay(recording)
+                                } label: {
+                                    RecordingRow(recording: recording)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(recording.isFinalizing)
+                                .accessibilityHint(recording.isFinalizing ? "Being saved" : "Plays the recording")
+                                .swipeActions(edge: .trailing) {
+                                    Button("Delete", systemImage: "trash", role: .destructive) {
+                                        recordingToDelete = recording
+                                    }
+                                    .disabled(recording.isFinalizing)
+                                }
+                                .swipeActions(edge: .leading) {
+                                    if !recording.isFinalizing {
+                                        ShareLink(item: recording.url) {
+                                            Label("Share", systemImage: "square.and.arrow.up")
+                                        }
+                                        .tint(.blue)
+                                    }
+                                }
+                                .contextMenu {
+                                    RecordingMenuItems(recording: recording, play: { requestPlay(recording) }, delete: { recordingToDelete = recording })
+                                }
                             }
-                            .disabled(recording.isFinalizing)
-                        }
-                        .contextMenu {
-                            Button("Play", systemImage: "play.fill") {
-                                requestPlay(recording)
-                            }
-                            .disabled(recording.isFinalizing)
-
-                            Button("Delete", systemImage: "trash", role: .destructive) {
-                                recordingToDelete = recording
-                            }
-                            .disabled(recording.isFinalizing)
+                        } footer: {
+                            Text("\(store.recordings.count) recordings · \(ByteCountFormatter.string(fromByteCount: store.totalBytes, countStyle: .file))")
                         }
                     }
                 }
@@ -61,6 +69,21 @@ struct RecordingsView: View {
             .navigationTitle("Recordings")
             .inlineNavigationBar()
             .toolbar {
+                ToolbarItem(placement: .automatic) {
+                    Menu {
+                        #if os(macOS)
+                        Button("Show in Finder", systemImage: "folder") {
+                            NSWorkspace.shared.activateFileViewerSelecting([store.directory])
+                        }
+                        #endif
+                        Button("Delete All Recordings…", systemImage: "trash", role: .destructive) {
+                            isConfirmingDeleteAll = true
+                        }
+                        .disabled(store.recordings.isEmpty || isRecordingActive)
+                    } label: {
+                        Label("More", systemImage: "ellipsis.circle")
+                    }
+                }
                 if showsDoneButton {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Done") {
@@ -76,6 +99,14 @@ struct RecordingsView: View {
                 Button("Cancel", role: .cancel) {}
             } message: { recording in
                 Text(recording.title)
+            }
+            .alert("Delete all recordings?", isPresented: $isConfirmingDeleteAll) {
+                Button("Delete All", role: .destructive) {
+                    store.deleteAll()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("\(store.recordings.count) recordings will be deleted from this device.")
             }
             .alert("Stop the current recording?", isPresented: playAlertBinding, presenting: recordingToPlay) { recording in
                 Button("Stop and Play", role: .destructive) {
@@ -122,6 +153,35 @@ struct RecordingsView: View {
     }
 }
 
+/// Play, share, reveal and delete entries of a recording.
+private struct RecordingMenuItems: View {
+    let recording: Recording
+    let play: () -> Void
+    let delete: () -> Void
+
+    var body: some View {
+        Button("Play", systemImage: "play.fill", action: play)
+            .disabled(recording.isFinalizing)
+
+        if !recording.isFinalizing {
+            ShareLink(item: recording.url) {
+                Label("Share…", systemImage: "square.and.arrow.up")
+            }
+        }
+
+        #if os(macOS)
+        Button("Show in Finder", systemImage: "folder") {
+            NSWorkspace.shared.activateFileViewerSelecting([recording.url])
+        }
+        #endif
+
+        Divider()
+
+        Button("Delete", systemImage: "trash", role: .destructive, action: delete)
+            .disabled(recording.isFinalizing)
+    }
+}
+
 private struct RecordingRow: View {
     let recording: Recording
 
@@ -158,5 +218,6 @@ private struct RecordingRow: View {
             }
         }
         .contentShape(.rect)
+        .accessibilityElement(children: .combine)
     }
 }

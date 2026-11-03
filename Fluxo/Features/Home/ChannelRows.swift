@@ -321,9 +321,12 @@ struct CompactChannelCard: View {
             playChannel(item)
         } label: {
             HStack(spacing: 12) {
-                LogoImage(source: item.logo, size: Self.logoSize, accessibilityLabel: item.displayName) { _ in
-                    ArtworkPlaceholder(name: item.displayName, kind: item.kind)
-                        .scaleEffect(0.7)
+                LogoImage(source: item.logo, size: Self.logoSize, accessibilityLabel: item.displayName) { phase in
+                    if phase == .unavailable {
+                        ArtworkPlaceholder(name: item.displayName, kind: item.kind)
+                    } else {
+                        Color.artworkPlaceholder.opacity(0.3)
+                    }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 

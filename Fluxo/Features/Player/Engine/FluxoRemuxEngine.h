@@ -159,6 +159,10 @@ void fluxo_remux_destroy(FluxoRemuxSession *session);
 int32_t fluxo_remux_convert_file(const char *input_path, const char *output_path, double *duration_seconds,
                                  char *error_message, int32_t error_message_size);
 
+/// Version of the FFmpeg libraries the engine is linked against (e.g. "8.0.1"), for the About screen.
+/// The returned string is static and must not be freed.
+const char *fluxo_remux_library_version(void);
+
 #ifdef __cplusplus
 }
 #endif

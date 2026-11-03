@@ -28,7 +28,7 @@ struct PlayChannelAction: Equatable {
     @MainActor
     func callAsFunction(_ item: ChannelItem) {
         library?.recordWatch(item)
-        player?.play(item.playable)
+        player?.play(item)
     }
 
     static func == (lhs: PlayChannelAction, rhs: PlayChannelAction) -> Bool {

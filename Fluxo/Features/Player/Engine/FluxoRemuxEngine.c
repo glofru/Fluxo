@@ -1410,3 +1410,7 @@ int32_t fluxo_remux_convert_file(const char *input_path, const char *output_path
     }
     return ret < 0 ? ret : 0;
 }
+
+const char *fluxo_remux_library_version(void) {
+    return av_version_info();
+}

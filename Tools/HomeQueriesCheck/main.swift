@@ -104,6 +104,9 @@ enum HomeQueriesCheck {
         print("== library")
         try checkLibrary(container: container, playlistA: playlistA, importA: importA, playlistB: playlistB, importB: importB)
 
+        print("== zapping")
+        try checkZapping(container: container, playlistA: playlistA, importA: importA)
+
         print(failures == 0 ? "ALL CHECKS PASSED" : "\(failures) CHECK(S) FAILED")
         if failures > 0 {
             exit(1)
@@ -239,5 +242,26 @@ enum HomeQueriesCheck {
         }
         let historyCount = try context.fetchCount(HomeQueries.recents(playlistIDs: nil, limit: 10_000))
         expect(historyCount == min(ChannelLibrary.historyLimit, many.count), "history trimmed to \(historyCount)")
+    }
+
+    static func checkZapping(container: ModelContainer, playlistA: UUID, importA: UUID) throws {
+        let zapper = ChannelZapper(container: container, library: ChannelLibrary(container: container))
+        let context = container.mainContext
+        let group = try context.fetch(HomeQueries.channels(importID: importA, groupName: "Live TV 1", limit: 10_000)).map(ChannelItem.init)
+        guard group.count > 2, let first = group.first, let last = group.last else {
+            expect(false, "zapping fixtures")
+            return
+        }
+        let next = timed("next channel") { zapper.neighbor(of: first, offset: 1) }
+        expect(next?.id == group[1].id, "channel up goes to the next channel of the group")
+        expect(zapper.neighbor(of: group[1], offset: -1)?.id == first.id, "channel down goes to the previous channel")
+        expect(zapper.neighbor(of: last, offset: 1)?.id == first.id, "channel up wraps from the last to the first channel")
+        expect(zapper.neighbor(of: first, offset: -1)?.id == last.id, "channel down wraps from the first to the last channel")
+        // A bookmark keeps the URL but its row UUID is gone after a refresh.
+        let bookmarked = ChannelItem(id: UUID(), playlistID: playlistA, name: first.name, logo: nil, url: first.url, groupName: first.groupName, kind: .live)
+        expect(zapper.neighbor(of: bookmarked, offset: 1)?.id == group[1].id, "zapping from a bookmark finds the channel by URL")
+        let orphan = ChannelItem(id: UUID(), playlistID: UUID(), name: "Gone", logo: nil, url: first.url, groupName: first.groupName, kind: .live)
+        expect(zapper.neighbor(of: orphan, offset: 1) == nil, "no neighbor once the playlist is gone")
+        expect(next.map { $0.groupName == first.groupName } == true, "zapping stays inside the group")
     }
 }

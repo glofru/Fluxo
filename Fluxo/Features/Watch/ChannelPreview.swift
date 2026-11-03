@@ -9,10 +9,12 @@ import SwiftUI
 
 /// Card of a channel in the Home rows and grids: a landscape logo card for live channels and a
 /// poster for movies and series. Tapping plays it; the context menu adds it to the favorites.
+///
+/// Every live card is 5:3 and every poster 2:3, whatever the artwork, so rows and grids line up.
 struct ChannelPreview: View {
 
     static let liveSize = CGSize(width: 220, height: 132)
-    static let posterSize = CGSize(width: 150, height: 222)
+    static let posterSize = CGSize(width: 150, height: 225)
 
     let item: ChannelItem
     /// Shown under the title (e.g. the playlist name when several playlists are listed together).
@@ -51,7 +53,17 @@ struct ChannelPreview: View {
                         }
                     }
                     .overlay {
-                        borderShape.strokeBorder(.white.opacity(0.08))
+                        borderShape.strokeBorder(.primary.opacity(0.08))
+                    }
+                    .overlay(alignment: .bottomLeading) {
+                        if item.kind != .live {
+                            Image(systemName: item.kind.systemImage)
+                                .font(.caption2.bold())
+                                .padding(5)
+                                .glassEffect(.regular, in: .circle)
+                                .padding(8)
+                                .accessibilityHidden(true)
+                        }
                     }
 
                 Text(item.displayName)
@@ -70,11 +82,28 @@ struct ChannelPreview: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(CardButtonStyle())
+        .cardHoverEffect()
         .contextMenuPreviewShape(borderShape)
         .contextMenu {
             ChannelContextMenu(item: item, isFavorite: isFavorite, extraActions: extraActions)
         }
-        .accessibilityHint("Plays the channel")
+        .accessibilityLabel(Text(accessibilityLabel(isFavorite: isFavorite)))
+        .accessibilityHint(item.kind == .live ? "Plays the channel" : "Plays the video")
+        .accessibilityAction(named: isFavorite ? "Remove from Favorites" : "Add to Favorites") {
+            library.toggleFavorite(item)
+        }
+        .help(item.displayName)
+    }
+
+    private func accessibilityLabel(isFavorite: Bool) -> String {
+        var parts = [item.displayName, item.kind.title]
+        if let subtitle {
+            parts.append(subtitle)
+        }
+        if isFavorite {
+            parts.append("Favorite")
+        }
+        return parts.joined(separator: ", ")
     }
 
     private var artworkBackground: some ShapeStyle {
@@ -127,18 +156,39 @@ struct ChannelContextMenu: View {
     }
 }
 
-/// Slight press feedback for cards.
+/// Press feedback for cards, plus a lift on hover and keyboard focus (macOS).
 struct CardButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
+        CardButtonBody(configuration: configuration)
+    }
+}
+
+private struct CardButtonBody: View {
+    let configuration: ButtonStyleConfiguration
+
+    @State private var isHovered = false
+    @Environment(\.isFocused) private var isFocused
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let isLifted = (isHovered || isFocused) && !configuration.isPressed
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .scaleEffect(configuration.isPressed ? 0.96 : (isLifted && !reduceMotion ? 1.03 : 1))
             .opacity(configuration.isPressed ? 0.85 : 1)
+            .shadow(color: .black.opacity(isLifted ? 0.28 : 0), radius: isLifted ? 14 : 0, y: isLifted ? 8 : 0)
             .animation(.spring(duration: 0.25), value: configuration.isPressed)
+            .animation(.spring(duration: 0.3), value: isLifted)
+            #if os(macOS)
+            .onHover { hovering in
+                isHovered = hovering
+            }
+            #endif
     }
 }
 
 /// Logo of a live channel (fitted, centered) or poster of an on-demand item (filling the card).
-/// Decoded at the displayed size by the shared logo loader.
+/// Decoded at the displayed size by the shared logo loader. Without usable artwork the whole card shows
+/// the channel's initials on a gradient tinted from its name.
 struct ChannelArtwork: View {
 
     let logo: String?
@@ -146,47 +196,104 @@ struct ChannelArtwork: View {
     let kind: ChannelContentKind
     let size: CGSize
 
+    @State private var isUnavailable = false
+
     var body: some View {
         let isPoster = kind.usesPosterArtwork
         let imageSize = isPoster ? size : CGSize(width: size.width * 0.5, height: size.height * 0.6)
-        LogoImage(
-            source: logo,
-            size: imageSize,
-            contentMode: isPoster ? .fill : .fit,
-            accessibilityLabel: name
-        ) { phase in
-            switch phase {
-            case .loading:
-                ProgressView()
-            case .unavailable:
+        ZStack {
+            if logo == nil {
                 ArtworkPlaceholder(name: name, kind: kind)
-                    .frame(width: imageSize.width, height: imageSize.height)
+                    .frame(width: size.width, height: size.height)
+            } else {
+                // LogoImage stays in the hierarchy even when it fails: it is the only writer of the
+                // preference, so removing it would reset the preference and make the card flip forever.
+                LogoImage(
+                    source: logo,
+                    size: imageSize,
+                    contentMode: isPoster ? .fill : .fit,
+                    accessibilityLabel: name
+                ) { phase in
+                    // Reported to the card, which then draws the placeholder over its full size.
+                    ZStack {
+                        Color.clear
+                        if phase == .loading {
+                            ProgressView()
+                                .controlSize(.small)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .preference(key: ArtworkUnavailableKey.self, value: phase == .unavailable)
+                }
+                if isUnavailable {
+                    ArtworkPlaceholder(name: name, kind: kind)
+                        .frame(width: size.width, height: size.height)
+                        .transition(.opacity)
+                }
             }
+        }
+        .frame(width: size.width, height: size.height)
+        .onPreferenceChange(ArtworkUnavailableKey.self) { unavailable in
+            isUnavailable = unavailable
+        }
+        .onChange(of: logo) {
+            isUnavailable = false
         }
     }
 }
 
-/// Initials on a tinted background when a channel has no usable artwork.
+private struct ArtworkUnavailableKey: PreferenceKey {
+    static let defaultValue = false
+
+    static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = value || nextValue()
+    }
+}
+
+/// Initials on a gradient tinted from the name (stable across launches) when a channel has no usable artwork.
 struct ArtworkPlaceholder: View {
     let name: String
     let kind: ChannelContentKind
 
     var body: some View {
-        VStack(spacing: 4) {
-            Image(systemName: kind.systemImage)
-                .font(.title3)
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            Text(initials)
-                .font(.headline.weight(.bold))
-                .foregroundStyle(.primary.opacity(0.7))
+        let hue = Self.hue(for: name)
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(hue: hue, saturation: 0.55, brightness: 0.62),
+                    Color(hue: (hue + 0.08).truncatingRemainder(dividingBy: 1), saturation: 0.65, brightness: 0.38),
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            VStack(spacing: 4) {
+                Text(initials)
+                    .font(.title2.weight(.heavy))
+                    .minimumScaleFactor(0.5)
+                Image(systemName: kind.systemImage)
+                    .font(.caption)
+                    .opacity(0.75)
+            }
+            .foregroundStyle(.white)
+            .padding(6)
         }
         .accessibilityHidden(true)
     }
 
     private var initials: String {
-        let words = name.split(whereSeparator: { $0 == " " || $0 == "-" || $0 == "|" }).prefix(2)
-        return words.compactMap(\.first).map(String.init).joined().uppercased()
+        let words = name.split(whereSeparator: { $0 == " " || $0 == "-" || $0 == "|" || $0 == "_" }).prefix(2)
+        let letters = words.compactMap { $0.first(where: { $0.isLetter || $0.isNumber }) }
+        let result = letters.map(String.init).joined().uppercased()
+        return result.isEmpty ? "TV" : result
+    }
+
+    /// djb2 over the name: `String.hashValue` is randomized per launch, which would change the colors.
+    static func hue(for name: String) -> Double {
+        var hash: UInt64 = 5_381
+        for scalar in name.unicodeScalars {
+            hash = (hash &<< 5) &+ hash &+ UInt64(scalar.value)
+        }
+        return Double(hash % 360) / 360
     }
 }
 

@@ -119,12 +119,21 @@ final class AVPlayerViewModel {
         }
     }
 
-    static let skipBackwardInterval: TimeInterval = 10
-    static let skipForwardInterval: TimeInterval = 30
+    /// Skip intervals chosen in Settings.
+    static var skipBackwardInterval: TimeInterval {
+        PlayerPreferences.skipBackwardInterval
+    }
+
+    static var skipForwardInterval: TimeInterval {
+        PlayerPreferences.skipForwardInterval
+    }
 
     var isPresented: Bool = false
 
     private(set) var currentChannel: PlayableChannel?
+    /// The playlist entry being played, when it was started from a card, a row or by zapping (not for
+    /// recordings). Channel up / down moves within its group.
+    private(set) var currentItem: ChannelItem?
     private(set) var playbackState: PlaybackState = .idle
     /// Last error reported by the stream engine or AVPlayer for the current channel.
     private(set) var streamError: String?
@@ -132,9 +141,20 @@ final class AVPlayerViewModel {
     private(set) var isTimeShiftAvailable = false
     private(set) var canSeek = false
     private(set) var canRecord = false
-    private(set) var isRecording = false
+    private(set) var isRecording = false {
+        didSet {
+            // Channel up / down (the remote next / previous track commands) depends on it.
+            if isRecording != oldValue {
+                updateNowPlaying()
+            }
+        }
+    }
     private(set) var recordingError: String?
     private(set) var isPictureInPictureActive = false
+    /// Picture in Picture can start now (the item is ready and the video view is on screen).
+    private(set) var isPictureInPicturePossible = false
+    /// Aspect fill instead of aspect fit.
+    private(set) var fillsScreen = false
 
     let player = AVPlayer()
     let timeline = PlaybackTimeline()
@@ -142,7 +162,12 @@ final class AVPlayerViewModel {
     /// The platform player view, kept alive across player screen presentations for PiP.
     let surface: PlayerSurface
 
+    /// Finds the previous / next channel of the current group. Set by the app once the store is open.
+    @ObservationIgnored
+    var zapper: ChannelZapper?
+
     private let server = SimpleHTTPServer()
+    private let nowPlaying = NowPlayingController()
     private let remuxer = StreamRemuxer()
     private let outputDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("hls", isDirectory: true)
 
@@ -184,6 +209,7 @@ final class AVPlayerViewModel {
             self?.handle(event)
         }
         configureSurface()
+        configureRemoteCommands()
         observePlayer()
         observeAudioSession()
     }
@@ -207,9 +233,21 @@ final class AVPlayerViewModel {
 
     // MARK: - Channel selection
 
+    /// Plays a playlist entry (it can then be zapped from) and presents the player.
+    func play(_ item: ChannelItem, present: Bool = true) {
+        currentItem = item
+        playChannel(item.playable, present: present)
+    }
+
+    /// Plays a stream that is not a playlist entry (e.g. a recording or a debug URL).
+    func play(_ channel: PlayableChannel, present: Bool = true) {
+        currentItem = nil
+        playChannel(channel, present: present)
+    }
+
     /// Plays `channel` and presents the player (unless Picture in Picture is running).
     /// Selecting the channel that is already playing only presents the player again.
-    func play(_ channel: PlayableChannel, present: Bool = true) {
+    private func playChannel(_ channel: PlayableChannel, present: Bool) {
         defer {
             if present && !isPictureInPictureActive {
                 isPresented = true
@@ -244,13 +282,60 @@ final class AVPlayerViewModel {
 
     /// Stops playback completely and closes the player.
     func stop() {
+        completePendingRestore(false)
+        surface.stopPictureInPicture()
         tearDownPlayback()
         currentChannel = nil
+        currentItem = nil
         streamError = nil
         isPresented = false
         server.stop()
         deactivateAudioSession()
         refreshPlaybackState()
+        nowPlaying.clear()
+    }
+
+    // MARK: - Channel zapping
+
+    /// Channel up / down is offered for live channels of a playlist, and not while recording (switching
+    /// channel would end the recording).
+    var canZap: Bool {
+        guard let currentItem, zapper != nil else {
+            return false
+        }
+        return currentItem.kind == .live && !isRecording
+    }
+
+    /// Plays the next (`offset` > 0) or previous channel of the current group, wrapping around.
+    func zap(by offset: Int) {
+        guard canZap, let item = currentItem, let next = zapper?.neighbor(of: item, offset: offset) else {
+            return
+        }
+        zapper?.recordWatch(next)
+        play(next, present: false)
+    }
+
+    func nextChannel() {
+        zap(by: 1)
+    }
+
+    func previousChannel() {
+        zap(by: -1)
+    }
+
+    // MARK: - Picture in Picture and video
+
+    var isPictureInPictureSupported: Bool {
+        surface.isPictureInPictureSupported
+    }
+
+    func togglePictureInPicture() {
+        surface.togglePictureInPicture()
+    }
+
+    func toggleFillsScreen() {
+        fillsScreen.toggle()
+        surface.fillsScreen = fillsScreen
     }
 
     // MARK: - Transport
@@ -304,6 +389,19 @@ final class AVPlayerViewModel {
         skip(by: Self.skipForwardInterval)
     }
 
+    /// Seeks to `seconds` on the item timeline (e.g. from the scrubber), within the seekable range.
+    func seek(toSeconds seconds: TimeInterval) {
+        guard canSeek, let item = player.currentItem, let range = seekableRange(of: item) else {
+            return
+        }
+        let upperBound = isTimeShiftAvailable ? range.end - liveOffset(of: item) : range.end
+        seek(to: min(max(seconds, range.start + 0.5), max(range.start + 0.5, upperBound)))
+        if didReachEnd {
+            didReachEnd = false
+            refreshPlaybackState()
+        }
+    }
+
     /// Jumps back to the live edge of a time-shifted live stream.
     func goLive() {
         guard isTimeShiftAvailable, let item = player.currentItem, let range = seekableRange(of: item) else {
@@ -351,6 +449,7 @@ final class AVPlayerViewModel {
 
     /// Called by the player screen when its video view is on screen.
     func playerViewDidAppear() {
+        logger.debug("Player screen appeared")
         isPlayerUIVisible = true
         // Give UIKit/AppKit one run loop to finish installing the view before PiP animates back.
         DispatchQueue.main.async { [weak self] in
@@ -359,6 +458,7 @@ final class AVPlayerViewModel {
     }
 
     func playerViewDidDisappear() {
+        logger.debug("Player screen disappeared")
         isPlayerUIVisible = false
     }
 
@@ -389,6 +489,7 @@ final class AVPlayerViewModel {
         streamError = nil
         recordingError = nil
         route = PlaybackRoute(url: url)
+        surface.startsPictureInPictureAutomatically = PlayerPreferences.autoPictureInPicture
         activateAudioSession()
 
         switch route {
@@ -406,8 +507,8 @@ final class AVPlayerViewModel {
                 isLive: isLive
             )
             if isLive {
-                configuration.maxWindowDuration = Self.maxTimeShiftDuration
-                configuration.maxWindowBytes = Self.diskBudget(for: outputDirectory, maximum: Self.maxTimeShiftBytes)
+                configuration.maxWindowDuration = PlayerPreferences.timeShiftDuration
+                configuration.maxWindowBytes = Self.diskBudget(for: outputDirectory, maximum: PlayerPreferences.timeShiftBytes)
             } else {
                 // On-demand inputs (local .ts files) are kept whole, so that every position stays
                 // seekable. The engine reads them at disk speed, so a sliding byte window would delete
@@ -604,7 +705,38 @@ final class AVPlayerViewModel {
         if state != playbackState {
             logger.info("Playback state: \(state.label, privacy: .public) (engine: \(String(describing: self.remuxer.state), privacy: .public))")
             playbackState = state
+            updateNowPlaying()
         }
+    }
+
+    // MARK: - Now Playing
+
+    private func configureRemoteCommands() {
+        nowPlaying.register(NowPlayingController.Commands(
+            play: { [weak self] in self?.play() },
+            pause: { [weak self] in self?.pause() },
+            togglePlayPause: { [weak self] in self?.togglePlayPause() },
+            skipBackward: { [weak self] in self?.skipBackward() },
+            skipForward: { [weak self] in self?.skipForward() },
+            nextChannel: { [weak self] in self?.nextChannel() },
+            previousChannel: { [weak self] in self?.previousChannel() }
+        ))
+    }
+
+    private func updateNowPlaying() {
+        guard let channel = currentChannel else {
+            nowPlaying.clear()
+            return
+        }
+        nowPlaying.update(
+            title: channel.name ?? "Fluxo",
+            isLive: route.isLiveRemux || player.currentItem?.duration.isIndefinite == true,
+            elapsed: timeline.currentTime,
+            duration: timeline.duration,
+            isPlaying: playbackState == .playing,
+            canSeek: canSeek,
+            canZap: canZap
+        )
     }
 
     private func computePlaybackState() -> PlaybackState {
@@ -672,6 +804,8 @@ final class AVPlayerViewModel {
     }
 
     private func updateTimeline() {
+        // Also polled here, as a fallback for the KVO observation in PlayerSurface (cheap: one property read).
+        updatePictureInPicturePossible(surface.isPictureInPicturePossible)
         guard let item = player.currentItem else {
             if canSeek {
                 canSeek = false
@@ -698,6 +832,7 @@ final class AVPlayerViewModel {
         let seekable = (range.map { $0.end - $0.start } ?? 0) > 2
         if seekable != canSeek {
             canSeek = seekable
+            updateNowPlaying()
         }
     }
 
@@ -717,13 +852,20 @@ final class AVPlayerViewModel {
 
     private func seek(to seconds: TimeInterval) {
         let tolerance = CMTime(value: 1, timescale: 4)
-        player.seek(to: CMTime(seconds: seconds, preferredTimescale: 600), toleranceBefore: tolerance, toleranceAfter: tolerance)
+        player.seek(to: CMTime(seconds: seconds, preferredTimescale: 600), toleranceBefore: tolerance, toleranceAfter: tolerance) { [weak self] finished in
+            guard finished else {
+                return
+            }
+            // Now Playing only gets a new elapsed time on state changes, so push the new position
+            // (otherwise the Lock Screen / Control Center scrubber drifts after a skip or a scrub).
+            Task { @MainActor [weak self] in
+                self?.updateTimeline()
+                self?.updateNowPlaying()
+            }
+        }
     }
 
-    /// Longest time-shift (DVR) window of a live stream.
-    static let maxTimeShiftDuration: TimeInterval = 30 * 60
-    /// Disk budget of the time-shift window of a live stream.
-    static let maxTimeShiftBytes: Int64 = 512 * 1024 * 1024
+    // The time-shift (DVR) window of live streams and its disk budget come from PlayerPreferences.
     /// Free space kept in reserve when an on-demand file is remuxed whole.
     static let onDemandFreeSpaceMargin: Int64 = 256 * 1024 * 1024
 
@@ -775,6 +917,7 @@ final class AVPlayerViewModel {
             guard let self else {
                 return
             }
+            logger.info("Picture in Picture active: \(isActive, privacy: .public)")
             self.isPictureInPictureActive = isActive
             if isActive {
                 // Let the user browse while the video plays in PiP. The surface (and with it the
@@ -784,6 +927,12 @@ final class AVPlayerViewModel {
         }
         surface.onRestoreUserInterface = { [weak self] completion in
             guard let self else {
+                completion(false)
+                return
+            }
+            // `stop()` ends PiP from code and AVKit then asks to restore asynchronously, after
+            // playback is already gone. Never reopen an empty player screen for that.
+            guard self.currentChannel != nil else {
                 completion(false)
                 return
             }
@@ -802,6 +951,17 @@ final class AVPlayerViewModel {
         surface.onPictureInPictureError = { [weak self] error in
             self?.streamError = error.localizedDescription
         }
+        surface.onPictureInPicturePossibleChange = { [weak self] isPossible in
+            self?.updatePictureInPicturePossible(isPossible)
+        }
+    }
+
+    private func updatePictureInPicturePossible(_ isPossible: Bool) {
+        guard isPictureInPicturePossible != isPossible else {
+            return
+        }
+        logger.info("Picture in Picture possible: \(isPossible, privacy: .public)")
+        isPictureInPicturePossible = isPossible
     }
 
     private func completePendingRestore(_ restored: Bool) {

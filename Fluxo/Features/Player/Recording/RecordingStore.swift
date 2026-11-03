@@ -127,6 +127,19 @@ final class RecordingStore {
         reload()
     }
 
+    /// Deletes every recording that is neither being written nor being converted.
+    func deleteAll() {
+        for recording in recordings where !Self.activeURLs.contains(recording.url) && !Self.finalizingURLs.contains(recording.url) {
+            removeFiles(of: recording.url)
+        }
+        reload()
+    }
+
+    /// Size of all recordings on disk.
+    var totalBytes: Int64 {
+        recordings.reduce(0) { $0 + $1.bytes }
+    }
+
     func reload() {
         let fileManager = FileManager.default
         let keys: [URLResourceKey] = [.fileSizeKey, .creationDateKey]
