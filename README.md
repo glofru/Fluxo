@@ -231,6 +231,50 @@ plain surfaces or small materials.
 - **Tint**: the `AccentColor` asset is a violet with a lighter dark-mode variant; live and
   recording states stay red.
 
+## Brand and app icon
+
+The icon shows three streams of colour that flow in from the left and gather into a play
+glyph: live channels flowing into one player.
+
+### Palette
+
+| Name | Hex | Use |
+|---|---|---|
+| Fluxo Violet | `#6A4CFF` | Primary brand colour; the top of the icon background. Close to the `AccentColor` asset (`#644FF8`, dark `#8B7AFF`). |
+| Fluxo Ink | `#140F3C` | Deepest background; the bottom of the icon background. |
+| Night | `#281D69` → `#0A0720` | The dark-appearance icon background. |
+| Signal Cyan | `#3CD6FF` | Leading stream band; highlights and "live / connected" accents. |
+| Lilac | `#A08CFF` | Middle stream band; secondary tints, selection on dark surfaces. |
+| Flux Pink | `#FF5C9E` | Trailing stream band; a warm accent that can replace a plain red where the meaning is not an error. |
+| Glyph White | `#FFFFFF` (dark: `#F0EDFF`) | The play glyph. |
+
+The background is a linear gradient from the top left (Violet) to the bottom right (Ink).
+
+### Files
+
+- `Fluxo/AppIcon.icon`: the Icon Composer document used as the app icon on iOS and macOS
+  (`ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon`; there is no `AppIcon.appiconset`). It has two
+  Liquid Glass groups: **Play** (the glyph, 20 % translucency, neutral shadow) in front of
+  **Stream** (the three bands, layer-colour shadow), both with specular highlights. The dark
+  appearance has the Night background and a lavender glyph; the tinted and clear appearances are
+  derived by the system from the layers. Open it in Icon Composer
+  (`Xcode.app/Contents/Applications/Icon Composer.app`) to adjust the glass settings. Xcode
+  compiles it into `Assets.car` (and `AppIcon.icns` / `AppIcon60x60@2x.png` fallbacks).
+- `Design/Icon/Fluxo.vectorcraft`: the editable master in [VectorCraft](https://github.com/storytold/vectorcraft),
+  one layer per icon layer plus a reference background. `Design/Icon/Layers/*.svg` are the layer
+  exports (1024 × 1024), and `Fluxo-flat.svg` all layers together.
+- `Design/Icon/generate_layers.py`: draws the master with the headless VectorCraft CLI (the
+  geometry is computed in the script: the band centre lines, their stroke width, outline and
+  fade-in, and the live corners of the glyph), exports the layer SVGs and copies them into
+  `Fluxo/AppIcon.icon/Assets`. `vectorcraft-cli` is in the
+  `vectorcraft-cli-<version>-macos-universal.zip` release asset (the app bundle does not include it):
+
+  ```sh
+  VECTORCRAFT_CLI=/path/to/vectorcraft-cli Design/Icon/generate_layers.py
+  ```
+- `Design/Icon/render_previews.sh [dir]`: renders the icon with Icon Composer's `ictool` in the
+  Default, Dark, Clear (light / dark) and Tinted (light / dark) appearances for iOS and macOS.
+
 ## Memory
 
 - **Logos and posters** (`Fluxo/App/Images`): every image goes through the shared
