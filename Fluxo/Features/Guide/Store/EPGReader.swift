@@ -213,16 +213,38 @@ actor EPGReader {
         guard !term.isEmpty, !currentImportIDs.isEmpty else {
             return []
         }
+        guard !guideChannels(importIDs: importIDs).isEmpty else {
+            return []
+        }
+        // Fetch more rows than needed: some belong to guide channels that are not in this scope.
+        let rows = (try? makeContext().fetch(EPGQueries.search(term: term, importIDs: currentImportIDs, after: now, limit: limit * 4))) ?? []
+        return results(of: rows, importIDs: importIDs, limit: limit)
+    }
+
+    /// Programmes that overlap `interval` with a category containing `term`, on channels of the given playlist
+    /// imports, soonest first.
+    func search(category term: String, importIDs: [UUID], overlapping interval: DateInterval, limit: Int) -> [GuideSearchResult] {
+        let term = term.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !term.isEmpty, !currentImportIDs.isEmpty else {
+            return []
+        }
+        guard !guideChannels(importIDs: importIDs).isEmpty else {
+            return []
+        }
+        let rows = (try? makeContext().fetch(EPGQueries.programmes(category: term, importIDs: currentImportIDs, overlapping: interval, limit: limit * 4))) ?? []
+        return results(of: rows, importIDs: importIDs, limit: limit)
+    }
+
+    /// The rows on channels of the given playlist imports, with their channel.
+    private func results(of rows: [EPGProgramme], importIDs: [UUID], limit: Int) -> [GuideSearchResult] {
+        guard !rows.isEmpty else {
+            return []
+        }
         let channels = guideChannels(importIDs: importIDs)
         var channelByRef: [GuideChannelRef: ChannelItem] = [:]
         for channel in channels where channelByRef[channel.ref] == nil {
             channelByRef[channel.ref] = channel.item
         }
-        guard !channelByRef.isEmpty else {
-            return []
-        }
-        // Fetch more rows than needed: some belong to guide channels that are not in this scope.
-        let rows = (try? makeContext().fetch(EPGQueries.search(term: term, importIDs: currentImportIDs, after: now, limit: limit * 4))) ?? []
         var results: [GuideSearchResult] = []
         for row in rows {
             let ref = GuideChannelRef(sourceID: row.sourceID, importID: row.importID, channelID: row.channelID)

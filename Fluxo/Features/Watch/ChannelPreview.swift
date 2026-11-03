@@ -96,9 +96,11 @@ struct ChannelPreview: View {
                     .playerTransitionSource(id: sourceID)
                     .animation(reduceMotion ? nil : .spring(duration: 0.3, bounce: 0.4), value: isFavorite)
 
+                // Two lines of title, or one line of title and one of subtitle: cards with and without a
+                // subtitle are as tall, and a one-line name leaves no gap above its subtitle.
                 Text(item.displayName)
                     .font(Theme.Typography.cardTitle)
-                    .lineLimit(2, reservesSpace: true)
+                    .lineLimit(subtitle == nil ? 2 : 1, reservesSpace: true)
                     .multilineTextAlignment(.leading)
 
                 if let subtitle {

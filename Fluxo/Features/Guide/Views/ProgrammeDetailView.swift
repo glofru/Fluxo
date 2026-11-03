@@ -35,6 +35,8 @@ struct ProgrammeDetailView: View {
                         if !programme.categories.isEmpty {
                             categories
                         }
+                        // A short Apple Intelligence summary of a long description (nothing otherwise).
+                        ProgrammeSummaryView(programme: programme)
                         if !programme.summary.isEmpty {
                             Text(programme.summary)
                                 .font(.body)

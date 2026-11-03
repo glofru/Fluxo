@@ -123,6 +123,22 @@ enum EPGQueries {
         return descriptor
     }
 
+    /// Programmes that overlap `interval` and have a category containing `term` ("film" finds "Film" and
+    /// "Movie / Drama" finds "movie"), soonest first.
+    static func programmes(category term: String, importIDs: [UUID], overlapping interval: DateInterval, limit: Int) -> FetchDescriptor<EPGProgramme> {
+        let start = interval.start
+        let end = interval.end
+        var descriptor = FetchDescriptor<EPGProgramme>(
+            predicate: #Predicate { programme in
+                importIDs.contains(programme.importID) && programme.start < end && programme.stop > start
+                    && programme.categories.localizedStandardContains(term)
+            },
+            sortBy: [SortDescriptor(\.start)]
+        )
+        descriptor.fetchLimit = limit
+        return descriptor
+    }
+
     /// Live channels of an import, a page at a time, in playlist order (only the keys matching needs).
     static func liveChannels(importID: UUID, offset: Int, limit: Int) -> FetchDescriptor<PlaylistChannel> {
         let live = ChannelContentKind.live.rawValue

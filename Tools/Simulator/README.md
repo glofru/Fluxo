@@ -98,6 +98,7 @@ nothing when none of these is passed.
 | `-FluxoDebugAppearance light\|dark` | Forces the color scheme of the window (`simctl ui appearance` changes the whole simulator instead). Alone, it keeps the real library (it writes nothing). |
 | `-FluxoDebugDynamicType <size>` | Forces a Dynamic Type size: `xSmall` … `xxxLarge`, `accessibility1` … `accessibility5`, or the `simctl` names. Alone, it keeps the real library (it writes nothing). |
 | `-FluxoDebugCast simulated` | Uses the simulated Chromecast receiver from launch instead of the Google Cast SDK (the `cast:` route switches to it too). Nothing goes on the network. |
+| `-FluxoDebugIntelligence available\|off\|unavailable\|notReady\|unsupported` | Forces the Apple Intelligence status (`FluxoIntelligence`), e.g. `unavailable` to see the built-in suggestions and search on a simulator that has the model. Alone, it keeps the real library. |
 | `-FluxoDebugTestStreamURL <url>` | Base URL of the test-stream server used by the seeded "Loopback Test" playlist and the large seed's artwork (default `http://127.0.0.1:18080`). |
 
 Other useful system arguments: `-AppleLanguages "(de)" -AppleLocale de_DE`,
@@ -129,7 +130,7 @@ first that contains the text.
 | `group:<name>` | Pushes a category (group) on Home. |
 | `categories:<live\|movies\|series>` | Pushes the category browser of a kind on Home. |
 | `browse:<order>[,<layout>]` | Order (`playlist`, `name`, `recentlyAdded`, `mostWatched`) and layout (`list`, `grid`) of every category. |
-| `home-section:<onNow\|browse>` | Scrolls Home to a section. |
+| `home-section:<forYou\|onNow\|browse>` | Scrolls Home to a section. |
 | `seed-guide` | Adds a sample TV guide for the live channels of every playlist (for On Now, now / next in rows, schedules). |
 | `progress:<channel>` | Marks a movie or episode as watched up to 40 % (Continue Watching, progress bars). |
 | `schedule:<channel>` | The schedule sheet of a live channel (needs a guide, e.g. `seed-guide`). |

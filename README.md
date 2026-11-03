@@ -360,6 +360,79 @@ guide; the real library is not opened), `-FluxoDebugOpenGuide YES`, `-FluxoDebug
 `-FluxoDebugGuideDetail YES`, `-FluxoDebugGuideSources YES` and, on macOS, `-FluxoDebugSnapshot <name>` (PNGs of
 the windows in the app's temporary folder, then quit). See `App/Debug/DebugGuideDemo.swift`.
 
+## Apple Intelligence and Siri
+
+Everything below runs on the device. The language features use the Foundation Models framework
+(`SystemLanguageModel.default`) and nothing else: no Private Cloud Compute, no server, no third-party model. Each
+feature has a built-in fallback, so the app works fully when Apple Intelligence is off, not supported, still
+downloading or does not support the app's language (`FluxoIntelligence.status`, re-read when the app becomes
+active). Settings › Apple Intelligence has a switch for the features and explains why they are unavailable.
+
+- **For You** (Home, `Features/Intelligence/Recommendations`): candidates come from the library (channels of
+  the groups the viewer watches most, channels named like the most watched ones, favorites past the first ones,
+  and for a new library the first groups; never what the Continue Watching and Favorites rows next to it already
+  show), a built-in ranking (group affinity, on-air
+  programmes, at most three per group, varied reasons) is shown at once, and with Apple Intelligence the model then picks eight and writes a short reason for each
+  (`ChannelPicks`, `@Generable` structured output). It may call the `searchChannels` tool (the Search token
+  index) to add candidates, at most twice. Picks are numbers checked against the candidates, so nothing can be
+  invented. Results are cached per scope and taste fingerprint (most watched channels, favorites, a three-hour
+  slot of the day; a SHA-256 digest, the same in every launch): the model runs again only when one of these
+  changes, and its picks survive a relaunch.
+- **For You Tonight** (Guide; "For You Today" before the evening): programmes on now and in the next six hours on the viewer's channels and groups,
+  ranked by channel affinity, timing and recurring categories, then picked and explained by the model
+  (`ProgrammePicks`, with a `searchGuide` tool). The strip collapses to one line.
+- **Smart search** (Search, `Features/Intelligence/Search`): queries of two or more words with a cue the name
+  search cannot use ("football tonight", "italian news channels", "something like Sky Sport F1"), or that find
+  nothing, become a `SmartSearchPlan` (keywords with synonyms and translations, kind, country, time window, a
+  channel to find similar ones to). The model writes it as structured output; `SmartSearchRules` does the same
+  for common words in English, Italian, German, French and Spanish without it, and backs up the model's plan
+  (the model's fields are checked against the query). The plan runs through the regular channel, group and
+  programme searches, so every result is real; "Smart Results" show the understood query as chips. The viewer's
+  own words match as the regular searches do; added synonyms and translations ("serie a", "info", "tg"), and
+  words under three letters, must be whole words of a programme's title, subtitle or categories (or of a
+  channel or group name), so "football tonight" does not list every description that says "series". A kind
+  alone is a search too: "films tomorrow" or "serie tv stasera" list the guide's programmes whose category
+  names the kind (`Film`, `Movie / Drama`, `Serie TV`) and the groups and channels named for it ("Cinema",
+  "Sky Cinema Uno"); competitions named with a kind word ("Serie A", "Serie B") stay keywords. A country
+  filters programmes as it filters channels, and "tonight" after midnight is the rest of the night.
+- **Programme summaries** (programme screen): descriptions of 280 characters or more get a one- or two-sentence
+  summary, streamed as it is written and kept for the session.
+- **Language**: reasons and summaries are written in the app's language; when the small model answers in another
+  one (checked with `NLLanguageRecognizer`), they are translated in one more request.
+- Typical timings on a Mac with Apple Intelligence: 4–7 s for a recommendation list, 1–2 s for a query plan.
+  `-FluxoDebugIntelligence available|off|unavailable|notReady|unsupported` (Debug builds) forces a status to check
+  the fallbacks.
+
+**Siri, Shortcuts and Spotlight** (`App/Intents`). `FluxoApp` registers `AppServices` (player, library, guide,
+navigation, intelligence) with `AppDependencyManager`; intents run in the app's process and get it with
+`@Dependency`, on iOS and macOS.
+
+- Entities: `ChannelEntity` (it stands for playlist + stream URL, so it survives playlist refreshes; the system only
+  sees an opaque identifier, `ChannelEntityID`: the playlist UUID and a keyed HMAC of the URL, since stream URLs
+  can carry account credentials and identifiers end up in Spotlight, donations and shared shortcuts; string search
+  uses the typo-tolerant Search index; suggestions are favorites, then history) is an `IndexedEntity`: favorites
+  and recently watched channels (up to 250) are in Spotlight, and opening one plays it. `ProgramEntity` is a guide
+  programme (title, episode, start, end, description, categories, channel).
+- Intents: Play Channel (`OpenIntent`), Play by Name (the system `PlayVideoIntent`: a channel by name, or the
+  channel airing a programme with that title), Pause / Resume, Start / Stop Recording (start can play a channel
+  first), Add to Favorites (idempotent) and Toggle Favorite, Search in Fluxo (the system `ShowInAppSearchResultsIntent`), Find Channels, Get
+  Suggestions, What's On (now and next of a channel, or what the favorite channels show), Search TV Guide,
+  Set Programme Reminder, and Open Screen (Home, TV Guide, Search, Favorites, Recently Watched, Recordings).
+  Results come with a dialog and a snippet view. The iOS 27.2 SDK has no assistant schema for video or TV apps
+  (its `AppSchema` domains are audio, books, browser, camera, mail, photos, reader and others), so Fluxo uses
+  the system video and search intents instead. The player marks the playing channel with
+  `appEntityIdentifier(_:)` (on-screen awareness), so Siri and Apple Intelligence can resolve "this channel".
+  Set Programme Reminder opens the app the first time, so the system can ask for notification permission.
+- App Shortcuts (`FluxoShortcuts`, ten shortcuts): "Play Sky Sport F1 in Fluxo", "What's on in Fluxo",
+  "What's on Rai 1 in Fluxo", "What should I watch on Fluxo", "Search the Fluxo guide", "Search Fluxo",
+  "Open TV Guide in Fluxo", "Set a reminder in Fluxo", "Favorite this channel in Fluxo", "Start recording in
+  Fluxo", "Stop recording in Fluxo". Siri's own "Pause" and "Resume" reach Fluxo through Now Playing.
+
+To try them: run the app once (App Shortcuts register when it is installed), then open the Shortcuts app on the
+device, the Simulator or the Mac: Fluxo's shortcuts are listed under the app, and every action can be added to a
+new shortcut and run from there. Say or type (Type to Siri) the phrases on a device or Mac with Siri on. Spotlight
+lists favorite and recent channels a few seconds after launch.
+
 ## User interface
 
 - **Player screen** (`Features/Watch/WatchChannelView.swift`): the video fills the screen

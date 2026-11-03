@@ -17,8 +17,14 @@ struct ContentView: View {
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
-    /// Selected tab / sidebar item, navigation paths and search text, shared with code outside the screens.
-    @State private var navigation = AppNavigation()
+    /// Selected tab / sidebar item, navigation paths and search text, shared with code outside the screens
+    /// (App Intents, the debug routes).
+    @State private var navigation: AppNavigation
+
+    init(viewModel: AVPlayerViewModel, navigation: AppNavigation) {
+        self.viewModel = viewModel
+        _navigation = State(initialValue: navigation)
+    }
 
     var body: some View {
         root
@@ -30,6 +36,9 @@ struct ContentView: View {
                 onDismiss: viewModel.closePlayer
             ) {
                 WatchChannelView(viewModel: viewModel)
+                    // On-screen awareness: "Add this to my favorites" or "Record this" can resolve the channel
+                    // that is playing through Siri and Apple Intelligence.
+                    .appEntityIdentifier(viewModel.currentItem.flatMap(ChannelEntity.entityIdentifier(for:)))
             }
             .playlistManagement()
             .guideManagement(epg)
@@ -303,6 +312,6 @@ struct PlayerBottomAccessory: View {
 }
 
 #Preview {
-    ContentView(viewModel: AVPlayerViewModel())
+    ContentView(viewModel: AVPlayerViewModel(), navigation: AppNavigation())
         .fluxoPreviewEnvironment()
 }

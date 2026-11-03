@@ -445,6 +445,14 @@ final class EPGStore {
         return await reader.search(term: term, importIDs: importIDs, now: .now, limit: limit)
     }
 
+    /// Programmes that overlap `interval` with a category containing `term` ("film"), soonest first.
+    func searchProgrammes(inCategory term: String, importIDs: [UUID], overlapping interval: DateInterval, limit: Int = 60) async -> [GuideSearchResult] {
+        guard hasGuide else {
+            return []
+        }
+        return await reader.search(category: term, importIDs: importIDs, overlapping: interval, limit: limit)
+    }
+
     func channelChoices(term: String) async -> [GuideChannelChoice] {
         await reader.channelChoices(term: term)
     }

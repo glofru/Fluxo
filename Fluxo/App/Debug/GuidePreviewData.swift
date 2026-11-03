@@ -37,10 +37,14 @@ enum GuidePreviewData {
     }
 
     private static let titles: [String: [String]] = [
-        "News": ["Morning Briefing", "World Report", "Business Today", "The Debate", "Evening News", "Late Edition", "Weather Watch", "Newsnight"],
-        "Sports": ["Matchday Live", "Grand Prix Qualifying", "Tennis: Quarter-Final", "Football Tonight", "Motor Racing Highlights", "The Sports Desk"],
-        "Kids": ["Cartoon Club", "Science Explorers", "Story Time", "Animal Friends", "Space Rangers"],
+        "News": ["Morning Briefing", "World Report", "Business Today", "The Debate", "Evening News", "Late Edition", "Weather Watch", "Newsnight", "Spotlight"],
+        "Sports": ["Matchday Live", "Grand Prix Qualifying", "Tennis: Quarter-Final", "Football Tonight", "Motor Racing Highlights", "The Sports Desk", "Rush"],
+        "Kids": ["Cartoon Club", "Science Explorers", "Story Time", "Animal Friends", "Space Rangers", "Space Rangers: The Movie"],
     ]
+
+    /// The films of the pools: their category is "Film" too, as XMLTV guides list films, so a smart search
+    /// such as "films tonight" has something to find in the demo.
+    private static let films: Set<String> = ["Spotlight", "Rush", "Space Rangers: The Movie"]
 
     /// Adds a guide source for the sample "Freeview" playlist with programmes from 6 hours ago to 2 days ahead.
     static func seedGuide(into context: ModelContext, now: Date) {
@@ -87,8 +91,10 @@ enum GuidePreviewData {
                     stop: time.addingTimeInterval(duration),
                     title: title,
                     subtitle: slot % 3 == 0 ? "Part \(1 + slot % 3)" : "",
-                    summary: "\(title) on \(name). A sample programme of the preview guide, with a short description of what to expect.",
-                    categories: channel.groupName,
+                    // Descriptions do not name the channel: a search for a channel's name ("Football TV")
+                    // would otherwise find every programme of it.
+                    summary: slot % 2 == 0 ? longSummary(title: title) : "\(title). A sample programme of the preview guide, with a short description of what to expect.",
+                    categories: films.contains(title) ? "\(channel.groupName)\nFilm" : channel.groupName,
                     icon: nil,
                     episode: episode
                 ))
@@ -105,5 +111,19 @@ enum GuidePreviewData {
 
     static func slug(_ name: String) -> String {
         ChannelNameNormalizer.key(name) + ".sample"
+    }
+}
+
+extension GuidePreviewData {
+    /// A long description, as many XMLTV guides carry (plot, cast, credits), so the Apple Intelligence summary of
+    /// the programme screen shows in the demo.
+    static func longSummary(title: String) -> String {
+        """
+        \(title) returns with a new edition. Tonight the team follows a story that began weeks ago in a \
+        small coastal town, where a local reporter uncovered a series of decisions that changed the lives of hundreds \
+        of families. Interviews with residents, officials and experts trace what happened and what could come next, \
+        with archive footage and a studio discussion. Presented by Anna Rossi and Mark Hughes. Produced by Nova \
+        Studios. Directed by Paul Lane. Executive producers: Jane Doe, John Smith. Subtitles available. Rated 12.
+        """
     }
 }

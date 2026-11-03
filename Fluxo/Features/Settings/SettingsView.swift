@@ -44,6 +44,7 @@ struct SettingsView: View {
             pictureInPictureSection
             #endif
             GuideSettingsSection()
+            IntelligenceSettingsSection()
             recordingsSection
             storageSection
             aboutSection

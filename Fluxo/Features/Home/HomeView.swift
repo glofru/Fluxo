@@ -124,6 +124,9 @@ struct HomeView: View {
                     RecentlyWatchedRow(playlistIDs: scope.bookmarkFilter)
                         .id(scope.bookmarkFilter)
 
+                    ForYouRow(scope: scope)
+                        .id(HomeSection.forYou)
+
                     OnNowRow(scope: scope)
                         .id(HomeSection.onNow)
 
@@ -170,6 +173,7 @@ struct HomeView: View {
         .task(id: scope.importIDs) {
             groupCounts = countGroups(importIDs: scope.importIDs)
         }
+        .forYouRecommendations(scope: scope)
         .refreshable {
             for playlist in playlistsInScope(scope) {
                 importCenter.refresh(playlist)
@@ -507,6 +511,7 @@ private struct ContentKindHeader: View {
 
 /// Sections of Home that can be scrolled to.
 enum HomeSection: String {
+    case forYou
     case onNow
     case browse
 }

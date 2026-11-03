@@ -46,6 +46,15 @@ struct SearchView: View {
 
     @State private var scope = Scope.all
     @State private var results: ChannelSearch.Results?
+    /// Natural-language results ("football tonight"), for queries of two or more words.
+    @State private var smartResults: SmartSearchResults?
+    @State private var isSmartSearching = false
+    /// A sentence waits for smart search (its debounce): "No Results" would be premature.
+    @State private var isSmartPending = false
+    @State private var selectedProgramme: GuideSearchResult?
+
+    @Environment(EPGStore.self) private var epg
+    @Environment(FluxoIntelligence.self) private var intelligence: FluxoIntelligence?
 
     private var libraryScope: LibraryScope {
         LibraryScope(playlists: playlists, selection: PlaylistSelection(rawValue: selectionRawValue))
@@ -75,12 +84,23 @@ struct SearchView: View {
                 .task(id: request) {
                     await run(request)
                 }
+                .task(id: SmartSearchKey(request: request, usesModel: intelligence?.isAvailable ?? false)) {
+                    await runSmartSearch(request)
+                }
                 .task(id: libraryScope.importIDs) {
                     // Reads the names once, so the first search is as fast as the next ones.
                     await ChannelSearchIndex.shared.prewarm(importIDs: libraryScope.importIDs, container: modelContext.container)
                 }
                 .channelDestinations()
         }
+        .sheet(item: $selectedProgramme) { selection in
+            ProgrammeDetailView(programme: selection.programme, channel: selection.channel, ref: selection.ref)
+        }
+    }
+
+    private struct SmartSearchKey: Hashable {
+        let request: ChannelSearch.Request
+        let usesModel: Bool
     }
 
     @ViewBuilder
@@ -95,10 +115,16 @@ struct SearchView: View {
             }
         } else if let results {
             // While the next query runs, the previous results stay on screen instead of a spinner.
-            if results.channels.isEmpty && results.groups.isEmpty {
+            let smart = smartResults?.query == request.term ? smartResults : nil
+            let hasRegular = !results.channels.isEmpty || !results.groups.isEmpty
+            if !hasRegular && (smart?.isEmpty ?? true) && !isSmartSearching && !isSmartPending {
                 ContentUnavailableView.search(text: results.request.term)
             } else {
-                SearchResultsList(results: results, libraryScope: libraryScope)
+                // Without regular results, the smart loading row shows from the first keystroke of a sentence.
+                let isSmartLoading = isSmartSearching || (!hasRegular && isSmartPending)
+                SearchResultsList(results: results, smart: smart, isSmartSearching: isSmartLoading, libraryScope: libraryScope) { programme in
+                    selectedProgramme = programme
+                }
             }
         } else {
             ProgressView()
@@ -145,6 +171,52 @@ struct SearchView: View {
             return
         }
         results = found
+    }
+
+    /// Plans the query (with the on-device model when Apple Intelligence is available, else with rules) and runs
+    /// the plan. Waits longer than the regular search: planning costs more than a keystroke.
+    private func runSmartSearch(_ request: ChannelSearch.Request) async {
+        // A run cancelled while waiting or planning (the viewer kept typing) leaves its flag set: every run starts
+        // clean and sets each flag only right before its step, so no early return below can leave the loading row
+        // on screen.
+        isSmartSearching = false
+        isSmartPending = false
+        guard SmartSearch.isNaturalLanguage(request.term), !request.importIDs.isEmpty else {
+            smartResults = nil
+            return
+        }
+        isSmartPending = true
+        do {
+            try await Task.sleep(for: .milliseconds(600))
+        } catch {
+            return
+        }
+        isSmartPending = false
+        // The regular results are usually in by now (they run after 250 ms).
+        let regular = results?.request == request ? (results?.channels.count ?? 0) + (results?.groups.count ?? 0) : nil
+        guard SmartSearch.shouldRun(for: request.term, regularResultCount: regular) else {
+            smartResults = nil
+            return
+        }
+        isSmartSearching = true
+        defer {
+            if !Task.isCancelled {
+                isSmartSearching = false
+            }
+        }
+        var plan = await SmartSearch.plan(for: request.term, useModel: intelligence?.isAvailable ?? false)
+        if plan.kind == .any, let kind = request.kind {
+            // The search scope picked in the bar wins.
+            plan.kind = SmartSearchPlan.Kind(kind)
+        }
+        guard !Task.isCancelled, !plan.isEmpty else {
+            return
+        }
+        let found = await SmartSearch.run(plan, query: request.term, importIDs: request.importIDs, container: modelContext.container, epg: epg)
+        guard !Task.isCancelled else {
+            return
+        }
+        smartResults = found
     }
 }
 
@@ -194,7 +266,18 @@ enum ChannelSearch {
 private struct SearchResultsList: View {
 
     let results: ChannelSearch.Results
+    let smart: SmartSearchResults?
+    let isSmartSearching: Bool
     let libraryScope: LibraryScope
+    let onSelectProgramme: (GuideSearchResult) -> Void
+
+    #if os(iOS)
+    /// On iPhone the floating scope bar under the search field (shown whenever there are results, i.e. a search
+    /// term) covers the top of the list without adding to its safe area, so the first section header (Smart
+    /// Results, Categories) was hidden behind it. iPad puts the field in the toolbar and needs nothing.
+    static let scopeBarClearance: CGFloat = 44
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
 
     private func subtitle(for item: ChannelItem) -> String {
         let playlistName = libraryScope.showsPlaylistNames ? libraryScope.playlistNames[item.playlistID] : nil
@@ -202,7 +285,16 @@ private struct SearchResultsList: View {
     }
 
     var body: some View {
+        list
+            #if os(iOS)
+            .contentMargins(.top, horizontalSizeClass == .compact ? Self.scopeBarClearance : 0, for: .scrollContent)
+            #endif
+    }
+
+    private var list: some View {
         List {
+            SmartSearchSections(results: smart, isLoading: isSmartSearching, libraryScope: libraryScope, onSelectProgramme: onSelectProgramme)
+
             if !results.groups.isEmpty {
                 Section("Categories") {
                     CardRow {

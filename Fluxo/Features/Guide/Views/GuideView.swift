@@ -145,6 +145,11 @@ struct GuideView: View {
                 noChannels
             } else {
                 VStack(spacing: 0) {
+                    if groupFilter == nil && Calendar.current.isDateInToday(day) {
+                        GuideForYouStrip(importIDs: scope.importIDs) { selection in
+                            self.selection = selection
+                        }
+                    }
                     GuideDayBar(day: $day, dayCount: Self.dayCount) {
                         scrollToNowRequest += 1
                     }

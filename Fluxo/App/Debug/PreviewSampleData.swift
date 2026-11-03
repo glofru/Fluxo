@@ -130,7 +130,9 @@ extension View {
         let player = AVPlayerViewModel()
         let epg = EPGStore(container: container)
         epg.reloadGuide()
+        let intelligence = FluxoIntelligence(container: container, epg: epg)
         return self
+            .environment(intelligence)
             .environment(PlaylistImportCenter(container: container))
             .environment(epg)
             .environment(library)

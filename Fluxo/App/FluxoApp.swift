@@ -5,6 +5,7 @@
 //  Created by Gianluca Lofrumento on 2025-05-31.
 //
 
+import AppIntents
 import SwiftData
 import SwiftUI
 
@@ -22,6 +23,12 @@ struct FluxoApp: App {
     @State private var player: AVPlayerViewModel
     /// The TV guide: sources, refreshes, matching and reminders.
     @State private var epg: EPGStore
+    /// Apple Intelligence (on device): availability, recommendations and summaries.
+    @State private var intelligence: FluxoIntelligence
+    /// Tab / sidebar selection and navigation paths; App Intents move the UI through it too.
+    @State private var navigation: AppNavigation
+    /// The objects above, for App Intents (Siri, Shortcuts, Spotlight).
+    private let services: AppServices
 
     init() {
         let container = ModelContainerFactory.make()
@@ -41,6 +48,14 @@ struct FluxoApp: App {
         // Now, not when the first view appears: the reminder notification delegate must be installed before a
         // notification that launched the app is delivered.
         epg.start()
+        let intelligence = FluxoIntelligence(container: container, epg: epg)
+        let navigation = AppNavigation()
+        let services = AppServices(container: container, library: library, player: player, epg: epg, navigation: navigation, intelligence: intelligence)
+        // Before any intent runs: intents launched by Siri or Shortcuts read it with @Dependency.
+        AppDependencyManager.shared.add(dependency: services)
+        self.services = services
+        _intelligence = State(initialValue: intelligence)
+        _navigation = State(initialValue: navigation)
         _importCenter = State(initialValue: importCenter)
         _library = State(initialValue: library)
         _player = State(initialValue: player)
@@ -65,6 +80,7 @@ struct FluxoApp: App {
             SettingsView(player: player)
                 .environment(library)
                 .environment(epg)
+                .environment(intelligence)
                 .modelContainer(container)
                 .defaultAppStorage(.fluxo)
         }
@@ -88,7 +104,9 @@ struct FluxoApp: App {
     }
 
     private var mainContent: some View {
-        ContentView(viewModel: player)
+        ContentView(viewModel: player, navigation: navigation)
+            .appServicesLifecycle(services)
+            .environment(intelligence)
             .environment(importCenter)
             .environment(library)
             .environment(playlistActions)

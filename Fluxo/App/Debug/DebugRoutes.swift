@@ -234,7 +234,7 @@ enum DebugRoutes {
             }
             UserDefaults.fluxo.set(preferences.rawValue, forKey: BrowsePreferences.storageKey)
         },
-        DebugRoute("home-section:<onNow|browse>", "Scrolls Home to a section.") { context, argument in
+        DebugRoute("home-section:<forYou|onNow|browse>", "Scrolls Home to a section.") { context, argument in
             context.navigation.show(.home)
             context.navigation.debugHomeSection = nil
             try? await Task.sleep(for: .milliseconds(300))
