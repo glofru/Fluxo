@@ -53,6 +53,12 @@ enum Theme {
     static let surface = Color("FluxoSurface")
     /// Hairline border of content surfaces.
     static let surfaceStroke = Color.primary.opacity(0.07)
+    /// Behind logos in rows and tiles: a soft neutral that keeps both dark and light logos readable.
+    static let tileBackground = LinearGradient(
+        colors: [Color.artworkPlaceholder.opacity(0.55), Color.artworkPlaceholder.opacity(0.28)],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
 
     // MARK: Gradients
 

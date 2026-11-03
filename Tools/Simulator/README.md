@@ -125,7 +125,13 @@ first that contains the text.
 | `recordings` | The Recordings sheet (iOS) or sidebar item (macOS). |
 | `playlist:<name\|all>` | Selects a playlist (or All Playlists) on Home. |
 | `kind:<live\|movies\|series>` | The Live TV / Movies / Series section of Home. |
-| `group:<name>` | Pushes a group's grid on Home. |
+| `group:<name>` | Pushes a category (group) on Home. |
+| `categories:<live\|movies\|series>` | Pushes the category browser of a kind on Home. |
+| `browse:<order>[,<layout>]` | Order (`playlist`, `name`, `recentlyAdded`, `mostWatched`) and layout (`list`, `grid`) of every category. |
+| `home-section:<onNow\|browse>` | Scrolls Home to a section. |
+| `seed-guide` | Adds a sample TV guide for the live channels of every playlist (for On Now, now / next in rows, schedules). |
+| `progress:<channel>` | Marks a movie or episode as watched up to 40 % (Continue Watching, progress bars). |
+| `schedule:<channel>` | The schedule sheet of a live channel (needs a guide, e.g. `seed-guide`). |
 | `player:<channel>` | Plays a channel full screen. |
 | `mini-player:<channel>` | Plays a channel with the player closed, so the mini player shows. |
 | `play-url:<url>` | Plays any URL full screen. |
@@ -148,9 +154,9 @@ with one line in `DebugRoutes.all`:
 DebugRoute("guide", "The TV Guide.") { context, _ in context.navigation.show(.guide) },
 ```
 
-The seeded libraries have no TV guide. To see the Guide with programmes, use the guide demo of
-`DebugGuideDemo.swift` (an in-memory store with sample playlists and two days of sample programmes; it
-replaces the seeded library, so pass `--seed none`):
+The seeded libraries have no TV guide; the `seed-guide` route adds a sample one to them. The guide demo of
+`DebugGuideDemo.swift` is another way (an in-memory store with sample playlists and two days of sample
+programmes; it replaces the seeded library, so pass `--seed none`):
 
 ```sh
 Tools/Simulator/run.sh --device "iPhone 17e" --clone fluxo-mykey-1 --seed none --route guide -- -FluxoDebugGuideDemo YES

@@ -11,6 +11,8 @@ import SwiftUI
 /// Destinations pushed from Home, Search and the library screens.
 enum ChannelRoute: Hashable {
     case group(importID: UUID, groupName: String, title: String)
+    /// Every category of a kind in the given imports (the category browser).
+    case categories(importIDs: [UUID], kind: ChannelContentKind)
     case favorites(playlistIDs: [UUID]?)
     case history(playlistIDs: [UUID]?)
 }
@@ -32,12 +34,18 @@ private struct ChannelDestinations: ViewModifier {
             .navigationDestination(for: ChannelRoute.self) { route in
                 switch route {
                 case let .group(importID, groupName, title):
-                    ChannelGridView(importID: importID, groupName: groupName, title: title)
+                    // A fresh screen per route: two group routes pushed at the same depth must not share state.
+                    CategoryDetailView(importID: importID, groupName: groupName, title: title)
+                        .id(route)
+                        .zoomTransition(sourceID: route, in: namespace)
+                case let .categories(importIDs, kind):
+                    CategoryBrowserView(importIDs: importIDs, kind: kind)
+                        .id(route)
                         .zoomTransition(sourceID: route, in: namespace)
                 case .favorites(let playlistIDs):
-                    BookmarkGridView(mode: .favorites, playlistIDs: playlistIDs)
+                    FavoritesView(playlistIDs: playlistIDs)
                 case .history(let playlistIDs):
-                    BookmarkGridView(mode: .history, playlistIDs: playlistIDs)
+                    HistoryView(playlistIDs: playlistIDs)
                 }
             }
             // Outside the destination too, so pushed screens can mark sources of their own.
@@ -153,6 +161,14 @@ struct GroupItem: Identifiable, Hashable, Sendable {
         name.isEmpty ? "Other" : name
     }
 
+    init(importID: UUID, playlistID: UUID, name: String, channelCount: Int, kind: ChannelContentKind) {
+        self.importID = importID
+        self.playlistID = playlistID
+        self.name = name
+        self.channelCount = channelCount
+        self.kind = kind
+    }
+
     init(_ group: PlaylistChannelGroup) {
         importID = group.importID
         playlistID = group.playlistID
@@ -197,58 +213,6 @@ struct ChannelGroupRow: View {
         }
         // "See All" zooms the whole row into the group's grid.
         .routeTransitionSource(group.route)
-    }
-}
-
-/// Every channel of a group in a lazy grid, fetched a page at a time as the grid scrolls.
-struct ChannelGridView: View {
-
-    static let pageSize = 60
-
-    let importID: UUID
-    let groupName: String
-    let title: String
-
-    @State private var limit = ChannelGridView.pageSize
-
-    var body: some View {
-        ScrollView {
-            ChannelGridPage(importID: importID, groupName: groupName, limit: limit) {
-                limit += Self.pageSize
-            }
-            .padding(.horizontal, HomeLayout.horizontalMargin)
-            .padding(.vertical)
-        }
-        .navigationTitle(title)
-    }
-}
-
-private struct ChannelGridPage: View {
-
-    @Query private var channels: [PlaylistChannel]
-
-    private let limit: Int
-    private let onReachEnd: () -> Void
-
-    init(importID: UUID, groupName: String, limit: Int, onReachEnd: @escaping () -> Void) {
-        self.limit = limit
-        self.onReachEnd = onReachEnd
-        _channels = Query(HomeQueries.channels(importID: importID, groupName: groupName, limit: limit))
-    }
-
-    var body: some View {
-        let usesPosters = !channels.isEmpty && channels.allSatisfy { $0.kind.usesPosterArtwork }
-        let minimum = usesPosters ? ChannelPreview.posterSize.width : ChannelPreview.liveSize.width
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: minimum), spacing: HomeLayout.rowSpacing, alignment: .top)], spacing: 20) {
-            ForEach(channels) { channel in
-                ChannelPreview(item: ChannelItem(channel))
-                    .onAppear {
-                        if channels.count >= limit, channel.persistentModelID == channels.last?.persistentModelID {
-                            onReachEnd()
-                        }
-                    }
-            }
-        }
     }
 }
 
@@ -320,10 +284,13 @@ struct FavoritesRow: View {
     }
 }
 
-/// Small glass card for "Continue watching": logo, name and when it was last watched.
+/// Card of "Continue Watching": the artwork, the name, and how far a movie or episode was watched (a progress
+/// bar and the time left), or what a live channel shows now; otherwise when it was last watched.
 struct CompactChannelCard: View {
 
-    static let logoSize = CGSize(width: 56, height: 42)
+    static let logoSize = CGSize(width: 78, height: 52)
+    static let posterSize = CGSize(width: 52, height: 78)
+    static let width: CGFloat = 272
 
     let item: ChannelItem
     var watchedAt: Date?
@@ -333,91 +300,144 @@ struct CompactChannelCard: View {
     @Environment(\.playChannel) private var playChannel
     @State private var sourceID = UUID().uuidString
 
-    private let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+    private let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
 
     var body: some View {
+        let progress = library.watchProgress(for: item)
         Button {
             playChannel(item, from: sourceID)
         } label: {
             HStack(spacing: 12) {
-                LogoImage(source: item.logo, size: Self.logoSize, accessibilityLabel: item.displayName) { phase in
-                    if phase == .unavailable {
-                        ArtworkPlaceholder(name: item.displayName, kind: item.kind)
-                    } else {
-                        Color.artworkPlaceholder.opacity(0.3)
+                ChannelLogoTile(item: item, size: item.kind.usesPosterArtwork ? Self.posterSize : Self.logoSize, cornerRadius: 10)
+                    .overlay(alignment: .bottomTrailing) {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 20, height: 20)
+                            .background(Theme.accent, in: .circle)
+                            .overlay {
+                                Circle().strokeBorder(.white.opacity(0.6), lineWidth: 1)
+                            }
+                            .padding(4)
+                            .accessibilityHidden(true)
                     }
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 4) {
                     // Two lines: long IPTV names ("Test Pattern (MPEG-TS)") stay readable on small phones.
                     Text(item.displayName)
                         .font(Theme.Typography.cardTitle)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
-                    if let watchedAt {
-                        Text(watchedAt, format: .relative(presentation: .named))
-                            .font(Theme.Typography.cardSubtitle)
+
+                    if let progress {
+                        ProgrammeProgressBar(progress: progress.fraction, tint: Theme.accent, height: 4)
+                        Text(WatchProgressFormat.remaining(progress))
+                            .font(Theme.Typography.cardSubtitle.monospacedDigit())
                             .foregroundStyle(.secondary)
+                    } else if item.kind == .live {
+                        NowNextReader(item: item) { nowNext in
+                            if let current = nowNext?.current {
+                                HStack(spacing: 5) {
+                                    LiveBadge(compact: true)
+                                    Text(current.title)
+                                        .font(Theme.Typography.cardSubtitle)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                            } else if let watchedAt {
+                                lastWatched(watchedAt)
+                            }
+                        }
+                    } else if let watchedAt {
+                        lastWatched(watchedAt)
                     }
                 }
-                .frame(width: 160, alignment: .leading)
-
-                Image(systemName: "play.fill")
-                    .font(.caption)
-                    .foregroundStyle(.tint)
-                    .accessibilityHidden(true)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(10)
-            .frame(minHeight: 66)
+            .frame(width: Self.width, alignment: .leading)
+            .frame(minHeight: 72)
             // A content surface: glass is kept for the controls and navigation layer.
             .background(Theme.surface, in: shape)
             .overlay {
                 shape.strokeBorder(Theme.surfaceStroke)
             }
             .contentShape(shape)
-            .playerTransitionSource(id: sourceID, cornerRadius: 18)
+            .playerTransitionSource(id: sourceID, cornerRadius: 20)
         }
         .buttonStyle(CardButtonStyle())
+        .cardHoverEffect()
         .contextMenu {
             ChannelContextMenu(item: item, isFavorite: library.isFavorite(item), extraActions: extraActions)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(item.kind == .live ? "Plays the channel" : "Resumes the video")
+    }
+
+    private func lastWatched(_ date: Date) -> some View {
+        Text(date, format: .relative(presentation: .named))
+            .font(Theme.Typography.cardSubtitle)
+            .foregroundStyle(.secondary)
     }
 }
 
-/// All favorites or the whole watch history, as a grid. Used by "See all", the Favorites tab and the
-/// macOS sidebar.
-struct BookmarkGridView: View {
+/// The watch history, newest first, in sections by day ("Today", "Yesterday", …), with how far movies and
+/// episodes were watched and what live channels show now. Used by "See All", Favorites and the macOS sidebar.
+struct HistoryView: View {
 
-    enum Mode {
-        case favorites
-        case history
-    }
-
-    static let pageSize = 60
-
-    let mode: Mode
     /// nil: every playlist.
     let playlistIDs: [UUID]?
 
-    @State private var limit = BookmarkGridView.pageSize
+    @Query private var bookmarks: [ChannelBookmark]
     @State private var confirmsClear = false
     @Environment(ChannelLibrary.self) private var library
 
+    init(playlistIDs: [UUID]?) {
+        self.playlistIDs = playlistIDs
+        _bookmarks = Query(HomeQueries.recents(playlistIDs: playlistIDs, limit: ChannelLibrary.historyLimit))
+    }
+
     var body: some View {
-        BookmarkGridPage(mode: mode, playlistIDs: playlistIDs, limit: limit) {
-            limit += Self.pageSize
+        Group {
+            if bookmarks.isEmpty {
+                ContentUnavailableView("Nothing Watched Yet", systemImage: "clock", description: Text("Channels, movies and series you play show up here."))
+            } else {
+                List {
+                    ForEach(days, id: \.day) { day in
+                        Section(GuideFormat.day(day.day)) {
+                            ForEach(day.entries, id: \.key) { entry in
+                                let item = ChannelItem(entry)
+                                ChannelListRow(
+                                    item: item,
+                                    subtitle: subtitle(for: entry),
+                                    showsNumber: false,
+                                    extraActions: [
+                                        ChannelCardAction(title: String(localized: "Remove from History"), systemImage: "minus.circle", role: .destructive) {
+                                            library.removeFromHistory(item)
+                                        },
+                                    ]
+                                )
+                            }
+                            .onDelete { offsets in
+                                for offset in offsets {
+                                    library.removeFromHistory(ChannelItem(day.entries[offset]))
+                                }
+                            }
+                        }
+                    }
+                }
+                #if os(iOS)
+                .listStyle(.insetGrouped)
+                #else
+                .listStyle(.inset)
+                #endif
+            }
         }
-        .navigationTitle(mode == .favorites ? "Favorites" : "Recently Watched")
+        .navigationTitle("Recently Watched")
         .toolbar {
-            switch mode {
-            case .history:
+            if !bookmarks.isEmpty {
                 Button("Clear History", systemImage: "trash") {
                     confirmsClear = true
-                }
-            case .favorites:
-                NavigationLink(value: ChannelRoute.history(playlistIDs: playlistIDs)) {
-                    Label("Recently Watched", systemImage: "clock")
                 }
             }
         }
@@ -429,70 +449,38 @@ struct BookmarkGridView: View {
             Text("Favorites are kept.")
         }
     }
-}
 
-private struct BookmarkGridPage: View {
-
-    @Query private var bookmarks: [ChannelBookmark]
-
-    private let mode: BookmarkGridView.Mode
-    private let limit: Int
-    private let onReachEnd: () -> Void
-
-    @Environment(ChannelLibrary.self) private var library
-
-    init(mode: BookmarkGridView.Mode, playlistIDs: [UUID]?, limit: Int, onReachEnd: @escaping () -> Void) {
-        self.mode = mode
-        self.limit = limit
-        self.onReachEnd = onReachEnd
-        switch mode {
-        case .favorites:
-            _bookmarks = Query(HomeQueries.favorites(playlistIDs: playlistIDs, limit: limit))
-        case .history:
-            _bookmarks = Query(HomeQueries.recents(playlistIDs: playlistIDs, limit: limit))
-        }
+    private struct Day {
+        let day: Date
+        let entries: [ChannelBookmark]
     }
 
-    var body: some View {
-        if bookmarks.isEmpty {
-            switch mode {
-            case .favorites:
-                ContentUnavailableView(
-                    "No Favorites Yet",
-                    systemImage: "star",
-                    description: Text("Touch and hold a channel, or right-click it, and choose Add to Favorites.")
-                )
-            case .history:
-                ContentUnavailableView("Nothing Watched Yet", systemImage: "clock", description: Text("Channels you play show up here."))
-            }
-        } else {
-            ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: ChannelPreview.liveSize.width), spacing: HomeLayout.rowSpacing, alignment: .top)], spacing: 20) {
-                    ForEach(bookmarks) { bookmark in
-                        let item = ChannelItem(bookmark)
-                        ChannelPreview(item: item, extraActions: extraActions(for: item))
-                            .onAppear {
-                                if bookmarks.count >= limit, bookmark.persistentModelID == bookmarks.last?.persistentModelID {
-                                    onReachEnd()
-                                }
-                            }
-                    }
-                }
-                .padding(.horizontal, HomeLayout.horizontalMargin)
-                .padding(.vertical)
+    private var days: [Day] {
+        let calendar = Calendar.current
+        var result: [Day] = []
+        for bookmark in bookmarks {
+            let day = calendar.startOfDay(for: bookmark.lastWatchedAt ?? .distantPast)
+            if let last = result.last, last.day == day {
+                result[result.count - 1] = Day(day: day, entries: last.entries + [bookmark])
+            } else {
+                result.append(Day(day: day, entries: [bookmark]))
             }
         }
+        return result
     }
 
-    private func extraActions(for item: ChannelItem) -> [ChannelCardAction] {
-        guard mode == .history else {
-            return []
+    private func subtitle(for bookmark: ChannelBookmark) -> String {
+        var parts: [String] = []
+        if let watchedAt = bookmark.lastWatchedAt {
+            parts.append(GuideFormat.time(watchedAt))
         }
-        return [
-            ChannelCardAction(title: "Remove from History", systemImage: "minus.circle", role: .destructive) {
-                library.removeFromHistory(item)
-            },
-        ]
+        if !bookmark.groupName.isEmpty {
+            parts.append(bookmark.groupName)
+        }
+        if bookmark.watchCount > 1 {
+            parts.append(String(localized: "Watched \(bookmark.watchCount) times"))
+        }
+        return parts.joined(separator: " · ")
     }
 }
 
@@ -510,9 +498,9 @@ private struct BookmarkGridPage: View {
     .fluxoPreviewEnvironment()
 }
 
-#Preview("Favorites grid") {
+#Preview("History") {
     NavigationStack {
-        BookmarkGridView(mode: .favorites, playlistIDs: nil)
+        HistoryView(playlistIDs: nil)
     }
     .fluxoPreviewEnvironment()
 }

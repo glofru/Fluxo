@@ -57,10 +57,14 @@ final class AppNavigation {
     var searchText = ""
     /// The Recordings sheet of Home (iOS; macOS lists recordings in the sidebar).
     var isShowingRecordings = false
+    /// The live channel whose schedule (today's programmes from the TV guide) is shown in a sheet.
+    var scheduleChannel: ChannelItem?
 
     #if DEBUG
     /// Debug harness (`overscroll:<points>`): Home's content is pushed down as if pulled by this much.
     var debugHomeOverscroll: CGFloat = 0
+    /// Debug harness (`home-section:<name>`): the `HomeSection` Home scrolls to.
+    var debugHomeSection: String?
     #endif
 
     /// Shows `destination` from its root.

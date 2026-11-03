@@ -98,11 +98,37 @@ Tools/PlaylistBenchmark/run.sh             # ENTRIES=20000 for a quicker run
 
 ## Home, favorites and search
 
-- **Home** (`Features/Home`) shows a playlist switcher ("All Playlists" plus one
-  chip per playlist), a featured carousel, Continue Watching, Favorites, and the
-  groups of the chosen kind (Live TV / Movies / Series). Each group is a lazy row
-  of its first 24 channels, with "See All" opening a paged grid. Group rows are
-  fetched 8 at a time as they scroll in.
+- **Home** (`Features/Home`) shows the featured billboard, a playlist switcher ("All Playlists" plus one
+  chip per playlist), Continue Watching (movies and episodes with a progress bar and the time left, live
+  channels with what is on now), On Now (large cards of what the user's favorite and recent channels show,
+  from the TV guide, topped up with other channels of the scope that have a guide; hidden without a guide),
+  Favorites, Because You Watched (more of the category of the last thing watched), then the groups of the
+  chosen kind (Live TV / Movies / Series): a strip of category cards and a lazy row per group with its
+  first 24 channels. Group rows are fetched 8 at a time as they scroll in.
+- **Category browsing** (`Features/Browse`): category cards show an artwork mosaic of the first channels
+  with a logo (four logos, or three fanned posters; one indexed fetch of 4 rows per card) and the count.
+  "See All" of the strip opens the category browser (every category of the kind, two or more columns, a
+  name filter, playlist / A–Z / size order, 60 cards per page). A category (`CategoryDetailView`) has a
+  pinned bar of its sibling categories to hop between them without going back, a list (channel numbers,
+  logos, LIVE, the programme on air with its progress and time left, what comes next) or a grid, the
+  orders Channel Number / Name (A–Z) / Recently Added (last playlist entries first, where providers append
+  new VOD) / Most Watched (the most played channels of the category from the history, then the rest), a
+  search within the category (500 matches at most), and an A–Z quick scroller on the trailing edge in the
+  A–Z order (it reads only the names of the category). Channels are fetched as values on a background
+  context, 120 at a time. The order and layout are remembered per kind, and the first row seen per
+  category and order (60 categories at most, offsets only), so coming back scrolls to where you left.
+- **Channel numbers** are the position of the entry in its playlist, from 1, as set-top boxes number them.
+- **Channel rows** swipe right to play, left to add or remove the favorite and to open the channel's
+  schedule (today and the next days from the guide, with reminders); the context menu has the same actions.
+- **Favorites** (`Features/Favorites`): what the favorites show now, as large cards, then every favorite with
+  its artwork, playlist and category, the programme on air with its progress and what follows (or the watch
+  progress of a movie), in sections by type or playlist (or none), a type filter, swipe and menu actions, and
+  the user's own order (Edit on iOS, drag on macOS; `ChannelBookmark.favoriteOrder`, new favorites first).
+- **Watch progress** (`WatchProgressRecorder`): the position of movies and episodes is saved every 10 s of
+  playback, on pause, at the end, when another item starts and when the app leaves the foreground, and
+  playback resumes there (once the item can seek that far, within 20 s of the start). The last 3 % (at most
+  5 minutes) count as watched and clear the position; positions under 30 s are not resumed. The context menu
+  offers Play from Beginning. Recently Watched lists the history by day.
 - **Content kinds** are guessed once at import time (`ChannelContentKind`) from
   the URL (Xtream `/movie/` and `/series/` paths, file extensions) and from the
   names (`S01E02`, "Series" groups). Each group gets the most common kind of its
@@ -320,8 +346,9 @@ plain surfaces or small materials.
   the card, billboard artwork, search result or mini player that opened it
   (`matchedTransitionSource` + `navigationTransition(.zoom)`); `PlayChannelAction` passes the
   source to `AVPlayerViewModel.presentationSourceID`, and paths without a card (PiP restore,
-  recordings, Show Player) zoom from the mini player. A group's "See All" grid zooms out of its
-  Home row or its search chip, and the Recordings sheet out of its toolbar button.
+  recordings, Show Player) zoom from the mini player. A category zooms out of its
+  Home row or its category card (Home, search, the category browser), and the Recordings sheet out of its
+  toolbar button.
 - **Home**: the featured billboard runs under the status bar and the floating toolbar, its
   blurred artwork uses `backgroundExtensionEffect()` (it also extends under the iPad sidebar and
   the landscape safe areas), stretches on overscroll and fades into the background so both light

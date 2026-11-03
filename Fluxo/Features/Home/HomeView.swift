@@ -8,8 +8,10 @@
 import SwiftData
 import SwiftUI
 
-/// The Home screen: playlist switcher, featured carousel, Continue Watching, Favorites and the
-/// Live TV / Movies / Series sections, all filtered by the selected playlist (or every playlist).
+/// The Home screen: featured billboard, playlist switcher, Continue Watching (with the progress of movies and
+/// episodes), On Now (from the TV guide), Favorites, Because You Watched, then the Live TV / Movies / Series
+/// sections: a strip of category cards and a row per category. Everything follows the selected playlist (or
+/// every playlist).
 ///
 /// Everything below the header is lazy: group rows are fetched a page at a time as they scroll in, and each
 /// row fetches only its first channels.
@@ -99,52 +101,72 @@ struct HomeView: View {
     private func scrollContent(scope: LibraryScope, topInset: CGFloat) -> some View {
         let available = ChannelContentKind.allCases.filter { (groupCounts?[$0] ?? 0) > 0 }
         let kind = available.first { $0.rawValue == kindRawValue } ?? available.first
-        return ScrollView {
-            LazyVStack(alignment: .leading, spacing: 28) {
+        return ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 28) {
+                    #if os(iOS)
+                    FeaturedCarousel(importIDs: scope.importIDs, style: .billboard, topInset: topInset, isShowingBillboard: $isShowingBillboard)
+                        .padding(.bottom, -12)
+
+                    if showsPlaylistSwitcher {
+                        PlaylistSwitcher(playlists: playlists, selection: selectionBinding(scope: scope))
+                    }
+                    #else
+                    if showsPlaylistSwitcher {
+                        PlaylistSwitcher(playlists: playlists, selection: selectionBinding(scope: scope))
+                    }
+
+                    FeaturedCarousel(importIDs: scope.importIDs)
+                    #endif
+
+                    PlaylistStatusBanner(playlists: playlistsInScope(scope))
+
+                    RecentlyWatchedRow(playlistIDs: scope.bookmarkFilter)
+                        .id(scope.bookmarkFilter)
+
+                    OnNowRow(scope: scope)
+                        .id(HomeSection.onNow)
+
+                    FavoritesRow(playlistIDs: scope.bookmarkFilter)
+                        .id(scope.bookmarkFilter)
+
+                    BecauseYouWatchedRow(scope: scope)
+                        .id(scope.importIDs)
+
+                    if let kind {
+                        ContentKindHeader(available: available, kind: kindBinding(current: kind))
+                            .id(HomeSection.browse)
+
+                        CategoryStrip(scope: scope, kind: kind, totalCount: groupCounts?[kind] ?? 0)
+                            .id(CategoryStripIdentity(rows: GroupRowsIdentity(importIDs: scope.importIDs, kind: kind)))
+
+                        GroupRows(scope: scope, kind: kind)
+                            .id(GroupRowsIdentity(importIDs: scope.importIDs, kind: kind))
+                    } else if groupCounts != nil && !scope.importIDs.isEmpty {
+                        ContentUnavailableView("No Channels", systemImage: "tv.slash", description: Text("This playlist has no channels."))
+                    }
+                }
                 #if os(iOS)
-                FeaturedCarousel(importIDs: scope.importIDs, style: .billboard, topInset: topInset, isShowingBillboard: $isShowingBillboard)
-                    .padding(.bottom, -12)
-
-                if showsPlaylistSwitcher {
-                    PlaylistSwitcher(playlists: playlists, selection: selectionBinding(scope: scope))
-                }
+                .padding(.bottom, 12)
                 #else
-                if showsPlaylistSwitcher {
-                    PlaylistSwitcher(playlists: playlists, selection: selectionBinding(scope: scope))
-                }
-
-                FeaturedCarousel(importIDs: scope.importIDs)
+                .padding(.vertical, 12)
                 #endif
-
-                PlaylistStatusBanner(playlists: playlistsInScope(scope))
-
-                RecentlyWatchedRow(playlistIDs: scope.bookmarkFilter)
-                    .id(scope.bookmarkFilter)
-
-                FavoritesRow(playlistIDs: scope.bookmarkFilter)
-                    .id(scope.bookmarkFilter)
-
-                if let kind {
-                    ContentKindHeader(available: available, kind: kindBinding(current: kind))
-
-                    GroupRows(scope: scope, kind: kind)
-                        .id(GroupRowsIdentity(importIDs: scope.importIDs, kind: kind))
-                } else if groupCounts != nil && !scope.importIDs.isEmpty {
-                    ContentUnavailableView("No Channels", systemImage: "tv.slash", description: Text("This playlist has no channels."))
+                #if DEBUG
+                // Debug harness: the content as if Home were pulled down (rubber-band overscroll).
+                .offset(y: navigation.debugHomeOverscroll)
+                #endif
+            }
+            .scrollIndicators(.hidden)
+            .softScrollEdge()
+            #if DEBUG
+            // Debug harness (`home-section:<name>`): scrolls to a section for screenshots.
+            .onChange(of: navigation.debugHomeSection) { _, section in
+                if let section = section.flatMap(HomeSection.init(rawValue:)) {
+                    proxy.scrollTo(section, anchor: UnitPoint(x: 0.5, y: 0.1))
                 }
             }
-            #if os(iOS)
-            .padding(.bottom, 12)
-            #else
-            .padding(.vertical, 12)
-            #endif
-            #if DEBUG
-            // Debug harness: the content as if Home were pulled down (rubber-band overscroll).
-            .offset(y: navigation.debugHomeOverscroll)
             #endif
         }
-        .scrollIndicators(.hidden)
-        .softScrollEdge()
         .task(id: scope.importIDs) {
             groupCounts = countGroups(importIDs: scope.importIDs)
         }
@@ -481,6 +503,16 @@ private struct ContentKindHeader: View {
             HomeSectionHeader(title: kind.title, systemImage: kind.systemImage)
         }
     }
+}
+
+/// Sections of Home that can be scrolled to.
+enum HomeSection: String {
+    case onNow
+    case browse
+}
+
+private struct CategoryStripIdentity: Hashable {
+    let rows: GroupRowsIdentity
 }
 
 private struct GroupRowsIdentity: Hashable {

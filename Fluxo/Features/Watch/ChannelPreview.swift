@@ -21,6 +21,9 @@ struct ChannelPreview: View {
     var subtitle: String?
     /// Extra context menu entries (e.g. "Remove from history").
     var extraActions: [ChannelCardAction] = []
+    /// Width of the card (grids stretch cards to fill their columns); nil for the standard size. The height
+    /// keeps the 5:3 (live) or 2:3 (poster) shape.
+    var width: CGFloat?
 
     @Environment(ChannelLibrary.self) private var library
     @Environment(\.playChannel) private var playChannel
@@ -31,7 +34,11 @@ struct ChannelPreview: View {
     private let borderShape = RoundedRectangle(cornerRadius: 16, style: .continuous)
 
     private var size: CGSize {
-        item.kind.usesPosterArtwork ? Self.posterSize : Self.liveSize
+        let standard = item.kind.usesPosterArtwork ? Self.posterSize : Self.liveSize
+        guard let width else {
+            return standard
+        }
+        return CGSize(width: width, height: (width * standard.height / standard.width).rounded())
     }
 
     var body: some View {
@@ -63,11 +70,21 @@ struct ChannelPreview: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                             .clipShape(borderShape)
                     }
+                    // How far a movie or episode was watched.
+                    .overlay(alignment: .bottom) {
+                        if let progress = library.watchProgress(for: item) {
+                            ProgrammeProgressBar(progress: progress.fraction, tint: .white, height: 4)
+                                .padding(.horizontal, 10)
+                                .padding(.bottom, 10)
+                                .shadow(color: .black.opacity(0.5), radius: 3)
+                                .accessibilityHidden(true)
+                        }
+                    }
                     .overlay {
                         borderShape.strokeBorder(Theme.surfaceStroke)
                     }
                     .overlay(alignment: .bottomLeading) {
-                        if item.kind != .live {
+                        if item.kind != .live, library.watchProgress(for: item) == nil {
                             Image(systemName: item.kind.systemImage)
                                 .font(.caption2.bold())
                                 .padding(5)
@@ -150,17 +167,34 @@ struct ChannelContextMenu: View {
     @Environment(ChannelLibrary.self) private var library
     @Environment(\.playChannel) private var playChannel
     @Environment(EPGStore.self) private var epg: EPGStore?
+    @Environment(AppNavigation.self) private var navigation: AppNavigation?
 
     var body: some View {
         Text(item.displayName)
 
-        Button("Play", systemImage: "play.fill") {
-            playChannel(item)
+        if library.watchProgress(for: item) != nil {
+            Button("Resume", systemImage: "play.fill") {
+                playChannel(item)
+            }
+            Button("Play from Beginning", systemImage: "arrow.counterclockwise") {
+                library.saveWatchProgress(for: item, position: 0, duration: library.watchProgress(for: item)?.duration ?? 1)
+                playChannel(item)
+            }
+        } else {
+            Button("Play", systemImage: "play.fill") {
+                playChannel(item)
+            }
         }
 
         if item.url != nil {
             Button(isFavorite ? "Remove from Favorites" : "Add to Favorites", systemImage: isFavorite ? "star.slash" : "star") {
                 library.toggleFavorite(item)
+            }
+        }
+
+        if let epg, let navigation, item.kind == .live, epg.hasGuide {
+            Button("Today's Schedule", systemImage: "calendar.day.timeline.left") {
+                navigation.scheduleChannel = item
             }
         }
 

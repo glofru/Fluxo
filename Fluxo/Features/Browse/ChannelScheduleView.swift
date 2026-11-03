@@ -1,0 +1,214 @@
+//
+//  ChannelScheduleView.swift
+//  Fluxo
+//
+//  The schedule of one live channel from the TV guide (the "Guide" swipe action of channel rows): what is on
+//  now with its progress, then the next programmes by day, with reminders. Tapping a programme opens its
+//  details.
+//
+
+import SwiftUI
+
+struct ChannelScheduleView: View {
+
+    static let programmeLimit = 60
+
+    let item: ChannelItem
+
+    @Environment(EPGStore.self) private var epg
+    @Environment(\.playChannel) private var playChannel
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var ref: GuideChannelRef?
+    @State private var programmes: [GuideProgramme]?
+    @State private var detail: GuideProgramme?
+
+    var body: some View {
+        NavigationStack {
+            TimelineView(.everyMinute) { context in
+                content(now: context.date)
+            }
+            .navigationTitle(item.displayName)
+            .inlineNavigationBar()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(role: .close) {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Watch", systemImage: "play.fill") {
+                        dismiss()
+                        playChannel(item)
+                    }
+                    .buttonStyle(.glassProminent)
+                }
+            }
+        }
+        .sheet(item: $detail) { programme in
+            ProgrammeDetailView(programme: programme, channel: item, ref: ref)
+        }
+        .task(id: epg.revision) {
+            let ref = await epg.guideRef(for: item)
+            self.ref = ref
+            if let ref {
+                programmes = await epg.upcoming(for: ref, from: .now, limit: Self.programmeLimit)
+            } else {
+                programmes = []
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func content(now: Date) -> some View {
+        if let programmes {
+            if programmes.isEmpty {
+                ContentUnavailableView(
+                    "No Programmes",
+                    systemImage: "calendar.badge.exclamationmark",
+                    description: Text("The TV guide has nothing scheduled for this channel.")
+                )
+            } else {
+                List {
+                    Section {
+                        header
+                            .listRowBackground(Color.clear)
+                    }
+                    ForEach(days(of: programmes), id: \.day) { day in
+                        Section(GuideFormat.day(day.day)) {
+                            ForEach(day.programmes) { programme in
+                                row(programme, now: now)
+                            }
+                        }
+                    }
+                }
+                .glassSheetContentBackground()
+            }
+        } else {
+            ProgressView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: 14) {
+            ChannelLogoTile(item: item, size: CGSize(width: 84, height: 56), cornerRadius: 12)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.displayName)
+                    .font(.headline)
+                    .lineLimit(2)
+                if !item.groupName.isEmpty {
+                    Text(item.groupName)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func row(_ programme: GuideProgramme, now: Date) -> some View {
+        let isOnAir = programme.isOnAir(at: now)
+        let isReminded = epg.reminders.isScheduled(programme)
+        return Button {
+            detail = programme
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                GuideTimeColumnText(date: programme.start)
+                    .font(.subheadline.monospacedDigit().weight(isOnAir ? .semibold : .regular))
+                    .foregroundStyle(isOnAir ? AnyShapeStyle(Theme.live) : AnyShapeStyle(.secondary))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        if isOnAir {
+                            LiveBadge(compact: true)
+                        }
+                        Text(programme.title)
+                            .font(.body.weight(isOnAir ? .semibold : .regular))
+                            .foregroundStyle(.primary)
+                            .lineLimit(2)
+                    }
+                    if let detailLine = programme.detailLine {
+                        Text(detailLine)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    if isOnAir {
+                        HStack(spacing: 8) {
+                            ProgrammeProgressBar(progress: programme.progress(at: now), tint: Theme.live, height: 4)
+                            Text(GuideFormat.remaining(programme, at: now))
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                                .fixedSize()
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                if isReminded {
+                    Image(systemName: "bell.fill")
+                        .font(.caption)
+                        .foregroundStyle(.tint)
+                        .accessibilityLabel("Reminder set")
+                }
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .swipeActions(edge: .trailing) {
+            if !isOnAir, ReminderCenter.canRemind(programme, now: now) {
+                Button(isReminded ? "Cancel Reminder" : "Remind Me", systemImage: isReminded ? "bell.slash" : "bell") {
+                    Task {
+                        await epg.reminders.toggle(programme, on: item)
+                    }
+                }
+                .tint(Theme.accent)
+            }
+        }
+    }
+
+    private struct Day {
+        let day: Date
+        let programmes: [GuideProgramme]
+    }
+
+    private func days(of programmes: [GuideProgramme]) -> [Day] {
+        let calendar = Calendar.current
+        var result: [Day] = []
+        for programme in programmes {
+            let day = calendar.startOfDay(for: programme.start)
+            if let last = result.last, last.day == day {
+                result[result.count - 1] = Day(day: day, programmes: last.programmes + [programme])
+            } else {
+                result.append(Day(day: day, programmes: [programme]))
+            }
+        }
+        return result
+    }
+}
+
+extension View {
+    /// Presents the schedule of `AppNavigation.scheduleChannel` (set by the "Guide" actions of channel rows).
+    func channelScheduleSheet(_ navigation: AppNavigation) -> some View {
+        modifier(ChannelScheduleSheet(navigation: navigation))
+    }
+}
+
+private struct ChannelScheduleSheet: ViewModifier {
+    @Bindable var navigation: AppNavigation
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(item: $navigation.scheduleChannel) { item in
+                ChannelScheduleView(item: item)
+                    .presentationDetents([.medium, .large])
+            }
+    }
+}
+
+#Preview {
+    ChannelScheduleView(item: GuidePreviewData.channels.first?.item ?? PreviewSampleData.sampleItems[0])
+        .fluxoPreviewEnvironment(GuidePreviewData.container)
+}

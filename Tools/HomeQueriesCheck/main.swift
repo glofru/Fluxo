@@ -77,6 +77,32 @@ enum HomeQueriesCheck {
             expect(channels.count == 30 && channels.allSatisfy { $0.groupName == group.name }, "channel row of \(group.name): \(channels.count)")
         }
 
+        print("== category browsing")
+        if let group = firstPage.first {
+            let name = group.name
+            let byName = try timed("group channels A-Z (60)") { try context.fetch(HomeQueries.channels(importID: importA, groupName: name, order: .name, limit: 60)) }
+            let names = byName.compactMap(\.name)
+            expect(byName.count == min(60, group.channelCount) && zip(names, names.dropFirst()).allSatisfy { $0.localizedStandardCompare($1) != .orderedDescending }, "A-Z order of \(name): \(byName.count)")
+            let newest = try timed("group channels recently added (60)") { try context.fetch(HomeQueries.channels(importID: importA, groupName: name, order: .recentlyAdded, limit: 60)) }
+            expect(zip(newest, newest.dropFirst()).allSatisfy { $0.sortIndex > $1.sortIndex }, "recently added: last playlist entries first")
+            let first = try context.fetch(HomeQueries.channels(importID: importA, groupName: name, order: .playlist, offset: 0, limit: 20))
+            let second = try timed("group channels page 2 (offset 20)") { try context.fetch(HomeQueries.channels(importID: importA, groupName: name, order: .playlist, offset: 20, limit: 20)) }
+            expect(Set(first.map(\.uuid)).isDisjoint(with: second.map(\.uuid)) && (first.last?.sortIndex ?? 0) < (second.first?.sortIndex ?? Int.max), "pages follow each other")
+            if let term = first.first?.name.map({ String($0.suffix(3)) }) {
+                let matches = try timed("search within a group") { try context.fetch(HomeQueries.channels(importID: importA, groupName: name, matching: term, order: .playlist, limit: 500)) }
+                expect(!matches.isEmpty && matches.allSatisfy { $0.groupName == name && $0.name?.localizedStandardContains(term) == true }, "search '\(term)' within \(name): \(matches.count)")
+            }
+            let artwork = try timed("category mosaic (4)") { try context.fetch(HomeQueries.groupArtwork(importID: importA, groupName: name, limit: 4)) }
+            expect(artwork.count <= 4 && artwork.allSatisfy { $0.logo != nil }, "mosaic artwork: \(artwork.count)")
+        }
+        let largest = try timed("groups by size") { try context.fetch(HomeQueries.groups(importIDs: [importA], kind: .live, order: .size, matching: nil, limit: 50)) }
+        expect(zip(largest, largest.dropFirst()).allSatisfy { $0.channelCount >= $1.channelCount }, "groups by size, largest first")
+        let alphabetical = try context.fetch(HomeQueries.groups(importIDs: [importA], kind: .live, order: .name, matching: nil, limit: 50))
+        // SwiftData sorts strings like Finder ("Live TV 2" before "Live TV 10").
+        expect(zip(alphabetical, alphabetical.dropFirst()).allSatisfy { $0.name.localizedStandardCompare($1.name) != .orderedDescending }, "groups A-Z: \(alphabetical.prefix(4).map(\.name))")
+        let filteredGroups = try timed("groups matching '1'") { try context.fetch(HomeQueries.groups(importIDs: [importA], kind: .live, order: .playlist, matching: "1", limit: 50)) }
+        expect(!filteredGroups.isEmpty && filteredGroups.allSatisfy { $0.name.contains("1") && $0.kind == .live }, "group name filter: \(filteredGroups.count)")
+
         print("== featured")
         let onDemandCount = try timed("fetchCount featured on-demand") { try context.fetchCount(HomeQueries.featured(importIDs: [importA], onDemand: true)) }
         let liveCount = try timed("fetchCount featured live") { try context.fetchCount(HomeQueries.featured(importIDs: [importA], onDemand: false)) }
@@ -313,10 +339,31 @@ enum HomeQueriesCheck {
         let favoritesA = try context.fetch(HomeQueries.favorites(playlistIDs: [playlistA], limit: 20))
         expect(favoritesAll.count == 2 && favoritesA.count == 1, "favorites filtered by playlist: \(favoritesAll.count)/\(favoritesA.count)")
 
+        // Favorites: newest first until reordered, then the user's order.
+        library.setFavorite(true, for: channelsA[2])
+        var ordered = try context.fetch(HomeQueries.favorites(playlistIDs: nil, limit: 20)).map(\.key)
+        expect(ordered.first == channelsA[2].bookmarkKey, "a new favorite comes first")
+        ordered.reverse()
+        library.reorderFavorites(ordered)
+        let reordered = try context.fetch(HomeQueries.favorites(playlistIDs: nil, limit: 20)).map(\.key)
+        expect(reordered == ordered, "favorites keep the order the user chose")
+        library.setFavorite(false, for: channelsA[2])
+
         for item in channelsA + channelsB {
             library.recordWatch(item)
         }
         library.recordWatch(channelsA[1])
+        let mostWatched = try context.fetch(HomeQueries.mostWatched(playlistID: playlistA, groupName: channelsA[1].groupName, limit: 8))
+        expect(mostWatched.first?.channelID == channelsA[1].id, "most watched of a group comes first")
+
+        // Watch progress of an on-demand item.
+        let movie = ChannelItem(id: UUID(), playlistID: playlistA, name: "Movie", logo: nil, url: URL(string: "https://example.com/m.mp4"), groupName: "Films", kind: .movie)
+        library.saveWatchProgress(for: movie, position: 1_200, duration: 5_400)
+        expect(library.watchProgress(for: movie)?.position == 1_200, "watch progress saved")
+        library.saveWatchProgress(for: movie, position: 5_350, duration: 5_400)
+        expect(library.watchProgress(for: movie) == nil, "watched to the end clears the progress")
+        expect(library.watchProgress(for: channelsA[0]) == nil, "live channels have no watch progress")
+        library.removeFromHistory(movie)
         let recents = try context.fetch(HomeQueries.recents(playlistIDs: nil, limit: 20))
         expect(recents.count == 5, "five channels in the history: \(recents.count)")
         expect(recents.first?.channelID == channelsA[1].id && recents.first?.watchCount == 2, "most recently watched comes first")

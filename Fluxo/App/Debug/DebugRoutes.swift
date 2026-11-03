@@ -38,6 +38,8 @@ struct DebugRouteContext {
     let importCenter: PlaylistImportCenter
     let playlistActions: PlaylistActions
     let modelContext: ModelContext
+    /// The TV guide (`seed-guide`, `schedule:`).
+    let epg: EPGStore
     /// Opens the Settings window (macOS); nil on iOS, where Settings is a tab.
     let openSettings: (() -> Void)?
 
@@ -205,6 +207,50 @@ enum DebugRoutes {
             let group = try context.group(named: argument)
             context.navigation.show(.home)
             context.navigation.pushOnHome(group.route)
+        },
+        DebugRoute("categories:<live|movies|series>", "Pushes the category browser of a kind on Home.") { context, argument in
+            let kinds: [String: ChannelContentKind] = ["live": .live, "movie": .movie, "movies": .movie, "series": .series]
+            guard let kind = kinds[argument.lowercased()] else {
+                throw DebugRouteError.invalidArgument("categories", argument)
+            }
+            let selection = PlaylistSelection(rawValue: UserDefaults.fluxo.string(forKey: PlaylistSelection.storageKey) ?? "")
+            let playlists = (try? context.modelContext.fetch(FetchDescriptor<Playlist>(sortBy: [SortDescriptor(\.createdOn)]))) ?? []
+            let scope = LibraryScope(playlists: playlists, selection: selection)
+            context.navigation.show(.home)
+            context.navigation.pushOnHome(.categories(importIDs: scope.importIDs, kind: kind))
+        },
+        DebugRoute("browse:<order>[,<layout>]", "Order (playlist, name, recentlyAdded, mostWatched) and layout (list, grid) of every category.") { _, argument in
+            let parts = argument.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
+            guard let first = parts.first, let order = ChannelSortOrder(rawValue: first) else {
+                throw DebugRouteError.invalidArgument("browse", argument)
+            }
+            let layout = parts.count > 1 ? CategoryLayout(rawValue: parts[1]) : nil
+            var preferences = BrowsePreferences(rawValue: UserDefaults.fluxo.string(forKey: BrowsePreferences.storageKey) ?? "") ?? BrowsePreferences()
+            for kind in ChannelContentKind.allCases {
+                preferences.setOrder(order, for: kind)
+                if let layout {
+                    preferences.setLayout(layout, for: kind)
+                }
+            }
+            UserDefaults.fluxo.set(preferences.rawValue, forKey: BrowsePreferences.storageKey)
+        },
+        DebugRoute("home-section:<onNow|browse>", "Scrolls Home to a section.") { context, argument in
+            context.navigation.show(.home)
+            context.navigation.debugHomeSection = nil
+            try? await Task.sleep(for: .milliseconds(300))
+            context.navigation.debugHomeSection = argument
+        },
+        DebugRoute("seed-guide", "Adds a sample TV guide for the live channels of every playlist.") { context, _ in
+            try DebugGuideSeed.seed(context: context.modelContext, epg: context.epg)
+            await context.wait(timeout: 10) { context.epg.hasGuide }
+        },
+        DebugRoute("progress:<channel>", "Marks a movie or episode as watched up to 40 % of 90 minutes (Continue Watching).") { context, argument in
+            let item = try context.channel(named: argument)
+            context.library.recordWatch(item)
+            context.library.saveWatchProgress(for: item, position: 2_160, duration: 5_400)
+        },
+        DebugRoute("schedule:<channel>", "The schedule sheet of a live channel (needs a guide, e.g. seed-guide).") { context, argument in
+            context.navigation.scheduleChannel = try context.channel(named: argument)
         },
         DebugRoute("player:<channel>", "Plays a channel full screen.") { context, argument in
             await context.play(try context.channel(named: argument), present: true)

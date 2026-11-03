@@ -196,39 +196,30 @@ private struct SearchResultsList: View {
     let results: ChannelSearch.Results
     let libraryScope: LibraryScope
 
+    private func subtitle(for item: ChannelItem) -> String {
+        let playlistName = libraryScope.showsPlaylistNames ? libraryScope.playlistNames[item.playlistID] : nil
+        return [item.kind.title, item.groupName.isEmpty ? nil : item.groupName, playlistName].compactMap { $0 }.joined(separator: " · ")
+    }
+
     var body: some View {
         List {
             if !results.groups.isEmpty {
                 Section("Categories") {
-                    ScrollView(.horizontal) {
-                        GlassEffectContainer(spacing: 8) {
-                            HStack(spacing: 8) {
-                                ForEach(results.groups) { group in
-                                    NavigationLink(value: group.route) {
-                                        Label("\(group.displayName) · \(group.channelCount.formatted())", systemImage: group.kind.systemImage)
-                                            .font(.subheadline)
-                                            .lineLimit(1)
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 7)
-                                    }
-                                    .buttonStyle(.plain)
-                                    .glassEffect(.regular.interactive(), in: .capsule)
-                                    .routeTransitionSource(group.route, cornerRadius: 20)
-                                }
-                            }
-                            .padding(.vertical, 4)
+                    CardRow {
+                        ForEach(results.groups) { group in
+                            CategoryCard(group: group, playlistName: libraryScope.showsPlaylistNames ? libraryScope.playlistNames[group.playlistID] : nil)
                         }
                     }
-                    .scrollIndicators(.hidden)
-                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                    .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
                     .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 }
             }
 
             if !results.channels.isEmpty {
                 Section {
                     ForEach(results.channels) { item in
-                        SearchResultRow(item: item, playlistName: libraryScope.showsPlaylistNames ? libraryScope.playlistNames[item.playlistID] : nil)
+                        ChannelListRow(item: item, subtitle: subtitle(for: item), showsNumber: false)
                     }
                 } header: {
                     Text("Channels")
@@ -237,68 +228,6 @@ private struct SearchResultsList: View {
                         Text("Showing the first \(ChannelSearch.channelLimit) matches. Type more to narrow the search.")
                     }
                 }
-            }
-        }
-    }
-}
-
-private struct SearchResultRow: View {
-
-    static let logoSize = CGSize(width: 64, height: 40)
-
-    let item: ChannelItem
-    let playlistName: String?
-
-    @Environment(ChannelLibrary.self) private var library
-    @Environment(\.playChannel) private var playChannel
-    @State private var sourceID = UUID().uuidString
-
-    var body: some View {
-        let isFavorite = library.isFavorite(item)
-        Button {
-            playChannel(item, from: sourceID)
-        } label: {
-            HStack(spacing: 12) {
-                LogoImage(source: item.logo, size: Self.logoSize, accessibilityLabel: item.displayName) { _ in
-                    Image(systemName: item.kind.systemImage)
-                        .foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
-                }
-                .background(Color.artworkPlaceholder.opacity(0.25), in: .rect(cornerRadius: 8))
-                .clipShape(.rect(cornerRadius: 8))
-                .playerTransitionSource(id: sourceID, cornerRadius: 8)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(item.displayName)
-                        .font(.body.weight(.medium))
-                        .lineLimit(1)
-                    Text([item.kind.title, item.groupName.isEmpty ? nil : item.groupName, playlistName].compactMap { $0 }.joined(separator: " · "))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    ChannelProgrammeLine(item: item)
-                }
-
-                Spacer()
-
-                if isFavorite {
-                    Image(systemName: "star.fill")
-                        .foregroundStyle(Theme.favorite)
-                        .accessibilityLabel("Favorite")
-                }
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .contextMenu {
-            ChannelContextMenu(item: item, isFavorite: isFavorite)
-        }
-        .swipeActions(edge: .trailing) {
-            if item.url != nil {
-                Button(isFavorite ? "Unfavorite" : "Favorite", systemImage: isFavorite ? "star.slash" : "star") {
-                    library.toggleFavorite(item)
-                }
-                .tint(Theme.favorite)
             }
         }
     }

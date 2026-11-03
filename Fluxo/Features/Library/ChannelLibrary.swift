@@ -24,8 +24,21 @@ struct ChannelItem: Identifiable, Hashable, Sendable {
     let kind: ChannelContentKind
     /// `tvg-id` of the playlist entry; the TV guide matches channels on it first.
     let tvgID: String?
+    /// Channel number: the position of the entry in its playlist, from 1 (as IPTV set-top boxes number
+    /// channels). nil when unknown (bookmarks and guide results keep no position).
+    let number: Int?
 
-    init(id: UUID, playlistID: UUID, name: String?, logo: String?, url: URL?, groupName: String, kind: ChannelContentKind, tvgID: String? = nil) {
+    init(
+        id: UUID,
+        playlistID: UUID,
+        name: String?,
+        logo: String?,
+        url: URL?,
+        groupName: String,
+        kind: ChannelContentKind,
+        tvgID: String? = nil,
+        number: Int? = nil
+    ) {
         self.id = id
         self.playlistID = playlistID
         self.name = name
@@ -34,6 +47,7 @@ struct ChannelItem: Identifiable, Hashable, Sendable {
         self.groupName = groupName
         self.kind = kind
         self.tvgID = tvgID
+        self.number = number
     }
 
     init(_ channel: PlaylistChannel) {
@@ -45,7 +59,8 @@ struct ChannelItem: Identifiable, Hashable, Sendable {
             url: channel.url,
             groupName: channel.groupName,
             kind: channel.kind,
-            tvgID: channel.tvgID
+            tvgID: channel.tvgID,
+            number: channel.sortIndex + 1
         )
     }
 
@@ -94,6 +109,10 @@ final class ChannelLibrary {
 
     private(set) var favoriteKeys: Set<String> = []
 
+    /// Watch progress of the movies and episodes that were started and not finished, by bookmark key. Small
+    /// (it is bounded by the history), so rows read it without a fetch of their own.
+    private(set) var watchProgressByKey: [String: WatchProgress] = [:]
+
     /// Bumped on every user toggle, so a single view can play haptic feedback for it (rather than every
     /// card whose favorite state changes when favorites reload or a playlist is deleted).
     private(set) var favoriteToggleCount = 0
@@ -104,6 +123,7 @@ final class ChannelLibrary {
     init(container: ModelContainer) {
         context = container.mainContext
         reloadFavorites()
+        reloadWatchProgress()
     }
 
     func isFavorite(_ item: ChannelItem) -> Bool {
@@ -124,8 +144,11 @@ final class ChannelLibrary {
         }
         if isFavorite {
             let bookmark = upsertBookmark(for: item, key: key)
+            if !bookmark.isFavorite {
+                bookmark.favoritedOn = .now
+                bookmark.favoriteOrder = ChannelBookmark.topFavoriteOrder()
+            }
             bookmark.isFavorite = true
-            bookmark.favoritedOn = .now
             favoriteKeys.insert(key)
         } else {
             favoriteKeys.remove(key)
@@ -151,11 +174,51 @@ final class ChannelLibrary {
         trimHistory()
     }
 
+    /// Saves the user's order of the favorites: `keys` lists bookmark keys from first to last. Favorites that
+    /// are not listed keep their place relative to each other, after the listed ones.
+    func reorderFavorites(_ keys: [String]) {
+        for (index, key) in keys.enumerated() {
+            existingBookmark(key: key)?.favoriteOrder = Double(index)
+        }
+        save()
+    }
+
+    // MARK: - Watch progress (movies and series)
+
+    /// Where playback of an on-demand item stopped, for "Continue Watching" and to resume it; nil when it was
+    /// never started, or was watched to the end.
+    func watchProgress(for item: ChannelItem) -> WatchProgress? {
+        guard item.kind != .live, let key = item.bookmarkKey else {
+            return nil
+        }
+        return watchProgressByKey[key]
+    }
+
+    /// Stores the playback position of an on-demand item. Near the end (the credits), the item counts as
+    /// watched and its position is cleared, so it starts from the beginning next time.
+    func saveWatchProgress(for item: ChannelItem, position: TimeInterval, duration: TimeInterval) {
+        guard item.kind != .live, duration > 0, position.isFinite, let key = item.bookmarkKey else {
+            return
+        }
+        let bookmark = upsertBookmark(for: item, key: key)
+        let finished = WatchProgress.isFinished(position: position, duration: duration)
+        let newPosition = finished ? 0 : max(0, position)
+        guard abs(bookmark.resumePosition - newPosition) >= 1 || bookmark.knownDuration != duration else {
+            return
+        }
+        bookmark.resumePosition = newPosition
+        bookmark.knownDuration = duration
+        watchProgressByKey[key] = WatchProgress(bookmark)
+        save()
+    }
+
     func removeFromHistory(_ item: ChannelItem) {
         guard let key = item.bookmarkKey, let bookmark = existingBookmark(key: key) else {
             return
         }
         bookmark.lastWatchedAt = nil
+        bookmark.resumePosition = 0
+        watchProgressByKey[key] = nil
         deleteIfUnused(bookmark)
         save()
     }
@@ -164,11 +227,13 @@ final class ChannelLibrary {
         do {
             for bookmark in try context.fetch(HomeQueries.recents(playlistIDs: nil, limit: Self.historyLimit * 2)) {
                 bookmark.lastWatchedAt = nil
+                bookmark.resumePosition = 0
                 deleteIfUnused(bookmark)
             }
         } catch {
             Self.logger.error("Could not clear the history: \(error.localizedDescription, privacy: .public)")
         }
+        watchProgressByKey = [:]
         save()
     }
 
@@ -176,6 +241,7 @@ final class ChannelLibrary {
     func forgetPlaylist(_ playlistID: UUID) {
         let prefix = "\(playlistID.uuidString)|"
         favoriteKeys = favoriteKeys.filter { !$0.hasPrefix(prefix) }
+        watchProgressByKey = watchProgressByKey.filter { !$0.key.hasPrefix(prefix) }
     }
 
     // MARK: - Private
@@ -187,6 +253,19 @@ final class ChannelLibrary {
             favoriteKeys = Set(try context.fetch(descriptor).map(\.key))
         } catch {
             Self.logger.error("Could not load favorites: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func reloadWatchProgress() {
+        let descriptor = FetchDescriptor<ChannelBookmark>(predicate: #Predicate { $0.resumePosition > 0 })
+        do {
+            var progress: [String: WatchProgress] = [:]
+            for bookmark in try context.fetch(descriptor) {
+                progress[bookmark.key] = WatchProgress(bookmark)
+            }
+            watchProgressByKey = progress
+        } catch {
+            Self.logger.error("Could not load the watch progress: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -235,6 +314,8 @@ final class ChannelLibrary {
         }
         for bookmark in stale {
             bookmark.lastWatchedAt = nil
+            bookmark.resumePosition = 0
+            watchProgressByKey[bookmark.key] = nil
             deleteIfUnused(bookmark)
         }
         save()

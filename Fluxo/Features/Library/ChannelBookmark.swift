@@ -35,8 +35,15 @@ final class ChannelBookmark {
 
     var isFavorite: Bool = false
     var favoritedOn: Date?
+    /// Position in the user's order of the favorites (ascending). New favorites get a negative value from the
+    /// clock, so they come first until the list is reordered by hand (`ChannelLibrary.reorderFavorites`).
+    var favoriteOrder: Double = 0
     var lastWatchedAt: Date?
     var watchCount: Int = 0
+    /// Movies and series: where playback stopped (seconds), 0 when not started or watched to the end.
+    var resumePosition: Double = 0
+    /// Movies and series: the duration reported by the player (seconds), 0 when unknown.
+    var knownDuration: Double = 0
 
     init(key: String, playlistID: UUID, url: URL, channelID: UUID, name: String?, logo: String?, groupName: String, kind: ChannelContentKind) {
         self.key = key
@@ -55,5 +62,41 @@ final class ChannelBookmark {
 
     var kind: ChannelContentKind {
         ChannelContentKind(rawValue: kindRawValue) ?? .live
+    }
+
+    /// `favoriteOrder` for a new favorite: before every existing one (reordered favorites use 0, 1, 2, …).
+    static func topFavoriteOrder(now: Date = .now) -> Double {
+        -now.timeIntervalSinceReferenceDate
+    }
+}
+
+/// How far an on-demand item was watched.
+struct WatchProgress: Hashable, Sendable {
+    let position: TimeInterval
+    let duration: TimeInterval
+
+    init?(_ bookmark: ChannelBookmark) {
+        guard bookmark.resumePosition >= WatchProgress.minimumPosition, bookmark.knownDuration > 0 else {
+            return nil
+        }
+        position = bookmark.resumePosition
+        duration = bookmark.knownDuration
+    }
+
+    /// Below this, playback restarts from the beginning (a few seconds of a trailer are not worth resuming).
+    static let minimumPosition: TimeInterval = 30
+
+    /// 0...1.
+    var fraction: Double {
+        duration > 0 ? min(1, max(0, position / duration)) : 0
+    }
+
+    var remaining: TimeInterval {
+        max(0, duration - position)
+    }
+
+    /// The last 3 % (at most 5 minutes: the credits) count as watched to the end.
+    static func isFinished(position: TimeInterval, duration: TimeInterval) -> Bool {
+        position >= duration - min(300, duration * 0.03)
     }
 }

@@ -5,9 +5,11 @@
 //  Created by Gianluca Lofrumento on 2025-07-06.
 //
 
+import SwiftData
 import SwiftUI
 
-/// Playback, TV guide, recordings, storage and about. A tab on iOS, the Settings window (⌘,) on macOS.
+/// Playback, TV guide, recordings, storage and about, under a header with the library at a glance. A tab on
+/// iOS, the Settings window (⌘,) on macOS.
 struct SettingsView: View {
 
     let player: AVPlayerViewModel
@@ -34,6 +36,9 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            Section {
+                SettingsHeader(recordingCount: player.recordings.recordings.count)
+            }
             playbackSection
             #if !os(macOS)
             pictureInPictureSection
@@ -82,22 +87,28 @@ struct SettingsView: View {
 
     private var playbackSection: some View {
         Section {
-            Picker("Time-shift buffer", selection: $timeShiftMinutes) {
+            Picker(selection: $timeShiftMinutes) {
                 ForEach(PlayerPreferences.timeShiftChoices, id: \.self) { minutes in
                     Text(Self.minutes(minutes)).tag(minutes)
                 }
+            } label: {
+                SettingsLabel("Time-shift buffer", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90", tint: Theme.timeShift)
             }
 
-            Picker("Skip back", selection: $skipBackwardSeconds) {
+            Picker(selection: $skipBackwardSeconds) {
                 ForEach(PlayerPreferences.skipChoices, id: \.self) { seconds in
                     Text("\(seconds) seconds").tag(seconds)
                 }
+            } label: {
+                SettingsLabel("Skip back", systemImage: "gobackward", tint: Theme.accent)
             }
 
-            Picker("Skip forward", selection: $skipForwardSeconds) {
+            Picker(selection: $skipForwardSeconds) {
                 ForEach(PlayerPreferences.skipChoices, id: \.self) { seconds in
                     Text("\(seconds) seconds").tag(seconds)
                 }
+            } label: {
+                SettingsLabel("Skip forward", systemImage: "goforward", tint: Theme.accent)
             }
         } header: {
             Text("Playback")
@@ -109,8 +120,12 @@ struct SettingsView: View {
     #if !os(macOS)
     private var pictureInPictureSection: some View {
         Section {
-            Toggle("Start Picture in Picture automatically", isOn: $autoPictureInPicture)
-            Toggle("Picture in Picture when closing the player", isOn: $pictureInPictureOnClose)
+            Toggle(isOn: $autoPictureInPicture) {
+                SettingsLabel("Start Picture in Picture automatically", systemImage: "pip.enter", tint: Theme.lilac)
+            }
+            Toggle(isOn: $pictureInPictureOnClose) {
+                SettingsLabel("Picture in Picture when closing the player", systemImage: "pip.swap", tint: Theme.lilac)
+            }
         } header: {
             Text("Picture in Picture")
         } footer: {
@@ -122,16 +137,20 @@ struct SettingsView: View {
     private var recordingsSection: some View {
         let store = player.recordings
         return Section {
-            LabeledContent("Recordings") {
+            LabeledContent {
                 Text("\(store.recordings.count) · \(Self.bytes(store.totalBytes))")
                     .monospacedDigit()
+            } label: {
+                SettingsLabel("Recordings", systemImage: "record.circle", tint: Theme.recording)
             }
 
-            LabeledContent("Location") {
+            LabeledContent {
                 Text(recordingsLocation)
                     .lineLimit(2)
                     .truncationMode(.middle)
                     .textSelection(.enabled)
+            } label: {
+                SettingsLabel("Location", systemImage: "folder", tint: Theme.cyan)
             }
 
             #if os(macOS)
@@ -155,18 +174,22 @@ struct SettingsView: View {
 
     private var storageSection: some View {
         Section {
-            LabeledContent("Temporary stream files") {
+            LabeledContent {
                 Text(Self.bytes(Int64(viewModel.streamFilesSize)))
                     .monospacedDigit()
+            } label: {
+                SettingsLabel("Temporary stream files", systemImage: "externaldrive", tint: .gray)
             }
             Button("Clear Stream Files", systemImage: "trash") {
                 viewModel.deleteStreamFiles()
             }
             .disabled(!canClearStreamFiles || viewModel.streamFilesSize == 0)
 
-            LabeledContent("Channel logos") {
+            LabeledContent {
                 Text(Self.bytes(Int64(viewModel.logoCacheSize)))
                     .monospacedDigit()
+            } label: {
+                SettingsLabel("Channel logos", systemImage: "photo.on.rectangle", tint: Theme.pink)
             }
             Button("Clear Logo Cache", systemImage: "photo.on.rectangle") {
                 viewModel.clearLogoCache()
@@ -194,8 +217,16 @@ struct SettingsView: View {
 
     private var aboutSection: some View {
         Section("About") {
-            LabeledContent("Version", value: SettingsViewModel.appVersion)
-            LabeledContent("FFmpeg", value: SettingsViewModel.ffmpegVersion)
+            LabeledContent {
+                Text(SettingsViewModel.appVersion)
+            } label: {
+                SettingsLabel("Version", systemImage: "info.circle", tint: Theme.accent)
+            }
+            LabeledContent {
+                Text(SettingsViewModel.ffmpegVersion)
+            } label: {
+                SettingsLabel("FFmpeg", systemImage: "film.stack", tint: .gray)
+            }
         }
     }
 
@@ -230,6 +261,98 @@ struct SettingsView: View {
 
     private static func minutes(_ minutes: Int) -> String {
         Duration.seconds(minutes * 60).formatted(.units(allowed: [.hours, .minutes], width: .wide))
+    }
+}
+
+/// A settings row title with its symbol on a small colored tile, as in the system Settings.
+struct SettingsLabel: View {
+    let title: LocalizedStringKey
+    let systemImage: String
+    let tint: Color
+
+    init(_ title: LocalizedStringKey, systemImage: String, tint: Color) {
+        self.title = title
+        self.systemImage = systemImage
+        self.tint = tint
+    }
+
+    var body: some View {
+        Label {
+            Text(title)
+        } icon: {
+            Image(systemName: systemImage)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 28, height: 28)
+                .background(tint.gradient, in: .rect(cornerRadius: 7, style: .continuous))
+        }
+    }
+}
+
+/// The top of Settings: the app, its version, and the library at a glance.
+private struct SettingsHeader: View {
+
+    let recordingCount: Int
+
+    @Query(sort: \Playlist.createdOn) private var playlists: [Playlist]
+    @Environment(ChannelLibrary.self) private var library
+
+    var body: some View {
+        VStack(spacing: 14) {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        .fill(Theme.brandGradient)
+                    Image(systemName: "play.fill")
+                        .font(.title2.weight(.bold))
+                        .foregroundStyle(.white)
+                        .shadow(color: Theme.pink.opacity(0.6), radius: 6)
+                    Capsule()
+                        .fill(Theme.streamGradient)
+                        .frame(width: 36, height: 3)
+                        .offset(y: 20)
+                }
+                .frame(width: 64, height: 64)
+                .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Fluxo")
+                        .font(.title2.bold())
+                    Text("Version \(SettingsViewModel.appVersion)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: 8) {
+                stat(value: playlists.count, title: "Playlists", systemImage: "list.bullet.rectangle")
+                stat(value: playlists.reduce(0) { $0 + $1.channelCount }, title: "Channels", systemImage: "play.tv")
+                stat(value: library.favoriteKeys.count, title: "Favorites", systemImage: "star.fill")
+                stat(value: recordingCount, title: "Recordings", systemImage: "record.circle")
+            }
+        }
+        .padding(.vertical, 6)
+    }
+
+    private func stat(value: Int, title: LocalizedStringKey, systemImage: String) -> some View {
+        VStack(spacing: 3) {
+            Image(systemName: systemImage)
+                .font(.caption)
+                .foregroundStyle(.tint)
+            Text(value, format: .number.notation(.compactName))
+                .font(.headline.monospacedDigit())
+                .lineLimit(1)
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .background(Theme.surface, in: .rect(cornerRadius: 12, style: .continuous))
+        .accessibilityElement(children: .combine)
     }
 }
 

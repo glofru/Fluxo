@@ -30,6 +30,8 @@ struct ContentView: View {
             }
             .playlistManagement()
             .guideManagement(epg)
+            .channelScheduleSheet(navigation)
+            .watchProgressRecording(player: viewModel)
             .environment(\.playChannel, PlayChannelAction(library: library, player: viewModel))
             .sensoryFeedback(.selection, trigger: library.favoriteToggleCount)
             .onChange(of: scenePhase) { _, phase in
@@ -81,7 +83,7 @@ struct ContentView: View {
 
             Tab("Favorites", systemImage: "star", value: AppNavigation.Tab.favorites) {
                 NavigationStack(path: $navigation.favoritesPath) {
-                    BookmarkGridView(mode: .favorites, playlistIDs: nil)
+                    FavoritesView(playlistIDs: nil)
                         .channelDestinations()
                 }
             }

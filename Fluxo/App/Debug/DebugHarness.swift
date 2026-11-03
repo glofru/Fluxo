@@ -31,6 +31,7 @@ private struct DebugHarnessModifier: ViewModifier {
     @Environment(PlaylistImportCenter.self) private var importCenter
     @Environment(ChannelLibrary.self) private var library
     @Environment(PlaylistActions.self) private var playlistActions
+    @Environment(EPGStore.self) private var epg
     @Environment(\.modelContext) private var modelContext
     #if os(macOS)
     @Environment(\.openSettings) private var openSettings
@@ -75,6 +76,7 @@ private struct DebugHarnessModifier: ViewModifier {
             importCenter: importCenter,
             playlistActions: playlistActions,
             modelContext: modelContext,
+            epg: epg,
             openSettings: openSettings
         )
     }

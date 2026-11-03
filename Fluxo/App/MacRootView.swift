@@ -103,12 +103,12 @@ struct MacRootView: View {
             SearchView()
         case .favorites:
             NavigationStack {
-                BookmarkGridView(mode: .favorites, playlistIDs: nil)
+                FavoritesView(playlistIDs: nil)
                     .channelDestinations()
             }
         case .history:
             NavigationStack {
-                BookmarkGridView(mode: .history, playlistIDs: nil)
+                HistoryView(playlistIDs: nil)
                     .channelDestinations()
             }
         case .recordings:

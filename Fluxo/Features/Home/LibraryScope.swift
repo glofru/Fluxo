@@ -48,6 +48,8 @@ struct LibraryScope: Equatable {
     let importIDs: [UUID]
     let playlistNames: [UUID: String]
     let selection: PlaylistSelection
+    /// Visible import of each playlist of the scope that has one.
+    private let importIDsByPlaylist: [UUID: UUID]
 
     init(playlists: [Playlist], selection: PlaylistSelection) {
         let selection = selection.resolved(in: playlists)
@@ -62,6 +64,13 @@ struct LibraryScope: Equatable {
         playlistIDs = selected.map(\.uuid)
         importIDs = selected.compactMap(\.currentImportID)
         playlistNames = Dictionary(selected.map { ($0.uuid, $0.name) }, uniquingKeysWith: { first, _ in first })
+        importIDsByPlaylist = Dictionary(selected.compactMap { playlist in playlist.currentImportID.map { (playlist.uuid, $0) } }, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// The visible import of a playlist of the scope; nil when the playlist is not in the scope or has no
+    /// channels yet.
+    func importID(ofPlaylist playlistID: UUID) -> UUID? {
+        importIDsByPlaylist[playlistID]
     }
 
     var showsPlaylistNames: Bool {
