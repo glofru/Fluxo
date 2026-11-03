@@ -34,7 +34,7 @@ struct AddPlaylistView: View {
 
     private var title: String {
         if playlist != nil {
-            return "Edit Playlist"
+            return "Rename Playlist"
         }
 
         return "Add Playlist"
@@ -66,7 +66,7 @@ struct AddPlaylistView: View {
                 .urlKeyboard()
                 .disabled(loading || playlist != nil)
 
-            FluxoButton(label: title, loading: loading) {
+            FluxoButton(label: playlist == nil ? "Add Playlist" : "Save", loading: loading) {
                 guard let actualUrl, !name.isEmpty else {
                     return
                 }
@@ -110,10 +110,13 @@ struct AddPlaylistView: View {
             Alert(title: Text("Error"), message: Text(error ?? ""))
         }
         .onAppear {
-            self.name = "Test"
-            self.url = "https://raw.githubusercontent.com/joaoguidugli/FTA-IPTV-Brasil/master/playlist.m3u8"
-            self.actualUrl = URL(string: self.url)
             guard let playlist else {
+                #if DEBUG
+                // Debug builds start with a small public playlist to speed up testing.
+                self.name = "Test"
+                self.url = "https://raw.githubusercontent.com/joaoguidugli/FTA-IPTV-Brasil/master/playlist.m3u8"
+                self.actualUrl = URL(string: self.url)
+                #endif
                 return
             }
 
@@ -163,6 +166,8 @@ struct PlaylistImportProgressView: View {
 }
 
 #Preview {
-    AddPlaylistView()
-        .environment(PlaylistImportCenter(container: ModelContainerFactory.preview()))
+    NavigationStack {
+        AddPlaylistView()
+    }
+    .fluxoPreviewEnvironment()
 }

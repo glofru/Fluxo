@@ -69,6 +69,8 @@ final class PlaylistChannel: Identifiable, Equatable {
     var playlistID: UUID = UUID()
     /// Import that wrote this row; the channel is visible when it equals `Playlist.currentImportID`.
     var importID: UUID = UUID()
+    /// `ChannelContentKind` raw value, classified once at import time (live TV, movie or series).
+    var kindRawValue: Int = 0
 
     init(
         uuid: UUID,
@@ -80,7 +82,8 @@ final class PlaylistChannel: Identifiable, Equatable {
         url: URL? = nil,
         sortIndex: Int = 0,
         importID: UUID = UUID(),
-        playlistID: UUID
+        playlistID: UUID,
+        kind: ChannelContentKind = .live
     ) {
         self.uuid = uuid
         self.name = name
@@ -92,10 +95,15 @@ final class PlaylistChannel: Identifiable, Equatable {
         self.sortIndex = sortIndex
         self.playlistID = playlistID
         self.importID = importID
+        self.kindRawValue = kind.rawValue
     }
 
     var isLiveContent: Bool {
         url?.pathExtension.isEmpty ?? false
+    }
+
+    var kind: ChannelContentKind {
+        ChannelContentKind(rawValue: kindRawValue) ?? .live
     }
 
     static func == (lhs: PlaylistChannel, rhs: PlaylistChannel) -> Bool {
@@ -107,7 +115,7 @@ final class PlaylistChannel: Identifiable, Equatable {
 /// (no to-many array), so a group never duplicates its channels and inserts stay linear.
 @Model
 final class PlaylistChannelGroup: Identifiable {
-    #Index<PlaylistChannelGroup>([\.importID, \.sortIndex], [\.playlistID])
+    #Index<PlaylistChannelGroup>([\.importID, \.sortIndex], [\.importID, \.kindRawValue, \.sortIndex], [\.playlistID])
 
     private(set) var uuid: UUID
     var name: String
@@ -116,13 +124,16 @@ final class PlaylistChannelGroup: Identifiable {
     var channelCount: Int = 0
     var playlistID: UUID = UUID()
     var importID: UUID = UUID()
+    /// Most common `ChannelContentKind` of the group's channels; decides the Home section it is listed in.
+    var kindRawValue: Int = 0
 
     var playlist: Playlist?
 
     /// Attach new groups by assigning `Playlist.groups` once, not by setting `playlist` on each group:
     /// SwiftData rebuilds the inverse array on every per-object assignment.
-    init(uuid: UUID, name: String, sortIndex: Int, channelCount: Int, importID: UUID, playlistID: UUID) {
+    init(uuid: UUID, name: String, sortIndex: Int, channelCount: Int, importID: UUID, playlistID: UUID, kind: ChannelContentKind = .live) {
         self.uuid = uuid
+        self.kindRawValue = kind.rawValue
         self.name = name
         self.sortIndex = sortIndex
         self.channelCount = channelCount
@@ -133,6 +144,10 @@ final class PlaylistChannelGroup: Identifiable {
     /// Title to show for the group; playlists without group-title end up in a single unnamed group.
     var displayName: String {
         name.isEmpty ? "Other" : name
+    }
+
+    var kind: ChannelContentKind {
+        ChannelContentKind(rawValue: kindRawValue) ?? .live
     }
 }
 

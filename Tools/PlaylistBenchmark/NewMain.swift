@@ -70,7 +70,7 @@ struct NewBenchmark {
     static func importPlaylist(_ path: String) async throws {
         let storeURL = Bench.temporaryStoreURL("new")
         defer { Bench.removeStore(storeURL) }
-        let schema = Schema([Playlist.self, PlaylistChannel.self, PlaylistChannelGroup.self])
+        let schema = Schema([ChannelBookmark.self, Playlist.self, PlaylistChannel.self, PlaylistChannelGroup.self])
         let container = try ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, url: storeURL))
         let importer = PlaylistImporter(container: container)
         let uuid = UUID()

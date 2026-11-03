@@ -12,6 +12,8 @@ struct RecordingsView: View {
     let store: RecordingStore
     /// A recording of the live stream is running; playing a recording would stop it.
     var isRecordingActive = false
+    /// False when shown as a screen (macOS sidebar) rather than as a sheet.
+    var showsDoneButton = true
     let onPlay: (Recording) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -59,9 +61,11 @@ struct RecordingsView: View {
             .navigationTitle("Recordings")
             .inlineNavigationBar()
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        dismiss()
+                if showsDoneButton {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") {
+                            dismiss()
+                        }
                     }
                 }
             }

@@ -7,92 +7,197 @@
 
 import SwiftUI
 
+/// Card of a channel in the Home rows and grids: a landscape logo card for live channels and a
+/// poster for movies and series. Tapping plays it; the context menu adds it to the favorites.
 struct ChannelPreview: View {
 
-    let channel: PlaylistChannel
-    let onClick: () -> Void
+    static let liveSize = CGSize(width: 220, height: 132)
+    static let posterSize = CGSize(width: 150, height: 222)
 
-    init(channel: PlaylistChannel, onClick: @escaping () -> Void) {
-        self.channel = channel
-        self.onClick = onClick
+    let item: ChannelItem
+    /// Shown under the title (e.g. the playlist name when several playlists are listed together).
+    var subtitle: String?
+    /// Extra context menu entries (e.g. "Remove from history").
+    var extraActions: [ChannelCardAction] = []
+
+    @Environment(ChannelLibrary.self) private var library
+    @Environment(\.playChannel) private var playChannel
+
+    private let borderShape = RoundedRectangle(cornerRadius: 16, style: .continuous)
+
+    private var size: CGSize {
+        item.kind.usesPosterArtwork ? Self.posterSize : Self.liveSize
     }
 
-    private let borderShape = RoundedRectangle(cornerSize: .init(width: 10, height: 10))
-
     var body: some View {
-        VStack(alignment: .leading) {
-            Button(action: {
-                onClick()
-            }, label: {
-                ZStack {
-                    ChannelArtwork(
-                        logo: channel.logo,
-                        name: channel.name ?? "No channel name",
-                        isLiveContent: channel.isLiveContent
-                    )
-                }
-                .frame(width: channel.isLiveContent ? 250 : 180, height: channel.isLiveContent ? 150 : 266)
-                .background(Color.artworkPlaceholder)
-                .clipShape(borderShape)
-            })
+        let isFavorite = library.isFavorite(item)
+        Button {
+            playChannel(item)
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                ChannelArtwork(logo: item.logo, name: item.displayName, kind: item.kind, size: size)
+                    .frame(width: size.width, height: size.height)
+                    .background(artworkBackground)
+                    .clipShape(borderShape)
+                    .overlay(alignment: .topTrailing) {
+                        if isFavorite {
+                            Image(systemName: "star.fill")
+                                .font(.caption.bold())
+                                .foregroundStyle(.yellow)
+                                .padding(6)
+                                .glassEffect(.regular, in: .circle)
+                                .padding(8)
+                                .accessibilityLabel("Favorite")
+                        }
+                    }
+                    .overlay {
+                        borderShape.strokeBorder(.white.opacity(0.08))
+                    }
 
-            Text(channel.name ?? "")
-                .bold()
-                .lineLimit(2, reservesSpace: true)
+                Text(item.displayName)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(2, reservesSpace: true)
+                    .multilineTextAlignment(.leading)
+
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .frame(width: size.width, alignment: .leading)
+            .contentShape(Rectangle())
         }
-        .frame(width: channel.isLiveContent ? 250 : 180)
-        .padding()
+        .buttonStyle(CardButtonStyle())
         .contextMenuPreviewShape(borderShape)
         .contextMenu {
-            Text(channel.name ?? "No channel name")
-                .bold()
-
-            Button(action: {
-                print("Add to favorites")
-            }, label: {
-                Text("Add to favorites")
-            })
+            ChannelContextMenu(item: item, isFavorite: isFavorite, extraActions: extraActions)
         }
+        .accessibilityHint("Plays the channel")
+    }
+
+    private var artworkBackground: some ShapeStyle {
+        LinearGradient(
+            colors: [Color.artworkPlaceholder.opacity(0.55), Color.artworkPlaceholder.opacity(0.25)],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+}
+
+/// An extra context menu entry of a channel card.
+struct ChannelCardAction: Identifiable {
+    let title: String
+    let systemImage: String
+    var role: ButtonRole?
+    let action: () -> Void
+
+    var id: String {
+        title
+    }
+}
+
+/// Play / favorite entries shared by every channel card and row.
+struct ChannelContextMenu: View {
+
+    let item: ChannelItem
+    let isFavorite: Bool
+    var extraActions: [ChannelCardAction] = []
+
+    @Environment(ChannelLibrary.self) private var library
+    @Environment(\.playChannel) private var playChannel
+
+    var body: some View {
+        Text(item.displayName)
+
+        Button("Play", systemImage: "play.fill") {
+            playChannel(item)
+        }
+
+        if item.url != nil {
+            Button(isFavorite ? "Remove from Favorites" : "Add to Favorites", systemImage: isFavorite ? "star.slash" : "star") {
+                library.toggleFavorite(item)
+            }
+        }
+
+        ForEach(extraActions) { action in
+            Button(action.title, systemImage: action.systemImage, role: action.role, action: action.action)
+        }
+    }
+}
+
+/// Slight press feedback for cards.
+struct CardButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .opacity(configuration.isPressed ? 0.85 : 1)
+            .animation(.spring(duration: 0.25), value: configuration.isPressed)
     }
 }
 
 /// Logo of a live channel (fitted, centered) or poster of an on-demand item (filling the card).
 /// Decoded at the displayed size by the shared logo loader.
-private struct ChannelArtwork: View {
-
-    static let liveLogoSize = CGSize(width: 75, height: 75)
-    static let posterSize = CGSize(width: 180, height: 266)
+struct ChannelArtwork: View {
 
     let logo: String?
     let name: String
-    let isLiveContent: Bool
+    let kind: ChannelContentKind
+    let size: CGSize
 
     var body: some View {
+        let isPoster = kind.usesPosterArtwork
+        let imageSize = isPoster ? size : CGSize(width: size.width * 0.5, height: size.height * 0.6)
         LogoImage(
             source: logo,
-            size: isLiveContent ? Self.liveLogoSize : Self.posterSize,
-            contentMode: isLiveContent ? .fit : .fill,
+            size: imageSize,
+            contentMode: isPoster ? .fill : .fit,
             accessibilityLabel: name
         ) { phase in
             switch phase {
             case .loading:
                 ProgressView()
             case .unavailable:
-                Text("No image preview")
-                    .font(.caption)
-                    .multilineTextAlignment(.center)
+                ArtworkPlaceholder(name: name, kind: kind)
+                    .frame(width: imageSize.width, height: imageSize.height)
             }
         }
     }
 }
 
-#Preview {
-    ScrollView {
-        VStack {
-            ChannelPreview(channel: PlaylistChannel(uuid: UUID(), name: "Channel name", logo: "https://i.imgur.com/Vx1F4o5.png", url: URL(string: "https://test.com/1234"), playlistID: UUID())) {}
-            ChannelPreview(channel: PlaylistChannel(uuid: UUID(), name: "Channel name", logo: "invalid", url: URL(string: "https://test.com/1234"), playlistID: UUID())) {}
-            ChannelPreview(channel: PlaylistChannel(uuid: UUID(), name: "Channel name with very long long long name like crazy long", logo: "https://image.tmdb.org/t/p/w600_and_h900_bestv2/6JVhFwg6lhnmjLndT18idG7rwwg.jpg", url: URL(string: "https://test.com/1234.mp4"), playlistID: UUID())) {}
-            ChannelPreview(channel: PlaylistChannel(uuid: UUID(), name: "Channel name with very long long long name like crazy long", logo: "invalid", url: URL(string: "https://test.com/1234.mp4"), playlistID: UUID())) {}
+/// Initials on a tinted background when a channel has no usable artwork.
+struct ArtworkPlaceholder: View {
+    let name: String
+    let kind: ChannelContentKind
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Image(systemName: kind.systemImage)
+                .font(.title3)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text(initials)
+                .font(.headline.weight(.bold))
+                .foregroundStyle(.primary.opacity(0.7))
         }
+        .accessibilityHidden(true)
     }
+
+    private var initials: String {
+        let words = name.split(whereSeparator: { $0 == " " || $0 == "-" || $0 == "|" }).prefix(2)
+        return words.compactMap(\.first).map(String.init).joined().uppercased()
+    }
+}
+
+#Preview("Cards") {
+    ScrollView(.horizontal) {
+        HStack(alignment: .top) {
+            ForEach(PreviewSampleData.sampleItems) { item in
+                ChannelPreview(item: item, subtitle: "Preview playlist")
+            }
+        }
+        .padding()
+    }
+    .fluxoPreviewEnvironment()
 }

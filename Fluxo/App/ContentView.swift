@@ -12,45 +12,66 @@ struct ContentView: View {
     @Bindable var viewModel: AVPlayerViewModel
 
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(ChannelLibrary.self) private var library
+    @State private var playlistActions = PlaylistActions()
 
     var body: some View {
+        root
+            .playerPresentation(isPresented: $viewModel.isPresented) {
+                WatchChannelView(viewModel: viewModel)
+            }
+            .playlistManagement()
+            .environment(playlistActions)
+            .environment(\.playChannel, PlayChannelAction(library: library, player: viewModel))
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active {
+                    viewModel.sceneDidBecomeActive()
+                }
+            }
+            #if os(macOS)
+            .onDisappear {
+                // The main window was closed: nothing shows the player any more, unless it is in PiP.
+                if !viewModel.isPictureInPictureActive {
+                    viewModel.stop()
+                }
+            }
+            #endif
+            #if DEBUG
+            .debugAutoplay(viewModel)
+            #endif
+    }
+
+    @ViewBuilder
+    private var root: some View {
+        #if os(macOS)
+        MacRootView(player: viewModel)
+        #else
         TabView {
-            Tab("Watch", systemImage: "play.tv") {
-                WatchView(viewModel: viewModel)
+            Tab("Home", systemImage: "play.tv") {
+                HomeView(player: viewModel)
+            }
+
+            Tab("Favorites", systemImage: "star") {
+                NavigationStack {
+                    BookmarkGridView(mode: .favorites, playlistIDs: nil)
+                        .channelDestinations()
+                }
             }
 
             Tab("Settings", systemImage: "gear") {
-                SettingsView()
+                NavigationStack {
+                    SettingsView()
+                        .navigationTitle("Settings")
+                }
             }
 
             Tab("Search", systemImage: "magnifyingglass", role: .search) {
-                List(0..<100) { i in
-                    Text("Row \(i)")
-                }
-                .searchable(text: .init(get: { "test" }, set: { _ in }))
+                SearchView()
             }
         }
         .playerAccessory(isVisible: viewModel.currentChannel != nil) {
             PlayerBottomAccessory(viewModel: viewModel)
         }
-        .playerPresentation(isPresented: $viewModel.isPresented) {
-            WatchChannelView(viewModel: viewModel)
-        }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active {
-                viewModel.sceneDidBecomeActive()
-            }
-        }
-        #if os(macOS)
-        .onDisappear {
-            // The main window was closed: nothing shows the player any more, unless it is in PiP.
-            if !viewModel.isPictureInPictureActive {
-                viewModel.stop()
-            }
-        }
-        #endif
-        #if DEBUG
-        .debugAutoplay(viewModel)
         #endif
     }
 }
@@ -134,4 +155,5 @@ struct PlayerBottomAccessory: View {
 
 #Preview {
     ContentView(viewModel: AVPlayerViewModel())
+        .fluxoPreviewEnvironment()
 }

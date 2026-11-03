@@ -86,12 +86,13 @@ actor PlaylistImporter {
         try context.save()
     }
 
-    /// Deletes a playlist with all of its channels and groups. Channels are bulk-deleted first so the cascade
-    /// rule does not have to fault tens of thousands of rows into memory.
+    /// Deletes a playlist with all of its channels, groups, favorites and watch history. Channels are bulk-deleted
+    /// first so the cascade rule does not have to fault tens of thousands of rows into memory.
     func deletePlaylist(uuid: UUID) throws {
         let context = makeContext()
         try context.delete(model: PlaylistChannel.self, where: #Predicate { $0.playlistID == uuid })
         try context.delete(model: PlaylistChannelGroup.self, where: #Predicate { $0.playlistID == uuid })
+        try context.delete(model: ChannelBookmark.self, where: #Predicate { $0.playlistID == uuid })
         if let playlist = try fetchPlaylist(uuid: uuid, in: context) {
             context.delete(playlist)
         }
@@ -99,13 +100,15 @@ actor PlaylistImporter {
     }
 
     /// Removes channel and group rows that no playlist shows: leftovers of an import that was interrupted
-    /// (crash, force quit) or of an older store layout.
+    /// (crash, force quit) or of an older store layout. Also drops bookmarks of playlists that no longer exist.
     func purgeOrphanedContent() throws {
         let context = makeContext()
         let playlists = try context.fetch(FetchDescriptor<Playlist>())
         let keep = Array(Set(playlists.compactMap(\.currentImportID)).union(runningImports))
+        let playlistIDs = playlists.map(\.uuid)
         try context.delete(model: PlaylistChannel.self, where: #Predicate { !keep.contains($0.importID) })
         try context.delete(model: PlaylistChannelGroup.self, where: #Predicate { !keep.contains($0.importID) })
+        try context.delete(model: ChannelBookmark.self, where: #Predicate { !playlistIDs.contains($0.playlistID) })
         try context.save()
     }
 
@@ -210,18 +213,22 @@ actor PlaylistImporter {
 
         for (offset, entry) in entries.enumerated() {
             let groupName = entry.group ?? ""
-            groups.add(groupName)
+            let url = URL(string: entry.url)
+            let name = entry.displayName
+            let kind = ChannelContentKind.classify(url: url, groupName: groupName, name: name)
+            groups.add(groupName, kind: kind)
             context.insert(PlaylistChannel(
                 uuid: UUID(),
-                name: entry.displayName,
+                name: name,
                 logo: entry.logo,
                 tvgID: entry.tvgID,
                 duration: entry.duration,
                 groupName: groupName,
-                url: URL(string: entry.url),
+                url: url,
                 sortIndex: firstIndex + offset,
                 importID: importID,
-                playlistID: playlistUUID
+                playlistID: playlistUUID,
+                kind: kind
             ))
         }
         try context.save()
@@ -237,7 +244,15 @@ actor PlaylistImporter {
         var newGroups: [PlaylistChannelGroup] = []
         newGroups.reserveCapacity(groups.ordered.count)
         for (index, group) in groups.ordered.enumerated() {
-            let model = PlaylistChannelGroup(uuid: UUID(), name: group.name, sortIndex: index, channelCount: group.count, importID: importID, playlistID: playlistUUID)
+            let model = PlaylistChannelGroup(
+                uuid: UUID(),
+                name: group.name,
+                sortIndex: index,
+                channelCount: group.count,
+                importID: importID,
+                playlistID: playlistUUID,
+                kind: group.kind
+            )
             context.insert(model)
             newGroups.append(model)
         }
@@ -276,22 +291,45 @@ actor PlaylistImporter {
     }
 }
 
-/// Group names in order of first appearance with their channel counts.
+/// Group names in order of first appearance with their channel counts per content kind.
 private struct GroupAccumulator {
     struct Group {
         let name: String
-        var count: Int
+        var liveCount = 0
+        var movieCount = 0
+        var seriesCount = 0
+
+        var count: Int {
+            liveCount + movieCount + seriesCount
+        }
+
+        var kind: ChannelContentKind {
+            ChannelContentKind.dominant(live: liveCount, movie: movieCount, series: seriesCount)
+        }
+
+        mutating func add(_ kind: ChannelContentKind) {
+            switch kind {
+            case .live:
+                liveCount += 1
+            case .movie:
+                movieCount += 1
+            case .series:
+                seriesCount += 1
+            }
+        }
     }
 
     private(set) var ordered: [Group] = []
     private var indexByName: [String: Int] = [:]
 
-    mutating func add(_ name: String) {
+    mutating func add(_ name: String, kind: ChannelContentKind) {
         if let index = indexByName[name] {
-            ordered[index].count += 1
+            ordered[index].add(kind)
         } else {
             indexByName[name] = ordered.count
-            ordered.append(Group(name: name, count: 1))
+            var group = Group(name: name)
+            group.add(kind)
+            ordered.append(group)
         }
     }
 }

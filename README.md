@@ -66,6 +66,32 @@ run the parser edge-case self test:
 Tools/PlaylistBenchmark/run.sh             # ENTRIES=20000 for a quicker run
 ```
 
+## Home, favorites and search
+
+- **Home** (`Features/Home`) shows a playlist switcher ("All Playlists" plus one
+  chip per playlist), a featured carousel, Continue Watching, Favorites, and the
+  groups of the chosen kind (Live TV / Movies / Series). Each group is a lazy row
+  of its first 24 channels, with "See All" opening a paged grid. Group rows are
+  fetched 8 at a time as they scroll in.
+- **Content kinds** are guessed once at import time (`ChannelContentKind`) from
+  the URL (Xtream `/movie/` and `/series/` paths, file extensions) and from the
+  names (`S01E02`, "Series" groups). Each group gets the most common kind of its
+  channels. Playlists imported before this change show as Live TV until refreshed.
+- **Favorites and watch history** are `ChannelBookmark` rows keyed by
+  playlist + stream URL, so they survive refreshes (which rewrite channel rows),
+  and they are deleted with their playlist. The history keeps the 200 most recent
+  entries.
+- **Search** debounces typing by 250 ms and runs the name query on a background
+  context, with a limit, over the selected playlist or all of them.
+- **macOS** uses a sidebar (Home, Search, Favorites, Recently Watched,
+  Recordings, and each playlist) and a Settings window (Cmd-,). iOS uses tabs.
+
+To check every Home and Search query against an on-disk store (100k channels):
+
+```sh
+CHANNELS=100000 Tools/HomeQueriesCheck/run.sh
+```
+
 ## Player
 
 - **Routing** (`PlaybackRoute`): HLS playlists and MP4/MOV files play directly in

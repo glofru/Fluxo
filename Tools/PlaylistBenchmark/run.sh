@@ -28,6 +28,8 @@ done
     || { cat "$OUT/build-old.log"; exit 1; }
 "${SWIFTC[@]}" -o "$OUT/bench-new" \
     "$ROOT/Fluxo/Features/Playlist/Playlist.swift" \
+    "$ROOT/Fluxo/Features/Playlist/ChannelContentKind.swift" \
+    "$ROOT/Fluxo/Features/Library/ChannelBookmark.swift" \
     "$ROOT/Fluxo/Features/Playlist/Import/M3UParser.swift" \
     "$ROOT/Fluxo/Features/Playlist/Import/PlaylistImporter.swift" \
     "$ROOT/Fluxo/App/Download/DownloadManager.swift" \
