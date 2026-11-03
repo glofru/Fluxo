@@ -30,6 +30,8 @@ final class ChannelBookmark {
     var logo: String?
     var groupName: String
     var kindRawValue: Int = 0
+    /// `tvg-id` of the channel, so the TV guide can match favorites and history entries too.
+    var tvgID: String?
 
     var isFavorite: Bool = false
     var favoritedOn: Date?

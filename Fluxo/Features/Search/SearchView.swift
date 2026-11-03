@@ -259,6 +259,7 @@ private struct SearchResultRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                    ChannelProgrammeLine(item: item)
                 }
 
                 Spacer()

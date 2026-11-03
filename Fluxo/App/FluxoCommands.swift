@@ -3,7 +3,7 @@
 //  Fluxo
 //
 //  Menu bar commands (macOS, and the iPad menu bar / keyboard shortcut overlay):
-//  File > Add Playlist / Refresh, and a Playback menu that drives the single app-wide player.
+//  File > Add Playlist / Refresh / Refresh TV Guide, and a Playback menu that drives the single app-wide player.
 //
 
 import SwiftData
@@ -14,6 +14,7 @@ struct FluxoCommands: Commands {
     let actions: PlaylistActions
     let importCenter: PlaylistImportCenter
     let container: ModelContainer
+    let epg: EPGStore
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
@@ -29,6 +30,11 @@ struct FluxoCommands: Commands {
                 }
             }
             .keyboardShortcut("r")
+
+            Button("Refresh TV Guide") {
+                epg.refreshAll()
+            }
+            .keyboardShortcut("r", modifiers: [.command, .option])
         }
 
         CommandMenu("Playback") {

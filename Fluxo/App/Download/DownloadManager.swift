@@ -48,9 +48,14 @@ enum DownloadManager {
         return URLSession(configuration: configuration, delegate: nil, delegateQueue: queue)
     }()
 
-    static func stream(from url: URL, highWaterMark: Int = 8 << 20, lowWaterMark: Int = 2 << 20) -> DownloadStream {
+    /// - Parameter headers: extra request headers, e.g. `If-None-Match` for a conditional request (a 304 reply
+    ///   ends the stream with `DownloadError.httpStatus(304)`).
+    static func stream(from url: URL, headers: [String: String] = [:], highWaterMark: Int = 8 << 20, lowWaterMark: Int = 2 << 20) -> DownloadStream {
         var request = URLRequest(url: url)
         request.setValue("*/*", forHTTPHeaderField: "Accept")
+        for (field, value) in headers {
+            request.setValue(value, forHTTPHeaderField: field)
+        }
 
         let task = session.dataTask(with: request)
         let handler = DownloadTaskHandler(highWaterMark: highWaterMark, lowWaterMark: lowWaterMark)
@@ -75,6 +80,11 @@ struct DownloadStream: AsyncSequence {
 
     fileprivate let base: AsyncThrowingStream<DownloadChunk, Error>
     fileprivate let handler: DownloadTaskHandler
+
+    /// The HTTP response, once it arrived (before the first chunk).
+    var response: HTTPURLResponse? {
+        handler.response
+    }
 
     func makeAsyncIterator() -> Iterator {
         Iterator(base: base.makeAsyncIterator(), handler: handler)
@@ -112,6 +122,7 @@ private final class DownloadTaskHandler: NSObject, URLSessionDataDelegate, @unch
     private var bufferedBytes = 0
     private var isSuspended = false
     private var isFinished = false
+    private var receivedResponse: HTTPURLResponse?
 
     var continuation: AsyncThrowingStream<DownloadChunk, Error>.Continuation?
     weak var task: URLSessionDataTask?
@@ -119,6 +130,14 @@ private final class DownloadTaskHandler: NSObject, URLSessionDataDelegate, @unch
     init(highWaterMark: Int, lowWaterMark: Int) {
         self.highWaterMark = highWaterMark
         self.lowWaterMark = lowWaterMark
+    }
+
+    var response: HTTPURLResponse? {
+        lock.lock()
+        defer {
+            lock.unlock()
+        }
+        return receivedResponse
     }
 
     func consumed(_ count: Int) {
@@ -140,6 +159,9 @@ private final class DownloadTaskHandler: NSObject, URLSessionDataDelegate, @unch
         didReceive response: URLResponse,
         completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
     ) {
+        lock.lock()
+        receivedResponse = response as? HTTPURLResponse
+        lock.unlock()
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             finish(throwing: DownloadError.httpStatus(http.statusCode))
             completionHandler(.cancel)

@@ -11,6 +11,7 @@ import SwiftUI
 /// Sidebar entries of the macOS window.
 enum SidebarItem: Hashable {
     case home
+    case guide
     case search
     case favorites
     case history
@@ -18,7 +19,7 @@ enum SidebarItem: Hashable {
     case playlist(UUID)
 }
 
-/// macOS layout: a sidebar with Home, Search, Favorites, Recently Watched, Recordings and every playlist,
+/// macOS layout: a sidebar with Home, TV Guide, Search, Favorites, Recently Watched, Recordings and every playlist,
 /// and the selected screen as the detail. Selecting a playlist shows Home filtered to it.
 struct MacRootView: View {
 
@@ -43,6 +44,13 @@ struct MacRootView: View {
             if case .playlist(let uuid) = PlaylistSelection(rawValue: selectionRawValue).resolved(in: playlists) {
                 sidebarSelection = .playlist(uuid)
             }
+            #if DEBUG
+            if DebugGuideDemo.opensGuide {
+                sidebarSelection = .guide
+            } else if DebugGuideDemo.opensFavorites {
+                sidebarSelection = .favorites
+            }
+            #endif
         }
         .onChange(of: sidebarSelection) { _, item in
             switch item {
@@ -83,6 +91,8 @@ struct MacRootView: View {
         switch sidebarSelection ?? .home {
         case .home, .playlist:
             HomeView(player: player, showsPlaylistSwitcher: false)
+        case .guide:
+            GuideView()
         case .search:
             SearchView()
         case .favorites:
@@ -125,6 +135,8 @@ private struct MacSidebar: View {
             Section {
                 Label("Home", systemImage: "play.tv")
                     .tag(SidebarItem.home)
+                Label("TV Guide", systemImage: "calendar.day.timeline.left")
+                    .tag(SidebarItem.guide)
                 Label("Search", systemImage: "magnifyingglass")
                     .tag(SidebarItem.search)
                 Label("Favorites", systemImage: "star")

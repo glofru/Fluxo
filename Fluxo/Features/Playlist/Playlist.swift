@@ -36,6 +36,12 @@ final class Playlist: Identifiable {
     var lastRefreshedOn: Date?
     var channelCount: Int = 0
     var groupCount: Int = 0
+    /// XMLTV guide URLs from the playlist header (`url-tvg` / `x-tvg-url`), comma-separated, as found by the
+    /// last import; nil when the playlist announces none. The TV guide turns them into `EPGSource`s.
+    var guideURLString: String?
+    /// When `guideURLString` was last read from the playlist header (nil for playlists imported before the
+    /// TV guide existed: the guide reads their header once, see `EPGImporter.discoverHeaderGuides`).
+    var guideHeaderCheckedOn: Date?
 
     /// Optional because SwiftData batch deletes of groups fail on a non-optional inverse to-many.
     /// Never read this for display; query groups by `importID` instead.

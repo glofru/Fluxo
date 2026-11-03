@@ -128,8 +128,11 @@ extension View {
         let container = container ?? PreviewSampleData.container
         let library = ChannelLibrary(container: container)
         let player = AVPlayerViewModel()
+        let epg = EPGStore(container: container)
+        epg.reloadGuide()
         return self
             .environment(PlaylistImportCenter(container: container))
+            .environment(epg)
             .environment(library)
             .environment(PlaylistActions())
             .environment(\.playChannel, PlayChannelAction(library: library, player: player))

@@ -112,7 +112,7 @@ Tools/PlaylistBenchmark/run.sh             # ENTRIES=20000 for a quicker run
   entries.
 - **Search** debounces typing by 250 ms and runs the name query on a background
   context, with a limit, over the selected playlist or all of them.
-- **macOS** uses a sidebar (Home, Search, Favorites, Recently Watched,
+- **macOS** uses a sidebar (Home, TV Guide, Search, Favorites, Recently Watched,
   Recordings, and each playlist) and a Settings window (Cmd-,). iOS uses tabs.
 
 To check every Home and Search query against an on-disk store (100k channels):
@@ -182,6 +182,59 @@ launch, `-FluxoDebugRecordSeconds <n>`, which records it for n seconds, and `-Fl
 starts Picture in Picture once it is possible and stops it 6 seconds later. The shared scheme builds Release, so build
 these with `-configuration Debug`.
 
+## TV guide (EPG)
+
+The Guide (`Features/Guide`) is a tab on iOS and a sidebar entry on macOS. It shows a time grid of the live
+channels that have a guide, programme details, programme search and reminders.
+
+- **Sources** (`EPGSource`): the XMLTV URLs of a playlist header (`#EXTM3U url-tvg="…"`, `x-tvg-url` or
+  `tvg-url`, which can list several comma-separated URLs) are stored at import (`Playlist.guideURLString`) and
+  become guide sources. For playlists imported before this, the guide reads only the first line of the playlist
+  once. You can add XMLTV URLs in Settings › TV Guide, with a shortcut to the free country guides of
+  [epgshare01](https://epgshare01.online) (free, updated daily, gzip). Other free guides that work as a URL:
+  [open-epg.com](https://www.open-epg.com) (download at most once a day) and i.mjh.nz (Pluto TV, Samsung TV Plus,
+  Plex and others). iptv-org/epg is a set of grabber scripts to run on a computer: it has no hosted guides that a
+  phone can download. epg.pw did not respond during the research.
+- **Download and parsing** (`EPGImporter`): the file is streamed to disk, then read by `XMLTVParser` (SAX
+  `XMLParser`) through `InflatingInputStream`, which inflates `.xml.gz` with zlib as it is read. The XML is never
+  held in memory. The parser runs on a utility queue and keeps only the programmes from 6 hours ago to 7 days
+  ahead, of the channels that can match a live channel of a playlist. Programmes are written in batches of
+  2,000 into short-lived background contexts, under a new import ID, and become visible when the whole guide is
+  stored (a failed refresh keeps the previous guide, and so does a file cut short when the previous guide had
+  more programmes). When the stored guide was read for the same playlist channels, the request is conditional
+  (`If-None-Match` / `If-Modified-Since`): a 304 or an identical file (SHA-256) is not read again.
+- **Refresh policy**: at launch and every hour for guides older than 12 hours, after a playlist import (new
+  guides of its header load, and guides already loaded for it are read again if its channels changed), from Settings / the Guide / File › Refresh TV Guide (⌥⌘R), and from a background app
+  refresh task on iOS (`BGTaskSchedulerPermittedIdentifiers` and the `fetch` background mode in Info.plist).
+  Programmes that ended more than 6 hours ago are deleted.
+- **Matching** (`EPGChannelMatcher`, `ChannelNameNormalizer`): `tvg-id` first (case-insensitive, with or without
+  a `@feed` suffix), then the normalized name (case, diacritics, width, provider prefixes such as `IT:` or
+  `|UK|`, bracketed notes, HD / FHD / 4K / HEVC / 1080p tags and a trailing country code removed), then the
+  tvg-id read as a name and a looser key ("Rai Uno" = "Rai 1"). The guides of the channel's own playlist are
+  tried first. Touch and hold (right-click) a live channel and choose Guide Channel… to pick its guide channel
+  by hand, or to turn the guide off for it (`EPGChannelOverride`).
+- **API** (`EPGStore`, main actor; queries run in `EPGReader` off the main actor and return values):
+  `nowNext(for:)`, `programmes(for:in:)`, `upcoming(for:from:limit:)`, `guideChannels(importIDs:)`,
+  `searchProgrammes(_:importIDs:)`, and `reminders` (`ReminderCenter`). `revision` changes when guide data or
+  matching change. `NowNextReader`, `ChannelProgrammeLine`, `ChannelCardProgrammeOverlay` and
+  `PlayerProgrammeInfo` show now / next on channel cards, search rows and the player.
+- **Reminders** (`ReminderCenter`): a local notification 5 minutes before the start (0 to 30 minutes in
+  Settings); tapping it, or its Watch action, plays the channel. The notification carries only the reminder
+  key (stream URLs can embed account credentials); the channel is read from the store. The reminders list is in
+  the Guide toolbar.
+
+To check the parser, gzip, matching, the SwiftData import and every guide query on real public guides and on a
+synthetic large guide, with timings and peak memory:
+
+```sh
+Tools/GuideCheck/run.sh                 # 1,500 channels x 8 days synthetic; OFFLINE=1 skips the downloads
+```
+
+Debug builds also accept `-FluxoDebugGuideDemo YES` (an in-memory store with sample playlists and a sample
+guide; the real library is not opened), `-FluxoDebugOpenGuide YES`, `-FluxoDebugGuideSearch <term>`,
+`-FluxoDebugGuideDetail YES`, `-FluxoDebugGuideSources YES` and, on macOS, `-FluxoDebugSnapshot <name>` (PNGs of
+the windows in the app's temporary folder, then quit). See `App/Debug/DebugGuideDemo.swift`.
+
 ## User interface
 
 - **Player screen** (`Features/Watch/WatchChannelView.swift`): the video fills the screen
@@ -207,12 +260,12 @@ these with `-configuration Debug`.
   with Cancel Import, and an error section with Try Again. Editing can change the URL, which
   re-imports the playlist.
 - **Settings** (a tab on iOS, the Settings window ⌘, on macOS): time-shift length, skip
-  intervals, automatic PiP (iOS), recordings count / size / location (Show in Finder on macOS,
+  intervals, automatic PiP (iOS), TV guide sources and the reminder time, recordings count / size / location (Show in Finder on macOS,
   the Files app on iOS through `UIFileSharingEnabled`), delete all recordings, temporary stream
   files, logo cache, watch history, and the app and FFmpeg versions.
 - **Recordings**: play, share, Show in Finder (macOS), delete, delete all.
 - **Menu bar** (macOS, and the iPad menu bar): File > Add Playlist… (⌘N), Refresh All
-  Playlists (⌘R); Playback > Play/Pause (Space), Skip Back / Forward (⌘← / ⌘→), Go Live (⌘L),
+  Playlists (⌘R), Refresh TV Guide (⌥⌘R); Playback > Play/Pause (Space), Skip Back / Forward (⌘← / ⌘→), Go Live (⌘L),
   Channel Up / Down (⌘↑ / ⌘↓), Record (⇧⌘R), Picture in Picture (⌥⌘P), Fill Video, Show
   Player (⇧⌘P), Stop Playback (⌘.). Shortcuts that would clash with text editing (Space, the
   arrows) are only enabled while the player is on screen. Escape closes the player.
@@ -225,7 +278,7 @@ Glass is used for the navigation and control layer only (tab bar, toolbars, the 
 the playlist chips, the player controls, sheets). Cards, rows and banners are content and use
 plain surfaces or small materials.
 
-- **Tab bar**: a native `TabView` with Home, Favorites, Settings and a `.search` role tab. It
+- **Tab bar**: a native `TabView` with Home, Guide, Favorites, Settings and a `.search` role tab. It
   minimizes while scrolling down (`tabBarMinimizeBehavior(.onScrollDown)`).
 - **Mini player** (`PlayerBottomAccessory` in `App/ContentView.swift`): the
   `tabViewBottomAccessory`, shown only while something plays (on iOS 26.1+ through

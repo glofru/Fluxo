@@ -22,8 +22,10 @@ struct ChannelItem: Identifiable, Hashable, Sendable {
     let url: URL?
     let groupName: String
     let kind: ChannelContentKind
+    /// `tvg-id` of the playlist entry; the TV guide matches channels on it first.
+    let tvgID: String?
 
-    init(id: UUID, playlistID: UUID, name: String?, logo: String?, url: URL?, groupName: String, kind: ChannelContentKind) {
+    init(id: UUID, playlistID: UUID, name: String?, logo: String?, url: URL?, groupName: String, kind: ChannelContentKind, tvgID: String? = nil) {
         self.id = id
         self.playlistID = playlistID
         self.name = name
@@ -31,6 +33,7 @@ struct ChannelItem: Identifiable, Hashable, Sendable {
         self.url = url
         self.groupName = groupName
         self.kind = kind
+        self.tvgID = tvgID
     }
 
     init(_ channel: PlaylistChannel) {
@@ -41,7 +44,8 @@ struct ChannelItem: Identifiable, Hashable, Sendable {
             logo: channel.logo,
             url: channel.url,
             groupName: channel.groupName,
-            kind: channel.kind
+            kind: channel.kind,
+            tvgID: channel.tvgID
         )
     }
 
@@ -53,7 +57,8 @@ struct ChannelItem: Identifiable, Hashable, Sendable {
             logo: bookmark.logo,
             url: bookmark.url,
             groupName: bookmark.groupName,
-            kind: bookmark.kind
+            kind: bookmark.kind,
+            tvgID: bookmark.tvgID
         )
     }
 
@@ -197,6 +202,7 @@ final class ChannelLibrary {
             bookmark.logo = item.logo
             bookmark.groupName = item.groupName
             bookmark.kindRawValue = item.kind.rawValue
+            bookmark.tvgID = item.tvgID
             return bookmark
         }
         let bookmark = ChannelBookmark(
@@ -209,6 +215,7 @@ final class ChannelLibrary {
             groupName: item.groupName,
             kind: item.kind
         )
+        bookmark.tvgID = item.tvgID
         context.insert(bookmark)
         return bookmark
     }

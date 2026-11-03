@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-/// Playback, recordings, storage and about. A tab on iOS, the Settings window (⌘,) on macOS.
+/// Playback, TV guide, recordings, storage and about. A tab on iOS, the Settings window (⌘,) on macOS.
 struct SettingsView: View {
 
     let player: AVPlayerViewModel
@@ -34,6 +34,7 @@ struct SettingsView: View {
     var body: some View {
         Form {
             playbackSection
+            GuideSettingsSection()
             recordingsSection
             storageSection
             aboutSection

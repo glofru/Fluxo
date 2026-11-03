@@ -20,6 +20,8 @@ struct FluxoApp: App {
     /// The single player of the app. It owns the AVPlayer, the Picture in Picture surface, the remux
     /// engine, the loopback HLS server and the recordings, so there must never be more than one.
     @State private var player: AVPlayerViewModel
+    /// The TV guide: sources, refreshes, matching and reminders.
+    @State private var epg: EPGStore
 
     init() {
         let container = ModelContainerFactory.make()
@@ -27,9 +29,21 @@ struct FluxoApp: App {
         let library = ChannelLibrary(container: container)
         let player = AVPlayerViewModel()
         player.zapper = ChannelZapper(container: container, library: library)
-        _importCenter = State(initialValue: PlaylistImportCenter(container: container))
+        let importCenter = PlaylistImportCenter(container: container)
+        let epg = EPGStore(container: container)
+        importCenter.onPlaylistImported = { [weak epg] playlistID in
+            epg?.playlistDidImport(playlistID)
+        }
+        importCenter.onPlaylistDeleted = { [weak epg] playlistID in
+            epg?.playlistWasDeleted(playlistID)
+        }
+        // Now, not when the first view appears: the reminder notification delegate must be installed before a
+        // notification that launched the app is delivered.
+        epg.start()
+        _importCenter = State(initialValue: importCenter)
         _library = State(initialValue: library)
         _player = State(initialValue: player)
+        _epg = State(initialValue: epg)
     }
 
     var body: some Scene {
@@ -43,12 +57,13 @@ struct FluxoApp: App {
         .defaultSize(width: 1_240, height: 800)
         .windowResizability(.contentMinSize)
         .commands {
-            FluxoCommands(player: player, actions: playlistActions, importCenter: importCenter, container: container)
+            FluxoCommands(player: player, actions: playlistActions, importCenter: importCenter, container: container, epg: epg)
         }
 
         Settings {
             SettingsView(player: player)
                 .environment(library)
+                .environment(epg)
                 .modelContainer(container)
         }
         #else
@@ -58,8 +73,15 @@ struct FluxoApp: App {
         }
         .modelContainer(container)
         .commands {
-            FluxoCommands(player: player, actions: playlistActions, importCenter: importCenter, container: container)
+            FluxoCommands(player: player, actions: playlistActions, importCenter: importCenter, container: container, epg: epg)
         }
+        #if os(iOS)
+        .backgroundTask(.appRefresh(EPGBackgroundRefresh.taskIdentifier)) { [epg] in
+            // Ask for the next run first, so a refresh that runs out of time is still followed by another.
+            EPGBackgroundRefresh.schedule()
+            await epg.performBackgroundRefresh()
+        }
+        #endif
         #endif
     }
 
@@ -68,5 +90,6 @@ struct FluxoApp: App {
             .environment(importCenter)
             .environment(library)
             .environment(playlistActions)
+            .environment(epg)
     }
 }

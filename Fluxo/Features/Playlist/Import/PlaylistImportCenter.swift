@@ -25,6 +25,13 @@ final class PlaylistImportCenter {
     /// Last error of a background refresh or delete, for the UI to present.
     var failure: Failure?
 
+    /// Called after an import of the playlist completed (the TV guide re-reads its `url-tvg` header).
+    @ObservationIgnored
+    var onPlaylistImported: ((UUID) -> Void)?
+    /// Called after a playlist and its content were deleted.
+    @ObservationIgnored
+    var onPlaylistDeleted: ((UUID) -> Void)?
+
     private struct RunningImport {
         let token: UUID
         let task: Task<PlaylistImportSummary, Error>
@@ -114,6 +121,7 @@ final class PlaylistImportCenter {
             _ = await pending?.result
             do {
                 try await importer.deletePlaylist(uuid: uuid)
+                self?.onPlaylistDeleted?(uuid)
             } catch {
                 self?.failure = Failure(playlistName: name, message: error.localizedDescription)
             }
@@ -148,8 +156,11 @@ final class PlaylistImportCenter {
         running[playlistUUID] = RunningImport(token: token, task: task)
 
         Task { [weak self] in
-            _ = await task.result
+            let result = await task.result
             self?.finishImport(for: playlistUUID, token: token)
+            if case .success = result {
+                self?.onPlaylistImported?(playlistUUID)
+            }
         }
         return task
     }

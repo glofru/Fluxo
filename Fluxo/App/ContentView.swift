@@ -13,8 +13,12 @@ struct ContentView: View {
 
     @Environment(\.scenePhase) private var scenePhase
     @Environment(ChannelLibrary.self) private var library
+    @Environment(EPGStore.self) private var epg
     /// The player zooms out of the card or the mini player that opened it.
     @Namespace private var playerNamespace
+    #if !os(macOS)
+    @State private var selectedTab = AppTab.home
+    #endif
 
     var body: some View {
         root
@@ -24,12 +28,23 @@ struct ContentView: View {
                     .zoomTransition(sourceID: viewModel.presentationSourceID ?? PlayerTransition.miniPlayerID, in: playerNamespace)
             }
             .playlistManagement()
+            .guideManagement(epg)
             .environment(\.playChannel, PlayChannelAction(library: library, player: viewModel))
             .sensoryFeedback(.selection, trigger: library.favoriteToggleCount)
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active {
                     viewModel.sceneDidBecomeActive()
+                } else if phase == .background {
+                    EPGBackgroundRefresh.schedule()
                 }
+            }
+            .task(id: epg.reminders.channelToOpen) {
+                // A reminder notification was opened: play its channel.
+                guard let channel = epg.reminders.channelToOpen else {
+                    return
+                }
+                epg.reminders.channelToOpen = nil
+                PlayChannelAction(library: library, player: viewModel)(channel)
             }
             #if os(macOS)
             .onDisappear {
@@ -41,6 +56,7 @@ struct ContentView: View {
             #endif
             #if DEBUG
             .debugAutoplay(viewModel)
+            .debugSnapshots()
             #endif
     }
 
@@ -49,35 +65,59 @@ struct ContentView: View {
         #if os(macOS)
         MacRootView(player: viewModel)
         #else
-        TabView {
-            Tab("Home", systemImage: "play.tv") {
+        TabView(selection: $selectedTab) {
+            Tab("Home", systemImage: "play.tv", value: AppTab.home) {
                 HomeView(player: viewModel)
             }
 
-            Tab("Favorites", systemImage: "star") {
+            Tab("Guide", systemImage: "calendar.day.timeline.left", value: AppTab.guide) {
+                GuideView()
+            }
+
+            Tab("Favorites", systemImage: "star", value: AppTab.favorites) {
                 NavigationStack {
                     BookmarkGridView(mode: .favorites, playlistIDs: nil)
                         .channelDestinations()
                 }
             }
 
-            Tab("Settings", systemImage: "gear") {
+            Tab("Settings", systemImage: "gear", value: AppTab.settings) {
                 NavigationStack {
                     SettingsView(player: viewModel)
                         .navigationTitle("Settings")
                 }
             }
 
-            Tab("Search", systemImage: "magnifyingglass", role: .search) {
+            Tab("Search", systemImage: "magnifyingglass", value: AppTab.search, role: .search) {
                 SearchView()
             }
         }
         .playerAccessory(isVisible: viewModel.currentChannel != nil) {
             PlayerBottomAccessory(viewModel: viewModel)
         }
+        #if DEBUG
+        .onAppear {
+            if DebugGuideDemo.opensGuide {
+                selectedTab = .guide
+            } else if DebugGuideDemo.opensFavorites {
+                selectedTab = .favorites
+            }
+        }
+        #endif
         #endif
     }
 }
+
+#if !os(macOS)
+/// The tabs of the iOS app.
+private enum AppTab: Hashable {
+    case home
+    case guide
+    case favorites
+    case settings
+    case search
+}
+#endif
 
 /// The mini player: the tab bar bottom accessory on iOS, a floating glass bar on macOS.
 ///

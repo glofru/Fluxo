@@ -258,12 +258,16 @@ private struct PlayerTopBar: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(viewModel.currentChannel?.name ?? "No channel")
-                    .font(.headline)
-                    .lineLimit(1)
-                PlayerStatusBadges(viewModel: viewModel, timeline: viewModel.timeline)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(viewModel.currentChannel?.name ?? "No channel")
+                        .font(.headline)
+                        .lineLimit(1)
+                    PlayerStatusBadges(viewModel: viewModel, timeline: viewModel.timeline)
+                }
+                .accessibilityElement(children: .combine)
+                // Now / next from the TV guide (live channels with a guide only).
+                PlayerProgrammeInfo(item: viewModel.currentItem)
             }
-            .accessibilityElement(children: .combine)
 
             Spacer(minLength: 8)
 

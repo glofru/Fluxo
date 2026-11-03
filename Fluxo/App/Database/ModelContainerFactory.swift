@@ -17,6 +17,11 @@ enum ModelContainerFactory {
     /// layout that lightweight migration cannot map), it is moved aside and a fresh store is created instead of
     /// crashing at launch. Playlist content can always be downloaded again.
     static func make() -> ModelContainer {
+        #if DEBUG
+        if let demo = DebugGuideDemo.makeContainerIfRequested() {
+            return demo
+        }
+        #endif
         let schema = Schema(ModelRegistry.all)
         let configuration = ModelConfiguration(schema: schema)
         do {

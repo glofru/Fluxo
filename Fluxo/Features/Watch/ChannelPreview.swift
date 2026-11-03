@@ -57,6 +57,12 @@ struct ChannelPreview: View {
                                 .accessibilityLabel("Favorite")
                         }
                     }
+                    // What a live channel shows now, from the TV guide.
+                    .overlay(alignment: .bottom) {
+                        ChannelCardProgrammeOverlay(item: item)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                            .clipShape(borderShape)
+                    }
                     .overlay {
                         borderShape.strokeBorder(.primary.opacity(0.08))
                     }
@@ -143,6 +149,7 @@ struct ChannelContextMenu: View {
 
     @Environment(ChannelLibrary.self) private var library
     @Environment(\.playChannel) private var playChannel
+    @Environment(EPGStore.self) private var epg: EPGStore?
 
     var body: some View {
         Text(item.displayName)
@@ -154,6 +161,12 @@ struct ChannelContextMenu: View {
         if item.url != nil {
             Button(isFavorite ? "Remove from Favorites" : "Add to Favorites", systemImage: isFavorite ? "star.slash" : "star") {
                 library.toggleFavorite(item)
+            }
+        }
+
+        if let epg, item.kind == .live, item.url != nil {
+            Button("Guide Channel…", systemImage: "calendar.badge.checkmark") {
+                epg.matchingTarget = item
             }
         }
 

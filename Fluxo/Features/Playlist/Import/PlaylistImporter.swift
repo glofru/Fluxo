@@ -177,7 +177,7 @@ actor PlaylistImporter {
             }
             try Task.checkCancellation()
 
-            let groupCount = try commit(importID: importID, playlistUUID: playlistUUID, channelCount: stored, groups: groups)
+            let groupCount = try commit(importID: importID, playlistUUID: playlistUUID, channelCount: stored, groups: groups, guideURLs: parser.guideURLs)
             let summary = PlaylistImportSummary(channelCount: stored, groupCount: groupCount, duration: clock.now - startedAt)
             Self.logger.info("Imported \(summary.channelCount) channels in \(summary.groupCount) groups in \(String(describing: summary.duration), privacy: .public)")
             return summary
@@ -235,7 +235,7 @@ actor PlaylistImporter {
     }
 
     /// Writes the groups, makes the new import visible, then drops the previous one.
-    private func commit(importID: UUID, playlistUUID: UUID, channelCount: Int, groups: GroupAccumulator) throws -> Int {
+    private func commit(importID: UUID, playlistUUID: UUID, channelCount: Int, groups: GroupAccumulator, guideURLs: [String]) throws -> Int {
         let context = makeContext()
         guard let playlist = try fetchPlaylist(uuid: playlistUUID, in: context) else {
             throw PlaylistImportError.playlistNotFound
@@ -263,6 +263,8 @@ actor PlaylistImporter {
         playlist.channelCount = channelCount
         playlist.groupCount = groups.ordered.count
         playlist.lastRefreshedOn = .now
+        playlist.guideURLString = guideURLs.isEmpty ? nil : guideURLs.joined(separator: ",")
+        playlist.guideHeaderCheckedOn = .now
         // Save the switch first so the UI moves to the new rows before the old ones disappear.
         try context.save()
 

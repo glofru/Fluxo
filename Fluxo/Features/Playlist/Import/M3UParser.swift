@@ -40,6 +40,9 @@ struct M3UParser {
 
     private(set) var entryCount = 0
     private(set) var sawHeader = false
+    /// XMLTV guide URLs announced by the `#EXTM3U` header (`url-tvg`, `x-tvg-url` or `tvg-url`; each may hold
+    /// several comma-separated URLs), in order of appearance and without duplicates. Only http(s) URLs are kept.
+    private(set) var guideURLs: [String] = []
 
     /// Bytes of a line that was split across two chunks.
     private var carry: [UInt8] = []
@@ -154,6 +157,7 @@ struct M3UParser {
                 pendingGroup = value.isEmpty ? nil : Self.string(value)
             } else if Self.hasPrefix(line, Tag.extm3u) {
                 sawHeader = true
+                addGuideURLs(fromHeader: UnsafeBufferPointer(rebasing: line[Tag.extm3u.count...]))
             }
             return
         }
@@ -179,6 +183,64 @@ struct M3UParser {
         pendingGroup = nil
         entryCount += 1
         try emit(entry)
+    }
+
+    // MARK: - #EXTM3U
+
+    /// Collects the guide URLs of a header such as `#EXTM3U url-tvg="https://a/epg.xml.gz,https://b/epg.xml"`.
+    /// Unlike `#EXTINF`, the header has no title, so commas are part of an unquoted value.
+    private mutating func addGuideURLs(fromHeader bytes: UnsafeBufferPointer<UInt8>) {
+        guard let base = bytes.baseAddress else {
+            return
+        }
+        let end = bytes.count
+        var index = 0
+        while index < end {
+            while index < end, Byte.isBlank(base[index]) {
+                index += 1
+            }
+            let keyStart = index
+            while index < end, base[index] != Byte.equals, !Byte.isBlank(base[index]) {
+                index += 1
+            }
+            let key = UnsafeBufferPointer(start: base + keyStart, count: index - keyStart)
+            guard index < end, base[index] == Byte.equals else {
+                continue
+            }
+            index += 1
+
+            let valueStart: Int
+            let valueEnd: Int
+            if index < end, base[index] == Byte.doubleQuote || base[index] == Byte.singleQuote {
+                let quote = base[index]
+                index += 1
+                valueStart = index
+                while index < end, base[index] != quote {
+                    index += 1
+                }
+                valueEnd = index
+                index = min(end, index + 1)
+            } else {
+                valueStart = index
+                while index < end, !Byte.isBlank(base[index]) {
+                    index += 1
+                }
+                valueEnd = index
+            }
+
+            guard Self.equalsIgnoringCase(key, Key.urlTvg) || Self.equalsIgnoringCase(key, Key.xTvgURL) || Self.equalsIgnoringCase(key, Key.tvgURL) else {
+                continue
+            }
+            let value = Self.string(UnsafeBufferPointer(start: base + valueStart, count: valueEnd - valueStart))
+            for part in value.split(separator: ",") {
+                let candidate = part.trimmingCharacters(in: .whitespaces)
+                let lowercased = candidate.lowercased()
+                guard lowercased.hasPrefix("https://") || lowercased.hasPrefix("http://"), !guideURLs.contains(candidate) else {
+                    continue
+                }
+                guideURLs.append(candidate)
+            }
+        }
     }
 
     // MARK: - #EXTINF
@@ -405,6 +467,9 @@ struct M3UParser {
         static let tvgLogo = Array("tvg-logo".utf8)
         static let logo = Array("logo".utf8)
         static let groupTitle = Array("group-title".utf8)
+        static let urlTvg = Array("url-tvg".utf8)
+        static let xTvgURL = Array("x-tvg-url".utf8)
+        static let tvgURL = Array("tvg-url".utf8)
         static let https = Array("https://".utf8)
         static let http = Array("http://".utf8)
         static let data = Array("data:".utf8)

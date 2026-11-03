@@ -1,0 +1,277 @@
+//
+//  ProgrammeDetailView.swift
+//  Fluxo
+//
+//  Created by Gianluca Lofrumento on 2026-11-02.
+//
+
+import SwiftUI
+
+/// A programme: artwork, title, episode, channel, time and progress, categories and description, with Watch
+/// and Remind Me, and what follows on the same channel.
+struct ProgrammeDetailView: View {
+
+    static let artworkSize = CGSize(width: 560, height: 315)
+
+    let programme: GuideProgramme
+    let channel: ChannelItem
+    let ref: GuideChannelRef?
+
+    @Environment(EPGStore.self) private var epg
+    @Environment(\.playChannel) private var playChannel
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
+    @State private var upNext: [GuideProgramme] = []
+    @State private var reminderToggles = 0
+
+    var body: some View {
+        NavigationStack {
+            TimelineView(.everyMinute) { context in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        artwork
+                        header(now: context.date)
+                        actions(now: context.date)
+                        if !programme.categories.isEmpty {
+                            categories
+                        }
+                        if !programme.summary.isEmpty {
+                            Text(programme.summary)
+                                .font(.body)
+                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        if !upNext.isEmpty {
+                            upNextSection(now: context.date)
+                        }
+                    }
+                    .padding()
+                    .frame(maxWidth: 640, alignment: .leading)
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            // The title is the first thing in the content: the bar names the channel.
+            .navigationTitle(channel.displayName)
+            .inlineNavigationBar()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(role: .close) {
+                        dismiss()
+                    }
+                }
+            }
+            .glassSheetContentBackground()
+        }
+        .presentationDetents([.medium, .large])
+        .task(id: ref) {
+            guard let ref else {
+                return
+            }
+            upNext = await epg.upcoming(for: ref, from: programme.stop, limit: 4).filter { $0.start >= programme.stop }
+        }
+        .alert("Notifications Are Off", isPresented: permissionHint) {
+            #if os(iOS)
+            Button("Open Settings") {
+                if let url = URL(string: UIApplication.openNotificationSettingsURLString) {
+                    openURL(url)
+                }
+            }
+            #endif
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Allow notifications for Fluxo in Settings to get a reminder before a programme starts.")
+        }
+        .sensoryFeedback(.success, trigger: reminderToggles)
+    }
+
+    private var permissionHint: Binding<Bool> {
+        Binding(get: { epg.reminders.isShowingPermissionHint }, set: { epg.reminders.isShowingPermissionHint = $0 })
+    }
+
+    // MARK: - Sections
+
+    @ViewBuilder
+    private var artwork: some View {
+        if let icon = programme.icon {
+            LogoImage(source: icon, size: Self.artworkSize, contentMode: .fill) { phase in
+                if phase == .loading {
+                    Color.artworkPlaceholder.opacity(0.2)
+                } else {
+                    ArtworkPlaceholder(name: programme.title, kind: .live)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .aspectRatio(16 / 9, contentMode: .fit)
+            .clipShape(.rect(cornerRadius: 18, style: .continuous))
+            .accessibilityHidden(true)
+        }
+    }
+
+    private func header(now: Date) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(programme.title)
+                .font(.title2.bold())
+                .fixedSize(horizontal: false, vertical: true)
+            if let detail = programme.detailLine {
+                Text(detail)
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+            }
+            HStack(spacing: 10) {
+                LogoImage(source: channel.logo, size: CGSize(width: 40, height: 26)) { _ in
+                    Image(systemName: "tv")
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(channel.displayName)
+                        .font(.subheadline.weight(.semibold))
+                    Text("\(GuideFormat.dayAndTime(programme)) · \(GuideFormat.duration(programme))")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+            }
+            .accessibilityElement(children: .combine)
+            if programme.isOnAir(at: now) {
+                HStack(spacing: 10) {
+                    ProgrammeProgressBar(progress: programme.progress(at: now), height: 5)
+                    Text(GuideFormat.remaining(programme, at: now))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .fixedSize()
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("On now, \(GuideFormat.remaining(programme, at: now))")
+            }
+        }
+    }
+
+    private func actions(now: Date) -> some View {
+        let isReminded = epg.reminders.isScheduled(programme)
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                watchButton(now: now)
+                if ReminderCenter.canRemind(programme, now: now) {
+                    reminderButton(isReminded: isReminded)
+                }
+            }
+            VStack(alignment: .leading, spacing: 10) {
+                watchButton(now: now)
+                if ReminderCenter.canRemind(programme, now: now) {
+                    reminderButton(isReminded: isReminded)
+                }
+            }
+        }
+        .controlSize(.large)
+    }
+
+    private func watchButton(now: Date) -> some View {
+        Button {
+            dismiss()
+            playChannel(channel)
+        } label: {
+            Label(programme.isOnAir(at: now) ? "Watch Now" : "Watch \(channel.displayName)", systemImage: "play.fill")
+                .lineLimit(1)
+        }
+        .buttonStyle(.glassProminent)
+        .disabled(channel.url == nil)
+    }
+
+    private func reminderButton(isReminded: Bool) -> some View {
+        Button {
+            Task {
+                await epg.reminders.toggle(programme, on: channel)
+                reminderToggles += 1
+            }
+        } label: {
+            Label(isReminded ? "Reminder Set" : "Remind Me", systemImage: isReminded ? "bell.fill" : "bell")
+                .contentTransition(.symbolEffect(.replace))
+                .lineLimit(1)
+        }
+        .buttonStyle(.glass)
+        .accessibilityHint(isReminded ? "Cancels the reminder" : "Sends a notification \(ReminderCenter.leadMinutes) minutes before it starts")
+    }
+
+    private var categories: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 8) {
+                ForEach(programme.categories, id: \.self) { category in
+                    Text(category)
+                        .font(.caption.weight(.medium))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(.fill.tertiary, in: .capsule)
+                }
+            }
+        }
+        .scrollIndicators(.hidden)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Categories: \(programme.categories.joined(separator: ", "))")
+    }
+
+    private func upNextSection(now: Date) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Later on \(channel.displayName)")
+                .font(.headline)
+            ForEach(upNext) { next in
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    GuideTimeColumnText(date: next.start)
+                        .font(.subheadline.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(next.title)
+                            .font(.subheadline.weight(.medium))
+                        if let detail = next.detailLine {
+                            Text(detail)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer(minLength: 8)
+                    if ReminderCenter.canRemind(next, now: now) {
+                        let isReminded = epg.reminders.isScheduled(next)
+                        Button {
+                            Task {
+                                await epg.reminders.toggle(next, on: channel)
+                                reminderToggles += 1
+                            }
+                        } label: {
+                            Image(systemName: isReminded ? "bell.fill" : "bell")
+                                .contentTransition(.symbolEffect(.replace))
+                                .frame(width: 32, height: 32)
+                                .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.tint)
+                        .accessibilityLabel(isReminded ? "Cancel reminder for \(next.title)" : "Remind me of \(next.title)")
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
+        }
+        .padding()
+        .background(.fill.quinary, in: .rect(cornerRadius: 16, style: .continuous))
+    }
+}
+
+#Preview {
+    let channel = PreviewSampleData.sampleItems[0]
+    let programme = GuideProgramme(
+        sourceID: UUID(),
+        channelID: "news",
+        start: .now.addingTimeInterval(-900),
+        stop: .now.addingTimeInterval(2_700),
+        title: "Evening News",
+        subtitle: "Headlines",
+        summary: "The day's stories from home and abroad, with the weather at the end of the programme.",
+        categories: ["News", "Current affairs"],
+        icon: nil,
+        episode: "S12 E140"
+    )
+    Color.clear
+        .sheet(isPresented: .constant(true)) {
+            ProgrammeDetailView(programme: programme, channel: channel, ref: nil)
+        }
+        .fluxoPreviewEnvironment()
+}
