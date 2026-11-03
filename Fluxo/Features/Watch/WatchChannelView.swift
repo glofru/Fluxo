@@ -50,6 +50,12 @@ struct WatchChannelView: View {
                 }
                 .accessibilityHidden(true)
 
+            if viewModel.isCasting {
+                // A Chromecast plays the channel: where, and its volume, instead of the (stopped) video.
+                CastingBackdrop(viewModel: viewModel)
+                    .transition(.opacity)
+            }
+
             tapTarget
 
             // Escape closes the player even while the controls are hidden.
@@ -78,6 +84,7 @@ struct WatchChannelView: View {
         // app underneath keeps the system appearance (it shows while the player is dragged down).
         .environment(\.colorScheme, .dark)
         .animation(.easeInOut(duration: 0.25), value: controlsVisible)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.35), value: viewModel.isCasting)
         .task(id: AutoHide(interaction: interactionCount, canHide: canAutoHide)) {
             guard canAutoHide else {
                 return
@@ -159,7 +166,9 @@ struct WatchChannelView: View {
     }
 
     private var canAutoHide: Bool {
+        // Not while casting: there is no video to uncover, and the controls drive the Chromecast.
         controlsVisible && viewModel.playbackState == .playing && !isScrubbing && !isShowingRecordings && !isVoiceOverEnabled
+            && !viewModel.isCasting
     }
 
     private func showControls() {
@@ -200,13 +209,26 @@ private final class HoverThrottle {
 /// (A glass shape per button cannot be used there: it would not line up with the capsule.)
 private struct PlayerIconButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .background {
-                Circle()
-                    .fill(.white.opacity(configuration.isPressed ? 0.18 : 0))
-                    .padding(3)
-            }
-            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+        IconLabel(configuration: configuration)
+    }
+
+    /// A disabled button (e.g. skipping in a live channel, or while a Chromecast plays it) is dimmed.
+    private struct IconLabel: View {
+        let configuration: Configuration
+
+        @Environment(\.isEnabled) private var isEnabled
+
+        var body: some View {
+            configuration.label
+                .opacity(isEnabled ? 1 : 0.35)
+                .background {
+                    Circle()
+                        .fill(.white.opacity(configuration.isPressed ? 0.18 : 0))
+                        .padding(3)
+                }
+                .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+                .animation(.easeOut(duration: 0.2), value: isEnabled)
+        }
     }
 }
 
@@ -365,10 +387,10 @@ private struct PlayerTopBar: View {
         }
     }
 
-    /// Picture in Picture, AirPlay (and full screen on macOS) and the menu, on one glass capsule.
+    /// Picture in Picture, AirPlay, Cast (iOS; full screen on macOS) and the menu, on one glass capsule.
     private var actions: some View {
         HStack(spacing: 0) {
-            if viewModel.isPictureInPictureSupported {
+            if viewModel.isPictureInPictureSupported && !viewModel.isCasting {
                 Button {
                     interacted()
                     viewModel.togglePictureInPicture()
@@ -388,6 +410,9 @@ private struct PlayerTopBar: View {
                 .frame(width: Self.buttonSize, height: Self.buttonSize)
                 .accessibilityLabel("AirPlay")
                 .help("AirPlay")
+
+            // Google Cast (iOS only: there is no Cast sender SDK for macOS).
+            CastButton(cast: viewModel.cast, interacted: interacted)
 
             #if os(macOS)
             Button {
@@ -409,6 +434,13 @@ private struct PlayerTopBar: View {
                 }
                 Button("Recordings", systemImage: "film.stack") {
                     isShowingRecordings = true
+                }
+                if viewModel.cast.isSupported && !viewModel.cast.showsCastButton {
+                    // The cast button hides while no Cast device is found; this keeps the way to the picker
+                    // (and its tips, such as allowing Local Network access).
+                    Button("Cast to a Device…", systemImage: "tv.badge.wifi") {
+                        viewModel.cast.presentPicker()
+                    }
                 }
             } label: {
                 Image(systemName: "ellipsis")
@@ -531,6 +563,30 @@ private struct PlayerBottomBar: View {
                 .transition(.opacity)
             }
 
+            if let error = viewModel.castError {
+                Button {
+                    viewModel.clearCastError()
+                } label: {
+                    Label {
+                        Text(error)
+                    } icon: {
+                        CastIcon(connection: .disconnected, size: 16)
+                    }
+                    .font(.caption)
+                    .foregroundStyle(Theme.warning)
+                    .lineLimit(3)
+                    .multilineTextAlignment(.leading)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .contentShape(.capsule)
+                }
+                .buttonStyle(.plain)
+                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 18))
+                .accessibilityHint("Dismisses the message")
+                .accessibilityIdentifier("cast.error")
+                .transition(.opacity)
+            }
+
             PlayerTimelineBar(viewModel: viewModel, timeline: viewModel.timeline, isScrubbing: $isScrubbing, interacted: interacted)
 
             GlassEffectContainer(spacing: 18) {
@@ -572,6 +628,7 @@ private struct PlayerBottomBar: View {
         let canZap: Bool
         let isTimeShiftAvailable: Bool
         let hasRecordingError: Bool
+        let hasCastError: Bool
 
         @MainActor
         init(_ viewModel: AVPlayerViewModel) {
@@ -581,6 +638,7 @@ private struct PlayerBottomBar: View {
             canZap = viewModel.canZap
             isTimeShiftAvailable = viewModel.isTimeShiftAvailable
             hasRecordingError = viewModel.recordingError != nil
+            hasCastError = viewModel.castError != nil
         }
     }
 }
@@ -930,6 +988,9 @@ private struct PlayerStatusOverlay: View {
 
     var body: some View {
         switch viewModel.playbackState {
+        case .connecting where viewModel.isCasting, .buffering where viewModel.isCasting:
+            // The casting backdrop shows it.
+            EmptyView()
         case .connecting, .buffering:
             ProgressView()
                 .controlSize(.large)
@@ -947,13 +1008,19 @@ private struct PlayerStatusOverlay: View {
             PlayerMessageCard(
                 systemImage: "exclamationmark.triangle.fill",
                 tint: Theme.error,
-                title: "Can't Play This Channel",
+                title: failureTitle,
                 message: message
             ) {
                 Button("Try Again", systemImage: "arrow.clockwise") {
                     viewModel.retry()
                 }
                 .buttonStyle(.glassProminent)
+                if viewModel.isCasting {
+                    Button("Play on This Device", systemImage: "iphone") {
+                        viewModel.stopCasting()
+                    }
+                    .buttonStyle(.glass)
+                }
             }
         case .ended:
             PlayerMessageCard(
@@ -977,6 +1044,15 @@ private struct PlayerStatusOverlay: View {
         default:
             EmptyView()
         }
+    }
+}
+
+extension PlayerStatusOverlay {
+    private var failureTitle: String {
+        if viewModel.isCasting, let device = viewModel.cast.connectedDevice {
+            return String(localized: "Can't Play on \(device.name)")
+        }
+        return String(localized: "Can't Play This Channel")
     }
 }
 

@@ -21,6 +21,13 @@
 		<string>audio</string>
 		<string>fetch</string>
 	</array>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_googlecast._tcp</string>
+		<string>_CC1AD845._googlecast._tcp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Fluxo uses the local network to find Chromecast and other Google Cast devices, so you can watch channels on your TV.</string>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>dev.watermelon.Fluxo.guide-refresh</string>

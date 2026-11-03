@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		99CA57022F0B000000C4A571 /* GoogleCastDynamic in Frameworks */ = {isa = PBXBuildFile; platformFilters = (ios, ); productRef = 99CA57032F0B000000C4A571 /* GoogleCastDynamic */; };
 		997F92342E1A3931008E2656 /* FlyingFox in Frameworks */ = {isa = PBXBuildFile; productRef = 997F92332E1A3931008E2656 /* FlyingFox */; };
 		99F0FF022F0A000000D3E9A1 /* FFmpeg.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 99F0FF012F0A000000D3E9A1 /* FFmpeg.xcframework */; platformFilters = (ios, macos, ); };
 		99F0FF032F0A000000D3E9A1 /* FFmpeg.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 99F0FF012F0A000000D3E9A1 /* FFmpeg.xcframework */; platformFilters = (ios, macos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -71,6 +72,7 @@
 			files = (
 				99F0FF022F0A000000D3E9A1 /* FFmpeg.xcframework in Frameworks */,
 				997F92342E1A3931008E2656 /* FlyingFox in Frameworks */,
+				99CA57022F0B000000C4A571 /* GoogleCastDynamic in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -124,6 +126,7 @@
 			name = Fluxo;
 			packageProductDependencies = (
 				997F92332E1A3931008E2656 /* FlyingFox */,
+				99CA57032F0B000000C4A571 /* GoogleCastDynamic */,
 			);
 			productName = Fluxo;
 			productReference = 99B5FAC42DEAF9DC0095A78E /* Fluxo.app */;
@@ -155,6 +158,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				997F92322E1A3931008E2656 /* XCRemoteSwiftPackageReference "FlyingFox" */,
+				99CA57012F0B000000C4A571 /* XCRemoteSwiftPackageReference "google-cast-ios-sdk" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 99B5FAC52DEAF9DC0095A78E /* Products */;
@@ -437,6 +441,14 @@
 				minimumVersion = 0.24.1;
 			};
 		};
+		99CA57012F0B000000C4A571 /* XCRemoteSwiftPackageReference "google-cast-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/googlecast/google-cast-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 4.8.6;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -444,6 +456,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 997F92322E1A3931008E2656 /* XCRemoteSwiftPackageReference "FlyingFox" */;
 			productName = FlyingFox;
+		};
+		99CA57032F0B000000C4A571 /* GoogleCastDynamic */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 99CA57012F0B000000C4A571 /* XCRemoteSwiftPackageReference "google-cast-ios-sdk" */;
+			productName = GoogleCastDynamic;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

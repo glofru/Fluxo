@@ -300,6 +300,23 @@ enum DebugRoutes {
                 context.player.togglePictureInPicture()
             }
         },
+        DebugRoute("cast-picker", "The Cast device picker (with the simulated receiver of `cast:`, or the real SDK).") { context, _ in
+            context.player.cast.presentPicker()
+        },
+        DebugRoute("cast:<device>", "Connects to a simulated Chromecast (Living Room TV, Bedroom, Kitchen Speaker) and casts what plays.") { context, argument in
+            let cast = context.player.cast
+            cast.debugUseSimulatedReceiver()
+            await context.wait(timeout: 5) { !cast.devices.isEmpty }
+            guard let device = cast.devices.first(where: { $0.name.localizedCaseInsensitiveContains(argument) }) ?? (argument.isEmpty ? cast.devices.first : nil) else {
+                throw DebugRouteError.notFound("Cast device", argument)
+            }
+            cast.connect(to: device)
+            await context.wait(timeout: 8) { cast.isConnected && (context.player.currentChannel == nil || !context.player.playbackState.isBusy) }
+        },
+        DebugRoute("stop-casting", "Ends the Cast session; the channel plays on this device again.") { context, _ in
+            context.player.stopCasting()
+            await context.wait(timeout: 5) { !context.player.cast.isConnected }
+        },
         DebugRoute("add-playlist", "The Add Playlist sheet.") { context, _ in
             context.playlistActions.add()
         },

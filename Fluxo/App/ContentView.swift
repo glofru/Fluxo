@@ -14,6 +14,9 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(ChannelLibrary.self) private var library
     @Environment(EPGStore.self) private var epg
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
     /// Selected tab / sidebar item, navigation paths and search text, shared with code outside the screens.
     @State private var navigation = AppNavigation()
 
@@ -55,6 +58,13 @@ struct ContentView: View {
                 if !viewModel.isPictureInPictureActive {
                     viewModel.stop()
                 }
+            }
+            #endif
+            #if os(iOS)
+            // The Cast device picker, opened by the cast buttons of the player and the mini player.
+            .sheet(isPresented: Bindable(viewModel.cast).isPickerPresented) {
+                CastDevicePicker(cast: viewModel.cast, player: viewModel)
+                    .castPickerPresentation(overPlayer: viewModel.isPresented, isRegularWidth: horizontalSizeClass == .regular)
             }
             #endif
             #if DEBUG
@@ -117,8 +127,9 @@ struct ContentView: View {
 
 /// The mini player: the tab bar bottom accessory on iOS, a floating glass bar on macOS.
 ///
-/// Expanded (above the tab bar): artwork, title, a status line (live, time-shifted, recording, PiP, buffering),
-/// play / pause and stop. Inline (next to the minimized tab bar): artwork, title and play / pause only.
+/// Expanded (above the tab bar): artwork, title, a status line (casting, live, time-shifted, recording, PiP,
+/// buffering), Cast (iOS, when a Cast device is around), play / pause and stop. Inline (next to the minimized
+/// tab bar): artwork, title and play / pause only.
 /// A tap or a swipe up opens the player, which grows out of it. The channel name gets all the room the
 /// buttons leave, at the regular text size (it is never shrunk to fit).
 struct PlayerBottomAccessory: View {
@@ -148,6 +159,10 @@ struct PlayerBottomAccessory: View {
                 }
                 .layoutPriority(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
+
+                if !isInline {
+                    CastButton(cast: viewModel.cast, style: .miniPlayer)
+                }
 
                 Button {
                     playPauseTaps += 1
@@ -235,7 +250,17 @@ struct PlayerBottomAccessory: View {
 
     @ViewBuilder
     private var status: some View {
-        if viewModel.isRecording {
+        if viewModel.isCasting, let device = viewModel.cast.connectedDevice {
+            Label {
+                Text("On \(device.name)")
+            } icon: {
+                CastIcon(connection: .connected(device), size: 12)
+            }
+            .foregroundStyle(Theme.accent)
+        } else if viewModel.castError != nil {
+            Label("Can't cast this channel", systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(Theme.warning)
+        } else if viewModel.isRecording {
             Label {
                 Text("Recording")
             } icon: {

@@ -24,10 +24,15 @@ extension View {
 ///   starts or playback stops (with the last position seen, since the player resets its timeline first).
 /// - Resumes once per start: as soon as the item can seek and the saved position is within the seekable
 ///   range (a remuxed file becomes seekable progressively), for at most `resumeWindow` seconds.
+/// - Bridges a Cast handoff: casting starting or ending resets the timeline before the receiver (or this
+///   device) reports the position again, so the last position is kept as a pending resume meanwhile instead
+///   of being overwritten with 0. The receiver's position is recorded while casting.
 private struct WatchProgressRecorder: View {
 
     static let saveInterval: TimeInterval = 10
     static let resumeWindow: TimeInterval = 20
+    /// A resume this close to where playback already is (e.g. the receiver started at it) needs no seek.
+    static let resumeTolerance: TimeInterval = 5
 
     let player: AVPlayerViewModel
 
@@ -39,10 +44,12 @@ private struct WatchProgressRecorder: View {
 
     private struct Tracked {
         let item: ChannelItem
-        let startedAt: Date
+        var startedAt: Date
         var position: TimeInterval = 0
         var duration: TimeInterval = 0
         var savedPosition: TimeInterval = 0
+        /// Whether the item was being cast at the last update (see `bridgeCastHandoff()`).
+        var isCasting: Bool
         /// The saved position to resume from, until it was applied or given up.
         var pendingResume: TimeInterval?
     }
@@ -55,10 +62,13 @@ private struct WatchProgressRecorder: View {
             .onChange(of: player.currentItem, initial: true) { _, item in
                 saveTracked()
                 if let item, item.kind != .live {
-                    tracked = Tracked(item: item, startedAt: .now, pendingResume: library.watchProgress(for: item)?.position)
+                    tracked = Tracked(item: item, startedAt: .now, isCasting: player.isCasting, pendingResume: library.watchProgress(for: item)?.position)
                 } else {
                     tracked = nil
                 }
+            }
+            .onChange(of: player.isCasting) { _, _ in
+                bridgeCastHandoff()
             }
             .onChange(of: timeline.currentTime) { _, time in
                 update(position: time, duration: timeline.duration, seekableEnd: timeline.seekableEnd)
@@ -85,6 +95,7 @@ private struct WatchProgressRecorder: View {
     }
 
     private func update(position: TimeInterval, duration: TimeInterval, seekableEnd: TimeInterval) {
+        bridgeCastHandoff()
         guard var current = tracked, current.item == player.currentItem, position.isFinite else {
             return
         }
@@ -93,9 +104,11 @@ private struct WatchProgressRecorder: View {
                 current.pendingResume = nil
             } else if player.canSeek, seekableEnd >= resume {
                 current.pendingResume = nil
-                player.seek(toSeconds: resume)
-                tracked = current
-                return
+                if abs(position - resume) > Self.resumeTolerance {
+                    player.seek(toSeconds: resume)
+                    tracked = current
+                    return
+                }
             } else {
                 // Not seekable that far yet: do not overwrite the saved position with the start.
                 tracked = current
@@ -110,6 +123,27 @@ private struct WatchProgressRecorder: View {
         if abs(position - current.savedPosition) >= Self.saveInterval {
             saveTracked()
         }
+    }
+
+    /// Casting started or ended for the tracked item: it continues elsewhere from (about) the last position
+    /// seen, so that position is resumed (or confirmed) instead of the reset timeline being recorded. Runs once
+    /// per change, whichever of the `isCasting` and timeline updates arrives first.
+    private func bridgeCastHandoff() {
+        guard var current = tracked, current.isCasting != player.isCasting, current.item == player.currentItem else {
+            return
+        }
+        current.isCasting = player.isCasting
+        tracked = current
+        if current.pendingResume == nil {
+            guard current.position >= WatchProgress.minimumPosition else {
+                return
+            }
+            saveTracked()
+            current = tracked ?? current
+            current.pendingResume = current.position
+        }
+        current.startedAt = .now
+        tracked = current
     }
 
     private func saveTracked() {

@@ -16,6 +16,8 @@
 //  -FluxoDebugAppearance light|dark        Forces the color scheme of the window.
 //  -FluxoDebugDynamicType <size>           Forces a Dynamic Type size (xSmall … xxxLarge, accessibility1 … 5).
 //  -FluxoDebugTestStreamURL <url>          Base URL of Tools/Simulator/test-stream.sh (default http://127.0.0.1:18080).
+//  -FluxoDebugCast simulated               Uses the simulated Chromecast receiver (SimulatedCastBackend) instead of
+//                                          the Google Cast SDK.
 //
 //  Only the launch arguments are read (the argument domain), never values persisted in the user defaults, so a
 //  normal Debug launch without arguments behaves exactly like the app. -FluxoDebugAppearance and

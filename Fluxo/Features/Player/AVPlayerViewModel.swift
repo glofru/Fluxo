@@ -170,6 +170,13 @@ final class AVPlayerViewModel {
     /// Aspect fill instead of aspect fit.
     private(set) var fillsScreen = false
 
+    /// Chromecast: discovery, the session and the receiver's media (iOS; unsupported on macOS).
+    let cast: CastController
+    /// A Chromecast plays the current channel and local playback is suspended (see "Chromecast" below).
+    private(set) var isCasting = false
+    /// Why the current channel could not be cast, or why casting stopped. Dismissed by the user.
+    private(set) var castError: String?
+
     let player = AVPlayer()
     let timeline = PlaybackTimeline()
     let recordings: RecordingStore
@@ -209,10 +216,43 @@ final class AVPlayerViewModel {
     private var pendingRestoreCompletion: ((Bool) -> Void)?
     @ObservationIgnored
     private var isPlayerUIVisible = false
+    /// Local playback was stopped because a Chromecast took over (or is about to): `resumeLocalPlayback(at:)`
+    /// starts it again.
+    @ObservationIgnored
+    private var isLocalPlaybackSuspended = false
+    /// A load request is on its way to the receiver.
+    @ObservationIgnored
+    private var isCastLoading = false
+    /// Identifies the latest cast load, so that the answer to an older one is ignored.
+    @ObservationIgnored
+    private var castLoadGeneration = 0
+    /// The stream the receiver accepted (the original URL or its HLS fallback).
+    @ObservationIgnored
+    private var castMediaURL: URL?
+    /// The last position the receiver reported in on-demand media, so "Try Again" continues from there (a
+    /// failed receiver reports 0).
+    @ObservationIgnored
+    private var castResumePosition: TimeInterval?
+    /// Casting came from a session the SDK resumed (the app was relaunched while casting), not from local
+    /// playback: when it ends there is nothing to resume on this device.
+    @ObservationIgnored
+    private var isCastAdopted = false
+    /// A session was resumed while nothing plays here: the receiver's media is adopted once its status arrives.
+    @ObservationIgnored
+    private var adoptsResumedCastMedia = false
+    /// Where to start on-demand media on the next device, while switching from one Chromecast to another.
+    @ObservationIgnored
+    private var pendingCastStartTime: TimeInterval?
+    /// Where to continue on-demand media on this device once its item is ready (after casting ends).
+    @ObservationIgnored
+    private var pendingResumePosition: TimeInterval?
+    @ObservationIgnored
+    private var castTimelineTask: Task<Void, Never>?
 
-    init(recordings: RecordingStore? = nil) {
+    init(recordings: RecordingStore? = nil, cast: CastController? = nil) {
         self.recordings = recordings ?? RecordingStore()
         self.surface = PlayerSurface(player: player)
+        self.cast = cast ?? CastController(backend: nil)
 
         Self.removeLeftoverSegmentsOnce(in: outputDirectory)
 
@@ -226,6 +266,9 @@ final class AVPlayerViewModel {
         configureRemoteCommands()
         observePlayer()
         observeAudioSession()
+        self.cast.onEvent = { [weak self] event in
+            self?.handleCast(event)
+        }
     }
 
     private static var didRemoveLeftoverSegments = false
@@ -272,6 +315,11 @@ final class AVPlayerViewModel {
         if channel == currentChannel, isSessionHealthy {
             return
         }
+        if cast.isConnected {
+            // A Chromecast is connected: the channel plays there (or here, if it cannot be cast).
+            castChannel(channel)
+            return
+        }
         guard let url = channel.url else {
             currentChannel = channel
             streamError = "This channel has no valid stream URL."
@@ -290,6 +338,10 @@ final class AVPlayerViewModel {
 
     /// Restarts the current channel from scratch (e.g. after a failure).
     func retry() {
+        if isCasting || (cast.isConnected && isLocalPlaybackSuspended) {
+            castCurrentChannel(startTime: isCasting ? castResumePosition : nil)
+            return
+        }
         guard let channel = currentChannel, let url = channel.url else {
             return
         }
@@ -324,7 +376,7 @@ final class AVPlayerViewModel {
             return
         }
         #if os(iOS)
-        if PlayerPreferences.pictureInPictureOnClose, !isPictureInPictureActive, playbackState == .playing || playbackState == .buffering, surface.startPictureInPicture() {
+        if PlayerPreferences.pictureInPictureOnClose, !isCasting, !isPictureInPictureActive, playbackState == .playing || playbackState == .buffering, surface.startPictureInPicture() {
             // `onPictureInPictureActiveChange` closes the screen once PiP runs; never wait longer than this.
             isClosingIntoPictureInPicture = true
             closingAttempt &+= 1
@@ -351,6 +403,15 @@ final class AVPlayerViewModel {
 
     /// Stops playback completely and closes the player.
     func stop() {
+        if isCasting {
+            // The receiver stops too; the Cast session stays connected for the next channel.
+            cast.stopMedia()
+        }
+        endCastingState()
+        isLocalPlaybackSuspended = false
+        adoptsResumedCastMedia = false
+        pendingCastStartTime = nil
+        castError = nil
         isClosingIntoPictureInPicture = false
         completePendingRestore(false)
         surface.stopPictureInPicture()
@@ -400,6 +461,9 @@ final class AVPlayerViewModel {
     }
 
     func togglePictureInPicture() {
+        guard !isCasting else {
+            return
+        }
         surface.togglePictureInPicture()
     }
 
@@ -411,6 +475,14 @@ final class AVPlayerViewModel {
     // MARK: - Transport
 
     func togglePlayPause() {
+        if isCasting {
+            if playbackState == .playing || playbackState == .buffering {
+                pause()
+            } else {
+                play()
+            }
+            return
+        }
         if player.timeControlStatus == .paused {
             play()
         } else {
@@ -419,6 +491,15 @@ final class AVPlayerViewModel {
     }
 
     func play() {
+        if isCasting {
+            switch playbackState {
+            case .failed, .ended:
+                castCurrentChannel(startTime: nil)
+            default:
+                cast.play()
+            }
+            return
+        }
         if case .failed = playbackState {
             retry()
             return
@@ -438,11 +519,19 @@ final class AVPlayerViewModel {
     }
 
     func pause() {
+        if isCasting {
+            cast.pause()
+            return
+        }
         player.pause()
     }
 
     /// Moves the playback position by `seconds` (negative goes back), within the seekable range.
     func skip(by seconds: TimeInterval) {
+        if isCasting {
+            seekOnCast(to: timeline.currentTime + seconds)
+            return
+        }
         guard canSeek, let item = player.currentItem, let range = seekableRange(of: item) else {
             return
         }
@@ -461,6 +550,10 @@ final class AVPlayerViewModel {
 
     /// Seeks to `seconds` on the item timeline (e.g. from the scrubber), within the seekable range.
     func seek(toSeconds seconds: TimeInterval) {
+        if isCasting {
+            seekOnCast(to: seconds)
+            return
+        }
         guard canSeek, let item = player.currentItem, let range = seekableRange(of: item) else {
             return
         }
@@ -474,7 +567,7 @@ final class AVPlayerViewModel {
 
     /// Jumps back to the live edge of a time-shifted live stream.
     func goLive() {
-        guard isTimeShiftAvailable, let item = player.currentItem, let range = seekableRange(of: item) else {
+        guard !isCasting, isTimeShiftAvailable, let item = player.currentItem, let range = seekableRange(of: item) else {
             return
         }
         seek(to: max(range.start, range.end - liveOffset(of: item)))
@@ -554,6 +647,7 @@ final class AVPlayerViewModel {
 
     private func start(_ channel: PlayableChannel, url: URL) {
         tearDownPlayback()
+        isLocalPlaybackSuspended = false
 
         currentChannel = channel
         streamError = nil
@@ -625,6 +719,7 @@ final class AVPlayerViewModel {
         itemFailure = nil
         didReachEnd = false
         itemRecoveryAttempts = 0
+        pendingResumePosition = nil
 
         player.pause()
         player.replaceCurrentItem(with: nil)
@@ -674,6 +769,10 @@ final class AVPlayerViewModel {
                 }
                 if status == .failed {
                     self.handleItemFailure(item.error)
+                } else if status == .readyToPlay, let position = self.pendingResumePosition {
+                    // Back from casting: continue where the Chromecast was.
+                    self.pendingResumePosition = nil
+                    self.seek(to: position)
                 }
                 self.refreshPlaybackState()
             }
@@ -800,7 +899,7 @@ final class AVPlayerViewModel {
         }
         nowPlaying.update(
             title: channel.name ?? "Fluxo",
-            isLive: route.isLiveRemux || player.currentItem?.duration.isIndefinite == true,
+            isLive: isCasting ? (cast.mediaStatus?.isLive ?? true) : (route.isLiveRemux || player.currentItem?.duration.isIndefinite == true),
             elapsed: timeline.currentTime,
             duration: timeline.duration,
             isPlaying: playbackState == .playing,
@@ -812,6 +911,9 @@ final class AVPlayerViewModel {
     private func computePlaybackState() -> PlaybackState {
         guard currentChannel != nil else {
             return .idle
+        }
+        if isCasting {
+            return castPlaybackState
         }
         if let itemFailure {
             return .failed(itemFailure)
@@ -874,6 +976,10 @@ final class AVPlayerViewModel {
     }
 
     private func updateTimeline() {
+        guard !isCasting else {
+            // The receiver's position drives the timeline (`updateCastTimeline()`).
+            return
+        }
         // Also polled here, as a fallback for the KVO observation in PlayerSurface (cheap: one property read).
         updatePictureInPicturePossible(surface.isPictureInPicturePossible)
         guard let item = player.currentItem else {
@@ -1063,6 +1169,321 @@ final class AVPlayerViewModel {
         let completion = pendingRestoreCompletion
         pendingRestoreCompletion = nil
         completion?(restored)
+    }
+
+    // MARK: - Chromecast
+    //
+    // While a Cast session is connected, a channel that is played goes to the receiver (Google's Default Media
+    // Receiver) as its original stream URL, see `CastMedia`. Local playback stops while the Chromecast plays (the
+    // engine and the player item are torn down, so the IPTV provider sees one connection, the receiver's; a
+    // running recording is finished and saved), and the transport (play / pause, skip, scrubbing, channel up /
+    // down, stop) drives the receiver. When casting ends (Stop Casting, the session drops), the channel plays here
+    // again, on-demand media from the receiver's position. A channel the receiver cannot play keeps playing here,
+    // with `castError` explaining why.
+
+    func clearCastError() {
+        castError = nil
+    }
+
+    /// Stops casting and plays the channel on this device again.
+    func stopCasting() {
+        cast.disconnect()
+    }
+
+    private func handleCast(_ event: CastController.Event) {
+        switch event {
+        case .sessionStarted(let resumed):
+            if isCasting {
+                // Back from the background: the receiver kept playing.
+                startCastTimeline()
+                refreshPlaybackState()
+            } else if currentChannel != nil {
+                guard !resumed || isLocalPlaybackSuspended else {
+                    return
+                }
+                let startTime = pendingCastStartTime ?? localOnDemandPosition
+                pendingCastStartTime = nil
+                castCurrentChannel(startTime: startTime)
+            } else if resumed {
+                adoptsResumedCastMedia = true
+                adoptCastMedia()
+            }
+
+        case .sessionEnded(let error, let switchingDevice):
+            adoptsResumedCastMedia = false
+            guard isCasting else {
+                // Nothing was cast (e.g. the channel could not be): a message about it is over with the session.
+                if error == nil {
+                    castError = nil
+                }
+                return
+            }
+            if let message = error?.message {
+                castError = String(localized: "Casting stopped. \(message)")
+            }
+            if isCastAdopted {
+                endCastingState()
+                stop()
+                return
+            }
+            let position = castOnDemandPosition
+            if switchingDevice {
+                // The next device gets the channel as soon as its session starts.
+                endCastingState()
+                pendingCastStartTime = position
+                refreshPlaybackState()
+            } else {
+                resumeLocalPlayback(at: position)
+            }
+
+        case .sessionFailedToStart:
+            adoptsResumedCastMedia = false
+            if isCasting || isLocalPlaybackSuspended {
+                let position = pendingCastStartTime
+                pendingCastStartTime = nil
+                resumeLocalPlayback(at: position)
+            }
+
+        case .mediaStatusChanged:
+            if isCasting, castMediaWasReplaced {
+                // Another sender loaded something else on the receiver: show (and control) that instead.
+                logger.info("Another sender replaced the cast media")
+                endCastingState()
+                stop()
+                adoptsResumedCastMedia = true
+                adoptCastMedia()
+            } else if isCasting {
+                updateCastTimeline()
+                refreshPlaybackState()
+            } else if adoptsResumedCastMedia {
+                adoptCastMedia()
+            }
+        }
+    }
+
+    /// Makes `channel` the current one and sends it to the receiver.
+    private func castChannel(_ channel: PlayableChannel) {
+        if channel != currentChannel {
+            if !isLocalPlaybackSuspended {
+                // The previous channel was playing here (it could not be cast): it stops either way.
+                surface.stopPictureInPicture()
+                tearDownPlayback()
+                isLocalPlaybackSuspended = true
+            }
+            currentChannel = channel
+            streamError = nil
+            castResumePosition = nil
+        }
+        castCurrentChannel(startTime: nil)
+    }
+
+    /// Sends the current channel to the connected receiver, trying the fallbacks of `CastMedia` in turn.
+    private func castCurrentChannel(startTime: TimeInterval?) {
+        guard let channel = currentChannel, let device = cast.connectedDevice else {
+            return
+        }
+        let isLive = currentItem.map { $0.kind == .live } ?? (channel.url.map { PlaybackRoute(url: $0).isLiveRemux } ?? true)
+        switch CastMedia.requests(for: channel.url, title: channel.name, subtitle: currentItem?.groupName, logo: channel.logo, isLive: isLive, startTime: startTime) {
+        case .failure(let reason):
+            logger.info("Not casting: \(reason.message, privacy: .public)")
+            castError = reason.message
+            resumeLocalPlayback(at: startTime)
+        case .success(let requests):
+            castError = nil
+            if !isLocalPlaybackSuspended {
+                surface.stopPictureInPicture()
+                tearDownPlayback()
+                isLocalPlaybackSuspended = true
+            }
+            isCasting = true
+            isCastAdopted = false
+            isCastLoading = true
+            castMediaURL = nil
+            castLoadGeneration &+= 1
+            timeline.reset()
+            canSeek = false
+            loadOnCast(requests[...], deviceName: device.name, originalURL: channel.url, generation: castLoadGeneration, lastFailure: nil)
+            startCastTimeline()
+            refreshPlaybackState()
+        }
+    }
+
+    private func loadOnCast(_ requests: ArraySlice<CastLoadRequest>, deviceName: String, originalURL: URL?, generation: Int, lastFailure: CastFailure?) {
+        guard let request = requests.first else {
+            // Every stream failed: play the channel here again, and say why.
+            let failure = lastFailure ?? CastFailure(kind: .media, message: nil)
+            castError = CastMedia.failureMessage(for: originalURL, deviceName: deviceName, failure: failure)
+            resumeLocalPlayback(at: nil)
+            return
+        }
+        cast.load(request) { [weak self] result in
+            guard let self, generation == self.castLoadGeneration, self.isCasting else {
+                return
+            }
+            switch result {
+            case .success:
+                logger.info("Casting \(request.contentType, privacy: .public) to the receiver")
+                self.isCastLoading = false
+                self.castMediaURL = request.url
+                self.updateCastTimeline()
+                self.refreshPlaybackState()
+            case .failure(let failure) where failure.kind == .cancelled:
+                // Declined (e.g. the Cast terms) or replaced: never retried automatically.
+                self.resumeLocalPlayback(at: request.startTime)
+            case .failure(let failure) where failure.kind == .media && requests.count > 1:
+                logger.info("The receiver refused \(request.contentType, privacy: .public); trying the next stream")
+                self.loadOnCast(requests.dropFirst(), deviceName: deviceName, originalURL: originalURL, generation: generation, lastFailure: failure)
+            case .failure(let failure):
+                self.loadOnCast([], deviceName: deviceName, originalURL: originalURL, generation: generation, lastFailure: failure)
+            }
+        }
+    }
+
+    /// Plays the current channel on this device again, from `position` for on-demand media.
+    private func resumeLocalPlayback(at position: TimeInterval?) {
+        endCastingState()
+        defer {
+            refreshPlaybackState()
+        }
+        guard isLocalPlaybackSuspended, let channel = currentChannel else {
+            // Still playing here (the channel could not be cast at all).
+            return
+        }
+        guard let url = channel.url else {
+            isLocalPlaybackSuspended = false
+            streamError = String(localized: "This channel has no valid stream URL.")
+            return
+        }
+        start(channel, url: url)
+        pendingResumePosition = position.flatMap { $0 > 1 ? $0 : nil }
+    }
+
+    /// Clears the casting state (the session itself is left as it is).
+    private func endCastingState() {
+        castLoadGeneration &+= 1
+        castTimelineTask?.cancel()
+        castTimelineTask = nil
+        isCastLoading = false
+        castMediaURL = nil
+        castResumePosition = nil
+        isCastAdopted = false
+        guard isCasting else {
+            return
+        }
+        isCasting = false
+        canSeek = false
+        timeline.reset()
+    }
+
+    /// A session the SDK resumed while nothing plays here (the app was relaunched while casting): show what the
+    /// receiver plays, so the mini player and the player can control it.
+    private func adoptCastMedia() {
+        guard currentChannel == nil, cast.isConnected, let status = cast.mediaStatus, let url = status.contentURL,
+              status.playerState != .idle else {
+            return
+        }
+        adoptsResumedCastMedia = false
+        currentItem = nil
+        currentChannel = PlayableChannel(id: UUID(), name: status.title, logo: nil, url: url)
+        isLocalPlaybackSuspended = true
+        isCasting = true
+        isCastAdopted = true
+        castMediaURL = url
+        startCastTimeline()
+        updateCastTimeline()
+        refreshPlaybackState()
+    }
+
+    /// The position of on-demand media playing here, to start the receiver at.
+    private var localOnDemandPosition: TimeInterval? {
+        guard !isCasting, !isLocalPlaybackSuspended, canSeek, !isTimeShiftAvailable, timeline.duration > 0 else {
+            return nil
+        }
+        return timeline.currentTime
+    }
+
+    /// The receiver's position in on-demand media, to continue at on this device.
+    private var castOnDemandPosition: TimeInterval? {
+        guard let status = cast.mediaStatus, !status.isLive, status.duration > 0 else {
+            return nil
+        }
+        return cast.streamPosition()
+    }
+
+    /// The receiver plays other media than the one sent to it: another sender (a phone, Google Home) loaded
+    /// something in the same Default Media Receiver session. Only a status that is playing or paused counts, as
+    /// the receiver may still report the previous media for a moment while it loads the new one.
+    private var castMediaWasReplaced: Bool {
+        guard !isCastLoading, let sent = castMediaURL, let status = cast.mediaStatus, let url = status.contentURL else {
+            return false
+        }
+        return !CastMedia.isSameMedia(url, sent) && (status.playerState == .playing || status.playerState == .paused)
+    }
+
+    private func seekOnCast(to seconds: TimeInterval) {
+        guard canSeek else {
+            return
+        }
+        cast.seek(to: min(max(0, seconds), max(0, timeline.duration - 1)))
+    }
+
+    private var castPlaybackState: PlaybackState {
+        if isCastLoading {
+            return .connecting
+        }
+        // A status of the previous media (the receiver reports it until the new one starts).
+        guard let status = cast.mediaStatus, status.contentURL == nil || castMediaURL == nil || CastMedia.isSameMedia(status.contentURL, castMediaURL) else {
+            return .buffering
+        }
+        switch status.playerState {
+        case .playing:
+            return .playing
+        case .paused:
+            return .paused
+        case .buffering, .loading:
+            return .buffering
+        case .idle:
+            if status.idleReason == .error {
+                let device = cast.connectedDevice?.name ?? String(localized: "The Cast device")
+                return .failed(String(localized: "\(device) stopped playing this stream."))
+            }
+            return .ended
+        }
+    }
+
+    private func startCastTimeline() {
+        castTimelineTask?.cancel()
+        castTimelineTask = Task { [weak self] in
+            while !Task.isCancelled {
+                self?.updateCastTimeline()
+                try? await Task.sleep(for: .milliseconds(500))
+            }
+        }
+    }
+
+    private func updateCastTimeline() {
+        guard isCasting, !isCastLoading, let status = cast.mediaStatus else {
+            return
+        }
+        let duration = status.isLive ? 0 : status.duration
+        timeline.update(
+            currentTime: cast.streamPosition(),
+            duration: duration,
+            seekableStart: 0,
+            seekableEnd: duration,
+            timeBehindLive: 0,
+            liveLatency: 0,
+            isAtLiveEdge: true
+        )
+        if !status.isLive, duration > 0, status.contentURL == nil || CastMedia.isSameMedia(status.contentURL, castMediaURL),
+           status.playerState == .playing || status.playerState == .paused {
+            castResumePosition = cast.streamPosition()
+        }
+        let seekable = !status.isLive && duration > 2 && status.canSeek
+        if seekable != canSeek {
+            canSeek = seekable
+            updateNowPlaying()
+        }
     }
 
     // MARK: - Audio session

@@ -27,7 +27,8 @@ struct FluxoApp: App {
         let container = ModelContainerFactory.make()
         self.container = container
         let library = ChannelLibrary(container: container)
-        let player = AVPlayerViewModel()
+        // Chromecast through the Google Cast SDK on iOS; unsupported (no cast UI) on macOS.
+        let player = AVPlayerViewModel(cast: .makeDefault())
         player.zapper = ChannelZapper(container: container, library: library)
         let importCenter = PlaylistImportCenter(container: container)
         let epg = EPGStore(container: container)
