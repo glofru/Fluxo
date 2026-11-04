@@ -316,6 +316,10 @@ enum DebugRoutes {
         DebugRoute("mini-player:<channel>", "Plays a channel with the player closed (the mini player shows).") { context, argument in
             await context.play(try context.channel(named: argument), present: false)
         },
+        DebugRoute("copy-link:<channel>", "Copy Link of a channel, as its menu does: the link on the pasteboard and the confirmation toast.") { context, argument in
+            let item = try context.channel(named: argument)
+            NotificationCenter.default.post(name: .fluxoDebugCopyLink, object: item)
+        },
         DebugRoute("play-url:<url>", "Plays a URL full screen.") { context, argument in
             guard let url = URL(string: argument), url.scheme != nil else {
                 throw DebugRouteError.invalidArgument("play-url", argument)

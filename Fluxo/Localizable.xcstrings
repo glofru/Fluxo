@@ -18249,6 +18249,9 @@
         }
       }
     },
+    "Copy Link" : {
+      "comment" : "Menu item and VoiceOver action (verb): copies the stream link (URL) of a channel, movie or episode to the clipboard, to play it in another app or on another device."
+    },
     "Could Not Delete the Guide Source" : {
       "comment" : "Title of the alert shown when deleting a TV guide source failed."
     },
@@ -32151,6 +32154,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "類似%@"
+          }
+        }
+      }
+    },
+    "LinkCopied.credentials" : {
+      "comment" : "Second line of the Link Copied toast when the copied stream link contains the user name and password (or access token) of the IPTV account.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Includes your account login. Share it with care."
+          }
+        }
+      }
+    },
+    "LinkCopied.title" : {
+      "comment" : "Toast after Copy Link: the stream link of a channel, movie or episode is on the clipboard.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Link Copied"
           }
         }
       }

@@ -343,6 +343,11 @@ private struct PlayerChannelRow: View {
         if item.kind == .live, epg.hasGuide {
             Button("Today's Schedule", systemImage: "calendar.day.timeline.left", action: showSchedule)
         }
+
+        if StreamLink(item.url) != nil {
+            Divider()
+            ChannelLinkMenuItems(item: item)
+        }
     }
 }
 

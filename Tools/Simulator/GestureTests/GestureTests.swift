@@ -338,6 +338,112 @@ final class GestureTests: XCTestCase {
         XCTAssertFalse(app.otherElements["miniPlayer"].exists, "nothing plays: no mini player")
     }
 
+    // MARK: - Copy Link
+
+    /// The appearance of the Copy Link tests: `TEST_RUNNER_FLUXO_APPEARANCE=dark` (default light).
+    var appearance: String {
+        ProcessInfo.processInfo.environment["FLUXO_APPEARANCE"] ?? "light"
+    }
+
+    func launchCopyLink(_ route: String) -> XCUIApplication {
+        let app = XCUIApplication(bundleIdentifier: "dev.watermelon.Fluxo")
+        app.launchArguments = ["-FluxoDebugStore", "memory", "-FluxoDebugSeed", "sample", "-FluxoDebugRoute", route, "-FluxoDebugAppearance", appearance]
+        app.launch()
+        return app
+    }
+
+    /// Copy Link in the context menu of a channel row (an Xtream-style link: the toast warns about the login in it),
+    /// then Share (the share sheet, titled with the channel), and Copy Link of a plain link (no warning).
+    func testCopyLinkFromChannelMenu() {
+        let app = launchCopyLink("group:Sport;wait:2")
+        let row = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Sky Sport MotoGP'")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 30), "the channel row")
+        sleep(2)
+        row.press(forDuration: 1.2)
+        let copy = app.buttons["Copy Link"]
+        XCTAssertTrue(copy.waitForExistence(timeout: 5), "Copy Link in the menu")
+        XCTAssertTrue(app.buttons["Share"].exists || app.buttons["Share…"].exists, "Share in the menu")
+        sleep(1)
+        shot("copy-\(appearance)-1-menu")
+        copy.tap()
+        usleep(700_000)
+        shot("copy-\(appearance)-2-toast-credentials")
+        sleep(4)
+
+        row.press(forDuration: 1.2)
+        let share = app.buttons["Share"].exists ? app.buttons["Share"] : app.buttons["Share…"]
+        XCTAssertTrue(share.waitForExistence(timeout: 5), "Share in the menu")
+        share.tap()
+        sleep(7)
+        shot("copy-\(appearance)-3-share-sheet")
+        app.terminate()
+
+        let plain = launchCopyLink("group:Test Streams;wait:2")
+        let test = plain.buttons.matching(NSPredicate(format: "label CONTAINS 'Test Pattern (HLS)'")).firstMatch
+        XCTAssertTrue(test.waitForExistence(timeout: 30), "the loopback channel row")
+        sleep(2)
+        test.press(forDuration: 1.2)
+        XCTAssertTrue(plain.buttons["Copy Link"].waitForExistence(timeout: 5), "Copy Link in the menu")
+        plain.buttons["Copy Link"].tap()
+        usleep(700_000)
+        shot("copy-\(appearance)-4-toast-plain")
+    }
+
+    /// Copy Link in the player's ••• menu, with the toast over the video.
+    func testCopyLinkFromPlayerMenu() {
+        let app = launchCopyLink("player:Sky Sport F1;wait:3")
+        waitPlayerSettled(app, timeout: 40)
+        let more = app.buttons["More"]
+        if !more.isHittable {
+            app.tap()
+            sleep(1)
+        }
+        XCTAssertTrue(more.waitForExistence(timeout: 5), "the player's More menu")
+        more.tap()
+        let copy = app.buttons["Copy Link"]
+        XCTAssertTrue(copy.waitForExistence(timeout: 5), "Copy Link in the player menu")
+        sleep(1)
+        shot("copy-\(appearance)-5-player-menu")
+        copy.tap()
+        usleep(700_000)
+        shot("copy-\(appearance)-6-player-toast")
+    }
+
+    /// Copy Link in the context menu of a Home card (iPad: a larger screen).
+    func testCopyLinkFromHomeCard() {
+        let app = launchCopyLink("home;wait:2")
+        let card = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Sky Sport F1'")).firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 30), "a channel card")
+        sleep(2)
+        card.press(forDuration: 1.2)
+        let copy = app.buttons["Copy Link"]
+        XCTAssertTrue(copy.waitForExistence(timeout: 5), "Copy Link in the card menu")
+        sleep(1)
+        shot("copy-\(appearance)-7-card-menu")
+        copy.tap()
+        usleep(700_000)
+        shot("copy-\(appearance)-8-card-toast")
+    }
+
+    /// iPad: Copy Link in the context menu of a row of the player's side panel, with the toast over the player.
+    func testCopyLinkFromSidePanel() throws {
+        try XCTSkipIf(UIDevice.current.userInterfaceIdiom != .pad, "iPad only")
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = launchCopyLink("seed-guide;side-panel:channels;player:Sky Sport F1;wait:2")
+        let row = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Sky Sport MotoGP'")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 30), "the channel row in the side panel")
+        sleep(2)
+        row.press(forDuration: 1.2)
+        let copy = app.buttons["Copy Link"]
+        XCTAssertTrue(copy.waitForExistence(timeout: 5), "Copy Link in the side panel menu")
+        sleep(1)
+        shot("copy-\(appearance)-9-panel-menu")
+        copy.tap()
+        usleep(700_000)
+        shot("copy-\(appearance)-10-panel-toast")
+        XCUIDevice.shared.orientation = .portrait
+    }
+
     /// Screenshots of layouts in both orientations (`simctl` cannot rotate a simulator). Runs only when
     /// `TEST_RUNNER_FLUXO_LAYOUT_SHOTS` lists scenes, separated by `;;`, each `name|portrait or landscape|light or
     /// dark|route` (the route is a `-FluxoDebugRoute`, `;`-separated), e.g.

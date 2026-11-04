@@ -140,6 +140,7 @@ first that contains the text.
 | `programme:<channel>[,<artwork>][,long]` | The TV Guide with the programme on now on a channel open (a sheet; the inspector on iPad; needs a guide, e.g. `seed-guide`). `<artwork>` replaces its image with a sample of a size and shape guides carry: `tiny` (32 x 32), `still` (1280 x 720), `huge` (6000 x 3375), `classic` (4:3), `wide` (10:1), `tall` (1:8), `poster` (2:3), `square`, or `none`; `long` gives it a long title, description and category list. |
 | `player:<channel>` | Plays a channel full screen. |
 | `mini-player:<channel>` | Plays a channel with the player closed, so the mini player shows. |
+| `copy-link:<channel>` | Copy Link of a channel, as its menus do: the stream link on the pasteboard and the confirmation toast (held for 20 seconds, for screenshots; with the account-login warning when the link carries credentials). |
 | `play-url:<url>` | Plays any URL full screen. |
 | `close-player`, `stop` | Closes the player screen (playback continues); stops playback. |
 | `dismiss-player` | Closes the player like its chevron or a swipe down (into Picture in Picture when the device supports it; the Simulator does not, so the mini player shows). |

@@ -4,8 +4,8 @@
 //
 //  Menu bar commands (macOS, and the iPad menu bar / keyboard shortcut overlay):
 //  File > New Window (iPad) / Add Playlist / Refresh / Refresh TV Guide, a Go menu with the app's sections (⌘1 to ⌘6
-//  and ⌘F, every screen from the keyboard), and a Playback menu that drives the single app-wide player. Commands act
-//  on the focused window.
+//  and ⌘F, every screen from the keyboard), and a Playback menu that drives the single app-wide player (with Copy
+//  Link, ⇧⌘C, of what plays). Commands act on the focused window.
 //
 
 import SwiftData
@@ -156,6 +156,7 @@ private struct PlaybackMenuItems: View {
     let windows: WindowCoordinator
 
     @FocusedValue(\.windowID) private var focusedWindowID
+    @FocusedValue(\.linkCopyFeedback) private var linkCopyFeedback
 
     var body: some View {
         let hasChannel = player.currentChannel != nil
@@ -227,6 +228,17 @@ private struct PlaybackMenuItems: View {
             MediaSelectionMenuContent(controller: player.mediaSelection)
         }
         .disabled(!player.mediaSelection.hasChoices || player.isCasting)
+
+        Divider()
+
+        // The stream link of what plays (a playlist entry; recordings have none), confirmed in the focused window.
+        Button("Copy Link") {
+            if let link = StreamLink(player.currentItem?.url) {
+                LinkCopyFeedback.copy(link, feedback: linkCopyFeedback)
+            }
+        }
+        .keyboardShortcut("c", modifiers: [.command, .shift])
+        .disabled(StreamLink(player.currentItem?.url) == nil || isModalShown)
 
         Divider()
 

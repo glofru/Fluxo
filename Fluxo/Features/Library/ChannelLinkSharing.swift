@@ -1,0 +1,317 @@
+//
+//  ChannelLinkSharing.swift
+//  Fluxo
+//
+//  Copy Link and Share of a channel, movie or episode: the stream URL of the playlist entry (never the app's own
+//  loopback URL), for another player (VLC, Infuse, a TV), a note or another device.
+//
+//  Every channel menu shows the same two items (`ChannelLinkMenuItems`): the context menus of the cards and rows
+//  (through `ChannelContextMenu`), Favorites, the player's side panel and its ••• menu, the Playback menu of the
+//  menu bar (macOS, iPad keyboards), and the VoiceOver actions of the cards and rows.
+//
+//  Copying confirms with a short toast at the top of the window, a success haptic (iPhone) and a VoiceOver
+//  announcement (`LinkCopyFeedback`, one per window, set up by `linkCopyFeedbackHost()` at its root, above the
+//  player).
+//
+//  Credentials: IPTV providers often put the account's user name and password in every stream URL (Xtream Codes:
+//  `/live/<user>/<password>/<id>.ts`, `get.php?username=…&password=…`), or a token. The app never puts these URLs
+//  where the system keeps them (window state, notifications, Spotlight, drags to other apps), but here the user
+//  asks for the link, and only the full URL plays elsewhere, so it is copied as it is. When it looks like it holds
+//  credentials (`StreamLink.containsCredentials`), the toast and the announcement say so ("Includes your account
+//  login. Share it with care."), so a link pasted into a chat is a choice, not an accident; plain links get a
+//  plain confirmation, so the warning keeps its meaning. On macOS such a link is also marked concealed
+//  (`org.nspasteboard.ConcealedType`), so clipboard history managers do not keep the password.
+//
+
+import SwiftUI
+#if os(iOS)
+import UIKit
+import UniformTypeIdentifiers
+#else
+import AppKit
+#endif
+
+// MARK: - Link
+
+/// A stream URL that can be copied or shared: a network URL (not a recording or download on disk, nor an
+/// inline `data:` URL).
+struct StreamLink: Equatable, Sendable {
+    let url: URL
+    /// The URL seems to contain the account's credentials or an access token (see `hasCredentials(_:)`).
+    let containsCredentials: Bool
+
+    init?(_ url: URL?) {
+        guard let url, !url.isFileURL, let scheme = url.scheme?.lowercased(), !Self.localSchemes.contains(scheme), url.host() != nil else {
+            return nil
+        }
+        self.url = url
+        containsCredentials = Self.hasCredentials(url)
+    }
+
+    private static let localSchemes: Set<String> = ["file", "data", "blob", "about"]
+
+    /// Query parameters that carry a user name, a password, a token or a signature.
+    private static let credentialQueryNames: Set<String> = [
+        "username", "user", "login", "password", "pass", "passwd", "pwd", "token", "access_token", "auth", "auth_token",
+        "authtoken", "apikey", "api_key", "key", "secret", "signature", "sig", "wmsauthsign", "hash", "mac",
+    ]
+
+    /// Xtream Codes stream paths: `/<kind>/<user>/<password>/…`.
+    private static let xtreamKinds: Set<String> = ["live", "movie", "series", "timeshift"]
+
+    /// Whether `url` looks like it contains credentials: a user name or password in the URL itself
+    /// (`http://user:pass@host`), a credential or token query parameter, or an Xtream Codes stream path
+    /// (`/live/<user>/<password>/<id>`, `/movie/…`, `/series/…`, `/timeshift/…`, and the short form
+    /// `/<user>/<password>/<id>`). A heuristic: it errs on the side of the warning.
+    static func hasCredentials(_ url: URL) -> Bool {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return false
+        }
+        if components.user?.isEmpty == false || components.password?.isEmpty == false {
+            return true
+        }
+        if components.queryItems?.contains(where: { item in
+            credentialQueryNames.contains(item.name.lowercased()) && item.value?.isEmpty == false
+        }) == true {
+            return true
+        }
+        let path = url.pathComponents.filter { $0 != "/" }
+        if path.count >= 4, xtreamKinds.contains(path[0].lowercased()) {
+            return true
+        }
+        if path.count == 3, path[2].split(separator: ".").first?.allSatisfy(\.isNumber) == true {
+            return true
+        }
+        return false
+    }
+}
+
+// MARK: - Pasteboard
+
+enum StreamLinkPasteboard {
+    /// Puts `link` on the general pasteboard, as a URL and as plain text (so it pastes into any text field).
+    @MainActor
+    static func copy(_ link: StreamLink) {
+        let text = link.url.absoluteString
+        #if os(macOS)
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        let item = NSPasteboardItem()
+        item.setString(text, forType: .URL)
+        item.setString(text, forType: .string)
+        if link.containsCredentials {
+            // The nspasteboard.org convention: clipboard managers do not record concealed items.
+            item.setData(Data(), forType: concealedType)
+        }
+        pasteboard.writeObjects([item])
+        #else
+        UIPasteboard.general.setItems([[
+            UTType.url.identifier: link.url,
+            UTType.utf8PlainText.identifier: text,
+        ]])
+        #endif
+    }
+
+    #if os(macOS)
+    private static let concealedType = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
+    #endif
+}
+
+// MARK: - Feedback
+
+/// The confirmation of the last copied link in one window: what the toast shows, and the haptic trigger.
+@MainActor
+@Observable
+final class LinkCopyFeedback {
+
+    struct Confirmation: Equatable, Identifiable {
+        let id = UUID()
+        let containsCredentials: Bool
+
+        var title: String {
+            String(localized: "LinkCopied.title", defaultValue: "Link Copied", comment: "Toast after Copy Link: the stream link of a channel, movie or episode is on the clipboard.")
+        }
+
+        /// The warning of a link with credentials.
+        var detail: String? {
+            guard containsCredentials else {
+                return nil
+            }
+            return String(localized: "LinkCopied.credentials", defaultValue: "Includes your account login. Share it with care.", comment: "Second line of the Link Copied toast when the copied stream link contains the user name and password (or access token) of the IPTV account.")
+        }
+
+        var spokenText: String {
+            TextParts.sentences([title, detail])
+        }
+
+        /// Long enough to read the warning.
+        var duration: Duration {
+            containsCredentials ? .seconds(3.5) : .seconds(2)
+        }
+    }
+
+    private(set) var confirmation: Confirmation?
+    /// Increments on every copy (the haptic's trigger: copying the same link twice still confirms).
+    private(set) var copyCount = 0
+    @ObservationIgnored private var hideTask: Task<Void, Never>?
+
+    /// Copies `link` and confirms it. `duration` overrides how long the toast shows (the debug harness holds it
+    /// for its screenshots).
+    func copy(_ link: StreamLink, duration: Duration? = nil) {
+        StreamLinkPasteboard.copy(link)
+        let confirmation = Confirmation(containsCredentials: link.containsCredentials)
+        self.confirmation = confirmation
+        copyCount += 1
+        AccessibilityAnnouncer.announce(confirmation.spokenText)
+        hideTask?.cancel()
+        hideTask = Task { [weak self] in
+            try? await Task.sleep(for: duration ?? confirmation.duration)
+            guard !Task.isCancelled, self?.confirmation?.id == confirmation.id else {
+                return
+            }
+            self?.confirmation = nil
+        }
+    }
+
+    /// Copies `link` with the confirmation of `feedback` (the window's), or with only the announcement when the
+    /// view is outside a window root that hosts one (previews).
+    static func copy(_ link: StreamLink, feedback: LinkCopyFeedback?) {
+        if let feedback {
+            feedback.copy(link)
+        } else {
+            StreamLinkPasteboard.copy(link)
+            AccessibilityAnnouncer.announce(Confirmation(containsCredentials: link.containsCredentials).spokenText)
+        }
+    }
+}
+
+extension EnvironmentValues {
+    /// The copy confirmation of this window (see `linkCopyFeedbackHost()`).
+    @Entry var linkCopyFeedback: LinkCopyFeedback?
+}
+
+extension FocusedValues {
+    /// The copy confirmation of the focused window, for the menu bar's Copy Link.
+    @Entry var linkCopyFeedback: LinkCopyFeedback?
+}
+
+extension View {
+    /// Shows the confirmation of Copy Link over this view (the root of a window, above the player) and provides it to
+    /// the channel menus inside. `colorScheme` is the scheme of what the toast covers when it differs from the
+    /// window's: dark while the player is on screen.
+    func linkCopyFeedbackHost(colorScheme: ColorScheme? = nil) -> some View {
+        modifier(LinkCopyFeedbackHost(colorScheme: colorScheme))
+    }
+}
+
+private struct LinkCopyFeedbackHost: ViewModifier {
+    let colorScheme: ColorScheme?
+
+    @State private var feedback = LinkCopyFeedback()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var windowColorScheme
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(alignment: .top) {
+                if let confirmation = feedback.confirmation {
+                    LinkCopiedToast(confirmation: confirmation)
+                        .environment(\.colorScheme, colorScheme ?? windowColorScheme)
+                        .id(confirmation.id)
+                        .padding(.top, 8)
+                        .padding(.horizontal, 16)
+                        .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(duration: 0.4, bounce: 0.2), value: feedback.confirmation)
+            .sensoryFeedback(.success, trigger: feedback.copyCount)
+            .environment(\.linkCopyFeedback, feedback)
+            .focusedSceneValue(\.linkCopyFeedback, feedback)
+            #if DEBUG
+            .onReceive(NotificationCenter.default.publisher(for: .fluxoDebugCopyLink)) { notification in
+                // Debug harness (`copy-link:`): Copy Link of a channel, as its menu does; the toast stays for the
+                // screenshots.
+                if let link = StreamLink((notification.object as? ChannelItem)?.url) {
+                    feedback.copy(link, duration: .seconds(20))
+                }
+            }
+            #endif
+    }
+}
+
+/// "Link Copied", with the credentials warning under it when the link has them, at the top of the window, as wide
+/// as its text. A thick material rather than glass: it lies over the navigation bar or the player's controls, which
+/// clear glass lets show through the text. It does not take touches (it never covers a control for long) and
+/// VoiceOver hears the announcement instead.
+private struct LinkCopiedToast: View {
+    let confirmation: LinkCopyFeedback.Confirmation
+
+    private let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Image(systemName: confirmation.containsCredentials ? "key.fill" : "link")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(confirmation.containsCredentials ? Theme.warning : Theme.accent)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(confirmation.title)
+                    .font(.subheadline.weight(.semibold))
+                if let detail = confirmation.detail {
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.thickMaterial, in: shape)
+        .overlay {
+            shape.strokeBorder(Theme.surfaceStroke)
+        }
+        .shadow(color: .black.opacity(0.18), radius: 14, y: 6)
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+#if DEBUG
+extension Notification.Name {
+    /// Debug harness: Copy Link of a channel in every window (the object is a `ChannelItem`).
+    static let fluxoDebugCopyLink = Notification.Name("FluxoDebugCopyLink")
+}
+#endif
+
+// MARK: - Menu items
+
+/// Copy Link and Share of a channel, movie or episode, in every channel menu. Nothing when it has no network
+/// URL.
+struct ChannelLinkMenuItems: View {
+    let item: ChannelItem
+
+    var body: some View {
+        StreamLinkMenuItems(url: item.url, name: item.displayName)
+    }
+}
+
+/// Copy Link and Share of a stream URL; `name` titles the share sheet's preview and an e-mail's subject.
+struct StreamLinkMenuItems: View {
+    let url: URL?
+    let name: String
+
+    @Environment(\.linkCopyFeedback) private var feedback
+
+    var body: some View {
+        if let link = StreamLink(url) {
+            Button("Copy Link", systemImage: "link") {
+                LinkCopyFeedback.copy(link, feedback: feedback)
+            }
+            // The system's own "Share" label (localized by the system). The preview gives the share sheet a
+            // title, so it does not load the stream to make one. (No icon: an SF Symbol exports as a blank image
+            // there, and the system's link placeholder reads better.)
+            ShareLink(item: link.url, subject: Text(verbatim: name), preview: SharePreview(name))
+        }
+    }
+}

@@ -171,7 +171,7 @@ struct ChannelCardAction: Identifiable {
     }
 }
 
-/// Play / favorite entries shared by every channel card and row.
+/// Play, favorite, schedule and Copy Link / Share entries shared by every channel card and row.
 struct ChannelContextMenu: View {
 
     let item: ChannelItem
@@ -224,6 +224,12 @@ struct ChannelContextMenu: View {
             Button("Guide Channel…", systemImage: "calendar.badge.checkmark") {
                 epg.matchingTarget = item
             }
+        }
+
+        // Copy Link and Share, in their own group of the menu.
+        if StreamLink(item.url) != nil {
+            Divider()
+            ChannelLinkMenuItems(item: item)
         }
 
         ForEach(extraActions) { action in

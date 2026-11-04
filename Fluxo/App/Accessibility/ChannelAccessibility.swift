@@ -9,7 +9,7 @@
 //  - activation plays the channel (the card's button);
 //  - custom actions (the VoiceOver Actions rotor, Switch Control's menu, Voice Control "Show actions"):
 //    add to or remove from the favorites, the channel's schedule, play and record (live channels the remux
-//    engine records), play from the beginning (started movies and episodes);
+//    engine records), play from the beginning (started movies and episodes), copy the stream link;
 //  - Voice Control names: the full name and the name without its provider prefix and quality tags, so
 //    "Tap Sky Sport F1" finds "IT | Sky Sport F1 FHD".
 //
@@ -114,6 +114,7 @@ private struct ChannelAccessibilityActions: ViewModifier {
     @Environment(\.playChannel) private var playChannel
     @Environment(EPGStore.self) private var epg: EPGStore?
     @Environment(AppNavigation.self) private var navigation: AppNavigation?
+    @Environment(\.linkCopyFeedback) private var linkCopyFeedback
 
     func body(content: Content) -> some View {
         content
@@ -143,6 +144,12 @@ private struct ChannelAccessibilityActions: ViewModifier {
                     Button("Play from Beginning") {
                         library.saveWatchProgress(for: item, position: 0, duration: library.watchProgress(for: item)?.duration ?? 1)
                         playChannel(item)
+                    }
+                }
+                // Announces "Link copied" (and the credentials warning) itself.
+                if let link = StreamLink(item.url) {
+                    Button("Copy Link") {
+                        LinkCopyFeedback.copy(link, feedback: linkCopyFeedback)
                     }
                 }
             }

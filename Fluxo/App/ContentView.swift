@@ -42,6 +42,8 @@ struct ContentView: View {
                     // that is playing through Siri and Apple Intelligence.
                     .appEntityIdentifier(viewModel.currentItem.flatMap(ChannelEntity.entityIdentifier(for:)))
             }
+            // The Copy Link confirmation, over the app and the player.
+            .linkCopyFeedbackHost(colorScheme: coordinator.shows(.player, in: windowID, isActive: viewModel.isPresented) ? .dark : nil)
             .windowPresentation(.player, isActive: viewModel.isPresented)
             .playlistManagement()
             .guideManagement(epg)

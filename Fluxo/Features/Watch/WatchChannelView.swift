@@ -722,6 +722,11 @@ private struct PlayerTopBar: View {
                         viewModel.cast.presentPicker()
                     }
                 }
+                // The stream link of the playlist entry (not of a recording).
+                if let item = viewModel.currentItem, StreamLink(item.url) != nil {
+                    Divider()
+                    ChannelLinkMenuItems(item: item)
+                }
             } label: {
                 Image(systemName: "ellipsis")
                     .frame(width: Self.buttonSize, height: Self.buttonSize)

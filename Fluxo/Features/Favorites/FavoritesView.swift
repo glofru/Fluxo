@@ -388,6 +388,10 @@ private struct FavoriteRow: View {
                 epg.matchingTarget = item
             }
         }
+        if StreamLink(item.url) != nil {
+            Divider()
+            ChannelLinkMenuItems(item: item)
+        }
         Divider()
         Button("Remove from Favorites", systemImage: "star.slash", role: .destructive) {
             library.setFavorite(false, for: item)

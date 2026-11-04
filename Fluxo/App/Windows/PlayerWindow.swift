@@ -151,6 +151,8 @@ struct PlayerWindowView: View {
         }
         .playerStatusBar(showsPlayer ? playerStatusBar ?? .app : .app)
         .navigationTitle(item?.displayName ?? value?.name ?? "")
+        // The Copy Link confirmation of the player's menus in this window.
+        .linkCopyFeedbackHost(colorScheme: showsPlayer ? .dark : nil)
         #if os(iOS)
         .background {
             WindowSceneReader { scene in
