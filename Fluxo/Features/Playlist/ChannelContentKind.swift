@@ -70,27 +70,63 @@ enum ChannelContentKind: Int, CaseIterable, Identifiable, Sendable {
     /// Classifies an entry. Cheap enough to run for every entry of a large playlist: the name scan only
     /// runs for on-demand URLs and the group keywords are matched once per call on a lowercased copy.
     static func classify(url: URL?, groupName: String, name: String?) -> ChannelContentKind {
+        switch classifyByLocation(url: url, groupName: groupName) {
+        case .known(let kind):
+            return kind
+        case .onDemandFile(let inSeriesGroup):
+            // A season and an episode in the name ("S01E02", "1x02", "Staffel 1 Folge 2"); an episode number
+            // alone ("Ep. 3") is not enough to make a movie a series.
+            if let name, EpisodeParser.hasStrongMarker(name) {
+                return .series
+            }
+            return inSeriesGroup ? .series : .movie
+        }
+    }
+
+    /// The kind of an entry and, for on-demand entries named like episodes, the series it belongs to. Weak
+    /// markers ("Ep. 3") only count for entries that are series by their URL or category. `session` caches the
+    /// keys of the series titles of an import. Same kinds as `classify`, with one scan of the name.
+    static func classifyEntry(url: URL?, groupName: String, name: String?, session: inout EpisodeParser.Session) -> (kind: ChannelContentKind, episode: EpisodeInfo?) {
+        switch classifyByLocation(url: url, groupName: groupName) {
+        case .known(.live):
+            return (.live, nil)
+        case .known(.series):
+            return (.series, session.parse(name, groupName: groupName, allowsWeakMarkers: true))
+        case .known(let kind):
+            // A movie URL ("/movie/…") named like an episode is a series only for a strong marker.
+            guard let episode = session.parse(name, groupName: groupName, allowsWeakMarkers: false) else {
+                return (kind, nil)
+            }
+            return (.series, episode)
+        case .onDemandFile(let inSeriesGroup):
+            let scan = session.scan(name, groupName: groupName, allowsWeakMarkers: inSeriesGroup)
+            return scan.hasStrongMarker || inSeriesGroup ? (.series, scan.episode) : (.movie, nil)
+        }
+    }
+
+    private enum Location {
+        /// The URL alone decides.
+        case known(ChannelContentKind)
+        /// A movie or an episode file: the name decides, then the category.
+        case onDemandFile(inSeriesGroup: Bool)
+    }
+
+    private static func classifyByLocation(url: URL?, groupName: String) -> Location {
         guard let url else {
-            return .live
+            return .known(.live)
         }
         let path = url.path.lowercased()
         if path.contains("/series/") {
-            return .series
+            return .known(.series)
         }
         if path.contains("/movie/") || path.contains("/movies/") || path.contains("/vod/") {
-            return .movie
+            return .known(.movie)
         }
         guard onDemandExtensions.contains(url.pathExtension.lowercased()) else {
-            return .live
-        }
-        if let name, containsEpisodeMarker(name) {
-            return .series
+            return .known(.live)
         }
         let group = groupName.lowercased()
-        if seriesGroupKeywords.contains(where: { group.contains($0) }) {
-            return .series
-        }
-        return .movie
+        return .onDemandFile(inSeriesGroup: seriesGroupKeywords.contains(where: { group.contains($0) }))
     }
 
     /// Kind of a group: the most common kind of its channels (live wins ties, then movies).
@@ -99,49 +135,5 @@ enum ChannelContentKind: Int, CaseIterable, Identifiable, Sendable {
             return .live
         }
         return movie >= series ? .movie : .series
-    }
-
-    /// Finds an `S01E02` / `s1 e2` style episode marker without a regular expression.
-    static func containsEpisodeMarker(_ name: String) -> Bool {
-        let bytes = Array(name.utf8)
-        var index = 0
-        while index < bytes.count {
-            let byte = bytes[index] | 0x20 // ASCII lowercase
-            guard byte == UInt8(ascii: "s"), index == 0 || !isLetter(bytes[index - 1]) else {
-                index += 1
-                continue
-            }
-            var cursor = index + 1
-            let seasonStart = cursor
-            while cursor < bytes.count, isDigit(bytes[cursor]) {
-                cursor += 1
-            }
-            guard cursor > seasonStart, cursor - seasonStart <= 2 else {
-                index += 1
-                continue
-            }
-            while cursor < bytes.count, bytes[cursor] == UInt8(ascii: " ") || bytes[cursor] == UInt8(ascii: ".") {
-                cursor += 1
-            }
-            guard cursor < bytes.count, bytes[cursor] | 0x20 == UInt8(ascii: "e") else {
-                index += 1
-                continue
-            }
-            cursor += 1
-            if cursor < bytes.count, isDigit(bytes[cursor]) {
-                return true
-            }
-            index += 1
-        }
-        return false
-    }
-
-    private static func isDigit(_ byte: UInt8) -> Bool {
-        byte >= UInt8(ascii: "0") && byte <= UInt8(ascii: "9")
-    }
-
-    private static func isLetter(_ byte: UInt8) -> Bool {
-        let lower = byte | 0x20
-        return lower >= UInt8(ascii: "a") && lower <= UInt8(ascii: "z")
     }
 }

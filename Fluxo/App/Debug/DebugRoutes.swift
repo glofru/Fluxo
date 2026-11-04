@@ -89,6 +89,21 @@ struct DebugRouteContext {
         return item
     }
 
+    /// A series of the visible playlists by title (exact match first).
+    func series(named name: String) throws -> SeriesItem {
+        let importIDs = visibleImportIDs
+        var descriptor = FetchDescriptor<PlaylistSeries>(
+            predicate: #Predicate { importIDs.contains($0.importID) && $0.title.localizedStandardContains(name) },
+            sortBy: [SortDescriptor(\.sortIndex)]
+        )
+        descriptor.fetchLimit = 50
+        let found = (try? modelContext.fetch(descriptor)) ?? []
+        guard let series = found.first(where: { $0.title.caseInsensitiveCompare(name) == .orderedSame }) ?? found.first else {
+            throw DebugRouteError.notFound("series", name)
+        }
+        return SeriesItem(series)
+    }
+
     private var visibleImportIDs: [UUID] {
         ((try? modelContext.fetch(FetchDescriptor<Playlist>())) ?? []).compactMap(\.currentImportID)
     }
@@ -267,6 +282,35 @@ enum DebugRoutes {
             context.library.recordWatch(item)
             context.library.saveWatchProgress(for: item, position: 2_160, duration: 5_400)
         },
+        DebugRoute("series:<title>", "Pushes the page of a series on Home (by its title).") { context, argument in
+            let series = try context.series(named: argument)
+            context.navigation.show(.home)
+            context.navigation.pushOnHome(series.route)
+        },
+        DebugRoute("watched:<episode>", "Plays an episode to the end, as far as the library knows (it counts as watched; Continue moves on).") { context, argument in
+            let item = try context.channel(named: argument)
+            context.library.recordWatch(item)
+            context.library.saveWatchProgress(for: item, position: 2_700, duration: 2_700)
+        },
+        DebugRoute("remove-from-history:<channel>", "Removes a Continue Watching card, like its context menu: for an episode, its whole series.") { context, argument in
+            context.library.removeFromContinueWatching(try context.channel(named: argument))
+        },
+        DebugRoute("featured-series:<playlist>", "Selects a playlist on Home whose billboard then starts at its first series.") { context, argument in
+            let playlist = try context.playlist(named: argument)
+            guard let importID = playlist.currentImportID else {
+                throw DebugRouteError.notFound("import of playlist", argument)
+            }
+            var descriptor = HomeQueries.featured(importIDs: [importID], onDemand: true)
+            descriptor.propertiesToFetch = [\.seriesKey]
+            let candidates = (try? context.modelContext.fetch(descriptor)) ?? []
+            let offset = candidates.firstIndex { $0.seriesKey != nil } ?? 0
+            UserDefaults.fluxo.set(offset, forKey: FeaturedCarousel.debugOffsetKey)
+            UserDefaults.fluxo.set(playlist.uuid.uuidString, forKey: PlaylistSelection.storageKey)
+            context.navigation.show(.home)
+        },
+        DebugRoute("favorite-series:<title>", "Adds a series to the favorites.") { context, argument in
+            context.library.series.setFavorite(true, for: try context.series(named: argument))
+        },
         DebugRoute("schedule:<channel>", "The schedule sheet of a live channel (needs a guide, e.g. seed-guide).") { context, argument in
             context.navigation.scheduleChannel = try context.channel(named: argument)
         },
@@ -439,6 +483,13 @@ enum DebugRoutes {
             let scenes = UIApplication.shared.connectedScenes.count
             DebugLaunchOptions.logger.notice("Connected scenes: \(scenes, privacy: .public)")
             #endif
+        },
+        DebugRoute("seek-end:<seconds>", "Seeks the playing on-demand item to that many seconds before its end (once it can seek).") { context, argument in
+            guard let seconds = Double(argument) else {
+                throw DebugRouteError.invalidArgument("seek-end", argument)
+            }
+            await context.wait(timeout: 20) { context.player.canSeek && context.player.timeline.duration > 0 }
+            context.player.seek(toSeconds: max(0, context.player.timeline.duration - seconds))
         },
         DebugRoute("wait:<seconds>", "Waits before the next route.") { _, argument in
             guard let seconds = Double(argument), seconds >= 0 else {

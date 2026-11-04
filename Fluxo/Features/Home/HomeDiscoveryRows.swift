@@ -10,7 +10,8 @@ import SwiftData
 import SwiftUI
 
 /// "Because You Watched <channel>": other channels of the category of the most recent entry of the watch
-/// history in the scope. Hidden when the history is empty or the category has nothing else.
+/// history in the scope (for an episode: the other series and movies of its category, never its own series).
+/// Hidden when the history is empty or the category has nothing else.
 struct BecauseYouWatchedRow: View {
 
     let scope: LibraryScope
@@ -55,13 +56,14 @@ private struct BecauseYouWatchedContent: View {
     }
 
     var body: some View {
-        let others = channels.filter { $0.url != item.url }.prefix(Self.fetchLimit)
+        let ownSeries = item.series?.seriesKey
+        let others = channels.filter { $0.url != item.url && (ownSeries == nil || $0.seriesKey != ownSeries) }.prefix(Self.fetchLimit)
         if others.count >= 2 {
             let route = ChannelRoute.group(importID: importID, groupName: item.groupName, title: item.groupName.isEmpty ? String(localized: "Other") : item.groupName)
             VStack(alignment: .leading, spacing: 10) {
                 HomeSectionHeader(
                     title: String(localized: "Because You Watched"),
-                    subtitle: TextParts.line([item.displayName, item.groupName, playlistName]),
+                    subtitle: TextParts.line([item.series?.seriesTitle ?? item.displayName, item.groupName, playlistName]),
                     systemImage: "sparkles"
                 ) {
                     SeeAllLink(route: route)

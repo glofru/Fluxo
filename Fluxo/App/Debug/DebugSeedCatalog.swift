@@ -6,7 +6,7 @@
 //  import pipeline (download, parser, content-kind classification, batched storage), so seeded libraries look
 //  exactly like imported ones.
 //
-//  `sample` has four playlists (376 entries in 33 groups): Italian and international live TV with realistic IPTV names
+//  `sample` has four playlists (383 entries in 34 groups): Italian and international live TV with realistic IPTV names
 //  (quality tags, "IT | " prefixes, CJK, Arabic and Greek names, a very long name), a movies and series
 //  catalogue with Xtream-style URLs, and a "Loopback Test" playlist whose channels play the streams of
 //  Tools/Simulator/test-stream.sh. Live channels have tvg-id attributes in the iptv-org style.
@@ -133,13 +133,47 @@ enum DebugSeedCatalog {
             ("Series | Sci-Fi", ["Orbit", "Deep Field", "The Lantern Protocol"]),
             ("Anime", ["Sky Runners", "Moonlit Garden"]),
         ]
+        // Each show is named the way a different provider writes episodes, so the series grouping
+        // (`EpisodeParser`) shows on every one: "S01E02", "S01 E02 - Title", "1x02", "Stagione 1 Episodio 2",
+        // a provider prefix and tags, a year, "Staffel 1 Folge 2", and episode numbers only for the anime.
+        let episodeTitles = ["Pilot", "First Light", "The Long Night", "Undertow", "Signals", "Crossing", "Glass Houses", "Homecoming"]
+        func episodeName(_ show: String, season: Int, episode: Int) -> String {
+            let title = episodeTitles[(season * 3 + episode) % episodeTitles.count]
+            switch show {
+            case "Harbor Lights":
+                return String(format: "%@ S%02d E%02d - %@", show, season, episode, title)
+            case "The Night Desk":
+                return String(format: "%@ %dx%02d %@", show, season, episode, title)
+            case "Paper Kings":
+                return "\(show) Stagione \(season) Episodio \(episode)"
+            case "Small Town Signals":
+                return String(format: "%@ - S%02dE%02d - %@", show, season, episode, title)
+            case "Office Plants":
+                return String(format: "IT: %@ S%02dE%02d [MULTI] FHD", show, season, episode)
+            case "Second Breakfast":
+                return "\(show) Season \(season) Episode \(episode)"
+            case "Deep Field":
+                return String(format: "%@ (2021) S%02dE%02d", show, season, episode)
+            case "The Lantern Protocol":
+                return "\(show) Staffel \(season) Folge \(episode)"
+            case "Sky Runners":
+                return "\(show) Episode \((season - 1) * 5 + episode)"
+            case "Moonlit Garden":
+                return "\(show) Ep. \((season - 1) * 5 + episode)"
+            default:
+                return String(format: "%@ S%02dE%02d", show, season, episode)
+            }
+        }
         for (group, shows) in seriesGroups {
             for show in shows {
-                for season in 1...2 {
+                // Orbit has a third season (the season picker scrolls on small phones).
+                for season in 1...(show == "Orbit" ? 3 : 2) {
                     for episode in 1...5 {
                         id += 1
-                        let name = String(format: "%@ S%02dE%02d", show, season, episode)
-                        playlist.entries.append(.init(name: name, group: group, url: "\(host)/series/demo/demo/\(id).mkv", logo: posterLogo(show, subtitle: "Season \(season)", index: id)))
+                        // Paper Kings' first episode has no artwork of its own: its card and the billboard show
+                        // the series' poster (from the next episode).
+                        let hasArtwork = !(show == "Paper Kings" && season == 1 && episode == 1)
+                        playlist.entries.append(.init(name: episodeName(show, season: season, episode: episode), group: group, url: "\(host)/series/demo/demo/\(id).mkv", logo: hasArtwork ? posterLogo(show, subtitle: "Season \(season)", index: id) : nil))
                     }
                 }
             }
@@ -167,6 +201,12 @@ enum DebugSeedCatalog {
         ]
         for (name, url) in onDemand {
             playlist.entries.append(.init(name: name, group: "Test On Demand", url: url, logo: DebugArtwork.poster(title: name, subtitle: "Loopback")))
+        }
+        // A series of two playable episodes (the 60 s clip; the query only makes the URLs distinct), for the
+        // player's next-episode card.
+        for episode in 1...2 {
+            let name = "Test Series S01E0\(episode) - \(episode == 1 ? "Countdown" : "Encore")"
+            playlist.entries.append(.init(name: name, group: "Test Series", url: "\(base)/movie/clip.mp4?episode=\(episode)", logo: DebugArtwork.poster(title: "Test Series", subtitle: "Loopback")))
         }
         return playlist
     }

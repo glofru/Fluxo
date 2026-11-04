@@ -257,6 +257,13 @@ private struct PlayerCompanionChannelList: View {
 
     private func load(_ item: ChannelItem) async {
         let container = modelContext.container
+        if item.series != nil {
+            // An episode: the other episodes of its series.
+            if model.request?.groupName != "series|\(item.series?.seriesKey ?? "")" {
+                await model.loadEpisodes(of: item, container: container)
+            }
+            return
+        }
         guard let importID = try? modelContext.fetch(HomeQueries.playlist(uuid: item.playlistID)).first?.currentImportID else {
             return
         }

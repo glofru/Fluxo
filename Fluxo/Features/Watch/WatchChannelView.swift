@@ -272,6 +272,9 @@ struct WatchChannelView: View {
 
             PlayerStatusOverlay(viewModel: viewModel)
 
+            // Series: "Next Episode" during the credits, and the countdown card when an episode ends.
+            NextEpisodeOverlay(viewModel: viewModel, controlsVisible: controlsVisible)
+
             if controlsVisible {
                 PlayerChrome(
                     viewModel: viewModel,
@@ -602,10 +605,17 @@ private struct PlayerTopBar: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(viewModel.currentChannel?.name ?? String(localized: "No channel", comment: "Player title when nothing is playing."))
+                    // An episode: its series, then its number and title.
+                    Text(viewModel.currentItem?.series?.seriesTitle ?? viewModel.currentChannel?.name ?? String(localized: "No channel", comment: "Player title when nothing is playing."))
                         .font(Theme.Typography.playerTitle)
                         .lineLimit(lineLimit)
                         .fixedSize(horizontal: false, vertical: true)
+                    if let episode = viewModel.currentItem?.series {
+                        Text(TextParts.line([EpisodeFormat.code(episode), episode.episodeTitle]))
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(Theme.Player.secondaryLabel)
+                            .lineLimit(lineLimit)
+                    }
                     PlayerStatusBadges(viewModel: viewModel, timeline: viewModel.timeline)
                 }
                 .accessibilityElement(children: .combine)
@@ -1328,6 +1338,9 @@ private struct PlayerStatusOverlay: View {
                     .buttonStyle(.glass)
                 }
             }
+        case .ended where NextEpisodeResolver.handlesEnd(of: viewModel):
+            // `NextEpisodeOverlay` shows the next episode instead.
+            EmptyView()
         case .ended:
             PlayerMessageCard(
                 systemImage: "checkmark.circle.fill",

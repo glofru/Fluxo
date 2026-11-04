@@ -96,12 +96,15 @@ struct SearchView: View {
                         return
                     }
                     let count = results.channels.count
-                    AccessibilityAnnouncer.announce(
-                        count == 0 && results.groups.isEmpty
-                            ? String(localized: "No results")
-                            : String(localized: "\(count) channels, \(results.groups.count) categories"),
-                        priority: .low
-                    )
+                    let announcement: String
+                    if count == 0 && results.groups.isEmpty && results.series.isEmpty {
+                        announcement = String(localized: "No results")
+                    } else if results.series.isEmpty {
+                        announcement = String(localized: "\(count) channels, \(results.groups.count) categories")
+                    } else {
+                        announcement = String(localized: "\(results.series.count) series, \(count) channels, \(results.groups.count) categories", comment: "VoiceOver: how many results a search found.")
+                    }
+                    AccessibilityAnnouncer.announce(announcement, priority: .low)
                 }
                 .task(id: SmartSearchKey(request: request, usesModel: intelligence?.isAvailable ?? false)) {
                     await runSmartSearch(request)
@@ -135,7 +138,7 @@ struct SearchView: View {
         } else if let results {
             // While the next query runs, the previous results stay on screen instead of a spinner.
             let smart = smartResults?.query == request.term ? smartResults : nil
-            let hasRegular = !results.channels.isEmpty || !results.groups.isEmpty
+            let hasRegular = !results.channels.isEmpty || !results.groups.isEmpty || !results.series.isEmpty
             if !hasRegular && (smart?.isEmpty ?? true) && !isSmartSearching && !isSmartPending {
                 ContentUnavailableView.search(text: results.request.term)
             } else {
@@ -216,7 +219,7 @@ struct SearchView: View {
         }
         isSmartPending = false
         // The regular results are usually in by now (they run after 250 ms).
-        let regular = results?.request == request ? (results?.channels.count ?? 0) + (results?.groups.count ?? 0) : nil
+        let regular = results?.request == request ? (results?.channels.count ?? 0) + (results?.groups.count ?? 0) + (results?.series.count ?? 0) : nil
         guard SmartSearch.shouldRun(for: request.term, regularResultCount: regular) else {
             smartResults = nil
             return
@@ -248,6 +251,7 @@ enum ChannelSearch {
 
     static let channelLimit = 150
     static let groupLimit = 20
+    static let seriesLimit = 40
 
     struct Request: Hashable, Sendable {
         let term: String
@@ -259,6 +263,8 @@ enum ChannelSearch {
         let request: Request
         let channels: [ChannelItem]
         let groups: [GroupItem]
+        /// Series, each once with its counts (their episodes are not listed as channels).
+        var series: [SeriesItem] = []
 
         var isTruncated: Bool {
             channels.count >= ChannelSearch.channelLimit
@@ -269,19 +275,21 @@ enum ChannelSearch {
     /// the query must match a word of the name, in any order, with typos allowed for longer words; the best
     /// matches come first.
     static func run(_ request: Request, container: ModelContainer) async -> Results {
-        let hits = await ChannelSearchIndex.shared.search(
+        let hits = await ChannelSearchIndex.shared.searchCollapsingSeries(
             request.term,
             importIDs: request.importIDs,
             kind: request.kind,
             channelLimit: channelLimit,
             groupLimit: groupLimit,
+            seriesLimit: seriesLimit,
             container: container
         )
         return await Task.detached(priority: .userInitiated) {
             let context = ModelContext(container)
             let channels = ChannelSearchIndex.channels(for: hits.channels, in: context).map(ChannelItem.init)
             let groups = ChannelSearchIndex.groups(for: hits.groups, in: context).map(GroupItem.init)
-            return Results(request: request, channels: channels, groups: groups)
+            let series = SeriesQueries.series(for: hits.series, in: context).map(SeriesItem.init)
+            return Results(request: request, channels: channels, groups: groups, series: series)
         }.value
     }
 }
@@ -307,6 +315,11 @@ private struct SearchResultsList: View {
         return TextParts.line([item.kind.title, item.groupName, playlistName])
     }
 
+    private func seriesSubtitle(for series: SeriesItem) -> String? {
+        let playlistName = libraryScope.showsPlaylistNames ? libraryScope.playlistNames[series.playlistID] : nil
+        return TextParts.line([series.groupName, playlistName]).nilIfEmpty
+    }
+
     var body: some View {
         list
             #if os(iOS)
@@ -328,6 +341,14 @@ private struct SearchResultsList: View {
                     .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
+                }
+            }
+
+            if !results.series.isEmpty {
+                Section("Series") {
+                    ForEach(results.series) { series in
+                        SeriesListRow(series: series, subtitle: seriesSubtitle(for: series))
+                    }
                 }
             }
 

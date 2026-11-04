@@ -42,6 +42,9 @@ final class Playlist: Identifiable {
     /// When `guideURLString` was last read from the playlist header (nil for playlists imported before the
     /// TV guide existed: the guide reads their header once, see `EPGImporter.discoverHeaderGuides`).
     var guideHeaderCheckedOn: Date?
+    /// `EpisodeParser.version` the visible import was grouped into series with; 0 for imports made before series
+    /// existed. `SeriesIndexer` indexes imports with an older version again at launch.
+    var seriesIndexVersion: Int = 0
 
     /// Optional because SwiftData batch deletes of groups fail on a non-optional inverse to-many.
     /// Never read this for display; query groups by `importID` instead.
@@ -78,6 +81,19 @@ final class PlaylistChannel: Identifiable, Equatable {
     /// `ChannelContentKind` raw value, classified once at import time (live TV, movie or series).
     var kindRawValue: Int = 0
 
+    // Series (`EpisodeParser`): set for on-demand entries named like episodes, nil otherwise.
+
+    /// `EpisodeInfo.seriesKey`: the episodes of a series in an import share it (the series page fetches by it).
+    /// No index of its own: the series page reads one import's rows by `importID` in a few tens of ms at 100k
+    /// entries, and an index would slow every import down.
+    var seriesKey: String?
+    /// Season, number, series title and episode title, for display only, packed into one attribute
+    /// (`StoredEpisode`): every attribute of a model costs time on each insert, about 0.25 s per 100k entries.
+    var episodeData: String?
+    /// Whether category rows and grids list the entry: every entry, except the episodes of a series after the
+    /// first one of its category (the series "head" stands for the whole series there, as a series card).
+    var isListed: Bool = true
+
     init(
         uuid: UUID,
         name: String? = nil,
@@ -112,6 +128,26 @@ final class PlaylistChannel: Identifiable, Equatable {
         ChannelContentKind(rawValue: kindRawValue) ?? .live
     }
 
+    /// The series of an episode, as the UI hands it around.
+    var episodeRef: EpisodeRef? {
+        guard let seriesKey, let episodeData, let stored = StoredEpisode(episodeData) else {
+            return nil
+        }
+        return EpisodeRef(seriesKey: seriesKey, seriesTitle: stored.seriesTitle, season: stored.season, episode: stored.episode, episodeTitle: stored.episodeTitle)
+    }
+
+    /// Stores what the parser found (or clears it).
+    func apply(_ episode: EpisodeInfo?, isListed: Bool) {
+        seriesKey = episode?.seriesKey
+        episodeData = episode.map { StoredEpisode($0).rawValue }
+        self.isListed = isListed
+    }
+
+    /// Whether the row already stores what `apply(episode, isListed:)` would write.
+    func matches(_ episode: EpisodeInfo?, isListed: Bool) -> Bool {
+        seriesKey == episode?.seriesKey && self.isListed == isListed && episodeData == episode.map { StoredEpisode($0).rawValue }
+    }
+
     static func == (lhs: PlaylistChannel, rhs: PlaylistChannel) -> Bool {
         lhs.uuid == rhs.uuid
     }
@@ -119,6 +155,42 @@ final class PlaylistChannel: Identifiable, Equatable {
 
 /// A group of channels inside one import of a playlist. Channels are linked by `groupName` + `importID`
 /// (no to-many array), so a group never duplicates its channels and inserts stay linear.
+/// The display fields of an episode as `PlaylistChannel.episodeData` stores them: season, number, series title
+/// and episode title, separated by U+001F (removed from the titles, M3U names never carry it). The season is
+/// empty when the name gives none.
+struct StoredEpisode: Hashable, Sendable {
+    static let separator: Character = "\u{1F}"
+
+    let season: Int?
+    let episode: Int
+    let seriesTitle: String
+    let episodeTitle: String?
+
+    init(_ info: EpisodeInfo) {
+        season = info.season
+        episode = info.episode
+        seriesTitle = info.seriesTitle
+        episodeTitle = info.episodeTitle
+    }
+
+    init?(_ rawValue: String) {
+        let parts = rawValue.split(separator: Self.separator, maxSplits: 3, omittingEmptySubsequences: false)
+        guard parts.count == 4, let episode = Int(parts[1]) else {
+            return nil
+        }
+        season = parts[0].isEmpty ? nil : Int(parts[0])
+        self.episode = episode
+        seriesTitle = String(parts[2])
+        episodeTitle = parts[3].isEmpty ? nil : String(parts[3])
+    }
+
+    var rawValue: String {
+        let separator = String(Self.separator)
+        let clean = { (text: String) in text.contains(Self.separator) ? text.replacingOccurrences(of: separator, with: " ") : text }
+        return [season.map(String.init) ?? "", String(episode), clean(seriesTitle), clean(episodeTitle ?? "")].joined(separator: separator)
+    }
+}
+
 @Model
 final class PlaylistChannelGroup: Identifiable {
     #Index<PlaylistChannelGroup>([\.importID, \.sortIndex], [\.importID, \.kindRawValue, \.sortIndex], [\.playlistID])
@@ -132,6 +204,11 @@ final class PlaylistChannelGroup: Identifiable {
     var importID: UUID = UUID()
     /// Most common `ChannelContentKind` of the group's channels; decides the Home section it is listed in.
     var kindRawValue: Int = 0
+    /// Entries the group lists (`PlaylistChannel.isListed`): its channels and movies, and one card per series;
+    /// 0 for groups imported before series existed (then every channel is listed).
+    var listedCount: Int = 0
+    /// Series among the listed entries.
+    var seriesCount: Int = 0
 
     var playlist: Playlist?
 

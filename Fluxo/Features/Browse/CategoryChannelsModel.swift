@@ -66,6 +66,27 @@ final class CategoryChannelsModel {
         mostWatched = request.order == .mostWatched && request.term.isEmpty ? await Self.fetchMostWatched(request, container: container) : []
     }
 
+    /// Lists the episodes of the series of `episode` instead of a category (the player's channel lists, while an
+    /// episode plays: the other episodes are what the viewer switches to, not the other series).
+    func loadEpisodes(of episode: ChannelItem, container: ModelContainer) async {
+        guard let seriesKey = episode.series?.seriesKey else {
+            return
+        }
+        let playlistID = episode.playlistID
+        let found = await Task.detached(priority: .userInitiated) {
+            SeriesLookup.episodes(playlistID: playlistID, key: seriesKey, in: container)
+        }.value
+        guard !Task.isCancelled, let found else {
+            return
+        }
+        request = Request(importID: found.importID, playlistID: playlistID, groupName: "series|\(seriesKey)", order: .playlist, term: "")
+        items = found.episodes
+        letters = []
+        mostWatched = []
+        reachedEnd = true
+        isLoaded = true
+    }
+
     /// Loads the next page (when the last rows scroll in).
     func loadMore(container: ModelContainer) async {
         guard let request, isLoaded, !reachedEnd, !isLoadingPage else {
@@ -126,8 +147,13 @@ final class CategoryChannelsModel {
     private nonisolated static func fetchMostWatched(_ request: Request, container: ModelContainer) async -> [ChannelItem] {
         await Task.detached(priority: .userInitiated) {
             let context = ModelContext(container)
-            let descriptor = HomeQueries.mostWatched(playlistID: request.playlistID, groupName: request.groupName, limit: mostWatchedLimit)
-            return ((try? context.fetch(descriptor)) ?? []).map(ChannelItem.init)
+            // Episodes of one series count once (the series is listed as one card).
+            let descriptor = HomeQueries.mostWatched(playlistID: request.playlistID, groupName: request.groupName, limit: mostWatchedLimit * 3)
+            var seenSeries: Set<String> = []
+            let items = ((try? context.fetch(descriptor)) ?? []).map(ChannelItem.init).filter { item in
+                item.series.map { seenSeries.insert($0.seriesKey).inserted } ?? true
+            }
+            return Array(items.prefix(mostWatchedLimit))
         }.value
     }
 

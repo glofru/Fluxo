@@ -23,6 +23,12 @@ xcrun swiftc -O -swift-version 5 -parse-as-library -o "$OUT/check" \
     "$ROOT/Fluxo/App/Database/ModelRegistry.swift" \
     "$ROOT/Fluxo/Features/Guide/Model/EPGModels.swift" \
     "$ROOT/Fluxo/Features/Guide/Model/GuideValues.swift" \
+    "$ROOT/Fluxo/Features/Series/EpisodeParser.swift" \
+    "$ROOT/Fluxo/Features/Series/SeriesModels.swift" \
+    "$ROOT/Fluxo/Features/Series/SeriesLookup.swift" \
+    "$ROOT/Fluxo/Features/Series/SeriesLibrary.swift" \
+    "$ROOT/Fluxo/App/Design/TextParts.swift" \
+    "$ROOT/Tools/SeriesCheck/ToolStubs.swift" \
     "$HERE/main.swift" 2> "$OUT/build.log" || { cat "$OUT/build.log"; exit 1; }
 
 "$OUT/check" "$OUT/store.sqlite" "$CHANNELS"

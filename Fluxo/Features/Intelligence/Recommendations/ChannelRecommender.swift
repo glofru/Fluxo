@@ -115,16 +115,16 @@ enum ChannelRecommender {
         let shown = shownKeys(profile: profile, playlistIDs: Set(importByPlaylist.keys))
         var seen: Set<String> = shown.keys
         for entry in shown.entries {
-            seen.insert("\(entry.item.playlistID.uuidString)|\(ChannelNameNormalizer.key(entry.item.displayName))")
+            seen.insert(nameKey(of: entry.item))
         }
 
         func add(_ item: ChannelItem, _ origin: ChannelCandidate.Origin) {
             guard item.url != nil else {
                 return
             }
-            // HD / SD copies and backup URLs of one channel count once.
-            let nameKey = "\(item.playlistID.uuidString)|\(ChannelNameNormalizer.key(item.displayName))"
-            guard seen.insert(item.bookmarkKey ?? item.id.uuidString).inserted, seen.insert(nameKey).inserted else {
+            // HD / SD copies and backup URLs of one channel count once, and so do the episodes of a series: the
+            // series is suggested as a whole (its card opens the series page).
+            guard seen.insert(item.bookmarkKey ?? item.id.uuidString).inserted, seen.insert(nameKey(of: item)).inserted else {
                 return
             }
             result.append(ChannelCandidate(item: item, origin: origin))
@@ -149,7 +149,8 @@ enum ChannelRecommender {
             }
         }
         // Channels named like the most watched ones ("Sky Sport F1" → "Sky Sport MotoGP").
-        for entry in profile.history.prefix(4) {
+        // (Not for episodes: a series title shares no "brand" with other series.)
+        for entry in profile.history.prefix(4) where entry.item.series == nil {
             let tokens = ChannelNameNormalizer.tokens(entry.item.displayName).filter { $0.count > 1 && $0 != "+" }
             guard tokens.count >= 2 else {
                 continue
@@ -170,6 +171,14 @@ enum ChannelRecommender {
             }
         }
         return result
+    }
+
+    /// What makes two candidates the same: the series of an episode, otherwise the normalized name.
+    static func nameKey(of item: ChannelItem) -> String {
+        if let seriesKey = item.seriesBookmarkKey {
+            return "series|\(seriesKey)"
+        }
+        return "\(item.playlistID.uuidString)|\(ChannelNameNormalizer.key(item.displayName))"
     }
 
     // MARK: - Built-in ranking
@@ -274,10 +283,10 @@ enum ChannelRecommender {
     static func prompt(candidates: [ChannelCandidate], profile: TasteProfile, now: Date) -> String {
         var lines: [String] = ["Now: \(ViewingMoment.description(of: now))."]
         let watched = profile.history.prefix(8).map { entry in
-            "\(entry.item.displayName) (\(entry.watchCount)×, \(ChannelCandidate.displayGroup(entry.item.groupName)))"
+            "\(entry.item.series?.seriesTitle ?? entry.item.displayName) (\(entry.watchCount)×, \(ChannelCandidate.displayGroup(entry.item.groupName)))"
         }
         lines.append(watched.isEmpty ? "The viewer has not watched anything yet." : "The viewer often watches: \(watched.joined(separator: "; ")).")
-        let favorites = profile.favorites.prefix(8).map(\.item.displayName)
+        let favorites = profile.favorites.prefix(8).map { $0.item.series?.seriesTitle ?? $0.item.displayName }
         if !favorites.isEmpty {
             lines.append("Favorites: \(favorites.joined(separator: "; ")).")
         }
@@ -301,7 +310,8 @@ enum ChannelRecommender {
         case .series:
             kind = "series"
         }
-        var text = "\(item.displayName) (\(kind), group \(ChannelCandidate.displayGroup(item.groupName)))"
+        // A series is suggested as a whole: its title, not the name of the episode that stands for it.
+        var text = "\(item.series?.seriesTitle ?? item.displayName) (\(kind), group \(ChannelCandidate.displayGroup(item.groupName)))"
         if let programme = candidate.programme {
             text += " — on now: \(programme.title)"
             if !programme.categories.isEmpty {
@@ -373,11 +383,16 @@ struct SearchChannelsTool: Tool {
             return "No more searches. Choose from the candidates you have."
         }
         let query = arguments.query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let known = Set(registry.all.compactMap(\.item.bookmarkKey)).union(excludedKeys)
-        let found = await LibraryLookup.searchChannels(query, importIDs: importIDs, limit: 12, in: container)
-            .filter { $0.url != nil && !known.contains($0.bookmarkKey ?? "") }
-            .prefix(6)
-            .map { ChannelCandidate(item: $0, origin: .search(query)) }
+        var known = Set(registry.all.compactMap(\.item.bookmarkKey)).union(excludedKeys)
+        known.formUnion(registry.all.map { ChannelRecommender.nameKey(of: $0.item) })
+        var found: [ChannelCandidate] = []
+        for item in await LibraryLookup.searchChannels(query, importIDs: importIDs, limit: 24, in: container) where found.count < 6 {
+            // One candidate per series.
+            guard item.url != nil, !known.contains(item.bookmarkKey ?? ""), known.insert(ChannelRecommender.nameKey(of: item)).inserted else {
+                continue
+            }
+            found.append(ChannelCandidate(item: item, origin: .search(query)))
+        }
         guard !found.isEmpty else {
             return "Nothing in the playlists matches \"\(query)\"."
         }

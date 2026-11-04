@@ -339,9 +339,9 @@ enum SmartSearch {
         }
 
         let channels = scores.values.sorted { $0.score > $1.score }.map(\.item)
-        // HD / SD copies once.
+        // HD / SD copies once, and a series once (its row opens the series page), whichever episode matched.
         var seenNames: Set<String> = []
-        let unique = channels.filter { seenNames.insert("\($0.playlistID.uuidString)|\(ChannelNameNormalizer.key($0.displayName))").inserted }
+        let unique = channels.filter { seenNames.insert(ChannelRecommender.nameKey(of: $0)).inserted }
         return (Array(unique.prefix(channelLimit)), Array(groups.prefix(groupLimit)))
     }
 

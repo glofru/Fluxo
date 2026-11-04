@@ -92,7 +92,9 @@ actor PlaylistImporter {
         let context = makeContext()
         try context.delete(model: PlaylistChannel.self, where: #Predicate { $0.playlistID == uuid })
         try context.delete(model: PlaylistChannelGroup.self, where: #Predicate { $0.playlistID == uuid })
+        try context.delete(model: PlaylistSeries.self, where: #Predicate { $0.playlistID == uuid })
         try context.delete(model: ChannelBookmark.self, where: #Predicate { $0.playlistID == uuid })
+        try context.delete(model: SeriesBookmark.self, where: #Predicate { $0.playlistID == uuid })
         if let playlist = try fetchPlaylist(uuid: uuid, in: context) {
             context.delete(playlist)
         }
@@ -108,8 +110,34 @@ actor PlaylistImporter {
         let playlistIDs = playlists.map(\.uuid)
         try context.delete(model: PlaylistChannel.self, where: #Predicate { !keep.contains($0.importID) })
         try context.delete(model: PlaylistChannelGroup.self, where: #Predicate { !keep.contains($0.importID) })
+        try context.delete(model: PlaylistSeries.self, where: #Predicate { !keep.contains($0.importID) })
         try context.delete(model: ChannelBookmark.self, where: #Predicate { !playlistIDs.contains($0.playlistID) })
+        try context.delete(model: SeriesBookmark.self, where: #Predicate { !playlistIDs.contains($0.playlistID) })
         try context.save()
+    }
+
+    /// Groups the episodes of the visible imports that were stored without series (imported before series
+    /// existed, or by an older `EpisodeParser`). Returns the imports it indexed. It runs on the actor, so no
+    /// import commits while an import is being indexed.
+    @discardableResult
+    func indexSeriesIfNeeded() -> [UUID] {
+        let pending: [(importID: UUID, playlistID: UUID)]
+        do {
+            pending = try SeriesIndexer.importsNeedingIndex(in: container)
+        } catch {
+            Self.logger.error("Could not look for imports without series: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
+        var indexed: [UUID] = []
+        for entry in pending {
+            do {
+                _ = try SeriesIndexer.index(importID: entry.importID, playlistID: entry.playlistID, container: container)
+                indexed.append(entry.importID)
+            } catch {
+                Self.logger.error("Could not group the series of an import: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        return indexed
     }
 
     // MARK: - Import
@@ -142,6 +170,8 @@ actor PlaylistImporter {
         var batch: [M3UEntry] = []
         batch.reserveCapacity(batchSize)
         var groups = GroupAccumulator()
+        var series = SeriesAccumulator()
+        var episodeParser = EpisodeParser.Session()
         var stored = 0
         var lastProgressAt = clock.now
 
@@ -150,7 +180,7 @@ actor PlaylistImporter {
                 parser.consume(chunk.data) { batch.append($0) }
                 if batch.count >= batchSize {
                     try Task.checkCancellation()
-                    try store(batch, startingAt: stored, importID: importID, playlistUUID: playlistUUID, groups: &groups)
+                    try store(batch, startingAt: stored, importID: importID, playlistUUID: playlistUUID, groups: &groups, series: &series, parser: &episodeParser)
                     stored += batch.count
                     batch.removeAll(keepingCapacity: true)
                 }
@@ -167,7 +197,7 @@ actor PlaylistImporter {
             parser.finish { batch.append($0) }
             progress(PlaylistImportProgress(phase: .finalizing, fractionCompleted: 1, channelCount: stored + batch.count))
             if !batch.isEmpty {
-                try store(batch, startingAt: stored, importID: importID, playlistUUID: playlistUUID, groups: &groups)
+                try store(batch, startingAt: stored, importID: importID, playlistUUID: playlistUUID, groups: &groups, series: &series, parser: &episodeParser)
                 stored += batch.count
                 batch.removeAll()
             }
@@ -177,7 +207,7 @@ actor PlaylistImporter {
             }
             try Task.checkCancellation()
 
-            let groupCount = try commit(importID: importID, playlistUUID: playlistUUID, channelCount: stored, groups: groups, guideURLs: parser.guideURLs)
+            let groupCount = try commit(importID: importID, playlistUUID: playlistUUID, channelCount: stored, groups: groups, series: series, guideURLs: parser.guideURLs)
             let summary = PlaylistImportSummary(channelCount: stored, groupCount: groupCount, duration: clock.now - startedAt)
             Self.logger.info("Imported \(summary.channelCount) channels in \(summary.groupCount) groups in \(String(describing: summary.duration), privacy: .public)")
             return summary
@@ -201,8 +231,17 @@ actor PlaylistImporter {
         return try context.fetch(descriptor).first
     }
 
-    /// Inserts one batch in its own context and saves it, so memory stays bounded by the batch size.
-    private func store(_ entries: [M3UEntry], startingAt firstIndex: Int, importID: UUID, playlistUUID: UUID, groups: inout GroupAccumulator) throws {
+    /// Inserts one batch in its own context and saves it, so memory stays bounded by the batch size. On-demand
+    /// entries named like episodes are grouped into series on the way (`EpisodeParser`).
+    private func store(
+        _ entries: [M3UEntry],
+        startingAt firstIndex: Int,
+        importID: UUID,
+        playlistUUID: UUID,
+        groups: inout GroupAccumulator,
+        series: inout SeriesAccumulator,
+        parser: inout EpisodeParser.Session
+    ) throws {
         let context = makeContext()
         // Stop early if the playlist was deleted while downloading.
         var exists = FetchDescriptor<Playlist>(predicate: #Predicate { $0.uuid == playlistUUID })
@@ -215,9 +254,12 @@ actor PlaylistImporter {
             let groupName = entry.group ?? ""
             let url = URL(string: entry.url)
             let name = entry.displayName
-            let kind = ChannelContentKind.classify(url: url, groupName: groupName, name: name)
-            groups.add(groupName, kind: kind)
-            context.insert(PlaylistChannel(
+            let (kind, episode) = ChannelContentKind.classifyEntry(url: url, groupName: groupName, name: name, session: &parser)
+            let sortIndex = firstIndex + offset
+            // Only the first episode of a series in its category is listed there (as the series card).
+            let isListed = episode.map { series.add($0, sortIndex: sortIndex, logo: entry.logo, groupName: groupName) } ?? true
+            groups.add(groupName, kind: kind, isListed: isListed, isSeries: episode != nil)
+            let channel = PlaylistChannel(
                 uuid: UUID(),
                 name: name,
                 logo: entry.logo,
@@ -225,17 +267,21 @@ actor PlaylistImporter {
                 duration: entry.duration,
                 groupName: groupName,
                 url: url,
-                sortIndex: firstIndex + offset,
+                sortIndex: sortIndex,
                 importID: importID,
                 playlistID: playlistUUID,
                 kind: kind
-            ))
+            )
+            if let episode {
+                channel.apply(episode, isListed: isListed)
+            }
+            context.insert(channel)
         }
         try context.save()
     }
 
     /// Writes the groups, makes the new import visible, then drops the previous one.
-    private func commit(importID: UUID, playlistUUID: UUID, channelCount: Int, groups: GroupAccumulator, guideURLs: [String]) throws -> Int {
+    private func commit(importID: UUID, playlistUUID: UUID, channelCount: Int, groups: GroupAccumulator, series: SeriesAccumulator, guideURLs: [String]) throws -> Int {
         let context = makeContext()
         guard let playlist = try fetchPlaylist(uuid: playlistUUID, in: context) else {
             throw PlaylistImportError.playlistNotFound
@@ -253,9 +299,12 @@ actor PlaylistImporter {
                 playlistID: playlistUUID,
                 kind: group.kind
             )
+            model.listedCount = group.listedCount
+            model.seriesCount = group.seriesCount
             context.insert(model)
             newGroups.append(model)
         }
+        series.insertRows(importID: importID, playlistID: playlistUUID, into: context)
         // One assignment links all groups (and their inverses) in linear time.
         playlist.groups = (playlist.groups ?? []) + newGroups
         let previousImportID = playlist.currentImportID
@@ -265,6 +314,7 @@ actor PlaylistImporter {
         playlist.lastRefreshedOn = .now
         playlist.guideURLString = guideURLs.isEmpty ? nil : guideURLs.joined(separator: ",")
         playlist.guideHeaderCheckedOn = .now
+        playlist.seriesIndexVersion = EpisodeParser.version
         // Save the switch first so the UI moves to the new rows before the old ones disappear.
         try context.save()
 
@@ -272,11 +322,18 @@ actor PlaylistImporter {
             do {
                 try context.delete(model: PlaylistChannel.self, where: #Predicate { $0.importID == previousImportID })
                 try context.delete(model: PlaylistChannelGroup.self, where: #Predicate { $0.importID == previousImportID })
+                try context.delete(model: PlaylistSeries.self, where: #Predicate { $0.importID == previousImportID })
                 try context.save()
             } catch {
                 // The new content is already live; leftovers are cleaned up by the next purge.
                 Self.logger.error("Failed to delete previous import: \(error.localizedDescription)")
             }
+        }
+        do {
+            // Favorites and history saved before series existed (or before this playlist had them).
+            try SeriesIndexer.indexBookmarks(playlistID: playlistUUID, container: container)
+        } catch {
+            Self.logger.error("Could not link bookmarks to their series: \(error.localizedDescription, privacy: .public)")
         }
         return groups.ordered.count
     }
@@ -286,6 +343,7 @@ actor PlaylistImporter {
             let context = makeContext()
             try context.delete(model: PlaylistChannel.self, where: #Predicate { $0.importID == importID })
             try context.delete(model: PlaylistChannelGroup.self, where: #Predicate { $0.importID == importID })
+            try context.delete(model: PlaylistSeries.self, where: #Predicate { $0.importID == importID })
             try context.save()
         } catch {
             Self.logger.error("Failed to discard import: \(error.localizedDescription)")
@@ -299,14 +357,18 @@ private struct GroupAccumulator {
         let name: String
         var liveCount = 0
         var movieCount = 0
+        var seriesEpisodeCount = 0
+        /// Entries listed in the category (channels, movies, one per series).
+        var listedCount = 0
+        /// Series among them.
         var seriesCount = 0
 
         var count: Int {
-            liveCount + movieCount + seriesCount
+            liveCount + movieCount + seriesEpisodeCount
         }
 
         var kind: ChannelContentKind {
-            ChannelContentKind.dominant(live: liveCount, movie: movieCount, series: seriesCount)
+            ChannelContentKind.dominant(live: liveCount, movie: movieCount, series: seriesEpisodeCount)
         }
 
         mutating func add(_ kind: ChannelContentKind) {
@@ -316,7 +378,7 @@ private struct GroupAccumulator {
             case .movie:
                 movieCount += 1
             case .series:
-                seriesCount += 1
+                seriesEpisodeCount += 1
             }
         }
     }
@@ -324,14 +386,21 @@ private struct GroupAccumulator {
     private(set) var ordered: [Group] = []
     private var indexByName: [String: Int] = [:]
 
-    mutating func add(_ name: String, kind: ChannelContentKind) {
-        if let index = indexByName[name] {
-            ordered[index].add(kind)
+    mutating func add(_ name: String, kind: ChannelContentKind, isListed: Bool = true, isSeries: Bool = false) {
+        let index: Int
+        if let existing = indexByName[name] {
+            index = existing
         } else {
-            indexByName[name] = ordered.count
-            var group = Group(name: name)
-            group.add(kind)
-            ordered.append(group)
+            index = ordered.count
+            indexByName[name] = index
+            ordered.append(Group(name: name))
+        }
+        ordered[index].add(kind)
+        if isListed {
+            ordered[index].listedCount += 1
+            if isSeries {
+                ordered[index].seriesCount += 1
+            }
         }
     }
 }

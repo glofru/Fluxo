@@ -45,6 +45,13 @@ final class ChannelBookmark {
     /// Movies and series: the duration reported by the player (seconds), 0 when unknown.
     var knownDuration: Double = 0
 
+    // The series of an episode (`EpisodeRef`), so the history can show and group episodes by series.
+    var seriesKey: String?
+    var seriesTitle: String?
+    var seasonNumber: Int?
+    var episodeNumber: Int?
+    var episodeTitle: String?
+
     init(key: String, playlistID: UUID, url: URL, channelID: UUID, name: String?, logo: String?, groupName: String, kind: ChannelContentKind) {
         self.key = key
         self.playlistID = playlistID
@@ -62,6 +69,21 @@ final class ChannelBookmark {
 
     var kind: ChannelContentKind {
         ChannelContentKind(rawValue: kindRawValue) ?? .live
+    }
+
+    var episodeRef: EpisodeRef? {
+        guard let seriesKey, let seriesTitle, let episodeNumber else {
+            return nil
+        }
+        return EpisodeRef(seriesKey: seriesKey, seriesTitle: seriesTitle, season: seasonNumber, episode: episodeNumber, episodeTitle: episodeTitle)
+    }
+
+    func setEpisode(_ episode: EpisodeRef?) {
+        seriesKey = episode?.seriesKey
+        seriesTitle = episode?.seriesTitle
+        seasonNumber = episode?.season
+        episodeNumber = episode?.episode
+        episodeTitle = episode?.episodeTitle
     }
 
     /// `favoriteOrder` for a new favorite: before every existing one (reordered favorites use 0, 1, 2, …).

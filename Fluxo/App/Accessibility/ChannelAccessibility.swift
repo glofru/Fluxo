@@ -4,8 +4,9 @@
 //
 //  What VoiceOver, Voice Control and Switch Control get for a channel card or row, the same everywhere:
 //
-//  - the label: number, name, kind (Live TV, Movie, Series), favorite state, the programme on air from the TV
-//    guide (or how far a movie was watched) and the card's own second line;
+//  - the label: number, name, kind (Live TV, Movie, Series), for an episode its series, season, number and title,
+//    favorite state, the programme on air from the TV guide (or how far a movie was watched) and the card's own
+//    second line;
 //  - activation plays the channel (the card's button);
 //  - custom actions (the VoiceOver Actions rotor, Switch Control's menu, Voice Control "Show actions"):
 //    add to or remove from the favorites, the channel's schedule, play and record (live channels the remux
@@ -61,9 +62,21 @@ enum ChannelAccessibility {
         if includesNumber, let number = item.number {
             parts.append(String(localized: "Channel \(number.formatted(.number.grouping(.never)))", comment: "VoiceOver: the channel number of the playlist, as in 'Channel 12'."))
         }
-        parts.append(item.displayName)
-        if includesKind {
-            parts.append(item.kind.title)
+        if let episode = item.series {
+            // "Breaking Bad, Series, Season 1, episode 3, Pilot" rather than the raw "Breaking Bad S01E03 Pilot".
+            parts.append(episode.seriesTitle)
+            if includesKind {
+                parts.append(item.kind.title)
+            }
+            parts.append(EpisodeFormat.spokenCode(episode))
+            if let title = episode.episodeTitle {
+                parts.append(title)
+            }
+        } else {
+            parts.append(item.displayName)
+            if includesKind {
+                parts.append(item.kind.title)
+            }
         }
         if isFavorite {
             parts.append(favoriteState)

@@ -60,6 +60,9 @@ struct ChannelListRow: View {
     var showsNumber = true
     /// Extra context menu entries.
     var extraActions: [ChannelCardAction] = []
+    /// An episode stands for its series (a `SeriesListRow` to the series page), as in a category's list; false
+    /// shows the episode itself (the history).
+    var presentsSeries = true
 
     @Environment(ChannelLibrary.self) private var library
     @Environment(AppNavigation.self) private var navigation
@@ -69,8 +72,16 @@ struct ChannelListRow: View {
     @State private var sourceID = UUID().uuidString
 
     var body: some View {
+        if presentsSeries, let series = item.seriesItem {
+            SeriesListRow(series: series, subtitle: subtitle)
+        } else {
+            channelRow
+        }
+    }
+
+    private var channelRow: some View {
         let isFavorite = library.isFavorite(item)
-        Button {
+        return Button {
             playChannel(item, from: sourceID)
         } label: {
             Group {
@@ -158,7 +169,8 @@ struct ChannelListRow: View {
         let stacked = dynamicTypeSize.prefersStackedLayout
         return VStack(alignment: .leading, spacing: 3) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(item.displayName)
+                // An episode: its series, then its number and title on the next line.
+                Text(item.series?.seriesTitle ?? item.displayName)
                     .font(.body.weight(.semibold))
                     .lineLimit(stacked ? 4 : 1)
                 if isFavorite {
@@ -168,6 +180,11 @@ struct ChannelListRow: View {
                         .transition(.scale.combined(with: .opacity))
                         .accessibilityLabel(ChannelAccessibility.favoriteState)
                 }
+            }
+            if let episode = item.series {
+                Text(TextParts.line([EpisodeFormat.code(episode), episode.episodeTitle]))
+                    .font(.caption.weight(.medium))
+                    .lineLimit(stacked ? 3 : 1)
             }
             if let subtitle, !subtitle.isEmpty {
                 Text(subtitle)

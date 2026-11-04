@@ -32,10 +32,11 @@ enum HomeQueries {
         FetchDescriptor<PlaylistChannelGroup>(predicate: groupsPredicate(importIDs: importIDs, kind: kind))
     }
 
-    /// Channels of one group, in playlist order.
+    /// Channels of one group, in playlist order. A series is listed once, by its first episode in the group
+    /// (`PlaylistChannel.isListed`), here and in the other listings of a group.
     static func channels(importID: UUID, groupName: String, limit: Int) -> FetchDescriptor<PlaylistChannel> {
         var descriptor = FetchDescriptor<PlaylistChannel>(
-            predicate: #Predicate { $0.importID == importID && $0.groupName == groupName },
+            predicate: #Predicate { $0.importID == importID && $0.groupName == groupName && $0.isListed == true },
             sortBy: [SortDescriptor(\.sortIndex)]
         )
         descriptor.fetchLimit = limit
@@ -45,7 +46,7 @@ enum HomeQueries {
     /// Channels of one group in the given order, a window at a time (`offset`, `limit`).
     static func channels(importID: UUID, groupName: String, order: ChannelSortOrder, offset: Int = 0, limit: Int) -> FetchDescriptor<PlaylistChannel> {
         var descriptor = FetchDescriptor<PlaylistChannel>(
-            predicate: #Predicate { $0.importID == importID && $0.groupName == groupName },
+            predicate: #Predicate { $0.importID == importID && $0.groupName == groupName && $0.isListed == true },
             sortBy: order.channelSortDescriptors
         )
         descriptor.fetchOffset = offset
@@ -54,19 +55,20 @@ enum HomeQueries {
     }
 
     /// Channels of one group whose name contains `term` (case and diacritic insensitive), in the given order.
+    /// Series match on their title, once each.
     static func channels(importID: UUID, groupName: String, matching term: String, order: ChannelSortOrder, limit: Int) -> FetchDescriptor<PlaylistChannel> {
         var descriptor = FetchDescriptor<PlaylistChannel>(
-            predicate: #Predicate { $0.importID == importID && $0.groupName == groupName && $0.name?.localizedStandardContains(term) == true },
+            predicate: #Predicate { $0.importID == importID && $0.groupName == groupName && $0.isListed == true && $0.name?.localizedStandardContains(term) == true },
             sortBy: order.channelSortDescriptors
         )
         descriptor.fetchLimit = limit
         return descriptor
     }
 
-    /// The first channels of a group that have artwork: the mosaic of its category card.
+    /// The first channels of a group that have artwork: the mosaic of its category card (one poster per series).
     static func groupArtwork(importID: UUID, groupName: String, limit: Int) -> FetchDescriptor<PlaylistChannel> {
         var descriptor = FetchDescriptor<PlaylistChannel>(
-            predicate: #Predicate { $0.importID == importID && $0.groupName == groupName && $0.logo != nil },
+            predicate: #Predicate { $0.importID == importID && $0.groupName == groupName && $0.isListed == true && $0.logo != nil },
             sortBy: [SortDescriptor(\.sortIndex)]
         )
         descriptor.fetchLimit = limit
@@ -155,12 +157,15 @@ enum HomeQueries {
     }
 
     /// Candidates for the featured carousel: channels with artwork, on-demand ones (posters) or live ones.
-    /// Use `fetchCount` on it, then pick a window with `fetchOffset` / `fetchLimit`.
+    /// Use `fetchCount` on it, then pick a window with `fetchOffset` / `fetchLimit`. A series is a candidate
+    /// once per category it is in (its first episode there): the carousel keeps one page per series. That first
+    /// episode may have no artwork of its own while the series has some (`PlaylistSeries.artwork`, from a later
+    /// episode): the carousel takes the series' then, and leaves out series without any.
     static func featured(importIDs: [UUID], onDemand: Bool) -> FetchDescriptor<PlaylistChannel> {
         let live = ChannelContentKind.live.rawValue
         let predicate: Predicate<PlaylistChannel>
         if onDemand {
-            predicate = #Predicate { importIDs.contains($0.importID) && $0.kindRawValue != live && $0.logo != nil }
+            predicate = #Predicate { importIDs.contains($0.importID) && $0.kindRawValue != live && $0.isListed == true && ($0.logo != nil || $0.seriesKey != nil) }
         } else {
             predicate = #Predicate { importIDs.contains($0.importID) && $0.kindRawValue == live && $0.logo != nil }
         }

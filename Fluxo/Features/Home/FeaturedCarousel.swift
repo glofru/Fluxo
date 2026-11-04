@@ -28,6 +28,9 @@ struct FeaturedCarousel: View {
     }
 
     nonisolated static let itemCount = 8
+    #if DEBUG
+    nonisolated static let debugOffsetKey = "debug.featuredOffset"
+    #endif
     static let cardHeight: CGFloat = 240
     /// Height of a billboard page below the top inset.
     static let billboardHeight: CGFloat = 380
@@ -53,6 +56,8 @@ struct FeaturedCarousel: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// Series grouped at launch in a library imported before series existed: the picks are made again.
+    @Environment(PlaylistImportCenter.self) private var importCenter
     @State private var items: [ChannelItem] = []
     @State private var currentID: UUID?
     /// Imports the current `items` were picked from; nil until the first load finishes.
@@ -60,6 +65,11 @@ struct FeaturedCarousel: View {
     /// Billboard: the side safe areas (a phone in landscape, the vertical bar of a foldable iPhone's cover
     /// display). The pages run under them, their content stays clear of them.
     @State private var sideInsets = SideInsets()
+
+    private struct LoadKey: Hashable {
+        let importIDs: [UUID]
+        let seriesRevision: Int
+    }
 
     private struct SideInsets: Equatable {
         var leading: CGFloat = 0
@@ -77,7 +87,7 @@ struct FeaturedCarousel: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: items.isEmpty)
-        .task(id: importIDs) {
+        .task(id: LoadKey(importIDs: importIDs, seriesRevision: importCenter.seriesIndexRevision)) {
             let container = modelContext.container
             let picks = await Self.loadPicks(importIDs: importIDs, container: container)
             guard !Task.isCancelled else {
@@ -202,10 +212,38 @@ struct FeaturedCarousel: View {
                     return []
                 }
                 let day = Calendar.current.ordinality(of: .day, in: .era, for: .now) ?? 0
-                let windows = max(1, count - Self.itemCount + 1)
+                // A wider window than shown: a series listed in several categories counts once (one page
+                // per series, never one per episode), and so do entries listed twice under the same name.
+                let fetched = Self.itemCount * 3
+                let windows = max(1, count - fetched + 1)
                 descriptor.fetchOffset = (day &* 7_919) % windows
-                descriptor.fetchLimit = Self.itemCount
-                return try context.fetch(descriptor).map(ChannelItem.init)
+                #if DEBUG
+                // Debug harness (`featured-offset:<n>`): a given window instead of the day's.
+                if let offset = UserDefaults.fluxo.object(forKey: Self.debugOffsetKey) as? Int {
+                    descriptor.fetchOffset = max(0, offset)
+                }
+                #endif
+                descriptor.fetchLimit = fetched
+                var seen: Set<String> = []
+                let candidates = try context.fetch(descriptor).map(ChannelItem.init).filter { item in
+                    let key = item.seriesBookmarkKey ?? "\(item.playlistID.uuidString)|\(item.displayName.lowercased())"
+                    return seen.insert(key).inserted
+                }
+                // A series whose first episode has no artwork shows the series' poster (from a later episode).
+                let withoutArtwork = candidates.compactMap { $0.logo == nil ? $0.seriesItem : nil }
+                var posters: [String: String] = [:]
+                if !withoutArtwork.isEmpty {
+                    for series in SeriesLookup.summaries(of: withoutArtwork, in: container) {
+                        posters[series.bookmarkKey] = series.artwork
+                    }
+                }
+                let picks = candidates.compactMap { item -> ChannelItem? in
+                    guard item.logo == nil else {
+                        return item
+                    }
+                    return item.seriesBookmarkKey.flatMap { posters[$0] }.map(item.replacingLogo)
+                }
+                return Array(picks.prefix(Self.itemCount))
             } catch {
                 return []
             }
@@ -228,11 +266,16 @@ private struct BillboardPage: View {
     @Environment(\.playChannel) private var playChannel
     @Environment(ChannelLibrary.self) private var library
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.modelContext) private var modelContext
     /// The player zooms out of this page's artwork.
     @State private var sourceID = UUID().uuidString
+    /// A series: the episode Play plays (where the viewer left off).
+    @State private var nextUp: SeriesNextUp?
 
     var body: some View {
-        let isFavorite = library.isFavorite(item)
+        // A series is featured as a whole: its title, Play continues it, and the artwork and title open its page.
+        let series = item.seriesItem
+        let isFavorite = series.map(library.series.isFavorite) ?? library.isFavorite(item)
         let isLarge = dynamicTypeSize.prefersStackedLayout
         ZStack(alignment: .bottomLeading) {
             Color.clear
@@ -240,48 +283,62 @@ private struct BillboardPage: View {
             VStack(alignment: .leading, spacing: 16) {
                 // At the accessibility text sizes the title goes under the artwork, with the whole width.
                 AdaptiveStack(verticalAlignment: .bottom, spacing: 16) {
-                    artwork
-                        .playerTransitionSource(id: sourceID)
-                        .contextMenu {
+                    seriesLink(series) {
+                        artwork
+                    }
+                    .playerTransitionSource(id: sourceID)
+                    .contextMenu {
+                        if let series {
+                            SeriesContextMenu(series: series)
+                        } else {
                             ChannelContextMenu(item: item, isFavorite: isFavorite)
                         }
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(kindLabel)
-                            .font(.caption.weight(.bold))
-                            .textCase(.uppercase)
-                            .foregroundStyle(.tint)
-                        Text(item.displayName)
-                            .font(Theme.Typography.heroTitle)
-                            .lineLimit(isLarge ? 4 : 3)
-                            .minimumScaleFactor(0.85)
-                        if !item.groupName.isEmpty {
-                            Text(item.groupName)
-                                .font(.subheadline)
-                                .foregroundStyle(Theme.secondaryText)
-                                .lineLimit(isLarge ? 2 : 1)
-                        }
                     }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityAddTraits(.isHeader)
+
+                    seriesLink(series) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(kindLabel)
+                                .font(.caption.weight(.bold))
+                                .textCase(.uppercase)
+                                .foregroundStyle(.tint)
+                            Text(series?.title ?? item.displayName)
+                                .font(Theme.Typography.heroTitle)
+                                .lineLimit(isLarge ? 4 : 3)
+                                .minimumScaleFactor(0.85)
+                                .multilineTextAlignment(.leading)
+                            if !item.groupName.isEmpty {
+                                Text(item.groupName)
+                                    .font(.subheadline)
+                                    .foregroundStyle(Theme.secondaryText)
+                                    .lineLimit(isLarge ? 2 : 1)
+                            }
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityAddTraits(.isHeader)
+                    }
                 }
 
                 // Glass belongs to the controls, not to the artwork.
                 GlassEffectContainer(spacing: 10) {
                     HStack(spacing: 10) {
                         Button {
-                            playChannel(item, from: sourceID)
+                            play(series)
                         } label: {
-                            Label(item.kind == .live ? "Watch Live" : "Play", systemImage: "play.fill")
+                            Label(playTitle(series), systemImage: "play.fill")
                                 .font(.headline)
                                 .padding(.horizontal, 8)
+                                .contentTransition(.numericText())
                         }
                         .buttonStyle(.glassProminent)
                         .tint(Theme.accentFill)
 
                         if item.url != nil {
                             Button {
-                                library.toggleFavorite(item)
+                                if let series {
+                                    library.series.toggleFavorite(series)
+                                } else {
+                                    library.toggleFavorite(item)
+                                }
                             } label: {
                                 Image(systemName: isFavorite ? "star.fill" : "star")
                                     .font(.headline)
@@ -304,13 +361,66 @@ private struct BillboardPage: View {
         .frame(height: topInset + FeaturedCarousel.billboardHeight(for: dynamicTypeSize))
         .contentShape(.rect)
         .onTapGesture {
-            playChannel(item, from: sourceID)
+            // A series opens from its artwork and title; elsewhere a tap does nothing rather than start an
+            // episode the viewer did not pick.
+            if series == nil {
+                playChannel(item, from: sourceID)
+            }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityAction(named: item.kind == .live ? "Watch Live" : "Play") {
+        .accessibilityAction(named: Text(playTitle(series))) {
+            play(series)
+        }
+        .modifier(BillboardAccessibilityActions(item: item, series: series, isFavorite: isFavorite))
+        .task(id: series.map { SeriesTaskKey(series: $0, state: library.series.state(for: $0)) }) {
+            guard let series else {
+                return
+            }
+            nextUp = await SeriesPlayback.nextUp(for: series, library: library, container: modelContext.container)
+        }
+    }
+
+    private struct SeriesTaskKey: Hashable {
+        let series: SeriesItem
+        let state: SeriesWatchState?
+    }
+
+    private func playTitle(_ series: SeriesItem?) -> String {
+        guard series != nil else {
+            return item.kind == .live
+                ? String(localized: "Watch Live", comment: "Button of a featured live channel on the Home page.")
+                : String(localized: "Play", comment: "Button of a featured movie on the Home page.")
+        }
+        return SeriesPlayback.buttonTitle(for: nextUp)
+    }
+
+    private func play(_ series: SeriesItem?) {
+        if let series {
+            if let nextUp {
+                playChannel(nextUp.episode, from: sourceID)
+            } else {
+                let container = modelContext.container
+                Task {
+                    await SeriesPlayback.play(series, library: library, container: container, playChannel: playChannel, from: sourceID)
+                }
+            }
+        } else {
             playChannel(item, from: sourceID)
         }
-        .channelAccessibilityActions(item, isFavorite: isFavorite)
+    }
+
+    /// The artwork and the title of a series open its page.
+    @ViewBuilder
+    private func seriesLink<Content: View>(_ series: SeriesItem?, @ViewBuilder content: () -> Content) -> some View {
+        if let series {
+            NavigationLink(value: series.route) {
+                content()
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(Text("Shows the episodes"))
+        } else {
+            content()
+        }
     }
 
     private var kindLabel: String {
@@ -333,7 +443,7 @@ private struct BillboardPage: View {
     private var artwork: some View {
         let isPoster = item.kind.usesPosterArtwork
         let size = isPoster ? Self.posterSize : Self.logoSize
-        LogoImage(source: item.logo, size: isPoster ? size : CGSize(width: size.width - 20, height: size.height - 20), contentMode: isPoster ? .fill : .fit, accessibilityLabel: item.displayName) { phase in
+        LogoImage(source: item.logo, size: isPoster ? size : CGSize(width: size.width - 20, height: size.height - 20), contentMode: isPoster ? .fill : .fit, accessibilityLabel: item.series?.seriesTitle ?? item.displayName) { phase in
             if phase == .unavailable {
                 ArtworkPlaceholder(name: item.displayName, kind: item.kind)
                     .frame(width: size.width, height: size.height)
@@ -346,6 +456,21 @@ private struct BillboardPage: View {
         .clipShape(.rect(cornerRadius: 16, style: .continuous))
         .shadow(color: .black.opacity(0.3), radius: 16, y: 8)
         .artworkIgnoresInvertColors()
+    }
+}
+
+/// The custom actions of a billboard page: a series' or a channel's.
+private struct BillboardAccessibilityActions: ViewModifier {
+    let item: ChannelItem
+    let series: SeriesItem?
+    let isFavorite: Bool
+
+    func body(content: Content) -> some View {
+        if let series {
+            content.seriesAccessibilityActions(series)
+        } else {
+            content.channelAccessibilityActions(item, isFavorite: isFavorite)
+        }
     }
 }
 
@@ -430,10 +555,31 @@ private struct FeaturedCard: View {
     private let shape = RoundedRectangle(cornerRadius: 28, style: .continuous)
 
     var body: some View {
-        let isFavorite = library.isFavorite(item)
-        Button {
-            playChannel(item, from: sourceID)
-        } label: {
+        if let series = item.seriesItem {
+            // A series opens its page (where Play continues it).
+            NavigationLink(value: series.route) {
+                label(isFavorite: library.series.isFavorite(series), title: series.title, action: String(localized: "Episodes", comment: "Call to action of a featured series card (macOS): opens the series page."))
+            }
+            .buttonStyle(CardButtonStyle())
+            .contextMenu {
+                SeriesContextMenu(series: series)
+            }
+            .seriesAccessibilityActions(series)
+        } else {
+            let isFavorite = library.isFavorite(item)
+            Button {
+                playChannel(item, from: sourceID)
+            } label: {
+                label(isFavorite: isFavorite, title: item.displayName, action: item.kind == .live ? String(localized: "Watch Live") : String(localized: "Play"))
+            }
+            .buttonStyle(CardButtonStyle())
+            .contextMenu {
+                ChannelContextMenu(item: item, isFavorite: isFavorite)
+            }
+        }
+    }
+
+    private func label(isFavorite: Bool, title: String, action: String) -> some View {
             HStack(alignment: .bottom, spacing: 18) {
                 artwork
 
@@ -444,7 +590,7 @@ private struct FeaturedCard: View {
                         .padding(.vertical, 5)
                         .glassEffect(.regular, in: .capsule)
 
-                    Text(item.displayName)
+                    Text(title)
                         .font(.title2.bold())
                         .lineLimit(2)
                         .minimumScaleFactor(0.8)
@@ -456,7 +602,7 @@ private struct FeaturedCard: View {
                             .lineLimit(1)
                     }
 
-                    Label(item.kind == .live ? "Watch Live" : "Play", systemImage: "play.fill")
+                    Label(action, systemImage: item.seriesItem == nil ? "play.fill" : "square.stack")
                         .font(.headline)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 9)
@@ -487,11 +633,6 @@ private struct FeaturedCard: View {
             }
             .contentShape(shape)
             .playerTransitionSource(id: sourceID, cornerRadius: 28)
-        }
-        .buttonStyle(CardButtonStyle())
-        .contextMenu {
-            ChannelContextMenu(item: item, isFavorite: isFavorite)
-        }
     }
 
     @ViewBuilder

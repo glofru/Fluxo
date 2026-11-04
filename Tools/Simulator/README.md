@@ -136,6 +136,12 @@ first that contains the text.
 | `add-guide-source[:<days>]` | Adds a guide "added by you", "Debug Guide" (the kind Settings can delete), with half-hour programmes for every live channel over 7 days (1 to 14), written in the background like an import (about 56,000 programmes for the sample library, 112,000 over 14 days). |
 | `delete-guide-source[:<name>]` | Deletes a guide source (the Debug Guide by default) as its Delete button does and checks that its row leaves at once, that no source, programme, channel or manual match of it is left and that the guide no longer uses it; the step fails otherwise. Logs the time and the longest main-actor stall. |
 | `progress:<channel>` | Marks a movie or episode as watched up to 40 % (Continue Watching, progress bars). |
+| `series:<title>` | Pushes the page of a series on Home. |
+| `watched:<episode>` | Records an episode as played to the end (it counts as watched; Continue moves on). |
+| `remove-from-history:<channel>` | Removes a Continue Watching card like its context menu does (for an episode, its whole series). |
+| `favorite-series:<title>` | Adds a series to the favorites. |
+| `featured-series:<playlist>` | Selects a playlist on Home whose billboard then starts at its first series. |
+| `seek-end:<seconds>` | Seeks the playing on-demand item to that many seconds before its end. |
 | `schedule:<channel>` | The schedule sheet of a live channel (needs a guide, e.g. `seed-guide`). |
 | `programme:<channel>[,<artwork>][,long]` | The TV Guide with the programme on now on a channel open (a sheet; the inspector on iPad; needs a guide, e.g. `seed-guide`). `<artwork>` replaces its image with a sample of a size and shape guides carry: `tiny` (32 x 32), `still` (1280 x 720), `huge` (6000 x 3375), `classic` (4:3), `wide` (10:1), `tall` (1:8), `poster` (2:3), `square`, or `none`; `long` gives it a long title, description and category list. |
 | `player:<channel>` | Plays a channel full screen. |
@@ -182,17 +188,21 @@ still run. With `--step-shots` the step is still screenshotted and `run.sh` show
 
 ### Seeded content
 
-`sample` (about 380 entries in 33 groups, ready in about 2 s) is imported through the real pipeline from
+`sample` (about 380 entries in 34 groups, ready in about 2 s) is imported through the real pipeline from
 generated M3U files, then gets favorites, a watch history and three recordings:
 
 - **Sky Italia**: Italian live TV in 8 groups (Sport, Intrattenimento, Cinema, News, Rai, Mediaset, Kids,
   Musica), with "Sky Sport F1", "IT | Sky Sport F1 FHD", quality tags and a very long channel name.
 - **World TV**: 11 country groups ("UK | Sport", France, Deutschland, España…), including Japanese,
   Arabic and Greek names.
-- **Cinema Club**: 96 movies in 8 groups and 4 series groups (episodes `Show S01E01`), with Xtream-style
-  `/movie/` and `/series/` URLs.
+- **Cinema Club**: 96 movies in 8 groups and 11 series in 4 groups, with Xtream-style `/movie/` and `/series/`
+  URLs. Each series names its episodes in another provider style (`Orbit S01E01`, `Harbor Lights S01 E01 - Title`,
+  `The Night Desk 1x01 Title`, `Paper Kings Stagione 1 Episodio 1`, `IT: Office Plants S01E01 [MULTI] FHD`,
+  `Deep Field (2021) S01E01`, `The Lantern Protocol Staffel 1 Folge 1`, `Sky Runners Episode 1`, …); Orbit has
+  three seasons.
 - **Loopback Test**: "Test Pattern (HLS)", "Test Pattern (MPEG-TS)", "Test Clip (MP4)", "Test Clip (Audio and Subtitles)", "Test Clip
-  (MPEG-TS)" (the streams of `test-stream.sh`) and "Unreachable Channel" (fails at once).
+  (MPEG-TS)" (the streams of `test-stream.sh`), "Unreachable Channel" (fails at once), and "Test Series" (two
+  playable 60 s episodes, for the player's next-episode card: `player:Test Series S01E01;wait:62`).
 
 Live channels have iptv-org style `tvg-id`s (`SkySportF1.it`, `BBCOneHD.uk`). Logos and posters are
 drawn locally and stored as `data:image` URIs, in the styles real playlists use: filled, transparent,

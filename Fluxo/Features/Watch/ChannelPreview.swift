@@ -24,6 +24,9 @@ struct ChannelPreview: View {
     /// Width of the card (grids stretch cards to fill their columns); nil for the standard size. The height
     /// keeps the 5:3 (live) or 2:3 (poster) shape.
     var width: CGFloat?
+    /// An episode stands for its whole series (a `SeriesCard` that opens the series page), as in the rows and
+    /// grids of a category; false shows the episode itself (favorites, the history).
+    var presentsSeries = true
 
     @Environment(ChannelLibrary.self) private var library
     @Environment(\.playChannel) private var playChannel
@@ -47,8 +50,33 @@ struct ChannelPreview: View {
     }
 
     var body: some View {
+        if presentsSeries, let series = item.seriesItem {
+            SeriesCard(series: series, subtitle: subtitle, width: width)
+        } else {
+            channelCard
+        }
+    }
+
+    /// The title: the series of an episode ("Breaking Bad"), otherwise the name.
+    private var title: String {
+        item.series?.seriesTitle ?? item.displayName
+    }
+
+    /// The second line: the given one, or for an episode its number and title ("S1 E3 · Pilot").
+    private var secondLine: String? {
+        if let subtitle {
+            return subtitle
+        }
+        guard let series = item.series else {
+            return nil
+        }
+        return TextParts.line([EpisodeFormat.code(series), series.episodeTitle])
+    }
+
+    private var channelCard: some View {
         let isFavorite = library.isFavorite(item)
-        Button {
+        let subtitle = secondLine
+        return Button {
             playChannel(item, from: sourceID)
         } label: {
             VStack(alignment: .leading, spacing: 6) {
@@ -106,7 +134,7 @@ struct ChannelPreview: View {
 
                 // Two lines of title, or one line of title and one of subtitle: cards with and without a
                 // subtitle are as tall, and a one-line name leaves no gap above its subtitle.
-                Text(item.displayName)
+                Text(title)
                     .font(Theme.Typography.cardTitle)
                     // (Not at the accessibility sizes: there the reserved lines would leave large gaps.)
                     .lineLimit(CardTextMetrics.titleLineLimit(subtitle == nil ? 2 : 1, at: dynamicTypeSize), reservesSpace: !dynamicTypeSize.prefersStackedLayout)
@@ -147,7 +175,8 @@ struct ChannelPreview: View {
 
     private func accessibilityLabel(isFavorite: Bool) -> String {
         let progress = library.watchProgress(for: item).map(WatchProgressFormat.remaining)
-        return ChannelAccessibility.label(for: item, isFavorite: isFavorite, extra: [programmeSummary, progress, subtitle])
+        // (An episode's number and title are part of the label already, see `ChannelAccessibility.label`.)
+        return ChannelAccessibility.label(for: item, isFavorite: isFavorite, extra: [programmeSummary, progress, self.subtitle])
     }
 
     private var artworkBackground: some ShapeStyle {

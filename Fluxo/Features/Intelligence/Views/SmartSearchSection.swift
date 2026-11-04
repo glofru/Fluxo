@@ -107,14 +107,14 @@ struct SmartSearchSections: View {
                 HStack(spacing: 8) {
                     ForEach(groups) { group in
                         NavigationLink(value: group.route) {
-                            Label(TextParts.line([group.displayName, group.channelCount.formatted()]), systemImage: group.kind.systemImage)
+                            Label(TextParts.line([group.displayName, group.itemCount.formatted()]), systemImage: group.kind.systemImage)
                                 .font(.subheadline)
                                 .lineLimit(1)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 7)
                         }
                         // The chip shows a bare number; VoiceOver says what it counts.
-                        .accessibilityLabel(TextParts.spoken([group.displayName, String(localized: "\(group.channelCount) channels")]))
+                        .accessibilityLabel(TextParts.spoken([group.displayName, CategoryCard.countText(group)]))
                         .buttonStyle(.plain)
                         .glassEffect(.regular.interactive(), in: .capsule)
                     }

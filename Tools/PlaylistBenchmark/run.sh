@@ -33,6 +33,17 @@ done
     "$ROOT/Fluxo/Features/Playlist/Import/M3UParser.swift" \
     "$ROOT/Fluxo/Features/Playlist/Import/PlaylistImporter.swift" \
     "$ROOT/Fluxo/App/Download/DownloadManager.swift" \
+    "$ROOT/Fluxo/Features/Library/ChannelLibrary.swift" \
+    "$ROOT/Fluxo/Features/Home/HomeQueries.swift" \
+    "$ROOT/Fluxo/Features/Search/SearchMatcher.swift" \
+    "$ROOT/Fluxo/Features/Search/ChannelSearchIndex.swift" \
+    "$ROOT/Fluxo/Features/Series/EpisodeParser.swift" \
+    "$ROOT/Fluxo/Features/Series/SeriesModels.swift" \
+    "$ROOT/Fluxo/Features/Series/SeriesAccumulator.swift" \
+    "$ROOT/Fluxo/Features/Series/SeriesIndexer.swift" \
+    "$ROOT/Fluxo/Features/Series/SeriesLookup.swift" \
+    "$ROOT/Fluxo/Features/Series/SeriesLibrary.swift" \
+    "$ROOT/Fluxo/App/Design/TextParts.swift" \
     "$HERE/BenchSupport.swift" "$HERE/NewMain.swift" 2> "$OUT/build-new.log" \
     || { cat "$OUT/build-new.log"; exit 1; }
 

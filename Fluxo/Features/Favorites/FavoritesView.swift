@@ -40,6 +40,8 @@ struct FavoritesView: View {
     let playlistIDs: [UUID]?
 
     @Query private var favorites: [ChannelBookmark]
+    /// Favorite series (a series as a whole, `SeriesBookmark`), listed in their own section.
+    @Query private var favoriteSeries: [SeriesBookmark]
     @Query(sort: \Playlist.createdOn) private var playlists: [Playlist]
     @AppStorage("favorites.grouping") private var grouping = FavoritesGrouping.kind
     @State private var filter: ChannelContentKind?
@@ -55,13 +57,15 @@ struct FavoritesView: View {
     init(playlistIDs: [UUID]?) {
         self.playlistIDs = playlistIDs
         _favorites = Query(HomeQueries.favorites(playlistIDs: playlistIDs, limit: Self.fetchLimit))
+        _favoriteSeries = Query(SeriesQueries.favorites(playlistIDs: playlistIDs, limit: Self.fetchLimit))
     }
 
     var body: some View {
         let items = favorites.map(ChannelItem.init)
+        let series = favoriteSeries.map(SeriesItem.init)
         let sections = sections(of: items)
         Group {
-            if items.isEmpty {
+            if items.isEmpty && series.isEmpty {
                 emptyState
             } else {
                 List {
@@ -87,6 +91,25 @@ struct FavoritesView: View {
                         } header: {
                             Label("On Now", systemImage: "dot.radiowaves.left.and.right")
                                 .foregroundStyle(Theme.live)
+                        }
+                    }
+
+                    if !series.isEmpty, filter == nil || filter == .series {
+                        Section {
+                            ForEach(series) { series in
+                                SeriesListRow(series: series, subtitle: playlistName(forPlaylist: series.playlistID))
+                            }
+                            .onMove { source, destination in
+                                var reordered = series
+                                reordered.move(fromOffsets: source, toOffset: destination)
+                                library.series.reorderFavorites(reordered.map(\.bookmarkKey))
+                            }
+                        } header: {
+                            Label {
+                                Text(ChannelContentKind.series.title)
+                            } icon: {
+                                Image(systemName: "square.stack")
+                            }
                         }
                     }
 
@@ -122,7 +145,7 @@ struct FavoritesView: View {
         // Channels dragged here (from another window, or the player's channel list) become favorites.
         .favoritesDropDestination(library: library)
         .toolbar {
-            toolbarContent(isEmpty: items.isEmpty)
+            toolbarContent(isEmpty: items.isEmpty && series.isEmpty)
         }
         .task(id: OnNowKey(keys: items.filter { $0.kind == .live }.compactMap(\.bookmarkKey), revision: epg.revision)) {
             await loadOnNow(items)
@@ -139,7 +162,7 @@ struct FavoritesView: View {
     }
 
     private func kinds(of items: [ChannelItem]) -> [ChannelContentKind] {
-        ChannelContentKind.allCases.filter { kind in items.contains { $0.kind == kind } }
+        ChannelContentKind.allCases.filter { kind in items.contains { $0.kind == kind } || (kind == .series && !favoriteSeries.isEmpty) }
     }
 
     private func sections(of items: [ChannelItem]) -> [FavoritesSection] {
@@ -150,7 +173,9 @@ struct FavoritesView: View {
         case .kind:
             return ChannelContentKind.allCases.compactMap { kind in
                 let matching = filtered.filter { $0.kind == kind }
-                return matching.isEmpty ? nil : FavoritesSection(id: "kind-\(kind.rawValue)", title: kind.title, systemImage: kind.systemImage, items: matching)
+                // Next to the favorite series, favorite episodes are "Episodes".
+                let title = kind == .series && !favoriteSeries.isEmpty ? String(localized: "Episodes", comment: "Favorites section: single episodes of series that are favorites.") : kind.title
+                return matching.isEmpty ? nil : FavoritesSection(id: "kind-\(kind.rawValue)", title: title, systemImage: kind.systemImage, items: matching)
             }
         case .playlist:
             var result = playlists.compactMap { playlist -> FavoritesSection? in
@@ -171,6 +196,10 @@ struct FavoritesView: View {
             return nil
         }
         return playlists.first { $0.uuid == item.playlistID }?.name
+    }
+
+    private func playlistName(forPlaylist playlistID: UUID) -> String? {
+        playlists.count > 1 ? playlists.first { $0.uuid == playlistID }?.name : nil
     }
 
     /// Moves within one section, then writes the order of the whole list (the other sections keep their places).
@@ -313,9 +342,14 @@ private struct FavoriteRow: View {
                         .accessibilityHidden(true)
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(item.displayName)
+                        Text(item.series?.seriesTitle ?? item.displayName)
                             .font(.headline)
                             .lineLimit(dynamicTypeSize.prefersStackedLayout ? 5 : 2)
+                        if let episode = item.series {
+                            Text(TextParts.line([EpisodeFormat.code(episode), episode.episodeTitle]))
+                                .font(.subheadline.weight(.medium))
+                                .lineLimit(dynamicTypeSize.prefersStackedLayout ? 3 : 1)
+                        }
                         Text(subtitle)
                             .font(.caption)
                             .foregroundStyle(Theme.secondaryText)

@@ -111,7 +111,7 @@ enum HomeQueriesCheck {
         window.fetchOffset = max(0, onDemandCount - 8) / 2
         window.fetchLimit = 8
         let featured = try timed("featured window (offset, 8)") { try context.fetch(window) }
-        expect(featured.count == 8 && featured.allSatisfy { $0.logo != nil && $0.kind != .live }, "featured window has 8 on-demand items with artwork")
+        expect(featured.count == 8 && featured.allSatisfy { ($0.logo != nil || $0.seriesKey != nil) && $0.kind != .live }, "featured window has 8 on-demand items with artwork (or a series, which has its own)")
 
         print("== search")
         let news = try timed("search 'news' (all kinds, 100)") { try context.fetch(HomeQueries.searchChannels(term: "news", importIDs: [importA, importB], kind: nil, limit: 100)) }

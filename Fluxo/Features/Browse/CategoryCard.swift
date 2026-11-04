@@ -101,7 +101,7 @@ struct CategoryCard: View {
         TextParts.line([Self.countText(group), playlistName])
     }
 
-    /// "128 channels", "42 movies", "16 episodes".
+    /// "128 channels", "42 movies", "3 series · 30 episodes" (or "16 episodes" when the episodes are not grouped).
     static func countText(_ group: GroupItem) -> String {
         switch group.kind {
         case .live:
@@ -109,7 +109,11 @@ struct CategoryCard: View {
         case .movie:
             return String(localized: "\(group.channelCount) movies")
         case .series:
-            return String(localized: "\(group.channelCount) episodes")
+            let episodes = String(localized: "\(group.channelCount) episodes")
+            guard group.seriesCount > 0 else {
+                return episodes
+            }
+            return TextParts.line([String(localized: "\(group.seriesCount) series", comment: "Number of series in a category (a category card)."), episodes])
         }
     }
 
@@ -282,7 +286,7 @@ struct CategoryChipBar: View {
                 SelectionCheckmark(isSelected: isSelected)
                 Text(group.displayName)
                     .lineLimit(1)
-                Text(group.channelCount, format: .number)
+                Text(group.itemCount, format: .number)
                     .font(.caption.weight(.semibold).monospacedDigit())
                     .foregroundStyle(isSelected ? AnyShapeStyle(Color.white.opacity(0.85)) : AnyShapeStyle(Theme.secondaryText))
             }

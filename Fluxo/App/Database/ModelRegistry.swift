@@ -18,6 +18,8 @@ enum ModelRegistry {
         Playlist.self,
         PlaylistChannel.self,
         PlaylistChannelGroup.self,
+        PlaylistSeries.self,
         ProgrammeReminder.self,
+        SeriesBookmark.self,
     ]
 }

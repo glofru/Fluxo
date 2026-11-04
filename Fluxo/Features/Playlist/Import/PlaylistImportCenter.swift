@@ -22,6 +22,9 @@ final class PlaylistImportCenter {
     }
 
     private(set) var progress: [UUID: PlaylistImportProgress] = [:]
+    /// Bumped when the series of existing playlists were grouped at launch (`SeriesIndexer`), so screens that
+    /// fetch once (the featured billboard) fetch again.
+    private(set) var seriesIndexRevision = 0
     /// Last error of a background refresh or delete, for the UI to present.
     var failure: Failure?
 
@@ -44,9 +47,23 @@ final class PlaylistImportCenter {
     init(container: ModelContainer) {
         let importer = PlaylistImporter(container: container)
         self.importer = importer
-        Task.detached(priority: .utility) {
+        Task.detached(priority: .utility) { [weak self] in
             try? await importer.purgeOrphanedContent()
+            // Libraries imported before series existed get them without a refresh.
+            let indexed = await importer.indexSeriesIfNeeded()
+            if !indexed.isEmpty {
+                // Search read the names before the series existed.
+                for importID in indexed {
+                    await ChannelSearchIndex.shared.removeIndex(for: importID)
+                }
+                await self?.seriesWereIndexed()
+            }
         }
+    }
+
+    private func seriesWereIndexed() {
+        seriesIndexRevision += 1
+        NotificationCenter.default.post(name: .seriesIndexDidChange, object: self)
     }
 
     /// Creates a playlist and imports its channels. Cancelling the calling task (or `cancelImport`) stops the
@@ -161,6 +178,8 @@ final class PlaylistImportCenter {
             self?.finishImport(for: playlistUUID, token: token)
             if case .success = result {
                 self?.onPlaylistImported?(playlistUUID)
+                // Favorites and history saved before series existed were linked to their series.
+                NotificationCenter.default.post(name: .seriesIndexDidChange, object: self)
             }
         }
         return task

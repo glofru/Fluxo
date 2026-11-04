@@ -27,6 +27,8 @@ struct ChannelItem: Identifiable, Hashable, Sendable {
     /// Channel number: the position of the entry in its playlist, from 1 (as IPTV set-top boxes number
     /// channels). nil when unknown (bookmarks and guide results keep no position).
     let number: Int?
+    /// The series, season and episode of an episode (`EpisodeParser`); nil for anything else.
+    let series: EpisodeRef?
 
     init(
         id: UUID,
@@ -37,7 +39,8 @@ struct ChannelItem: Identifiable, Hashable, Sendable {
         groupName: String,
         kind: ChannelContentKind,
         tvgID: String? = nil,
-        number: Int? = nil
+        number: Int? = nil,
+        series: EpisodeRef? = nil
     ) {
         self.id = id
         self.playlistID = playlistID
@@ -48,6 +51,7 @@ struct ChannelItem: Identifiable, Hashable, Sendable {
         self.kind = kind
         self.tvgID = tvgID
         self.number = number
+        self.series = series
     }
 
     init(_ channel: PlaylistChannel) {
@@ -60,7 +64,8 @@ struct ChannelItem: Identifiable, Hashable, Sendable {
             groupName: channel.groupName,
             kind: channel.kind,
             tvgID: channel.tvgID,
-            number: channel.sortIndex + 1
+            number: channel.sortIndex + 1,
+            series: channel.episodeRef
         )
     }
 
@@ -73,7 +78,8 @@ struct ChannelItem: Identifiable, Hashable, Sendable {
             url: bookmark.url,
             groupName: bookmark.groupName,
             kind: bookmark.kind,
-            tvgID: bookmark.tvgID
+            tvgID: bookmark.tvgID,
+            series: bookmark.episodeRef
         )
     }
 
@@ -91,6 +97,15 @@ struct ChannelItem: Identifiable, Hashable, Sendable {
 
     var playable: PlayableChannel {
         PlayableChannel(id: id, name: name, logo: logo, url: url)
+    }
+
+    /// The item with the series it belongs to, when it was built without it (App Intents, guide results) and its
+    /// bookmark knows it.
+    func adding(series known: EpisodeRef?) -> ChannelItem {
+        guard series == nil, let known else {
+            return self
+        }
+        return ChannelItem(id: id, playlistID: playlistID, name: name, logo: logo, url: url, groupName: groupName, kind: kind, tvgID: tvgID, number: number, series: known)
     }
 }
 
@@ -117,11 +132,15 @@ final class ChannelLibrary {
     /// card whose favorite state changes when favorites reload or a playlist is deleted).
     private(set) var favoriteToggleCount = 0
 
+    /// Favorite series and what was watched of each (`SeriesLibrary`), kept up to date by this library.
+    let series: SeriesLibrary
+
     @ObservationIgnored
     private let context: ModelContext
 
     init(container: ModelContainer) {
         context = container.mainContext
+        series = SeriesLibrary(context: container.mainContext)
         reloadFavorites()
         reloadWatchProgress()
     }
@@ -170,8 +189,12 @@ final class ChannelLibrary {
         let bookmark = upsertBookmark(for: item, key: key)
         bookmark.lastWatchedAt = .now
         bookmark.watchCount += 1
+        let episode = item.adding(series: bookmark.episodeRef)
         save()
         trimHistory()
+        if episode.series != nil {
+            series.recordWatch(episode)
+        }
     }
 
     /// Saves the user's order of the favorites: `keys` lists bookmark keys from first to last. Favorites that
@@ -202,6 +225,11 @@ final class ChannelLibrary {
         }
         let bookmark = upsertBookmark(for: item, key: key)
         let finished = WatchProgress.isFinished(position: position, duration: duration)
+        let episode = item.adding(series: bookmark.episodeRef)
+        if finished, episode.series != nil, !series.isWatched(episode) {
+            // An episode played to the end counts as watched ("Continue" moves on to the next one).
+            series.setWatched(true, for: [episode])
+        }
         let newPosition = finished ? 0 : max(0, position)
         guard abs(bookmark.resumePosition - newPosition) >= 1 || bookmark.knownDuration != duration else {
             return
@@ -212,15 +240,69 @@ final class ChannelLibrary {
         save()
     }
 
+    /// Marks episodes as watched (their resume positions are cleared) or not watched.
+    func setWatched(_ watched: Bool, episodes: [ChannelItem]) {
+        series.setWatched(watched, for: episodes)
+        guard watched else {
+            return
+        }
+        for episode in episodes {
+            guard let key = episode.bookmarkKey, let bookmark = existingBookmark(key: key), bookmark.resumePosition > 0 else {
+                continue
+            }
+            bookmark.resumePosition = 0
+            watchProgressByKey[key] = nil
+        }
+        save()
+    }
+
+    /// Removes one entry of the history (the history screen lists episodes one by one). For an episode, the
+    /// series forgets it too: it is no longer watched, and the series' last episode becomes the one watched
+    /// before it.
     func removeFromHistory(_ item: ChannelItem) {
         guard let key = item.bookmarkKey, let bookmark = existingBookmark(key: key) else {
             return
         }
+        let episode = item.adding(series: bookmark.episodeRef)
         bookmark.lastWatchedAt = nil
         bookmark.resumePosition = 0
         watchProgressByKey[key] = nil
         deleteIfUnused(bookmark)
         save()
+        if let ref = episode.series {
+            let latest = latestWatchedEpisode(playlistID: episode.playlistID, seriesKey: ref.seriesKey)
+            series.removeFromHistory(episode, latest: latest)
+        }
+    }
+
+    /// "Remove from History" of a Continue Watching card. A series card stands for every episode watched, so
+    /// the whole series leaves the history; anything else is one entry.
+    func removeFromContinueWatching(_ item: ChannelItem) {
+        if let series = item.seriesItem {
+            removeFromHistory(series)
+        } else {
+            removeFromHistory(item)
+        }
+    }
+
+    /// Removes every episode of a series from the history (watch dates and resume positions), and what the
+    /// series knows of them: its last episode and the episodes watched. Favorites stay.
+    func removeFromHistory(_ series: SeriesItem) {
+        do {
+            for bookmark in try context.fetch(Self.episodeBookmarks(playlistID: series.playlistID, seriesKey: series.key)) {
+                guard bookmark.lastWatchedAt != nil || bookmark.resumePosition > 0 else {
+                    continue
+                }
+                bookmark.lastWatchedAt = nil
+                bookmark.resumePosition = 0
+                watchProgressByKey[bookmark.key] = nil
+                deleteIfUnused(bookmark)
+            }
+        } catch {
+            Self.logger.error("Could not remove a series from the history: \(error.localizedDescription, privacy: .public)")
+        }
+        save()
+        self.series.forgetHistory(of: series)
     }
 
     func clearHistory() {
@@ -235,6 +317,7 @@ final class ChannelLibrary {
         }
         watchProgressByKey = [:]
         save()
+        series.clearHistory()
     }
 
     /// Drops the in-memory favorite state of a deleted playlist (its rows are deleted by the importer).
@@ -242,6 +325,7 @@ final class ChannelLibrary {
         let prefix = "\(playlistID.uuidString)|"
         favoriteKeys = favoriteKeys.filter { !$0.hasPrefix(prefix) }
         watchProgressByKey = watchProgressByKey.filter { !$0.key.hasPrefix(prefix) }
+        series.forgetPlaylist(playlistID)
     }
 
     // MARK: - Private
@@ -282,6 +366,10 @@ final class ChannelLibrary {
             bookmark.groupName = item.groupName
             bookmark.kindRawValue = item.kind.rawValue
             bookmark.tvgID = item.tvgID
+            // Items built without the series (App Intents, a guide result) keep what the bookmark knows.
+            if let series = item.series {
+                bookmark.setEpisode(series)
+            }
             return bookmark
         }
         let bookmark = ChannelBookmark(
@@ -295,8 +383,31 @@ final class ChannelLibrary {
             kind: item.kind
         )
         bookmark.tvgID = item.tvgID
+        bookmark.setEpisode(item.series)
         context.insert(bookmark)
         return bookmark
+    }
+
+    /// The bookmarks of the episodes of a series (watched, started or favorite).
+    static func episodeBookmarks(playlistID: UUID, seriesKey: String, watchedOnly: Bool = false) -> FetchDescriptor<ChannelBookmark> {
+        let seriesKey: String? = seriesKey
+        let predicate: Predicate<ChannelBookmark>
+        if watchedOnly {
+            predicate = #Predicate { $0.playlistID == playlistID && $0.seriesKey == seriesKey && $0.lastWatchedAt != nil }
+        } else {
+            predicate = #Predicate { $0.playlistID == playlistID && $0.seriesKey == seriesKey }
+        }
+        return FetchDescriptor<ChannelBookmark>(predicate: predicate, sortBy: [SortDescriptor(\.lastWatchedAt, order: .reverse)])
+    }
+
+    /// The episode of a series watched most recently that is still in the history, with when it was watched.
+    private func latestWatchedEpisode(playlistID: UUID, seriesKey: String) -> (item: ChannelItem, watchedAt: Date)? {
+        var descriptor = Self.episodeBookmarks(playlistID: playlistID, seriesKey: seriesKey, watchedOnly: true)
+        descriptor.fetchLimit = 1
+        guard let bookmark = try? context.fetch(descriptor).first, let watchedAt = bookmark.lastWatchedAt else {
+            return nil
+        }
+        return (ChannelItem(bookmark), watchedAt)
     }
 
     private func deleteIfUnused(_ bookmark: ChannelBookmark) {

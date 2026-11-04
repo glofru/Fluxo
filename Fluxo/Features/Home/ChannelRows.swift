@@ -15,6 +15,8 @@ enum ChannelRoute: Hashable {
     case categories(importIDs: [UUID], kind: ChannelContentKind)
     case favorites(playlistIDs: [UUID]?)
     case history(playlistIDs: [UUID]?)
+    /// A series of a playlist (its visible import is looked up, so the route survives a refresh).
+    case series(playlistID: UUID, key: String, title: String)
 }
 
 extension View {
@@ -46,6 +48,10 @@ private struct ChannelDestinations: ViewModifier {
                     FavoritesView(playlistIDs: playlistIDs)
                 case .history(let playlistIDs):
                     HistoryView(playlistIDs: playlistIDs)
+                case let .series(playlistID, key, title):
+                    SeriesDetailView(playlistID: playlistID, seriesKey: key, title: title)
+                        .id(route)
+                        .zoomTransition(sourceID: route, in: namespace)
                 }
             }
             // Outside the destination too, so pushed screens can mark sources of their own.
@@ -189,6 +195,15 @@ struct GroupItem: Identifiable, Hashable, Sendable {
     let name: String
     let channelCount: Int
     let kind: ChannelContentKind
+    /// Entries the group lists (a series counts once); 0 when unknown.
+    var listedCount = 0
+    /// Series among them.
+    var seriesCount = 0
+
+    /// What the group's screen lists: its channels and movies, and its series once each.
+    var itemCount: Int {
+        listedCount > 0 ? listedCount : channelCount
+    }
 
     var id: String {
         "\(importID.uuidString)|\(name)"
@@ -212,6 +227,8 @@ struct GroupItem: Identifiable, Hashable, Sendable {
         name = group.name
         channelCount = group.channelCount
         kind = group.kind
+        listedCount = group.listedCount
+        seriesCount = group.seriesCount
     }
 
     var route: ChannelRoute {
@@ -239,7 +256,7 @@ struct ChannelGroupRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HomeSectionHeader(title: group.displayName, subtitle: playlistName) {
-                SeeAllLink(route: group.route, count: group.channelCount)
+                SeeAllLink(route: group.route, count: group.itemCount)
             }
 
             CardRow {
@@ -255,22 +272,37 @@ struct ChannelGroupRow: View {
 
 // MARK: - Bookmarks
 
-/// "Continue watching" row: the most recently watched channels of the scope.
+/// "Continue watching" row: the most recently watched channels of the scope. A series shows once, with the
+/// episode to watch now: the last one if it stopped part-way, else the next one.
 struct RecentlyWatchedRow: View {
 
     static let fetchLimit = 20
 
     let playlistIDs: [UUID]?
 
-    @Query private var bookmarks: [ChannelBookmark]
+    @Query private var history: [ChannelBookmark]
     @Environment(ChannelLibrary.self) private var library
 
     init(playlistIDs: [UUID]?) {
         self.playlistIDs = playlistIDs
-        _bookmarks = Query(HomeQueries.recents(playlistIDs: playlistIDs, limit: Self.fetchLimit))
+        // Room for several episodes of one series, which count once.
+        _history = Query(HomeQueries.recents(playlistIDs: playlistIDs, limit: Self.fetchLimit * 2))
+    }
+
+    /// The history with one entry per series (its most recent episode).
+    private var bookmarks: [ChannelBookmark] {
+        var seenSeries: Set<String> = []
+        let entries = history.filter { bookmark in
+            guard let seriesKey = bookmark.seriesKey else {
+                return true
+            }
+            return seenSeries.insert(SeriesBookmark.key(playlistID: bookmark.playlistID, seriesKey: seriesKey)).inserted
+        }
+        return Array(entries.prefix(Self.fetchLimit))
     }
 
     var body: some View {
+        let bookmarks = bookmarks
         if !bookmarks.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 HomeSectionHeader(title: String(localized: "Continue Watching", comment: "Home page section: videos and channels watched recently."), systemImage: "clock.arrow.circlepath") {
@@ -279,11 +311,15 @@ struct RecentlyWatchedRow: View {
                 CardRow {
                     ForEach(bookmarks) { bookmark in
                         let item = ChannelItem(bookmark)
-                        CompactChannelCard(item: item, watchedAt: bookmark.lastWatchedAt, extraActions: [
-                            ChannelCardAction(title: String(localized: "Remove from History", comment: "Context menu action of a Continue Watching item."), systemImage: "minus.circle", role: .destructive) {
-                                library.removeFromHistory(item)
-                            },
-                        ])
+                        // A series card stands for every episode watched: the whole series leaves the history.
+                        let remove = ChannelCardAction(title: String(localized: "Remove from History", comment: "Context menu action of a Continue Watching item."), systemImage: "minus.circle", role: .destructive) {
+                            library.removeFromContinueWatching(item)
+                        }
+                        if item.series != nil {
+                            ContinueSeriesCard(lastEpisode: item, watchedAt: bookmark.lastWatchedAt, extraActions: [remove])
+                        } else {
+                            CompactChannelCard(item: item, watchedAt: bookmark.lastWatchedAt, extraActions: [remove])
+                        }
                     }
                 }
             }
@@ -291,7 +327,7 @@ struct RecentlyWatchedRow: View {
     }
 }
 
-/// "Favorites" row of the scope.
+/// "Favorites" row of the scope: favorite channels, movies, episodes and series, in the user's order.
 struct FavoritesRow: View {
 
     static let fetchLimit = 20
@@ -299,6 +335,7 @@ struct FavoritesRow: View {
     let playlistIDs: [UUID]?
 
     @Query private var bookmarks: [ChannelBookmark]
+    @Query private var seriesBookmarks: [SeriesBookmark]
     @Environment(ChannelLibrary.self) private var library
     /// A channel is dragged over the row (it becomes a favorite when dropped).
     @State private var isDropTarget = false
@@ -306,17 +343,55 @@ struct FavoritesRow: View {
     init(playlistIDs: [UUID]?) {
         self.playlistIDs = playlistIDs
         _bookmarks = Query(HomeQueries.favorites(playlistIDs: playlistIDs, limit: Self.fetchLimit))
+        _seriesBookmarks = Query(SeriesQueries.favorites(playlistIDs: playlistIDs, limit: Self.fetchLimit))
+    }
+
+    private enum Entry: Identifiable {
+        case channel(ChannelBookmark)
+        case series(SeriesBookmark)
+
+        var id: String {
+            switch self {
+            case .channel(let bookmark):
+                return "c|\(bookmark.key)"
+            case .series(let bookmark):
+                return "s|\(bookmark.key)"
+            }
+        }
+
+        var order: (Double, Date) {
+            switch self {
+            case .channel(let bookmark):
+                return (bookmark.favoriteOrder, bookmark.favoritedOn ?? .distantPast)
+            case .series(let bookmark):
+                return (bookmark.favoriteOrder, bookmark.favoritedOn ?? .distantPast)
+            }
+        }
+    }
+
+    /// Both kinds of favorites in one order (they share the `favoriteOrder` scale).
+    private var entries: [Entry] {
+        let merged = bookmarks.map(Entry.channel) + seriesBookmarks.map(Entry.series)
+        return Array(merged.sorted { lhs, rhs in
+            lhs.order.0 != rhs.order.0 ? lhs.order.0 < rhs.order.0 : lhs.order.1 > rhs.order.1
+        }.prefix(Self.fetchLimit))
     }
 
     var body: some View {
-        if !bookmarks.isEmpty {
+        if !bookmarks.isEmpty || !seriesBookmarks.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 HomeSectionHeader(title: String(localized: "Favorites", comment: "Home page section: the favorite channels."), systemImage: "star.fill") {
                     SeeAllLink(route: .favorites(playlistIDs: playlistIDs))
                 }
                 CardRow {
-                    ForEach(bookmarks) { bookmark in
-                        ChannelPreview(item: ChannelItem(bookmark))
+                    ForEach(entries) { entry in
+                        switch entry {
+                        case .channel(let bookmark):
+                            // A favorite episode is that episode, not its series.
+                            ChannelPreview(item: ChannelItem(bookmark), presentsSeries: false)
+                        case .series(let bookmark):
+                            SeriesCard(series: SeriesItem(bookmark))
+                        }
                     }
                 }
             }
@@ -349,12 +424,21 @@ struct CompactChannelCard: View {
     let item: ChannelItem
     var watchedAt: Date?
     var extraActions: [ChannelCardAction] = []
+    /// The episode is the one after the episode watched last ("Up Next").
+    var isUpNext = false
 
     @Environment(ChannelLibrary.self) private var library
     @Environment(\.playChannel) private var playChannel
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var sourceID = UUID().uuidString
     private var scale = CardScale(maximum: 1.25)
+
+    init(item: ChannelItem, watchedAt: Date? = nil, extraActions: [ChannelCardAction] = [], isUpNext: Bool = false) {
+        self.item = item
+        self.watchedAt = watchedAt
+        self.extraActions = extraActions
+        self.isUpNext = isUpNext
+    }
 
     private let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
 
@@ -382,11 +466,25 @@ struct CompactChannelCard: View {
                     }
 
                 VStack(alignment: .leading, spacing: 4) {
-                    // Two lines: long IPTV names ("Test Pattern (MPEG-TS)") stay readable on small phones.
-                    Text(item.displayName)
+                    // Two lines: long IPTV names ("Test Pattern (MPEG-TS)") stay readable on small phones. An
+                    // episode shows its series, then its number and title.
+                    Text(item.series?.seriesTitle ?? item.displayName)
                         .font(Theme.Typography.cardTitle)
-                        .lineLimit(CardTextMetrics.titleLineLimit(2, at: dynamicTypeSize))
+                        .lineLimit(CardTextMetrics.titleLineLimit(item.series == nil ? 2 : 1, at: dynamicTypeSize))
                         .fixedSize(horizontal: false, vertical: true)
+
+                    if let episode = item.series {
+                        HStack(spacing: 5) {
+                            if isUpNext {
+                                Text("Up Next", comment: "Label of the episode of a series to watch next (Continue Watching, the series page, the player).")
+                                    .font(Theme.Typography.cardSubtitle.weight(.bold))
+                                    .foregroundStyle(.tint)
+                            }
+                            Text(TextParts.line([EpisodeFormat.code(episode), episode.episodeTitle]))
+                                .font(Theme.Typography.cardSubtitle.weight(.medium))
+                                .lineLimit(1)
+                        }
+                    }
 
                     if let progress {
                         ProgrammeProgressBar(progress: progress.fraction, tint: Theme.accent, height: 4)
@@ -431,7 +529,7 @@ struct CompactChannelCard: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityValue(isFavorite ? ChannelAccessibility.favoriteState : "")
-        .accessibilityHint(item.kind == .live ? "Plays the channel" : "Resumes the video")
+        .accessibilityHint(item.kind == .live ? "Plays the channel" : (isUpNext ? "Plays the next episode" : "Resumes the video"))
         .channelAccessibilityActions(item, isFavorite: isFavorite)
     }
 
@@ -439,6 +537,41 @@ struct CompactChannelCard: View {
         Text(date, format: .relative(presentation: .named))
             .font(Theme.Typography.cardSubtitle)
             .foregroundStyle(Theme.secondaryText)
+    }
+}
+
+/// Continue Watching for a series: the episode watched last while it stopped part-way, else the next episode
+/// (once the last one was watched to the end), else (the last episode of the series) the last one again.
+struct ContinueSeriesCard: View {
+
+    let lastEpisode: ChannelItem
+    var watchedAt: Date?
+    var extraActions: [ChannelCardAction] = []
+
+    @Environment(ChannelLibrary.self) private var library
+    @Environment(\.modelContext) private var modelContext
+    @State private var upNext: ChannelItem?
+
+    var body: some View {
+        let isFinished = library.watchProgress(for: lastEpisode) == nil && library.series.isWatched(lastEpisode)
+        let shown = isFinished ? (upNext ?? lastEpisode) : lastEpisode
+        CompactChannelCard(item: shown, watchedAt: watchedAt, extraActions: extraActions, isUpNext: isFinished && upNext != nil)
+            .task(id: TaskKey(episode: lastEpisode, isFinished: isFinished)) {
+                guard isFinished else {
+                    upNext = nil
+                    return
+                }
+                let container = modelContext.container
+                let episode = lastEpisode
+                upNext = await Task.detached(priority: .userInitiated) {
+                    SeriesLookup.nextEpisode(after: episode, in: container)
+                }.value
+            }
+    }
+
+    private struct TaskKey: Hashable {
+        let episode: ChannelItem
+        let isFinished: Bool
     }
 }
 
@@ -476,7 +609,8 @@ struct HistoryView: View {
                                         ChannelCardAction(title: String(localized: "Remove from History"), systemImage: "minus.circle", role: .destructive) {
                                             library.removeFromHistory(item)
                                         },
-                                    ]
+                                    ],
+                                    presentsSeries: false
                                 )
                             }
                             .onDelete { offsets in

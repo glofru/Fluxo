@@ -17,12 +17,15 @@
 import Foundation
 import SwiftData
 
-/// One channel or group of an import, as the index keeps it.
+/// One channel, group or series of an import, as the index keeps it.
 struct SearchIndexEntry: Sendable {
     let name: SearchName
     /// `sortIndex` of the row: with the import ID it identifies the row through an indexed fetch.
     let sortIndex: Int
     let kindRawValue: Int
+    /// An episode: the `sortIndex` of its `PlaylistSeries` (Search lists the series once, not every episode);
+    /// -1 otherwise.
+    var seriesSortIndex: Int = -1
 }
 
 /// The normalized names of one import.
@@ -30,9 +33,11 @@ struct ImportSearchIndex: Sendable {
     let importID: UUID
     let channels: [SearchIndexEntry]
     let groups: [SearchIndexEntry]
+    /// Series titles (`PlaylistSeries`).
+    var series: [SearchIndexEntry] = []
 
     var entryCount: Int {
-        channels.count + groups.count
+        channels.count + groups.count + series.count
     }
 }
 
@@ -44,6 +49,8 @@ struct SearchHit: Sendable {
     /// Position of the import in the request, then of the row in the import: ties keep the playlist order.
     let order: Int
     let sortKey: Int
+    /// See `SearchIndexEntry.seriesSortIndex`.
+    var seriesSortIndex: Int = -1
 }
 
 actor ChannelSearchIndex {
@@ -84,6 +91,85 @@ actor ChannelSearchIndex {
         return (channels, groups)
     }
 
+    /// Search with series: like `search`, but the episodes of a series are not channel hits; each series that
+    /// matches (by its title, or by one of its episodes, "Ozymandias") is one series hit instead.
+    func searchCollapsingSeries(_ text: String, importIDs: [UUID], kind: ChannelContentKind?, channelLimit: Int, groupLimit: Int, seriesLimit: Int, container: ModelContainer) async -> (channels: [SearchHit], groups: [SearchHit], series: [SearchHit]) {
+        let query = SearchQuery(text)
+        guard !query.isEmpty else {
+            return ([], [], [])
+        }
+        var loaded: [ImportSearchIndex] = []
+        for importID in importIDs {
+            loaded.append(await index(for: importID, container: container))
+            if Task.isCancelled {
+                return ([], [], [])
+            }
+        }
+        trimCache(keeping: Set(importIDs))
+        let kindValue = kind?.rawValue
+        let collapsed = Self.rankCollapsingSeries(loaded, query: query, kind: kindValue, channelLimit: channelLimit, seriesLimit: kind == nil || kind == .series ? seriesLimit : 0)
+        if Task.isCancelled {
+            return ([], [], [])
+        }
+        let groups = Self.rank(loaded.map { ($0.importID, $0.groups) }, query: query, kind: kindValue, limit: groupLimit)
+        return (collapsed.channels, groups, collapsed.series)
+    }
+
+    /// The series whose title (or one of whose episodes) matches `text`, best first.
+    func searchSeries(_ text: String, importIDs: [UUID], limit: Int, container: ModelContainer) async -> [SearchHit] {
+        await searchCollapsingSeries(text, importIDs: importIDs, kind: .series, channelLimit: 0, groupLimit: 0, seriesLimit: limit, container: container).series
+    }
+
+    nonisolated static func rankCollapsingSeries(_ indexes: [ImportSearchIndex], query: SearchQuery, kind: Int?, channelLimit: Int, seriesLimit: Int) -> (channels: [SearchHit], series: [SearchHit]) {
+        // Every match (no limit yet): episodes are folded into their series before the best are kept.
+        let matches = rank(indexes.map { ($0.importID, $0.channels) }, query: query, kind: kind, limit: Int.max, typoThreshold: channelLimit + seriesLimit)
+        var channels: [SearchHit] = []
+        var bestOfSeries: [SeriesHitKey: SearchHit] = [:]
+        func keep(_ hit: SearchHit, seriesSortIndex: Int) {
+            let key = SeriesHitKey(order: hit.order, sortIndex: seriesSortIndex)
+            if let best = bestOfSeries[key], best.score >= hit.score {
+                return
+            }
+            bestOfSeries[key] = SearchHit(importID: hit.importID, sortIndex: seriesSortIndex, score: hit.score, order: hit.order, sortKey: seriesSortIndex)
+        }
+        for hit in matches {
+            if hit.seriesSortIndex >= 0 {
+                if seriesLimit > 0 {
+                    keep(hit, seriesSortIndex: hit.seriesSortIndex)
+                }
+            } else if channels.count < channelLimit {
+                channels.append(hit)
+            }
+        }
+        if seriesLimit > 0 {
+            // The series title itself: "breaking bad" is an exact match of the series, not of "Breaking Bad S01E01".
+            for hit in rank(indexes.map { ($0.importID, $0.series) }, query: query, kind: nil, limit: Int.max, typoThreshold: seriesLimit) {
+                keep(hit, seriesSortIndex: hit.sortIndex)
+            }
+        }
+        var series = Array(bestOfSeries.values)
+        series.sort(by: isRankedBefore)
+        if series.count > seriesLimit {
+            series.removeSubrange(seriesLimit...)
+        }
+        return (channels, series)
+    }
+
+    private struct SeriesHitKey: Hashable {
+        let order: Int
+        let sortIndex: Int
+    }
+
+    nonisolated static func isRankedBefore(_ lhs: SearchHit, _ rhs: SearchHit) -> Bool {
+        if lhs.score != rhs.score {
+            return lhs.score > rhs.score
+        }
+        if lhs.order != rhs.order {
+            return lhs.order < rhs.order
+        }
+        return lhs.sortKey < rhs.sortKey
+    }
+
     /// How many entries are scored between two cancellation checks.
     static let cancellationCheckInterval = 4_096
 
@@ -92,7 +178,8 @@ actor ChannelSearchIndex {
     /// Returns nothing as soon as the calling task is cancelled (checked every `cancellationCheckInterval`
     /// entries): Search cancels the search of every stale keystroke, and the actor runs one search at a time, so a
     /// stale pass must not delay the current one.
-    nonisolated static func rank(_ sources: [(UUID, [SearchIndexEntry])], query: SearchQuery, kind: Int?, limit: Int) -> [SearchHit] {
+    /// `typoThreshold`: the typo pass runs when the first pass found fewer hits than this (default: `limit`).
+    nonisolated static func rank(_ sources: [(UUID, [SearchIndexEntry])], query: SearchQuery, kind: Int?, limit: Int, typoThreshold: Int? = nil) -> [SearchHit] {
         var hits: [SearchHit] = []
         var unmatched: [(source: Int, entry: Int)] = []
         let allowsTypos = query.tokens.contains { SearchMatcher.typoBudget(forLength: $0.count) > 0 }
@@ -102,13 +189,13 @@ actor ChannelSearchIndex {
                     return []
                 }
                 if let score = SearchMatcher.score(entry.name, query: query, allowTypos: false) {
-                    hits.append(SearchHit(importID: importID, sortIndex: entry.sortIndex, score: score, order: sourceIndex, sortKey: entry.sortIndex))
+                    hits.append(SearchHit(importID: importID, sortIndex: entry.sortIndex, score: score, order: sourceIndex, sortKey: entry.sortIndex, seriesSortIndex: entry.seriesSortIndex))
                 } else if allowsTypos {
                     unmatched.append((sourceIndex, entryIndex))
                 }
             }
         }
-        if hits.count < limit && allowsTypos {
+        if hits.count < (typoThreshold ?? limit) && allowsTypos {
             for (position, (sourceIndex, entryIndex)) in unmatched.enumerated() {
                 if position % cancellationCheckInterval == 0 && Task.isCancelled {
                     return []
@@ -116,19 +203,11 @@ actor ChannelSearchIndex {
                 let (importID, entries) = sources[sourceIndex]
                 let entry = entries[entryIndex]
                 if let score = SearchMatcher.score(entry.name, query: query, allowTypos: true) {
-                    hits.append(SearchHit(importID: importID, sortIndex: entry.sortIndex, score: score, order: sourceIndex, sortKey: entry.sortIndex))
+                    hits.append(SearchHit(importID: importID, sortIndex: entry.sortIndex, score: score, order: sourceIndex, sortKey: entry.sortIndex, seriesSortIndex: entry.seriesSortIndex))
                 }
             }
         }
-        hits.sort { lhs, rhs in
-            if lhs.score != rhs.score {
-                return lhs.score > rhs.score
-            }
-            if lhs.order != rhs.order {
-                return lhs.order < rhs.order
-            }
-            return lhs.sortKey < rhs.sortKey
-        }
+        hits.sort(by: isRankedBefore)
         if hits.count > limit {
             hits.removeSubrange(limit...)
         }
@@ -166,6 +245,15 @@ actor ChannelSearchIndex {
 
     /// Reads the names of one import, in batches, each on its own short-lived context.
     nonisolated static func build(importID: UUID, container: ModelContainer) -> ImportSearchIndex {
+        // The series first: episodes point at theirs.
+        let series: [(key: String, entry: SearchIndexEntry)] = autoreleasepool {
+            let context = ModelContext(container)
+            var descriptor = FetchDescriptor<PlaylistSeries>(predicate: #Predicate { $0.importID == importID }, sortBy: [SortDescriptor(\.sortIndex)])
+            descriptor.propertiesToFetch = [\.key, \.title, \.sortIndex]
+            let rows = (try? context.fetch(descriptor)) ?? []
+            return rows.map { ($0.key, SearchIndexEntry(name: SearchName($0.title), sortIndex: $0.sortIndex, kindRawValue: ChannelContentKind.series.rawValue)) }
+        }
+        let seriesSortIndexByKey = Dictionary(series.map { ($0.key, $0.entry.sortIndex) }, uniquingKeysWith: { first, _ in first })
         var channels: [SearchIndexEntry] = []
         var offset = 0
         while true {
@@ -175,11 +263,18 @@ actor ChannelSearchIndex {
                     predicate: #Predicate { $0.importID == importID },
                     sortBy: [SortDescriptor(\.sortIndex)]
                 )
-                descriptor.propertiesToFetch = [\.name, \.sortIndex, \.kindRawValue]
+                descriptor.propertiesToFetch = [\.name, \.sortIndex, \.kindRawValue, \.seriesKey]
                 descriptor.fetchOffset = offset
                 descriptor.fetchLimit = readBatchSize
                 let rows = (try? context.fetch(descriptor)) ?? []
-                return rows.map { SearchIndexEntry(name: SearchName($0.name ?? ""), sortIndex: $0.sortIndex, kindRawValue: $0.kindRawValue) }
+                return rows.map { row in
+                    SearchIndexEntry(
+                        name: SearchName(row.name ?? ""),
+                        sortIndex: row.sortIndex,
+                        kindRawValue: row.kindRawValue,
+                        seriesSortIndex: row.seriesKey.flatMap { seriesSortIndexByKey[$0] } ?? -1
+                    )
+                }
             }
             channels.append(contentsOf: batch.filter { !$0.name.isEmpty })
             offset += readBatchSize
@@ -197,7 +292,7 @@ actor ChannelSearchIndex {
             // Unnamed groups are listed as "Other".
             return rows.map { SearchIndexEntry(name: SearchName($0.displayName), sortIndex: $0.sortIndex, kindRawValue: $0.kindRawValue) }
         }
-        return ImportSearchIndex(importID: importID, channels: channels, groups: groups)
+        return ImportSearchIndex(importID: importID, channels: channels, groups: groups, series: series.map(\.entry))
     }
 
     private func trimCache(keeping current: Set<UUID>) {
@@ -211,6 +306,12 @@ actor ChannelSearchIndex {
             indexes[importID] = nil
             lastUse[importID] = nil
         }
+    }
+
+    /// Drops the index of an import whose rows changed (its series were grouped after it was read).
+    func removeIndex(for importID: UUID) {
+        indexes[importID] = nil
+        lastUse[importID] = nil
     }
 
     /// Drops every index (e.g. for tests).
