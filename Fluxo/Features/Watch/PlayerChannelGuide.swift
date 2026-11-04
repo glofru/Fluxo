@@ -135,8 +135,10 @@ struct PlayerChannelGuideSheet: View {
 
 extension View {
     /// iPhone: medium (the video stays in view above it) and large; iPad: a form sheet the height of the window.
+    /// The sheet's backdrop is dimmed so its rows stay legible over a bright picture (`playerSheetBackdrop`).
     func playerChannelGuideSheetPresentation() -> some View {
         modifier(PlayerChannelGuideSheetPresentation())
+            .playerSheetBackdrop()
     }
 }
 

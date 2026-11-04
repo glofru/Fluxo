@@ -672,6 +672,12 @@ navigation, intelligence) with `AppDependencyManager`; intents run in the app's 
   in Picture when it can) and opens the TV Guide at today and now, scrolled to the channel's row, which is tinted
   (`AppNavigation.showInGuide(_:)`, `guideFocus`; the list layout scrolls to it too). Player windows of their own
   (iPad) have no Full Guide: their guide is in another window.
+- **Guide legibility over the video** (`Features/Watch/PlayerLegibility.swift`): the channel name, its status and
+  what is on now / next sit on a thin, mostly clear Liquid Glass platter (clear glass with a light dark layer,
+  hugging the text) instead of the top scrim alone, which fades out before the last lines and let bright pictures
+  wash them out; over a white picture the text keeps about 4.5:1, over a dark one the platter is barely visible.
+  The guide sheet over the video gets a dimmed thin-material backdrop instead of the clear sheet glass. Reduce
+  Transparency makes both near-opaque; Increase Contrast dims more and edges the platter with a hairline.
 - **Channel zapping** (`ChannelZapper`): channel up / down plays the next / previous
   channel of the group of the playing channel, in playlist order, wrapping around. Each
   step is one indexed single-row fetch. It is offered for live channels started from a

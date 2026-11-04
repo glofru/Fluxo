@@ -620,7 +620,7 @@ private struct PlayerTopBar: View {
         Group {
             if horizontalSizeClass == .compact {
                 // Phones: the buttons on one row, the channel on the next one, with the whole width for its name.
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 10) {
                         closeButton
                         Spacer(minLength: 8)
@@ -716,6 +716,9 @@ private struct PlayerTopBar: View {
                 PlayerProgrammeInfo(item: viewModel.currentItem, showGuide: showChannelGuide)
             }
         }
+        // A thin, mostly clear glass behind the channel and its guide: the scrim alone fades out before the
+        // last lines, which a bright picture then washes out. It hugs the text, so the video stays in view.
+        .playerLegibilityPlatter()
     }
 
     /// The companion panel of a foldable (see `PlayerPaneLayout`), then Picture in Picture, AirPlay, Cast (iOS;
