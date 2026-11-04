@@ -248,6 +248,20 @@ enum DebugRoutes {
             try DebugGuideSeed.seed(context: context.modelContext, epg: context.epg)
             await context.wait(timeout: 10) { context.epg.hasGuide }
         },
+        DebugRoute("add-guide-source[:<days>]", "Adds a guide added by the user (\"Debug Guide\", half-hour programmes for every live channel, 7 days by default).") { context, argument in
+            let days = argument.isEmpty ? 7 : Int(argument) ?? -1
+            guard (1...14).contains(days) else {
+                throw DebugRouteError.invalidArgument("add-guide-source", argument)
+            }
+            let clock = ContinuousClock()
+            let started = clock.now
+            let added = try await DebugGuideSeed.addUserSource(container: context.modelContext.container, days: days, epg: context.epg)
+            await context.wait(timeout: 10) { context.epg.hasGuide }
+            DebugLaunchOptions.logger.notice("Added \(DebugGuideSeed.userSourceName, privacy: .public): \(added.programmes, privacy: .public) programmes in \(clock.now - started, privacy: .public)")
+        },
+        DebugRoute("delete-guide-source[:<name>]", "Deletes a guide source (the Debug Guide by default) like its Delete button, then checks that nothing of it is left; fails otherwise.") { context, argument in
+            try await DebugGuideDeletionCheck.run(context: context, sourceName: argument.isEmpty ? DebugGuideSeed.userSourceName : argument)
+        },
         DebugRoute("progress:<channel>", "Marks a movie or episode as watched up to 40 % of 90 minutes (Continue Watching).") { context, argument in
             let item = try context.channel(named: argument)
             context.library.recordWatch(item)

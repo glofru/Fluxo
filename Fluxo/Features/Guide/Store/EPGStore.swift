@@ -32,9 +32,25 @@ final class EPGStore {
     private static let logger = Logger(subsystem: "dev.watermelon.Fluxo", category: "EPGStore")
 
     struct Failure: Identifiable {
+        enum Kind {
+            case refresh
+            case deletion
+        }
+
         let id = UUID()
+        var kind = Kind.refresh
         let sourceName: String
         let message: String
+
+        /// The title of the alert that shows it.
+        var title: LocalizedStringResource {
+            switch kind {
+            case .refresh:
+                "Could Not Load the TV Guide"
+            case .deletion:
+                LocalizedStringResource("Could Not Delete the Guide Source", comment: "Title of the alert shown when deleting a TV guide source failed.")
+            }
+        }
     }
 
     /// Bumped when guide data, sources or matching change.
@@ -45,8 +61,11 @@ final class EPGStore {
     private(set) var isReady = false
     /// Progress of the refresh running for each source.
     private(set) var progress: [UUID: EPGRefreshProgress] = [:]
-    /// Last refresh error, for the UI to present. Background refreshes do not set it.
+    /// Last refresh (or deletion) error, for the UI to present. Background refreshes do not set it.
     var failure: Failure?
+    /// Sources being deleted. They are left out of every list at once (`visibleSources(_:)`), while the store
+    /// removes them in the background.
+    private(set) var deletingSourceIDs: Set<UUID> = []
 
     /// Channel whose guide matching the user is editing (presents `GuideChannelPicker`).
     var matchingTarget: ChannelItem?
@@ -199,16 +218,43 @@ final class EPGStore {
         enqueue([sourceID], reportingFailures: true)
     }
 
+    /// Deletes a guide source with its programmes, channels and manual matches. Reminders are snapshots and stay.
+    ///
+    /// The source disappears from the lists right away (`deletingSourceIDs`; call it inside `withAnimation` to
+    /// animate its row out). A refresh of the source is cancelled and awaited first, so that it writes no rows
+    /// once they are deleted. Then the source row goes (the guide stops showing it), then its programmes, off the
+    /// main actor and in chunks (`EPGImporter.deleteRows(of:)`).
     func deleteSource(_ sourceID: UUID) {
-        cancelRefresh(of: sourceID)
+        guard deletingSourceIDs.insert(sourceID).inserted else {
+            return
+        }
+        let runningRefresh = cancelRefresh(of: sourceID)
+        let name = sourceName(sourceID)
         Task { [weak self, importer] in
+            _ = try? await runningRefresh?.value
+            let removed: EPGImporter.RemovedSource
             do {
-                try await importer.deleteSource(sourceID)
+                removed = try await importer.removeSource(sourceID)
             } catch {
                 Self.logger.error("Could not delete a guide source: \(error.localizedDescription, privacy: .public)")
+                self?.deletingSourceIDs.remove(sourceID)
+                self?.failure = Failure(kind: .deletion, sourceName: name, message: error.localizedDescription)
+                return
             }
             await self?.reloadMatching()
+            do {
+                try await importer.deleteRows(of: [removed])
+            } catch {
+                // The source is gone; its leftover rows are orphans, removed at the next launch.
+                Self.logger.error("Could not delete the programmes of a guide source: \(error.localizedDescription, privacy: .public)")
+            }
+            self?.deletingSourceIDs.remove(sourceID)
         }
+    }
+
+    /// `sources` without the ones being deleted.
+    func visibleSources(_ sources: [EPGSource]) -> [EPGSource] {
+        deletingSourceIDs.isEmpty ? sources : sources.filter { !deletingSourceIDs.contains($0.uuid) }
     }
 
     func setEnabled(_ isEnabled: Bool, sourceID: UUID) {
@@ -248,16 +294,21 @@ final class EPGStore {
         }
     }
 
-    private func cancelRefresh(of sourceID: UUID) {
+    /// Cancels the refresh of a source, queued or running. Returns the running one, to await its end.
+    @discardableResult
+    private func cancelRefresh(of sourceID: UUID) -> Task<EPGRefreshSummary, Error>? {
         refreshQueue.removeAll { $0 == sourceID }
         pendingReruns.remove(sourceID)
-        if currentRefresh?.sourceID == sourceID {
-            currentRefresh?.task.cancel()
+        reportsFailures.remove(sourceID)
+        guard let currentRefresh, currentRefresh.sourceID == sourceID else {
+            return nil
         }
+        currentRefresh.task.cancel()
+        return currentRefresh.task
     }
 
     private func enqueue(_ sourceIDs: [UUID], reportingFailures: Bool) {
-        for sourceID in sourceIDs where !refreshQueue.contains(sourceID) {
+        for sourceID in sourceIDs where !refreshQueue.contains(sourceID) && !deletingSourceIDs.contains(sourceID) {
             guard progress[sourceID] == nil else {
                 pendingReruns.insert(sourceID)
                 continue
@@ -308,7 +359,7 @@ final class EPGStore {
             currentRefresh = nil
             reportsFailures.remove(sourceID)
             progress[sourceID] = nil
-            if pendingReruns.remove(sourceID) != nil {
+            if pendingReruns.remove(sourceID) != nil, !deletingSourceIDs.contains(sourceID) {
                 // Usually quick: a 304 or an identical file for unchanged channels is not read again.
                 refreshQueue.append(sourceID)
             }

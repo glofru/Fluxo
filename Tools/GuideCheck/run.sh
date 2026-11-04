@@ -18,6 +18,8 @@ OUT="${OUT:-$(mktemp -d /tmp/fluxo-guide-check.XXXXXX)}"
 SRC="$ROOT/Fluxo"
 
 mkdir -p "$OUT/bin" "$OUT/samples" "$OUT/synthetic"
+# GuideFormat (used by GuideValues) lives in a SwiftUI views file; compile just the enum, taken from the source.
+{ echo "import Foundation"; awk '/^enum GuideFormat/,/^}/' "$SRC/Features/Guide/Views/NowNextViews.swift"; } > "$OUT/GuideFormat.swift"
 xcrun swiftc -O -swift-version 5 -parse-as-library -o "$OUT/bin/guide-check" \
     "$SRC/Features/Playlist/Playlist.swift" \
     "$SRC/Features/Playlist/ChannelContentKind.swift" \
@@ -27,12 +29,15 @@ xcrun swiftc -O -swift-version 5 -parse-as-library -o "$OUT/bin/guide-check" \
     "$SRC/Features/Home/HomeQueries.swift" \
     "$SRC/App/Download/DownloadManager.swift" \
     "$SRC/App/Database/ModelRegistry.swift" \
+    "$SRC/App/Design/TextParts.swift" \
+    "$OUT/GuideFormat.swift" \
     "$SRC/Features/Guide/Model/EPGModels.swift" \
     "$SRC/Features/Guide/Model/GuideValues.swift" \
     "$SRC/Features/Guide/Matching/ChannelNameNormalizer.swift" \
     "$SRC/Features/Guide/Matching/EPGChannelMatcher.swift" \
     "$SRC/Features/Guide/Import/InflatingInputStream.swift" \
     "$SRC/Features/Guide/Import/XMLTVParser.swift" \
+    "$SRC/Features/Guide/Import/GuideRefreshFailure.swift" \
     "$SRC/Features/Guide/Import/EPGImporter.swift" \
     "$SRC/Features/Guide/Store/EPGQueries.swift" \
     "$SRC/Features/Guide/Store/EPGReader.swift" \
@@ -79,5 +84,6 @@ measure "parse guide.xml (all channels)" "$CHECK" parse "$OUT/synthetic/guide.xm
 measure "parse guide.xml.gz (all channels)" "$CHECK" parse "$OUT/synthetic/guide.xml.gz"
 measure "parse guide.xml.gz (200 wanted channels)" "$CHECK" parse "$OUT/synthetic/guide.xml.gz" 200
 measure "import guide.xml.gz (half the channels)" "$CHECK" import "$OUT/synthetic/guide.xml.gz" "$OUT/synthetic/guide.sqlite"
+measure "delete a guide (two full copies)" "$CHECK" delete "$OUT/synthetic/guide.xml.gz" "$OUT/synthetic/delete.sqlite"
 
 echo "Artifacts in $OUT"

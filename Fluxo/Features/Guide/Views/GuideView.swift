@@ -178,6 +178,7 @@ struct GuideView: View {
     @ViewBuilder
     private func content(scope: LibraryScope) -> some View {
         let term = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sources = epg.visibleSources(sources)
         if playlists.isEmpty {
             ContentUnavailableView("No Playlists", systemImage: "calendar.day.timeline.left", description: Text("Add a playlist on the Home screen. Its TV guide shows up here."))
         } else if sources.isEmpty {
@@ -265,7 +266,7 @@ struct GuideView: View {
     }
 
     private var noChannelsDescription: String {
-        let enabled = sources.filter(\.isEnabled)
+        let enabled = epg.visibleSources(sources).filter(\.isEnabled)
         if let error = enabled.compactMap(\.lastErrorMessage).first {
             return error
         }

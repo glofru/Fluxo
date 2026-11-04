@@ -16,6 +16,8 @@ import SwiftData
 ///     guide-check import <file> <store.sqlite>     full import into an on-disk SwiftData store, then every guide query
 ///     guide-check refresh <url> <store.sqlite> <name>...  download + import through EPGImporter.refresh, twice
 ///                                                  (the second download is unchanged and must be skipped)
+///     guide-check delete <file> <store.sqlite>     imports the whole guide twice (two sources), then deletes one while
+///                                                  the guide is read: timings, and nothing of it is left
 ///     guide-check generate <out.xml> <channels> <days>   synthetic XMLTV around now
 ///
 /// Each command prints its timings; run it under `/usr/bin/time -l` for the peak memory (see run.sh).
@@ -49,10 +51,12 @@ enum GuideCheck {
             try await importCheck(URL(fileURLWithPath: arguments[1]), storeURL: URL(fileURLWithPath: arguments[2]))
         case "refresh":
             try await refreshCheck(URL(string: arguments[1]) ?? URL(fileURLWithPath: "/"), storeURL: URL(fileURLWithPath: arguments[2]), names: Array(arguments.dropFirst(3)))
+        case "delete":
+            try await deleteCheck(URL(fileURLWithPath: arguments[1]), storeURL: URL(fileURLWithPath: arguments[2]))
         case "generate":
             try generate(URL(fileURLWithPath: arguments[1]), channels: Int(arguments[2]) ?? 1_000, days: Int(arguments[3]) ?? 7)
         default:
-            print("usage: guide-check selftest | parse <file> [wanted] | import <file> <store> | generate <out> <channels> <days>")
+            print("usage: guide-check selftest | parse <file> [wanted] | import <file> <store> | delete <file> <store> | generate <out> <channels> <days>")
             exit(2)
         }
         if failures > 0 {
@@ -473,6 +477,138 @@ enum GuideCheck {
         expect(channelRows == 0, "deleting the source deletes its channels")
         let attributes = try? FileManager.default.attributesOfItem(atPath: storeURL.path)
         print("  store file: \(((attributes?[.size] as? Int64) ?? 0).formatted(.byteCount(style: .file)))")
+    }
+
+    // MARK: - Delete
+
+    /// Deleting a large guide (bug: "deleting a TV guide crashes"): two user sources with every channel of the
+    /// file, matching overrides on both, then one is deleted while a reader keeps querying the guide. The deleted
+    /// source must leave no source, channel, programme or override row, the other one must be untouched, and the
+    /// guide must keep answering from the other source.
+    @MainActor
+    static func deleteCheck(_ fileURL: URL, storeURL: URL) async throws {
+        for suffix in ["", "-wal", "-shm"] {
+            try? FileManager.default.removeItem(atPath: storeURL.path + suffix)
+        }
+        let schema = Schema(ModelRegistry.all)
+        let container = try ModelContainer(for: schema, configurations: ModelConfiguration(schema: schema, url: storeURL))
+
+        var guideChannels: [XMLTVChannel] = []
+        let collector = XMLTVParser(
+            window: DateInterval(start: .distantPast, end: .distantPast),
+            wantsChannel: { _ in false },
+            wantsChannelID: { _ in false },
+            onChannel: { channel, _ in guideChannels.append(channel) },
+            onProgramme: { _ in }
+        )
+        if let stream = InflatingInputStream(fileURL: fileURL) {
+            stream.open()
+            try collector.parse(stream)
+            stream.close()
+        }
+        let playlistID = UUID()
+        let importID = UUID()
+        let context = ModelContext(container)
+        let playlist = Playlist(uuid: playlistID, name: "Check", url: URL(string: "https://example.com/list.m3u") ?? URL(fileURLWithPath: "/"), createdOn: .now)
+        context.insert(playlist)
+        var wanted = EPGWantedChannels()
+        for (index, channel) in guideChannels.enumerated() {
+            let name = channel.displayNames.first ?? channel.id
+            context.insert(PlaylistChannel(uuid: UUID(), name: name, tvgID: channel.id, groupName: "Live", url: URL(string: "https://example.com/live/\(index)"), sortIndex: index, importID: importID, playlistID: playlistID, kind: .live))
+            wanted.add(tvgID: channel.id, name: name)
+        }
+        playlist.currentImportID = importID
+        try context.save()
+
+        let importer = EPGImporter(container: container)
+        let deleted = try await importer.addSource(url: URL(string: "https://example.com/deleted.xml.gz") ?? fileURL, name: "Deleted")
+        let kept = try await importer.addSource(url: URL(string: "https://example.com/kept.xml.gz") ?? fileURL, name: "Kept")
+        let clock = ContinuousClock()
+        var started = clock.now
+        let first = try await importer.importFile(fileURL, sourceID: deleted, wanted: wanted) { _ in }
+        let second = try await importer.importFile(fileURL, sourceID: kept, wanted: wanted) { _ in }
+        print(String(format: "== delete: 2 sources x %d programmes of %d channels, imported in %.0f ms", first.programmeCount, first.storedChannelCount, milliseconds(clock.now - started)))
+        // Manual matches on both sources (one per channel of the first 50).
+        for (index, channel) in guideChannels.prefix(50).enumerated() {
+            let source = index.isMultiple(of: 2) ? deleted : kept
+            context.insert(EPGChannelOverride(key: "check-\(index)", playlistID: playlistID, sourceID: source, channelID: channel.id))
+        }
+        try context.save()
+
+        let reader = EPGReader(container: container)
+        _ = await reader.reload()
+        let item = ChannelItem(id: UUID(), playlistID: playlistID, name: guideChannels.last?.displayNames.first, logo: nil, url: URL(string: "https://example.com/live/\(guideChannels.count - 1)"), groupName: "Live", kind: .live, tvgID: guideChannels.last?.id)
+
+        // Readers keep querying while the source is deleted, like the open guide grid and now / next would.
+        let reading = Task.detached {
+            var queries = 0
+            while !Task.isCancelled {
+                if let ref = await reader.ref(for: item) {
+                    _ = await reader.programmes(for: ref, in: DateInterval(start: .now, duration: 6 * 3_600))
+                }
+                _ = await reader.nowNext(for: item, at: .now)
+                _ = await reader.guideChannels(importIDs: [importID])
+                queries += 1
+            }
+            return queries
+        }
+        started = clock.now
+        try await importer.deleteSource(deleted)
+        let deleteDuration = clock.now - started
+        _ = await reader.reload()
+        reading.cancel()
+        let queries = await reading.value
+        print(String(format: "  deleteSource: %.0f ms (%d guide reads meanwhile)", milliseconds(deleteDuration), queries))
+
+        let check = ModelContext(container)
+        let deletedOptional: UUID? = deleted
+        expect(try check.fetchCount(EPGQueries.source(uuid: deleted)) == 0, "the source is gone")
+        expect(try check.fetchCount(FetchDescriptor<EPGProgramme>(predicate: #Predicate { $0.sourceID == deleted })) == 0, "its programmes are gone")
+        expect(try check.fetchCount(FetchDescriptor<EPGChannel>(predicate: #Predicate { $0.sourceID == deleted })) == 0, "its channels are gone")
+        expect(try check.fetchCount(FetchDescriptor<EPGChannelOverride>(predicate: #Predicate { $0.sourceID == deletedOptional })) == 0, "its manual matches are gone")
+        expect(try check.fetchCount(FetchDescriptor<EPGProgramme>(predicate: #Predicate { $0.sourceID == kept })) == second.programmeCount, "the other source keeps its \(second.programmeCount) programmes")
+        expect(try check.fetchCount(FetchDescriptor<EPGChannelOverride>()) == 25, "the other source keeps its manual matches")
+        let ref = await reader.ref(for: item)
+        expect(ref?.sourceID == kept, "the channel now has the guide of the other source")
+        expect(await reader.nowNext(for: item, at: .now)?.current != nil, "now / next still answers")
+
+        // Deleting a source that is already gone (a second tap, or a refresh that removed it) is harmless.
+        try await importer.deleteSource(deleted)
+        expect(true, "deleting it again does nothing")
+
+        // Deleted while its guide is being imported (a playlist sync or another path that does not wait for the
+        // refresh to stop): the import fails, and nothing of the source is left once it has stopped.
+        let racing = try await importer.addSource(url: URL(string: "https://example.com/racing.xml.gz") ?? fileURL, name: "Racing")
+        let racingImport = Task {
+            try await importer.importFile(fileURL, sourceID: racing, wanted: wanted) { _ in }
+        }
+        let deadline = clock.now + .seconds(120)
+        while try ModelContext(container).fetchCount(FetchDescriptor<EPGProgramme>(predicate: #Predicate { $0.sourceID == racing })) == 0, clock.now < deadline {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        try await importer.deleteSource(racing)
+        let racingResult = await racingImport.result
+        if case .success = racingResult {
+            expect(false, "the import of a deleted source fails")
+        } else {
+            expect(true, "the import of a deleted source fails")
+        }
+        let racingRows = try ModelContext(container).fetchCount(FetchDescriptor<EPGProgramme>(predicate: #Predicate { $0.sourceID == racing }))
+            + ModelContext(container).fetchCount(FetchDescriptor<EPGChannel>(predicate: #Predicate { $0.sourceID == racing }))
+        expect(racingRows == 0, "nothing of a source deleted during its import is left (\(racingRows) rows)")
+
+        // Cancelled, awaited, then deleted, as EPGStore.deleteSource does with a running refresh.
+        let cancelled = try await importer.addSource(url: URL(string: "https://example.com/cancelled.xml.gz") ?? fileURL, name: "Cancelled")
+        let cancelledImport = Task {
+            try await importer.importFile(fileURL, sourceID: cancelled, wanted: wanted) { _ in }
+        }
+        try await Task.sleep(for: .seconds(2))
+        cancelledImport.cancel()
+        _ = await cancelledImport.result
+        try await importer.deleteSource(cancelled)
+        let cancelledRows = try ModelContext(container).fetchCount(FetchDescriptor<EPGProgramme>(predicate: #Predicate { $0.sourceID == cancelled }))
+        expect(cancelledRows == 0, "nothing of a source deleted after a cancelled refresh is left")
+        expect(try ModelContext(container).fetchCount(FetchDescriptor<EPGProgramme>(predicate: #Predicate { $0.sourceID == kept })) == second.programmeCount, "the other source is still untouched")
     }
 
     // MARK: - Refresh

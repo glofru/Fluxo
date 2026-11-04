@@ -23,7 +23,8 @@ struct GuideSettingsSection: View {
 
     var body: some View {
         Section {
-            ForEach(sources) { source in
+            // Sources being deleted leave at once, in the transaction of the confirmation (see `GuideSourceRow`).
+            ForEach(epg.visibleSources(sources)) { source in
                 GuideSourceRow(source: source, playlistName: playlists.first { $0.uuid == source.playlistID }?.name, progress: epg.progress[source.uuid])
             }
 
@@ -37,7 +38,7 @@ struct GuideSettingsSection: View {
             Button("Refresh Guide Now", systemImage: "arrow.clockwise") {
                 epg.refreshAll()
             }
-            .disabled(sources.isEmpty || epg.isRefreshing)
+            .disabled(epg.visibleSources(sources).isEmpty || epg.isRefreshing)
 
             Picker("Remind Me", selection: $leadMinutes) {
                 ForEach(ReminderCenter.leadChoices, id: \.self) { minutes in
@@ -91,7 +92,8 @@ private struct GuideSourceRow: View {
     let progress: EPGRefreshProgress?
 
     @Environment(EPGStore.self) private var epg
-    @State private var confirmsDelete = false
+    /// The name of the source the delete confirmation asks about, taken when it was asked.
+    @State private var deletionName: String?
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -122,22 +124,38 @@ private struct GuideSourceRow: View {
         }
         .swipeActions(edge: .trailing) {
             if source.isUserAdded {
-                Button("Delete", systemImage: "trash", role: .destructive) {
-                    confirmsDelete = true
+                // Not `role: .destructive`: a destructive swipe action makes the list remove the row at once,
+                // expecting the data to follow in the same update. Here it only asks first, so the list and its
+                // data disagreed and UICollectionView raised "invalid number of items" (the crash when deleting a
+                // guide). The row goes when the deletion is confirmed, together with its data.
+                Button("Delete", systemImage: "trash") {
+                    askToDelete()
                 }
+                .tint(.red)
             }
             Button("Refresh", systemImage: "arrow.clockwise") {
                 epg.refresh(source.uuid)
             }
             .tint(Theme.accentFill)
         }
-        .confirmationDialog("Delete \(source.name)?", isPresented: $confirmsDelete, titleVisibility: .visible) {
+        .confirmationDialog(
+            Text("Delete \(deletionName ?? "")?"),
+            isPresented: Binding(get: { deletionName != nil }, set: { if !$0 { deletionName = nil } }),
+            titleVisibility: .visible
+        ) {
             Button("Delete Guide Source", role: .destructive) {
-                epg.deleteSource(source.uuid)
+                let sourceID = source.uuid
+                withAnimation {
+                    epg.deleteSource(sourceID)
+                }
             }
         } message: {
             Text("Its programmes are removed. Reminders you set stay.")
         }
+    }
+
+    private func askToDelete() {
+        deletionName = source.name
     }
 
     @ViewBuilder
@@ -152,7 +170,7 @@ private struct GuideSourceRow: View {
         if source.isUserAdded {
             Divider()
             Button("Delete…", systemImage: "trash", role: .destructive) {
-                confirmsDelete = true
+                askToDelete()
             }
         }
     }

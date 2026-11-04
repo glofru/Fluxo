@@ -155,7 +155,7 @@ private struct GuideManagement: ViewModifier {
                 GuideChannelPicker(item: item)
             }
             .alert(
-                "Could Not Load the TV Guide",
+                Text(epg.failure?.title ?? "Could Not Load the TV Guide"),
                 isPresented: Binding(get: { shows(.guideFailure, isActive: epg.failure != nil) }, set: { if !$0 { epg.failure = nil } }),
                 presenting: epg.failure
             ) { _ in

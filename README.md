@@ -364,6 +364,14 @@ channels that have a guide, programme details, programme search and reminders.
   guides of its header load, and guides already loaded for it are read again if its channels changed), from Settings / the Guide / File › Refresh TV Guide (⌥⌘R), and from a background app
   refresh task on iOS (`BGTaskSchedulerPermittedIdentifiers` and the `fetch` background mode in Info.plist).
   Programmes that ended more than 6 hours ago are deleted.
+- **Deleting a source** (Settings › TV Guide or Guide Sources: swipe, or the context menu; only guides you added,
+  since a playlist's own guides follow its header): after the confirmation the row leaves at once
+  (`EPGStore.deletingSourceIDs`), a running refresh of it is cancelled and awaited, then the source row and its
+  manual matches are removed in one save (the guide stops showing it) and its programmes and channels are
+  deleted off the main actor, 100 channels per save, so no save holds the store's write lock for long (about a
+  second for 100,000 programmes). Reminders are snapshots and stay. Rows left by a deletion cut short are orphans,
+  removed at the next launch. The swipe action has no destructive role on purpose: a destructive swipe action
+  removes the row at once, which crashed the list when the deletion was only being confirmed.
 - **Matching** (`EPGChannelMatcher`, `ChannelNameNormalizer`): `tvg-id` first (case-insensitive, with or without
   a `@feed` suffix), then the normalized name (case, diacritics, width, provider prefixes such as `IT:` or
   `|UK|`, bracketed notes, HD / FHD / 4K / HEVC / 1080p tags and a trailing country code removed), then the
@@ -386,6 +394,11 @@ synthetic large guide, with timings and peak memory:
 ```sh
 Tools/GuideCheck/run.sh                 # 1,500 channels x 8 days synthetic; OFFLINE=1 skips the downloads
 ```
+
+It also deletes a full copy of the synthetic guide while the guide is read, and sources whose import is running
+or was cancelled, and checks that nothing of them is left (`guide-check delete`). In the app, the
+`delete-guide-source` debug route and `GestureTests.testDeleteGuideSource…` check the same with the Delete
+button and real touches (see `Tools/Simulator/README.md`).
 
 Debug builds also accept `-FluxoDebugGuideDemo YES` (an in-memory store with sample playlists and a sample
 guide; the real library is not opened), `-FluxoDebugOpenGuide YES`, `-FluxoDebugGuideSearch <term>`,

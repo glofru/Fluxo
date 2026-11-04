@@ -18249,6 +18249,9 @@
         }
       }
     },
+    "Could Not Delete the Guide Source" : {
+      "comment" : "Title of the alert shown when deleting a TV guide source failed."
+    },
     "Could Not Load the TV Guide" : {
       "comment" : "Text — guide channel picker (match a channel to the TV guide).",
       "localizations" : {

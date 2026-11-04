@@ -8,7 +8,8 @@
 //  it covers the whole screen in portrait and landscape (also pulled up), Home's cover stretches over a real
 //  pull down, scrubbing the timeline never closes the player, its X stops playback, and nothing shows above the
 //  tab bar while nothing plays. On a (simulated) foldable, the channel list beside the video scrolls and switches
-//  channel without moving the player.
+//  channel without moving the player. Deleting a TV guide source (swipe, context menu, the Guide Sources sheet)
+//  leaves the app running and the row gone.
 //  The app runs with the debug harness (seeded in-memory library, routes) and the test streams of
 //  test-stream.sh. Screenshots of the steps go to $FLUXO_SHOTS (default /tmp/fluxo-shots/gesture-tests).
 //
@@ -415,5 +416,93 @@ final class GestureTests: XCTestCase {
         let added = app.staticTexts.matching(NSPredicate(format: "label == 'Sky Sport MotoGP'")).firstMatch
         XCTAssertTrue(added.waitForExistence(timeout: 5), "the dropped channel is a favorite")
         XCUIDevice.shared.orientation = .portrait
+    }
+    // MARK: - Deleting a TV guide
+
+    /// The row of the guide `add-guide-source` adds ("Debug Guide"), scrolled into view.
+    func debugGuideRow(_ app: XCUIApplication, file: StaticString = #file, line: UInt = #line) -> XCUIElement {
+        let row = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Debug Guide'")).firstMatch
+        // Seeding the guide takes a few seconds; the row exists once it is stored and scrolled near (lists are lazy).
+        let deadline = Date().addingTimeInterval(60)
+        while !(row.exists && row.isHittable) && Date() < deadline {
+            if !row.waitForExistence(timeout: 3) || !row.isHittable {
+                app.swipeUp(velocity: .slow)
+            }
+        }
+        // Clear of the bars: a swipe or long press on a row under the tab bar would hit the bar.
+        if row.exists, row.frame.maxY > app.frame.maxY - 200 {
+            app.swipeUp(velocity: .slow)
+            sleep(1)
+        }
+        XCTAssertTrue(row.exists && row.isHittable, "the Debug Guide row is on screen", file: file, line: line)
+        return row
+    }
+
+    /// Confirms the deletion, then checks that the app is still running and the row went away.
+    func confirmGuideDeletion(_ app: XCUIApplication, shotName: String, file: StaticString = #file, line: UInt = #line) {
+        let confirm = app.buttons["Delete Guide Source"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5), "the delete confirmation", file: file, line: line)
+        shot("\(shotName)-1-confirm")
+        confirm.tap()
+        sleep(4)
+        shot("\(shotName)-2-deleted")
+        XCTAssertEqual(app.state, .runningForeground, "Fluxo is still running after deleting the guide", file: file, line: line)
+        let gone = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Debug Guide'")).firstMatch
+        XCTAssertFalse(gone.exists, "the deleted guide's row is gone", file: file, line: line)
+    }
+
+    /// The app keeps working after the deletion: the Guide tab and Home render (from Settings).
+    func checkGuideAndHomeAfterDeletion(_ app: XCUIApplication, shotName: String, file: StaticString = #file, line: UInt = #line) {
+        scrollToTop(app)
+        tabButton(app, "Guide").tap()
+        sleep(2)
+        shot("\(shotName)-3-guide")
+        tabButton(app, "Home").tap()
+        sleep(2)
+        XCTAssertEqual(app.state, .runningForeground, "Fluxo is still running on Guide and Home", file: file, line: line)
+    }
+
+    /// Settings: swipe the guide row, Delete, confirm. With a playlist guide as well, so the Guide keeps a grid.
+    func testDeleteGuideSourceBySwipeInSettings() {
+        let app = launch("seed-guide;add-guide-source;guide;wait:2;settings")
+        let row = debugGuideRow(app)
+        row.swipeLeft()
+        let delete = app.buttons["Delete"]
+        XCTAssertTrue(delete.waitForExistence(timeout: 5), "the Delete swipe action")
+        delete.tap()
+        confirmGuideDeletion(app, shotName: "guide-delete-swipe")
+        checkGuideAndHomeAfterDeletion(app, shotName: "guide-delete-swipe")
+    }
+
+    /// Settings: the context menu's Delete…, the only guide of the library.
+    func testDeleteGuideSourceByContextMenuInSettings() {
+        let app = launch("add-guide-source;guide;wait:2;settings")
+        let row = debugGuideRow(app)
+        row.press(forDuration: 1.2)
+        let delete = app.buttons["Delete…"]
+        XCTAssertTrue(delete.waitForExistence(timeout: 5), "Delete… in the context menu")
+        delete.tap()
+        confirmGuideDeletion(app, shotName: "guide-delete-menu")
+        checkGuideAndHomeAfterDeletion(app, shotName: "guide-delete-menu")
+    }
+
+    /// The Guide Sources sheet over the Guide grid: deleting the only guide turns the Guide behind the sheet into
+    /// its "no guide" screen while the sheet is still up.
+    func testDeleteGuideSourceInGuideSourcesSheet() {
+        let app = launch("add-guide-source;guide", arguments: ["-FluxoDebugGuideSources", "YES"])
+        let row = debugGuideRow(app)
+        sleep(1)
+        row.swipeLeft()
+        let delete = app.buttons["Delete"]
+        XCTAssertTrue(delete.waitForExistence(timeout: 5), "the Delete swipe action")
+        delete.tap()
+        confirmGuideDeletion(app, shotName: "guide-delete-sheet")
+        let close = app.buttons["Close"]
+        XCTAssertTrue(close.waitForExistence(timeout: 5), "the sheet's Close button")
+        close.tap()
+        sleep(2)
+        shot("guide-delete-sheet-3-guide")
+        XCTAssertEqual(app.state, .runningForeground, "Fluxo is still running on the Guide")
+        XCTAssertTrue(app.buttons["Add Guide Source"].waitForExistence(timeout: 5), "the Guide shows its screen without guides")
     }
 }

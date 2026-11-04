@@ -233,24 +233,26 @@ actor EPGImporter {
     /// Creates `EPGSource`s for the guide URLs the playlist header lists and removes the ones it no longer lists.
     /// Returns the sources that were added (they need a first refresh).
     @discardableResult
-    func syncSources(ofPlaylist playlistID: UUID) throws -> [UUID] {
+    func syncSources(ofPlaylist playlistID: UUID) async throws -> [UUID] {
         let context = makeContext()
         var descriptor = FetchDescriptor<Playlist>(predicate: #Predicate { $0.uuid == playlistID })
         descriptor.fetchLimit = 1
         let existing = try context.fetch(EPGQueries.sources(playlistID: playlistID))
         guard let playlist = try context.fetch(descriptor).first else {
+            let removed = existing.map(RemovedSource.init)
             for source in existing {
-                try deleteRows(ofSource: source.uuid, in: context)
                 context.delete(source)
             }
             try context.save()
+            try await deleteRows(of: removed)
             return []
         }
 
         let urls = Self.guideURLs(in: playlist.guideURLString)
         var added: [UUID] = []
+        var removed: [RemovedSource] = []
         for source in existing where !urls.contains(source.url) {
-            try deleteRows(ofSource: source.uuid, in: context)
+            removed.append(RemovedSource(source))
             context.delete(source)
         }
         let known = Set(existing.map(\.url))
@@ -260,6 +262,7 @@ actor EPGImporter {
             added.append(source.uuid)
         }
         try context.save()
+        try await deleteRows(of: removed)
         return added
     }
 
@@ -350,13 +353,13 @@ actor EPGImporter {
 
     /// `syncSources(ofPlaylist:)` for every playlist, and removal of the sources of deleted playlists.
     @discardableResult
-    func syncAllSources() throws -> [UUID] {
+    func syncAllSources() async throws -> [UUID] {
         let context = makeContext()
         let playlistIDs = try context.fetch(FetchDescriptor<Playlist>()).map(\.uuid)
         let sourcePlaylistIDs = Set(try context.fetch(EPGQueries.sources()).compactMap(\.playlistID))
         var added: [UUID] = []
         for playlistID in Set(playlistIDs).union(sourcePlaylistIDs) {
-            added += try syncSources(ofPlaylist: playlistID)
+            added += try await syncSources(ofPlaylist: playlistID)
         }
         return added
     }
@@ -382,14 +385,75 @@ actor EPGImporter {
         try context.save()
     }
 
-    func deleteSource(_ sourceID: UUID) throws {
+    /// Deletes a source with its manual matches, channels and programmes (`removeSource` then `deleteRows`).
+    /// Deleting a source that no longer exists does nothing.
+    func deleteSource(_ sourceID: UUID) async throws {
+        let removed = try removeSource(sourceID)
+        try await deleteRows(of: [removed])
+    }
+
+    /// The quick part of deleting a source: the source row and the manual matches that point to it, in one save,
+    /// so the guide stops showing it at once (`EPGReader` only reads the programmes of existing sources). Returns
+    /// what `deleteRows(of:)` must then remove.
+    func removeSource(_ sourceID: UUID) throws -> RemovedSource {
         let context = makeContext()
-        try deleteRows(ofSource: sourceID, in: context)
-        try context.delete(model: EPGChannelOverride.self, where: Self.overridePredicate(sourceID: sourceID))
+        var removed = RemovedSource(sourceID: sourceID, importIDs: [])
         if let source = try context.fetch(EPGQueries.source(uuid: sourceID)).first {
+            removed = RemovedSource(source)
             context.delete(source)
         }
+        try context.delete(model: EPGChannelOverride.self, where: Self.overridePredicate(sourceID: sourceID))
         try context.save()
+        return removed
+    }
+
+    /// The slow part of deleting sources: their programmes (hundreds of thousands for a large guide) and channels.
+    ///
+    /// Programmes go a few channels at a time through the `importID` + `channelID` index, each chunk in its own
+    /// save: one huge delete would hold the store's write lock for seconds and block every other save meanwhile
+    /// (the main context's included). A last pass by `sourceID` removes rows of any other import of the source
+    /// (a refresh that was cut short). Rows this leaves behind (the app quit meanwhile) are orphans, which
+    /// `purgeOrphanedContent()` removes at the next launch.
+    func deleteRows(of sources: [RemovedSource]) async throws {
+        for source in sources {
+            for importID in source.importIDs {
+                var descriptor = FetchDescriptor<EPGChannel>(predicate: #Predicate { $0.importID == importID && $0.hasProgrammes == true })
+                descriptor.propertiesToFetch = [\.channelID]
+                let channelIDs = Array(Set(try makeContext().fetch(descriptor).map(\.channelID)))
+                for start in stride(from: 0, to: channelIDs.count, by: Self.deletionChunkChannels) {
+                    let chunk = Array(channelIDs[start..<min(start + Self.deletionChunkChannels, channelIDs.count)])
+                    let context = makeContext()
+                    try context.delete(model: EPGProgramme.self, where: #Predicate { $0.importID == importID && chunk.contains($0.channelID) })
+                    try context.save()
+                    await Task.yield()
+                }
+            }
+            let context = makeContext()
+            let sourceID = source.sourceID
+            try context.delete(model: EPGProgramme.self, where: #Predicate { $0.sourceID == sourceID })
+            try context.delete(model: EPGChannel.self, where: #Predicate { $0.sourceID == sourceID })
+            try context.save()
+        }
+    }
+
+    /// Channels whose programmes `deleteRows(of:)` deletes in one save (a few tens of thousands of rows for a
+    /// week of half-hour programmes).
+    static let deletionChunkChannels = 100
+
+    /// A source removed from the store whose guide rows are still to be deleted.
+    struct RemovedSource: Sendable {
+        let sourceID: UUID
+        /// The imports whose rows are deleted through the index (the current one).
+        let importIDs: [UUID]
+
+        init(sourceID: UUID, importIDs: [UUID]) {
+            self.sourceID = sourceID
+            self.importIDs = importIDs
+        }
+
+        init(_ source: EPGSource) {
+            self.init(sourceID: source.uuid, importIDs: source.currentImportID.map { [$0] } ?? [])
+        }
     }
 
     // MARK: - Maintenance
@@ -403,16 +467,18 @@ actor EPGImporter {
     }
 
     /// Removes guide rows that no source shows (an interrupted refresh) and sources of deleted playlists.
-    func purgeOrphanedContent() throws {
+    func purgeOrphanedContent() async throws {
         let context = makeContext()
         let playlistIDs = Set(try context.fetch(FetchDescriptor<Playlist>()).map(\.uuid))
+        var removed: [RemovedSource] = []
         for source in try context.fetch(EPGQueries.sources()) {
             if let playlistID = source.playlistID, !playlistIDs.contains(playlistID) {
-                try deleteRows(ofSource: source.uuid, in: context)
+                removed.append(RemovedSource(source))
                 context.delete(source)
             }
         }
         try context.save()
+        try await deleteRows(of: removed)
 
         let keep = Array(Set(try context.fetch(EPGQueries.sources()).compactMap(\.currentImportID)).union(runningImports))
         try context.delete(model: EPGProgramme.self, where: #Predicate { !keep.contains($0.importID) })
@@ -619,11 +685,6 @@ actor EPGImporter {
         } catch {
             Self.logger.error("Could not record a guide failure: \(error.localizedDescription, privacy: .public)")
         }
-    }
-
-    private func deleteRows(ofSource sourceID: UUID, in context: ModelContext) throws {
-        try context.delete(model: EPGProgramme.self, where: #Predicate { $0.sourceID == sourceID })
-        try context.delete(model: EPGChannel.self, where: #Predicate { $0.sourceID == sourceID })
     }
 
     private static func overridePredicate(sourceID: UUID) -> Predicate<EPGChannelOverride> {
