@@ -130,12 +130,6 @@ struct DebugRouteContext {
     }
 
     private func prepareForPlayback() async {
-        // A sheet would hide both the full-screen player and the mini player, and a full-screen cover presented
-        // while the sheet is still animating away is dropped: close it and let the dismissal finish first.
-        if navigation.isShowingRecordings {
-            navigation.isShowingRecordings = false
-            try? await Task.sleep(for: .milliseconds(800))
-        }
         player.presentationSourceID = nil
     }
 }
@@ -161,10 +155,9 @@ enum DebugRoutes {
         DebugRoute("home", "Home, from its root.") { context, _ in
             context.navigation.show(.home)
         },
-        DebugRoute("tab:<home|guide|favorites|settings|search|history|recordings|playlist name>", "Selects a tab (iOS; history, recordings and playlists are iPad sidebar entries).") { context, argument in
+        DebugRoute("tab:<home|guide|library|settings|search|playlist name>", "Selects a tab (iOS; playlists are iPad sidebar entries).") { context, argument in
             let tabs: [String: AppNavigation.Tab] = [
-                "home": .home, "guide": .guide, "favorites": .favorites, "settings": .settings, "search": .search,
-                "history": .history, "recordings": .recordings,
+                "home": .home, "guide": .guide, "library": .library, "settings": .settings, "search": .search,
             ]
             if let tab = tabs[argument.lowercased()] {
                 context.navigation.tab = tab
@@ -186,13 +179,16 @@ enum DebugRoutes {
                 context.navigation.tab = .settings
             }
         },
-        DebugRoute("favorites", "Favorites.") { context, _ in
+        DebugRoute("library", "The Library tab (iOS; the Recordings item of the sidebar's Library section on macOS).") { context, _ in
+            context.navigation.show(.library)
+        },
+        DebugRoute("favorites", "Favorites (pushed on the Library tab on iOS).") { context, _ in
             context.navigation.show(.favorites)
         },
-        DebugRoute("history", "Recently Watched.") { context, _ in
+        DebugRoute("history", "Recently Watched (pushed on the Library tab on iOS).") { context, _ in
             context.navigation.show(.history)
         },
-        DebugRoute("recordings", "Recordings (the sheet on iOS, the sidebar item on macOS).") { context, _ in
+        DebugRoute("recordings", "Recordings (the Library tab on iOS, the sidebar item on macOS).") { context, _ in
             context.navigation.show(.recordings)
         },
         DebugRoute("playlist:<name|all>", "Selects a playlist (or All Playlists) on Home.") { context, argument in

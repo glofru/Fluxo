@@ -2,12 +2,20 @@
 //  AppTabView.swift
 //  Fluxo
 //
-//  The iOS root: a native TabView. On iPhone it is the tab bar (Home, Guide, Favorites, Settings and Search).
-//  On iPad it is a sidebar-adaptable tab view: the sidebar (shown by default in a regular width window) adds
-//  Recently Watched, Recordings and a Playlists section with the Home of each playlist and an Add Playlist button;
-//  the sidebar collapses into the floating tab bar, and the user can pin sidebar entries to the tab bar
-//  (tab customization, kept across launches). Narrow iPad windows (Slide Over, a third of Split View) are compact
-//  and use the iPhone tab bar.
+//  The iOS root: a native TabView with Home, Guide, Library, Settings and Search, on iPhone and iPad alike.
+//
+//  Library replaced Favorites as the third tab. Favorites already lead Home (a row with See All, which opens the
+//  full Favorites screen), so a tab of their own repeated Home, while the recordings were reachable only from a
+//  Home toolbar button or the player's menu. Library holds what the user keeps: links to Favorites and Recently
+//  Watched, then the recordings in place (and the offline downloads; see `LibraryView`).
+//
+//  On iPad it is a sidebar-adaptable tab view. The sidebar (shown by default in a wide window) has the same five
+//  places plus a Playlists section with the Home of each playlist and an Add Playlist button; it collapses into the
+//  floating tab bar, which shows the same tabs as an iPhone, and the user can pin sidebar entries to the tab bar
+//  (tab customization, kept across launches). Favorites, Recently Watched and Recordings are not sidebar entries of
+//  their own: one Library entry, the same one the tab bar shows, keeps the sidebar and the tab bar in step (a tab
+//  hidden from the sidebar is not shown selected in the floating tab bar) and the sidebar short. Narrow
+//  iPad windows (Slide Over, a third of Split View) are compact and use the iPhone tab bar.
 //
 
 #if os(iOS)
@@ -69,41 +77,30 @@ struct AppTabView: View {
             }
             .customizationID("tab.guide")
 
-            Tab("Favorites", systemImage: "star", value: AppNavigation.Tab.favorites) {
-                NavigationStack(path: $navigation.favoritesPath) {
-                    FavoritesView(playlistIDs: nil)
+            Tab(value: AppNavigation.Tab.library) {
+                NavigationStack(path: $navigation.libraryPath) {
+                    LibraryView(player: player)
                         .channelDestinations()
                 }
                 .channelScheduleInspector()
+            } label: {
+                Label {
+                    Text(LibraryText.title)
+                } icon: {
+                    Image(systemName: "rectangle.stack")
+                }
             }
-            .customizationID("tab.favorites")
-            // Drop a channel on Favorites in the sidebar or the tab bar to add it; hovering opens the tab.
+            .customizationID("tab.library")
+            // A channel dropped on Library (sidebar or tab bar) becomes a favorite, as it did on the Favorites tab
+            // Library replaced; hovering opens the Library, whose Favorites row takes the drop too.
             .dropDestination(for: ChannelTransfer.self) { channels in
                 ChannelTransfer.addToFavorites(channels, library: library)
             }
             .springLoadingBehavior(.enabled)
 
-            // iPad sidebar only (iPhone reaches them from Home and Favorites). Not even declared on iPhone: its
-            // plain tab bar would move them, and Settings, into a More tab.
+            // iPad sidebar only. Not even declared on iPhone: its plain tab bar would move them, and Settings, into a
+            // More tab.
             if DeviceIdiom.isPad {
-                Tab("Recently Watched", systemImage: "clock", value: AppNavigation.Tab.history) {
-                    NavigationStack {
-                        HistoryView(playlistIDs: nil)
-                            .channelDestinations()
-                    }
-                    .channelScheduleInspector()
-                }
-                .customizationID("tab.history")
-                .defaultVisibility(.hidden, for: .tabBar)
-
-                Tab("Recordings", systemImage: "film.stack", value: AppNavigation.Tab.recordings) {
-                    RecordingsView(store: player.recordings, isRecordingActive: player.isRecording, showsDoneButton: false) { recording in
-                        player.playRecording(recording)
-                    }
-                }
-                .customizationID("tab.recordings")
-                .defaultVisibility(.hidden, for: .tabBar)
-
                 TabSection("Playlists") {
                     ForEach(playlists) { playlist in
                         Tab(value: AppNavigation.Tab.playlist(playlist.uuid)) {
@@ -161,7 +158,7 @@ struct AppTabView: View {
             if DebugGuideDemo.opensGuide {
                 navigation.tab = .guide
             } else if DebugGuideDemo.opensFavorites {
-                navigation.tab = .favorites
+                navigation.show(.favorites)
             }
         }
         #endif

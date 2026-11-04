@@ -31969,7 +31969,7 @@
       }
     },
     "Library" : {
-      "comment" : "Category of Siri and Shortcuts actions about the user's channels and favorites.",
+      "comment" : "The place with the favorites, recently watched and recordings: a tab and its title, and a sidebar section. Also the category of Siri and Shortcuts actions about the user's channels and favorites.",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -50974,6 +50974,9 @@
         }
       }
     },
+    "Recording…" : {
+      "comment" : "A recording in the list that is still being recorded."
+    },
     "Records the live channel that is playing, or plays a channel and records it. Recordings are saved in Recordings." : {
       "comment" : "Shortcuts action description — Siri and Shortcuts.",
       "localizations" : {
@@ -61587,6 +61590,9 @@
         }
       }
     },
+    "Star a channel to keep it here." : {
+      "comment" : "Library tab: subtitle of the Favorites row when there are no favorites yet."
+    },
     "Start" : {
       "comment" : "Shortcuts property of a TV programme: its start time.",
       "localizations" : {
@@ -62853,6 +62859,9 @@
           }
         }
       }
+    },
+    "Still recording" : {
+      "comment" : "VoiceOver hint of a recording that is still being recorded."
     },
     "Stop" : {
       "comment" : "Button (verb), also a Voice Control name: stop playback.",

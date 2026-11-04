@@ -38,7 +38,7 @@ final class AccessibilityAuditTests: XCTestCase {
         ("schedule", "schedule:Sky Sport F1"),
         ("search", "search:Sky"),
         ("settings", "settings"),
-        ("recordings", "recordings"),
+        ("library", "library"),
         ("add-playlist", "add-playlist"),
         ("player", "player:Sky Sport F1;wait:2"),
         ("mini-player", "mini-player:Sky Sport F1;wait:2"),

@@ -21,7 +21,7 @@ struct HomeView: View {
     /// The macOS sidebar lists the playlists itself, so it hides the switcher.
     var showsPlaylistSwitcher = true
     /// iPad sidebar: Home of one playlist, whatever Home's own playlist selection is. It has its own navigation
-    /// path and Recordings sheet (the shared ones belong to the Home tab), and no switcher.
+    /// path (the shared one belongs to the Home tab), and no switcher.
     var fixedPlaylistID: UUID?
 
     @Query(sort: \Playlist.createdOn) private var playlists: [Playlist]
@@ -29,7 +29,7 @@ struct HomeView: View {
 
     @Environment(PlaylistActions.self) private var actions
     @Environment(PlaylistImportCenter.self) private var importCenter
-    /// The navigation path and the Recordings sheet.
+    /// The navigation path.
     @Environment(AppNavigation.self) private var navigation
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -39,11 +39,8 @@ struct HomeView: View {
     /// iOS: the billboard runs under the toolbar; the title fades in once it has scrolled away.
     @State private var isShowingBillboard = false
     @State private var isScrolledPastHero = false
-    /// The Recordings sheet zooms out of its toolbar button.
-    @Namespace private var sheetNamespace
-    /// Navigation path and Recordings sheet of a playlist's Home (`fixedPlaylistID`).
+    /// Navigation path of a playlist's Home (`fixedPlaylistID`).
     @State private var playlistPath = NavigationPath()
-    @State private var isShowingPlaylistRecordings = false
 
     private var scope: LibraryScope {
         if let fixedPlaylistID {
@@ -58,14 +55,6 @@ struct HomeView: View {
         }
         @Bindable var navigation = navigation
         return $navigation.homePath
-    }
-
-    private var isShowingRecordings: Binding<Bool> {
-        if fixedPlaylistID != nil {
-            return $isShowingPlaylistRecordings
-        }
-        @Bindable var navigation = navigation
-        return $navigation.isShowingRecordings
     }
 
     private var showsSwitcher: Bool {
@@ -93,19 +82,7 @@ struct HomeView: View {
             }
             .channelDestinations()
         }
-        #if !os(macOS)
-        .sheet(isPresented: isShowingRecordings) {
-            RecordingsView(store: player.recordings, isRecordingActive: player.isRecording) { recording in
-                isShowingRecordings.wrappedValue = false
-                player.playRecording(recording)
-            }
-            .mediumAndLargeDetentsAdaptingToTextSize()
-            .zoomTransition(sourceID: Self.recordingsSourceID, in: sheetNamespace)
-        }
-        #endif
     }
-
-    private static let recordingsSourceID = "home.recordings"
 
     @ViewBuilder
     private func content(scope: LibraryScope) -> some View {
@@ -226,19 +203,7 @@ struct HomeView: View {
             .sharedBackgroundVisibility(.hidden)
         }
         #endif
-        #if os(iOS)
-        ToolbarItem {
-            recordingsButton
-        }
-        .matchedTransitionSource(id: Self.recordingsSourceID, in: sheetNamespace)
-
-        // Recordings and the playlist menu are separate glass groups.
-        ToolbarSpacer(.fixed)
-        #elseif !os(macOS)
-        ToolbarItem {
-            recordingsButton
-        }
-        #endif
+        // The recordings are in the Library tab (iOS) and the Library section of the sidebar (macOS).
         ToolbarItem {
             Menu("Playlists", systemImage: "ellipsis") {
                 Button("Add Playlist", systemImage: "plus") {
@@ -254,12 +219,6 @@ struct HomeView: View {
                     }
                 }
             }
-        }
-    }
-
-    private var recordingsButton: some View {
-        Button("Recordings", systemImage: "film.stack") {
-            isShowingRecordings.wrappedValue = true
         }
     }
 

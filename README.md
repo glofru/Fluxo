@@ -148,7 +148,12 @@ Tools/PlaylistBenchmark/run.sh             # ENTRIES=20000 for a quicker run
   second for 100k channels, started when Search appears), and each keystroke then scans them in
   about 5 ms (50 ms for a typo search), 250 ms after the last keystroke. Only the best 150 channels
   and 20 groups are fetched from the store.
-- **macOS** uses a sidebar (Home, TV Guide, Search, Favorites, Recently Watched,
+- **Library** (`Features/Library/LibraryView.swift`, iOS): the tab with what the user keeps. A first section links
+  to Favorites (with their count) and Recently Watched (with the last thing watched), then the recordings are
+  listed in place (play, share, delete; Delete All in the More menu); offline downloads get a section of their
+  own between the two. Library replaced the Favorites tab: Favorites already lead Home (a row with See All), so
+  a tab repeated Home, while the recordings were only reachable from a Home toolbar button or the player's menu.
+- **macOS** uses a sidebar (Home, TV Guide, Search, a Library section with Favorites, Recently Watched and
   Recordings, and each playlist) and a Settings window (Cmd-,). iPhone uses tabs; iPad uses a sidebar-adaptable
   tab view (see "iPad" below).
 
@@ -559,10 +564,11 @@ lists favorite and recent channels a few seconds after launch.
   intervals, automatic PiP (iOS), TV guide sources and the reminder time, recordings count / size / location (Show in Finder on macOS,
   the Files app on iOS through `UIFileSharingEnabled`), delete all recordings, temporary stream
   files, logo cache, watch history, and the app and FFmpeg versions.
-- **Recordings**: play, share, Show in Finder (macOS), delete, delete all.
+- **Recordings** (in the Library tab on iOS, the sidebar on macOS, and the player's menu): play, share, Show in
+  Finder (macOS), delete, delete all.
 - **Menu bar** (macOS, and the iPad menu bar): File > New Window (⌥⌘N, iPad), Add Playlist… (⌘N), Refresh All
   Playlists (⌘R), Refresh TV Guide (⌥⌘R); Go > Home (⌘1), TV Guide (⌘2), Favorites (⌘3), Recently Watched (⌘4),
-  Recordings (⌘5), Settings (⌘6, iPad), Search (⌘F); Playback > Play/Pause (Space), Skip Back / Forward (⌘← / ⌘→),
+  Recordings (⌘5; on iPad these three open the Library tab), Settings (⌘6, iPad), Search (⌘F); Playback > Play/Pause (Space), Skip Back / Forward (⌘← / ⌘→),
   Go Live (⌘L), Channel Up / Down (⌘↑ / ⌘↓), Record (⇧⌘R), Picture in Picture (⌥⌘P), Fill Video, Show
   Player (⇧⌘P), Stop Playback (⌘.). Commands act on the focused window. Shortcuts that would clash with text
   editing (Space, the arrows) are only enabled while the player is on screen. Escape closes the player; in a wide
@@ -572,8 +578,9 @@ lists favorite and recent channels a few seconds after launch.
 
 ## iPad
 
-- **Sidebar** (`App/AppTabView.swift`): a `.sidebarAdaptable` tab view. The sidebar lists Home, Guide, Favorites,
-  Recently Watched, Recordings, Settings, Search and a Playlists section (the Home of each playlist, with its
+- **Sidebar** (`App/AppTabView.swift`): a `.sidebarAdaptable` tab view. The sidebar lists Home, Guide, Library,
+  Settings, Search (the tabs of the iPhone and of the floating tab bar, so both always show the same selection)
+  and a Playlists section (the Home of each playlist, with its
   refresh / edit / delete menu, and Add Playlist). It shows by default when the window is wide (landscape, at least
   1,100 points, so the iPad mini too), decided in the first layout of the window (a `GeometryReader`: the tab view
   reads its default placement only once); narrower windows start with the floating tab bar and its sidebar
@@ -582,7 +589,7 @@ lists favorite and recent channels a few seconds after launch.
   not declared on iPhone, whose tab bar is unchanged.
 - **Inspectors**: in a regular width window, programme details open in an inspector next to the Guide grid. In a
   wide window (the sidebar rule above) a channel's schedule (its Guide swipe or menu action) opens in an inspector
-  next to Home, Favorites, Recently Watched, Search and the playlists, which stay usable: another channel replaces
+  next to Home, the Library (and Favorites and Recently Watched in it), Search and the playlists, which stay usable: another channel replaces
   it. In portrait and narrower windows, where an inspector would cover the content, it is a centered form sheet;
   in compact widths a sheet, as on iPhone.
 - **Player side panel** (`Features/Watch/PlayerSidePanel.swift`): in a wide player (iPad in landscape, at least
@@ -603,8 +610,8 @@ lists favorite and recent channels a few seconds after launch.
   Here.
 - **Drag and drop** (iPad and macOS; on iPhone a long press stays the context menu): channel cards and rows can
   be dragged (`ChannelTransfer`, a custom type visible to the app only; other apps get the channel name as text)
-  onto Favorites in the sidebar or the tab bar (spring-loaded), the Favorites row of Home or the Favorites screen,
-  which adds them to the favorites; the Mac sidebar's Favorites accepts them too. A web link dropped on a window opens Add Playlist with it; an M3U / M3U8 file dropped on a
+  onto Library in the sidebar or the tab bar (spring-loaded), the Favorites row of Home or of the Library, or the
+  Favorites screen, which adds them to the favorites; the Mac sidebar's Favorites accepts them too. A web link dropped on a window opens Add Playlist with it; an M3U / M3U8 file dropped on a
   window (or opened in Fluxo from Files, `CFBundleDocumentTypes`) is copied to `Application Support/Playlists` and
   imported from that copy (`LocalPlaylistFiles`, which resolves the copy in the current container on every
   refresh and deletes it with the playlist). The Edit Playlist form accepts that file address only for the
@@ -618,7 +625,7 @@ Glass is used for the navigation and control layer only (tab bar, toolbars, the 
 the playlist chips, the player controls, sheets). Cards, rows and banners are content and use
 plain surfaces or small materials.
 
-- **Tab bar**: a native `TabView` with Home, Guide, Favorites, Settings and a `.search` role tab. It
+- **Tab bar**: a native `TabView` with Home, Guide, Library, Settings and a `.search` role tab. It
   minimizes while scrolling down (`tabBarMinimizeBehavior(.onScrollDown)`).
 - **Mini player** (`PlayerBottomAccessory` in `App/ContentView.swift`): the
   `tabViewBottomAccessory`, shown only while something plays (on iOS 26.1+ through
@@ -631,21 +638,19 @@ plain surfaces or small materials.
   (`matchedTransitionSource` + `navigationTransition(.zoom)`); `PlayChannelAction` passes the
   source to `AVPlayerViewModel.presentationSourceID`, and paths without a card (PiP restore,
   recordings, Show Player) zoom from the mini player. A category zooms out of its
-  Home row or its category card (Home, search, the category browser), and the Recordings sheet out of its
-  toolbar button.
+  Home row or its category card (Home, search, the category browser).
 - **Home**: the featured billboard runs under the status bar and the floating toolbar, its
   blurred artwork uses `backgroundExtensionEffect()` (it also extends under the iPad sidebar and
   the landscape safe areas), stretches on overscroll and fades into the background so both light
   and dark mode stay legible. The inline title fades in once the billboard has scrolled away;
-  the scroll edge effect is `.soft`. Recordings and the playlist menu are separate toolbar glass
-  groups (`ToolbarSpacer(.fixed)`). The playlist chips share a `GlassEffectContainer` and the
+  the scroll edge effect is `.soft`. The playlist chips share a `GlassEffectContainer` and the
   tinted selection glass keeps its `glassEffectID`, so it morphs from chip to chip.
 - **Player controls**: floating glass clusters in one `GlassEffectContainer`. Channel and skip
   buttons merge into a capsule on each side (`glassEffectUnion`), play / pause is a larger
   circle tinted with the accent color while paused, Record stretches into a red-tinted
   `REC m:ss` timer with a pulsing dot, and a red LIVE indicator morphs into `-m:ss Go Live`
   when the stream is time-shifted (`glassEffectID`). PiP, AirPlay and the menu share one capsule.
-- **Sheets**: Add / Edit Playlist and Recordings use `.medium` / `.large` detents; their forms
+- **Sheets**: Add / Edit Playlist and Recordings (the player's) use `.medium` / `.large` detents; their forms
   hide the grouped background so the sheet's glass shows at partial height, and they use the
   iOS 26 `.cancel` / `.close` / `.confirm` button roles.
 - **Motion and accessibility**: symbol transitions (`contentTransition(.symbolEffect(.replace))`)

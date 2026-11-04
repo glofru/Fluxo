@@ -19,8 +19,9 @@ enum SidebarItem: Hashable {
     case playlist(UUID)
 }
 
-/// macOS layout: a sidebar with Home, TV Guide, Search, Favorites, Recently Watched, Recordings and every playlist,
-/// and the selected screen as the detail. Selecting a playlist shows Home filtered to it.
+/// macOS layout: a sidebar with Home, TV Guide and Search, a Library section (Favorites, Recently Watched,
+/// Recordings: the places of the iOS Library tab), and every playlist, and the selected screen as the detail.
+/// Selecting a playlist shows Home filtered to it.
 struct MacRootView: View {
 
     let player: AVPlayerViewModel
@@ -146,6 +147,9 @@ private struct MacSidebar: View {
                     .tag(SidebarItem.guide)
                 Label("Search", systemImage: "magnifyingglass")
                     .tag(SidebarItem.search)
+            }
+
+            Section {
                 Label("Favorites", systemImage: "star")
                     .tag(SidebarItem.favorites)
                     // Channels dragged from Home or a category become favorites.
@@ -154,6 +158,8 @@ private struct MacSidebar: View {
                     .tag(SidebarItem.history)
                 Label("Recordings", systemImage: "film.stack")
                     .tag(SidebarItem.recordings)
+            } header: {
+                Text(LibraryText.title)
             }
 
             Section("Playlists") {

@@ -3,9 +3,9 @@
 //  Fluxo
 //
 //  Navigation state of the main window that is not local to one screen: the selected iOS tab or macOS
-//  sidebar item, the navigation paths of Home, Favorites and Search, the search text and the Recordings
-//  sheet. `ContentView` owns it and shares it through the environment, so code outside the screens (the
-//  debug launch routes, and deep links or App Intents) can move the UI to a given place.
+//  sidebar item, the navigation paths of Home, Library and Search, and the search text. `ContentView` owns it and
+//  shares it through the environment, so code outside the screens (the debug launch routes, and deep links or App
+//  Intents) can move the UI to a given place.
 //
 
 import Observation
@@ -15,16 +15,15 @@ import SwiftUI
 @Observable
 final class AppNavigation {
 
-    /// The iOS tabs. On iPad the sidebar also lists Recently Watched, Recordings and every playlist (hidden from
-    /// the tab bar, and so never shown on iPhone).
+    /// The iOS tabs: Home, Guide, Library, Settings and Search. The iPad sidebar also lists every playlist (hidden
+    /// from its tab bar, and never declared on iPhone; see `AppTabView`).
     enum Tab: Hashable {
         case home
         case guide
-        case favorites
+        /// What the user keeps: links to Favorites and Recently Watched, then the recordings (see `LibraryView`).
+        case library
         case settings
         case search
-        case history
-        case recordings
         case playlist(UUID)
     }
 
@@ -33,6 +32,8 @@ final class AppNavigation {
         case home
         case guide
         case search
+        /// The Library tab (iOS); the Recordings item of the macOS sidebar's Library section.
+        case library
         case favorites
         case history
         case recordings
@@ -56,11 +57,10 @@ final class AppNavigation {
     }
 
     var homePath = NavigationPath()
-    var favoritesPath = NavigationPath()
+    /// The Library tab (Favorites and Recently Watched are pushed on it).
+    var libraryPath = NavigationPath()
     var searchPath = NavigationPath()
     var searchText = ""
-    /// The Recordings sheet of Home (iOS; macOS lists recordings in the sidebar).
-    var isShowingRecordings = false
     /// The live channel whose schedule (today's programmes from the TV guide) is shown in a sheet.
     var scheduleChannel: ChannelItem?
 
@@ -81,9 +81,9 @@ final class AppNavigation {
     /// (see `channelScheduleInspector()`).
     var tabHostsScheduleInspector: Bool {
         switch tab {
-        case .home, .favorites, .history, .search, .playlist:
+        case .home, .library, .search, .playlist:
             return true
-        case .guide, .settings, .recordings:
+        case .guide, .settings:
             return false
         }
     }
@@ -99,16 +99,15 @@ final class AppNavigation {
         case .search:
             sidebarSelection = .search
             searchPath = NavigationPath()
+        case .library, .recordings:
+            sidebarSelection = .recordings
         case .favorites:
             sidebarSelection = .favorites
         case .history:
             sidebarSelection = .history
-        case .recordings:
-            sidebarSelection = .recordings
         }
         homePath = NavigationPath()
         #else
-        isShowingRecordings = false
         switch destination {
         case .home:
             tab = .home
@@ -118,15 +117,16 @@ final class AppNavigation {
         case .search:
             tab = .search
             searchPath = NavigationPath()
+        case .library, .recordings:
+            // The recordings are listed in the Library itself.
+            tab = .library
+            libraryPath = NavigationPath()
         case .favorites:
-            tab = .favorites
-            favoritesPath = NavigationPath()
+            tab = .library
+            libraryPath = NavigationPath([ChannelRoute.favorites(playlistIDs: nil)])
         case .history:
-            tab = .favorites
-            favoritesPath = NavigationPath([ChannelRoute.history(playlistIDs: nil)])
-        case .recordings:
-            tab = .home
-            isShowingRecordings = true
+            tab = .library
+            libraryPath = NavigationPath([ChannelRoute.history(playlistIDs: nil)])
         }
         #endif
     }
@@ -139,7 +139,6 @@ final class AppNavigation {
         }
         #else
         tab = .home
-        isShowingRecordings = false
         #endif
         homePath.append(route)
     }

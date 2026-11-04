@@ -21,6 +21,8 @@ struct Recording: Identifiable, Hashable {
     let bytes: Int64
     /// True while the recording is still being written or converted.
     let isFinalizing: Bool
+    /// True while the engine still writes it (a recording in progress); false once it is being converted.
+    var isRecording = false
 
     var id: URL {
         url
@@ -174,7 +176,8 @@ final class RecordingStore {
                     createdOn: createdOn,
                     duration: metadata?.duration,
                     bytes: Int64(values?.fileSize ?? 0),
-                    isFinalizing: Self.activeURLs.contains(url) || Self.finalizingURLs.contains(url)
+                    isFinalizing: Self.activeURLs.contains(url) || Self.finalizingURLs.contains(url),
+                    isRecording: Self.activeURLs.contains(url)
                 )
             }
             .sorted { $0.createdOn > $1.createdOn }

@@ -313,7 +313,7 @@ final class GestureTests: XCTestCase {
         scrollToTop(app)
         shot("acc-5b-expanded-again")
         XCTAssertTrue(tabButton(app, "Guide").waitForExistence(timeout: 5), "another scroll down and back to the top: the tab bar is expanded")
-        for tab in ["Guide", "Favorites", "Home"] {
+        for tab in ["Guide", "Library", "Home"] {
             tabButton(app, tab).tap()
             sleep(1)
         }
@@ -563,7 +563,7 @@ final class GestureTests: XCTestCase {
 
     /// iPad: a channel row dragged onto Favorites in the sidebar becomes a favorite (landscape, where the sidebar
     /// shows next to the content).
-    func testDragChannelOntoFavoritesTab() throws {
+    func testDragChannelOntoLibraryTab() throws {
         try XCTSkipIf(UIDevice.current.userInterfaceIdiom != .pad, "iPad only")
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = launch("group:Sport;wait:2")
@@ -571,11 +571,15 @@ final class GestureTests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 30), "the channel row")
         sleep(6)
         shot("drag-1-before")
-        // Sidebar entries are cells.
-        let favorites = app.cells.matching(NSPredicate(format: "label == 'Favorites'")).firstMatch
-        XCTAssertTrue(favorites.exists, "Favorites in the sidebar")
-        row.press(forDuration: 1.2, thenDragTo: favorites, withVelocity: .slow, thenHoldForDuration: 1.0)
+        // Sidebar entries are cells. A channel dropped on Library becomes a favorite.
+        let library = app.cells.matching(NSPredicate(format: "label == 'Library'")).firstMatch
+        XCTAssertTrue(library.exists, "Library in the sidebar")
+        row.press(forDuration: 1.2, thenDragTo: library, withVelocity: .slow, thenHoldForDuration: 1.0)
         sleep(2)
+        library.tap()
+        sleep(2)
+        let favorites = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Favorites'")).firstMatch
+        XCTAssertTrue(favorites.waitForExistence(timeout: 5), "the Favorites row of the Library")
         favorites.tap()
         sleep(3)
         shot("drag-2-favorites")

@@ -120,12 +120,13 @@ first that contains the text.
 | Route | Opens |
 |---|---|
 | `home` | Home, from its root. |
-| `tab:<home\|guide\|favorites\|settings\|search\|history\|recordings\|playlist name>` | A tab (iOS; history, recordings and playlists are iPad sidebar entries). |
+| `tab:<home\|guide\|library\|settings\|search\|playlist name>` | A tab (iOS; playlists are iPad sidebar entries). |
 | `guide` | The TV Guide (the Guide tab on iOS, the sidebar item on macOS). |
 | `search[:<query>]` | Search, with the query typed in. |
 | `settings` | The Settings tab (iOS) or window (macOS). |
-| `favorites`, `history` | Favorites; Recently Watched. |
-| `recordings` | The Recordings sheet (iOS) or sidebar item (macOS). |
+| `library` | The Library tab (iOS) or the Recordings sidebar item (macOS). |
+| `favorites`, `history` | Favorites; Recently Watched (pushed on the Library tab on iOS). |
+| `recordings` | The Library tab, which lists the recordings (iOS), or the Recordings sidebar item (macOS). |
 | `playlist:<name\|all>` | Selects a playlist (or All Playlists) on Home. |
 | `kind:<live\|movies\|series>` | The Live TV / Movies / Series section of Home. |
 | `group:<name>` | Pushes a category (group) on Home. |
@@ -165,7 +166,7 @@ first that contains the text.
 | `help` | Logs the list of routes (in `app.log`). |
 
 Routes drive the app through `AppNavigation` (`Fluxo/App/AppNavigation.swift`: the selected tab or
-sidebar item, the Home / Favorites / Search navigation paths, the search text and the Recordings sheet)
+sidebar item, the Home / Library / Search navigation paths and the search text)
 and the app's own objects (player, library, import center, playlist actions). A new screen gets a route
 with one line in `DebugRoutes.all`:
 
@@ -278,8 +279,8 @@ TEST_RUNNER_FLUXO_LAYOUT_SHOTS="home|landscape|dark|seed-guide;home;;panel|lands
 
 The test turns the device back to portrait at the end; with `TEST_RUNNER_FLUXO_LAYOUT_KEEP_ORIENTATION=1` it
 leaves it turned, and as a clone keeps its last orientation, later `run.sh` runs on it (cold launches with
-`simctl launch`) are in landscape too. `testDragChannelOntoFavoritesTab`
-(iPad) drags a channel row onto Favorites in the sidebar and checks that it became a favorite.
+`simctl launch`) are in landscape too. `testDragChannelOntoLibraryTab`
+(iPad) drags a channel row onto Library in the sidebar and checks that it became a favorite.
 `testSidePanelScheduleMenu` (iPad) opens the context menu of a row in the player's side panel, checks that it has
 no guide matching, and that Today's Schedule shows the schedule in the panel, with a way back.
 
