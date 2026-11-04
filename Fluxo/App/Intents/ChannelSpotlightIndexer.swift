@@ -16,13 +16,14 @@ import SwiftData
 @MainActor
 final class ChannelSpotlightIndexer {
 
-    static let limit = 250
+    nonisolated static let limit = 250
 
-    private static let logger = Logger(subsystem: "dev.watermelon.Fluxo", category: "Spotlight")
+    nonisolated private static let logger = Logger(subsystem: "dev.watermelon.Fluxo", category: "Spotlight")
 
     private let container: ModelContainer
     private var pending: Task<Void, Never>?
     private var lastIndexedKeys: [String]?
+    private var lastParameterSignature: [String]?
 
     init(container: ModelContainer) {
         self.container = container
@@ -49,24 +50,74 @@ final class ChannelSpotlightIndexer {
 
     private func update() async {
         let container = container
-        let entities = await Task.detached(priority: .utility) {
-            (try? await ChannelEntityQuery.suggestions(container: container, limit: Self.limit)) ?? []
+        let (entities, playlists) = await Task.detached(priority: .utility) {
+            let entities = (try? await ChannelEntityQuery.suggestions(container: container, limit: Self.limit)) ?? []
+            return (entities, LibraryLookup.visiblePlaylists(in: container).map(\.importID.uuidString))
         }.value
         let keys = entities.map(\.id)
+
+        // The phrases first: they do not depend on Spotlight, which may be unavailable (or fail) on its own. Only
+        // when what Siri would learn changed (the first suggestions, or the playlists whose first channels follow
+        // them): each call makes the system run the parameter suggestions again, which costs SwiftData fetches and
+        // battery, and this runs after every channel change and every return to the app.
+        let parameterSignature = Array(keys.prefix(ChannelEntityQuery.suggestionLimit)) + ["|"] + playlists.sorted()
+        if parameterSignature != lastParameterSignature {
+            FluxoShortcuts.updateAppShortcutParameters()
+            lastParameterSignature = parameterSignature
+        }
+
         guard keys != lastIndexedKeys else {
             return
         }
         do {
-            let index = CSSearchableIndex.default()
-            try await index.deleteAppEntities(ofType: ChannelEntity.self)
-            if !entities.isEmpty {
-                try await index.indexAppEntities(entities)
-            }
+            try await Self.replaceIndex(with: entities)
             lastIndexedKeys = keys
-            FluxoShortcuts.updateAppShortcutParameters()
             Self.logger.notice("Indexed \(entities.count) channels in Spotlight")
         } catch {
             Self.logger.error("Spotlight indexing failed: \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    /// The identifiers of the channels in Spotlight, so the next update deletes only the ones that left.
+    nonisolated private static let indexedIdentifiersKey = "spotlight.indexedChannelIdentifiers"
+
+    /// Replaces the channels of the app in the default Spotlight index: indexes `entities` and deletes the channels
+    /// indexed before that are no longer among them.
+    ///
+    /// It never calls `deleteAppEntities(ofType:)`: on iOS 27.2 that call does not return (checked in the Simulator
+    /// with `spotlight-reindex` of the debug harness), so an update that started with it never indexed anything.
+    /// `deleteAllSearchableItems()` did not return within 5 s either (four launches in the 27.2 Simulator), and a
+    /// bulk delete that completes late could remove the entries indexed after it: so there is no bulk cleanup of
+    /// what earlier builds indexed. Those builds started every update with the call that does not return, so on
+    /// iOS 27 they indexed nothing; and iOS 27 asks the app for a full index when it needs one (`IndexedEntityQuery`).
+    nonisolated static func replaceIndex(with entities: [ChannelEntity]) async throws {
+        let index = CSSearchableIndex.default()
+        let defaults = UserDefaults.fluxo
+        let identifiers = entities.map(\.id)
+        let removed = Set(defaults.stringArray(forKey: indexedIdentifiersKey) ?? []).subtracting(identifiers)
+        if !removed.isEmpty {
+            try await index.deleteAppEntities(identifiedBy: Array(removed), ofType: ChannelEntity.self)
+        }
+        if !entities.isEmpty {
+            try await index.indexAppEntities(entities)
+        }
+        defaults.set(identifiers, forKey: indexedIdentifiersKey)
+    }
+}
+
+/// iOS 27: Spotlight can ask the app to index its channels again (after a restore, or when the index was reset).
+@available(iOS 27.0, macOS 27.0, visionOS 27.0, *)
+extension ChannelEntityQuery: IndexedEntityQuery {
+
+    func reindexEntities(for identifiers: [ChannelEntity.ID], indexDescription: CSSearchableIndexDescription) async throws {
+        let entities = try await entities(for: identifiers)
+        if !entities.isEmpty {
+            try await CSSearchableIndex.default().indexAppEntities(entities)
+        }
+    }
+
+    func reindexAllEntities(indexDescription: CSSearchableIndexDescription) async throws {
+        let entities = try await Self.suggestions(container: services.container, limit: ChannelSpotlightIndexer.limit)
+        try await ChannelSpotlightIndexer.replaceIndex(with: entities)
     }
 }

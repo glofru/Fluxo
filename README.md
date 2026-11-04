@@ -512,29 +512,143 @@ navigation, intelligence) with `AppDependencyManager`; intents run in the app's 
 
 - Entities: `ChannelEntity` (it stands for playlist + stream URL, so it survives playlist refreshes; the system only
   sees an opaque identifier, `ChannelEntityID`: the playlist UUID and a keyed HMAC of the URL, since stream URLs
-  can carry account credentials and identifiers end up in Spotlight, donations and shared shortcuts; string search
-  uses the typo-tolerant Search index; suggestions are favorites, then history) is an `IndexedEntity`: favorites
-  and recently watched channels (up to 250) are in Spotlight, and opening one plays it. `ProgramEntity` is a guide
-  programme (title, episode, start, end, description, categories, channel).
-- Intents: Play Channel (`OpenIntent`), Play by Name (the system `PlayVideoIntent`: a channel by name, or the
-  channel airing a programme with that title), Pause / Resume, Start / Stop Recording (start can play a channel
-  first), Add to Favorites (idempotent) and Toggle Favorite, Search in Fluxo (the system `ShowInAppSearchResultsIntent`), Find Channels, Get
-  Suggestions, What's On (now and next of a channel, or what the favorite channels show), Search TV Guide,
-  Set Programme Reminder, and Open Screen (Home, TV Guide, Search, Favorites, Recently Watched, Recordings).
-  Results come with a dialog and a snippet view. The iOS 27.2 SDK has no assistant schema for video or TV apps
-  (its `AppSchema` domains are audio, books, browser, camera, mail, photos, reader and others), so Fluxo uses
-  the system video and search intents instead. The player marks the playing channel with
-  `appEntityIdentifier(_:)` (on-screen awareness), so Siri and Apple Intelligence can resolve "this channel".
-  Set Programme Reminder opens the app the first time, so the system can ask for notification permission.
-- App Shortcuts (`FluxoShortcuts`, ten shortcuts): "Play Sky Sport F1 in Fluxo", "What's on in Fluxo",
-  "What's on Rai 1 in Fluxo", "What should I watch on Fluxo", "Search the Fluxo guide", "Search Fluxo",
-  "Open TV Guide in Fluxo", "Set a reminder in Fluxo", "Favorite this channel in Fluxo", "Start recording in
-  Fluxo", "Stop recording in Fluxo". Siri's own "Pause" and "Resume" reach Fluxo through Now Playing.
+  can carry account credentials and identifiers end up in Spotlight, donations and shared shortcuts) is an
+  `IndexedEntity`: favorites and recently watched channels (up to 250) are in Spotlight, and opening one plays it.
+  Its synonyms are the names people say (`ChannelSpokenNames`: "IT: Sky Sport F1 FHD" is also "sky sport f1",
+  "Rai 1 HD" also "rai 1" and "rai one"), and Siri's words go through `AppServices.resolveChannel` (every word of
+  the name, the favorite among same-named channels, spelled-out numbers in the app's 16 languages: "Rai Uno" is
+  Rai 1, a programme on air with that title, a channel number, then the closest name). A number is a position in
+  the playlist only alone or with a word that says "channel" or "number" in one of the app's languages ("5",
+  "channel 5", "canale 5", "5チャンネル"); "BBC 9" or "Eurosport 7" is a name, and the closest name must have the
+  numbers said, so a channel the library lacks is reported as not found instead of playing another one.
+  `ProgramEntity` is a guide programme (title, episode, start, end, description, categories, channel).
+- Intents: Play Channel (`OpenIntent`, `PredictableIntent`), Play by Name (the system `PlayVideoIntent`),
+  Continue Watching (the last unfinished movie or episode, where it stopped), Pause / Resume / Stop Playback,
+  Start or Stop Recording (one intent with an action; start can play a channel first), Add to Favorites
+  (idempotent), Remove from Favorites, Toggle Favorite, Get Favorites, Search in Fluxo (the system
+  `ShowInAppSearchResultsIntent`), Find Channels, Get Suggestions, What's On (now and next of a channel, or what
+  the favorite channels show), Search TV Guide, Show Channel Schedule, Set Programme Reminder, Open Screen (Home,
+  TV Guide, Search, Favorites, Recently Watched, Recordings, Library; on iOS the last two open the Library tab), and Visual Intelligence search. Results come with a
+  dialog and a snippet view. Opening a screen moves a full-screen player out of the way as its close button does
+  (into Picture in Picture when Settings › Playback asks for it, else the mini player).
+- App Shortcuts (`FluxoShortcuts`, the maximum of ten), with phrases in all 16 languages (`AppShortcuts.xcstrings`):
+  see "Siri & Apple Intelligence" below.
 
-To try them: run the app once (App Shortcuts register when it is installed), then open the Shortcuts app on the
-device, the Simulator or the Mac: Fluxo's shortcuts are listed under the app, and every action can be added to a
-new shortcut and run from there. Say or type (Type to Siri) the phrases on a device or Mac with Siri on. Spotlight
-lists favorite and recent channels a few seconds after launch.
+### Siri & Apple Intelligence
+
+**What the iOS 27.2 SDK offers, and what Fluxo uses** (checked in the SDK's `.swiftinterface` files):
+
+| Capability | In Fluxo |
+|---|---|
+| App Shortcuts (`AppShortcutsProvider`): phrases that work without setup, at most ten shortcuts, each phrase with the app name; parameters only from an `AppEnum` or from the entities given to `updateAppShortcutParameters()` | Ten shortcuts. The channel parameter knows the favorites, the watch history and the first live channels of each playlist (up to 80), with spoken-name synonyms; refreshed at launch and, when these names change, after the favorites change or a channel starts (each refresh makes the system query the app again) |
+| Assistant schemas, `@AppIntent(schema:)` (iOS 27 `AppSchema`), so Siri with Apple Intelligence understands an intent without a fixed phrase. Domains: assistant, audio (music, podcasts, audiobooks, radio), books, browser, calendar, camera, clock, files, journal, mail, maps, messages, notes, phone, photos, presentation, reader, reminders, spreadsheet, system, visualIntelligence, whiteboard, wordProcessor. **There is no video or TV domain** | `system.open` on Play Channel and `system.searchInApp` on Search in Fluxo (from iOS / macOS 27; `AppSchemaAdoption.swift` writes the extension the macro generates, since the macro cannot gate one conformance of a type that exists from iOS 26). `visualIntelligence.semanticContentSearch` (iOS 26, macOS 27) |
+| System intent protocols: `OpenIntent`, `PlayVideoIntent`, `ShowInAppSearchResultsIntent`, `AudioPlaybackIntent` … | Play Channel, Play by Name, Search in Fluxo |
+| Spotlight: `IndexedEntity`, `CSSearchableIndex.indexAppEntities`, iOS 27 `IndexedEntityQuery` (Spotlight asks the app to index again) | Channels, with alternate names; `IndexedEntityQuery` from iOS 27 |
+| On-screen awareness: `View.appEntityIdentifier(_:)`, iOS 27 `MPNowPlayingInfoPropertyAppEntityIdentifiers` | The player view, and the Now Playing entry (so "this channel" works with the player closed) |
+| Predictions and donations: `PredictableIntent`, `AppIntent.donate()` | Play Channel is donated whenever a channel starts (from the app, Siri or Shortcuts), so Siri can suggest the channel watched at that time of day |
+| Visual Intelligence: `IntentValueQuery` over `SemanticContentDescriptor`, the `semanticContentSearch` schema | Camera or screenshot → Search → Fluxo's channels: the text in the image is read on the device (Vision, with channel names as custom words) and matched to channel names and guide titles, then the labels to guide categories (`VisualSearchIntents.swift`) |
+| Foundation Models (on-device model, tool calling, `@Generable`) | For You, smart search, programme summaries (above); Find Channels uses smart search |
+| `SiriTipView`, `ShortcutsLink` | Settings › Siri & Shortcuts |
+| SiriKit media intents (`INPlayMediaIntent`) | Not used: they need an Intents extension and are for audio |
+
+**Why "Play … in Fluxo" did not work** (found with the debug harness and the built app's `Metadata.appintents`):
+
+1. Siri never learned a channel name. The Spotlight update began with `CSSearchableIndex.deleteAppEntities(ofType:)`,
+   which never returns on iOS 27.2, and `updateAppShortcutParameters()` came after it: nothing was indexed and the
+   phrase parameters were never registered, so "Play Sky Sport F1 in Fluxo" matched no shortcut. The phrases are
+   now refreshed first, and the index deletes only the channels that left it. No bulk delete is used: in the iOS 27.2
+   Simulator `deleteAllSearchableItems()` did not return within 5 s either, and a late one could remove the new
+   entries.
+2. Even then Siri knew only favorites and recently watched channels: none after a fresh install. It now also
+   knows the first live channels of each playlist, and their spoken names ("Sky Sport F1", not "IT: Sky Sport F1
+   FHD").
+3. A channel Siri does not know made the whole phrase fail. "Watch TV in Fluxo" / "Play a channel in Fluxo" now
+   make Siri ask "Which channel?", and the answer is searched in every playlist.
+4. No assistant schema: Siri with Apple Intelligence had no standard meaning for Fluxo's intents. Play Channel
+   and Search in Fluxo now adopt `system.open` and `system.searchInApp`.
+5. Stop Recording and a few actions had no phrase in most languages; the phrase sets of all 16 languages were
+   checked (every phrase has the app name and only parameters of its intent).
+6. Spotlight ran the wrong action for a channel. The system turns every channel of a phrase parameter into a
+   tile titled with the channel's name alone, so with channel phrases for What's On, Add to Favorites and
+   Recording too, Spotlight listed each channel several times, and opening its top hit told what is on or added
+   a favorite instead of playing. Only Play Channel has channel phrases now; the other three act on the channel
+   that plays ("Record this in Fluxo") or ask for one, and Siri AI and the Shortcuts app still fill in any channel.
+7. A request that played a channel or opened a screen while a channel schedule was open showed the result behind
+   that sheet. Intents now close it first (Recordings are a screen of the Library tab, not a sheet).
+8. A channel name with a number that the library lacks played another channel: "Play Rai 4 in Fluxo" (or "BBC
+   Four", which becomes "BBC 4") on a playlist without it played the fourth channel of the playlist. A number is
+   now a playlist position only alone or next to "channel" / "number", and the closest name must have the numbers
+   said (`siri-resolve-check` in the debug harness).
+
+**What to say** (English; every language of the app has its own phrases, see Settings › Siri & Shortcuts):
+
+- "Play Sky Sport F1 in Fluxo", "Watch Rai 1 on Fluxo", "Switch to BBC One in Fluxo"; "Watch TV in Fluxo" (Siri
+  asks which channel: say any channel name or number)
+- "Continue watching in Fluxo", "What's on in Fluxo" (what the favorite channels show), "What should I watch on
+  Fluxo"
+- "Search Fluxo" (then the words), "Search the Fluxo guide", "Open the TV guide in Fluxo", "Show my Fluxo
+  recordings"
+- "Add this channel to my Fluxo favorites", "Start recording in Fluxo", "Stop recording in Fluxo", "Remind me
+  about a show in Fluxo"
+- "Pause" / "Resume" (Siri's own, through Now Playing). With Siri and Apple Intelligence, requests in other
+  words ("open Sky Sport F1 in Fluxo", "find football in Fluxo", "what's on Rai 1 in Fluxo") reach the schema
+  intents and the actions without phrases, with the channel resolved through the same search.
+- Spotlight: type a favorite or recently watched channel (or the name of a Fluxo action); opening the channel
+  plays it.
+
+**Steps on a device**
+
+1. iPhone, iPad or Mac on iOS / iPadOS / macOS 27 (26 for everything but the schemas and the Now Playing entity)
+   with Apple Intelligence for the Siri AI part (iPhone 15 Pro or later, iPad or Mac with M1 or later).
+2. Install Fluxo and open it once, with a playlist imported. Wait a few seconds: the phrases and Spotlight are
+   updated after launch. Mark a few favorites: Siri learns those first.
+3. Settings › Apps › Fluxo › Siri: keep "Learn from this App", "Show App in Search"
+   and "Show Content in Search" on.
+4. Open the Shortcuts app › Fluxo: the ten shortcuts are listed (Open Screen as one tile per screen), plus one
+   Play Channel tile per channel Siri knows by name and one Set Reminder tile per upcoming programme. If
+   they are not there, the phrases are not registered yet: reopen Fluxo, or restart the device.
+5. Say or type (Type to Siri) a phrase above.
+
+**User-side requirements and common mistakes**
+
+- The request must contain "Fluxo". "Play Sky Sport F1" without it goes to the Apple TV app or Music: no app
+  can take over playback requests without its name (the SDK has no video schema).
+- Siri's language is what counts, not the app's: with Siri in Italian, say the Italian phrases ("Metti Rai 1 su
+  Fluxo", "Cosa c'è su Fluxo"). Fluxo has phrases in its 16 languages; in another Siri language, only the
+  Shortcuts app works.
+- Apple Intelligence needs a supported device, Siri language = device language (a supported one), the model
+  downloaded (Settings › Apple Intelligence & Siri), and a region where it is available. Without it, App Shortcut
+  phrases still work; only free-form requests need it.
+- A channel name in a phrase must be one Siri knows (favorites, recently watched, first channels of a playlist).
+  For any other, say "Watch TV in Fluxo" and then the name, or add the channel to the favorites.
+- Open the app once after every install or update from Xcode, TestFlight or the App Store; App Shortcuts
+  register at install, the channel names after the first launch. Debug builds from Xcode and TestFlight builds
+  behave the same; a build from another bundle identifier is another app to Siri.
+- Siri cannot be checked in the Simulator ("Siri is not enabled on this device" on iOS 27.2): try the phrases
+  on a device. The Simulator's Shortcuts app and Spotlight do work (`Tools/Simulator/siri-tests.sh`).
+- The first Set Reminder brings Fluxo to the front, once, for the notification permission; with notifications
+  off for Fluxo it answers that reminders need them (Settings › Apps › Fluxo › Notifications).
+- Visual Intelligence needs a device with the Camera Control or the Action button (or a screenshot), and
+  Apple Intelligence on.
+- Shortcuts built with the earlier Start Recording and Stop Recording actions must be rebuilt with Recording
+  (Start or Stop): the two actions are now one (release note for the first TestFlight build).
+- A Debug run of the macOS app on an isolated library (`-FluxoDebugStore`) neither indexes Spotlight nor donates
+  to Siri: it shares the bundle identifier with the real app.
+
+**How this was checked**
+
+- `Metadata.appintents` of the built app (`extract.actionsdata`, `root.ssu.yaml`): 20 intents on iOS and macOS
+  (19 in the Simulator, whose SDK has no Visual Intelligence), the schemas `system.open`, `system.searchInApp`
+  and `visualIntelligence.semanticContentSearch`, two entities, three queries (two in the Simulator), ten App
+  Shortcuts with their phrases in 16 languages, and no warning from `appintentsmetadataprocessor`.
+- The debug harness runs every intent in the app, resolving parameters through the entity queries as Siri
+  does (`DebugIntentRoutes.swift`; `Tools/Simulator/README.md`, routes `intent:`, `siri-resolve:`,
+  `siri-resolve-check`, `siri-names`, `visual-search:`, `visual-ocr:`, `spotlight-reindex`), with the outcome in
+  `Status/intents.log`.
+- `Tools/Simulator/siri-tests.sh` (an XCUITest bundle) opens the Shortcuts app on a Simulator clone, checks the
+  ten shortcuts and runs What's On through the system (its dialog and snippet answer), searches Spotlight for a
+  seeded favorite and opens it (Fluxo comes to the front and plays it), screenshots Settings › Siri & Shortcuts,
+  and asks Siri (not available in the Simulator).
 
 ## User interface
 

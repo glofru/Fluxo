@@ -909,6 +909,7 @@ final class AVPlayerViewModel {
         }
         nowPlaying.update(
             title: channel.name ?? String(localized: "Fluxo", comment: "Now Playing title when the channel has no name; the app name."),
+            item: currentItem,
             isLive: isCasting ? (cast.mediaStatus?.isLive ?? true) : (route.isLiveRemux || player.currentItem?.duration.isIndefinite == true),
             elapsed: timeline.currentTime,
             duration: timeline.duration,

@@ -496,7 +496,7 @@ enum DebugRoutes {
         DebugRoute("help", "Logs this list.") { _, _ in
             DebugLaunchOptions.logger.notice("\(DebugRoutes.helpText, privacy: .public)")
         },
-    ]
+    ] + DebugIntentRoutes.all
 
     /// The route registered under the name of `step` ("name" or "name:argument").
     static func resolve(_ step: String) -> (DebugRoute, String)? {

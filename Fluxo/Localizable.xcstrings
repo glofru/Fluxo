@@ -1,6 +1,12 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "${action}" : {
+      "comment" : "Summary of a Shortcuts action, shown in the Shortcuts editor (${…} are parameters; keep them as written) — Shortcuts app."
+    },
+    "${action} on ${channel}" : {
+      "comment" : "Summary of a Shortcuts action, shown in the Shortcuts editor (${…} are parameters; keep them as written) — Shortcuts app."
+    },
     "%@" : {
       "comment" : "Format only: shows the value as it is (a channel or programme name). Do not translate.",
       "shouldTranslate" : false
@@ -1042,6 +1048,7 @@
         }
       }
     },
+    "%@ is not in your favorites." : {},
     "%@ left" : {
       "comment" : "Time left in the programme on now; the placeholder is a duration such as 45 min.",
       "localizations" : {
@@ -7077,6 +7084,7 @@
         }
       }
     },
+    "A favorite, a channel you watched or one of the first channels of a playlist. For any other: “Watch TV in Fluxo”, then the name." : {},
     "A secure connection to the server could not be made." : {
       "comment" : "TV guide download error: the server's certificate is not valid, or the address needs https.",
       "localizations" : {
@@ -7380,6 +7388,7 @@
         }
       }
     },
+    "Action" : {},
     "Add" : {
       "comment" : "Button: add the playlist or guide source.",
       "localizations" : {
@@ -9707,6 +9716,7 @@
         }
       }
     },
+    "Also Favorites, Recently Watched, Recordings and Search." : {},
     "Also in %@" : {
       "comment" : "Text — Apple Intelligence suggestions. The placeholder is a name.",
       "localizations" : {
@@ -9807,6 +9817,9 @@
           }
         }
       }
+    },
+    "Always say “Fluxo” in the request, in the language Siri speaks. Siri learns more channel names as you add favorites and watch channels. Every action is also in the Shortcuts app." : {
+      "comment" : "Footer of Settings › Siri & Shortcuts."
     },
     "An XMLTV file (.xml or .xml.gz), for example the guide address your provider gives you." : {
       "comment" : "Text — TV guide sources (Settings).",
@@ -11579,6 +11592,7 @@
         }
       }
     },
+    "Begin Recording" : {},
     "Being saved" : {
       "comment" : "VoiceOver hint of a recording that is still being written.",
       "localizations" : {
@@ -17949,6 +17963,7 @@
         }
       }
     },
+    "Continue" : {},
     "Continue Watching" : {
       "comment" : "Home page section: videos and channels watched recently.",
       "localizations" : {
@@ -18772,6 +18787,7 @@
         }
       }
     },
+    "DVR" : {},
     "Delete" : {
       "comment" : "Button (verb): delete.",
       "localizations" : {
@@ -21398,6 +21414,7 @@
         }
       }
     },
+    "End Recording" : {},
     "Ended" : {
       "comment" : "Player status: the stream or video finished.",
       "localizations" : {
@@ -23422,6 +23439,7 @@
         }
       }
     },
+    "Find" : {},
     "Find ${kind} matching ${query}" : {
       "comment" : "Summary of a Shortcuts action, shown in the Shortcuts editor (${…} are parameters; keep them as written) — Shortcuts app.",
       "localizations" : {
@@ -23624,6 +23642,7 @@
         }
       }
     },
+    "Finds a channel by name or number, or a programme on now by title, and plays it." : {},
     "Finds a channel by name, or a programme on now by title, and plays it." : {
       "comment" : "Shortcuts action description — Siri and Shortcuts.",
       "localizations" : {
@@ -27061,6 +27080,7 @@
         }
       }
     },
+    "Get Favorites" : {},
     "Get Suggestions" : {
       "comment" : "Shortcuts action name — Siri and Shortcuts.",
       "localizations" : {
@@ -27161,6 +27181,9 @@
           }
         }
       }
+    },
+    "Get favorite ${kind}" : {
+      "comment" : "Summary of a Shortcuts action, shown in the Shortcuts editor (${…} are parameters; keep them as written) — Shortcuts app."
     },
     "Give the whole display to the video" : {
       "comment" : "Tooltip — video player screen.",
@@ -31463,6 +31486,7 @@
         }
       }
     },
+    "Last" : {},
     "Later on %@" : {
       "comment" : "Text — TV programme details. The placeholder is the channel name.",
       "localizations" : {
@@ -32319,6 +32343,8 @@
         }
       }
     },
+    "Listings" : {},
+    "Lists your favorite channels, movies and series, in your order." : {},
     "Live" : {
       "comment" : "VoiceOver announcement: playback is at the live edge of a live channel.",
       "localizations" : {
@@ -40020,6 +40046,7 @@
         }
       }
     },
+    "Number" : {},
     "OK" : {
       "comment" : "Button: dismiss the alert.",
       "localizations" : {
@@ -42838,6 +42865,7 @@
         }
       }
     },
+    "Opens the TV guide schedule of a channel: today and the next days, where you can set reminders." : {},
     "Opens the TV guide, search, favorites, recently watched or recordings." : {
       "comment" : "Shortcuts action description — Siri and Shortcuts.",
       "localizations" : {
@@ -48500,6 +48528,7 @@
         }
       }
     },
+    "Programmes" : {},
     "REC %@" : {
       "comment" : "Recording badge in the player: REC, then the recording time, as in REC 1:23. Keep REC very short.",
       "localizations" : {
@@ -50065,6 +50094,7 @@
         }
       }
     },
+    "Recording Action" : {},
     "Recording failed" : {
       "comment" : "Recording error shown when the engine gives no reason.\nRecording error.",
       "localizations" : {
@@ -50367,6 +50397,9 @@
           }
         }
       }
+    },
+    "Recording saved" : {
+      "comment" : "Siri and Shortcuts confirmation title after a recording stops, when the channel has no name."
     },
     "Recording started" : {
       "comment" : "VoiceOver announcement.",
@@ -50977,6 +51010,7 @@
     "Recording…" : {
       "comment" : "A recording in the list that is still being recorded."
     },
+    "Records the live channel that is playing, or plays a channel and records it, or stops the recording. Recordings are saved in Recordings." : {},
     "Records the live channel that is playing, or plays a channel and records it. Recordings are saved in Recordings." : {
       "comment" : "Shortcuts action description — Siri and Shortcuts.",
       "localizations" : {
@@ -52795,6 +52829,9 @@
         }
       }
     },
+    "Remove ${channel} from favorites" : {
+      "comment" : "Summary of a Shortcuts action, shown in the Shortcuts editor (${…} are parameters; keep them as written) — Shortcuts app."
+    },
     "Remove from Favorites" : {
       "comment" : "Button / VoiceOver label — accessibility, channel card, Favorites screen.",
       "localizations" : {
@@ -53199,6 +53236,7 @@
         }
       }
     },
+    "Removes a channel from your favorites. Nothing changes if it is not one." : {},
     "Results" : {
       "comment" : "Section header: search results.",
       "localizations" : {
@@ -53603,6 +53641,7 @@
         }
       }
     },
+    "Resumes the movie or episode you watched last, where you left it. Without one, plays the channel you watched last." : {},
     "Resumes the video" : {
       "comment" : "VoiceOver hint — Home page.",
       "localizations" : {
@@ -53704,6 +53743,7 @@
         }
       }
     },
+    "Resuming %@, %@." : {},
     "Resuming %@." : {
       "comment" : "What Siri says or shows — Siri and Shortcuts. The placeholder is a name.",
       "localizations" : {
@@ -54315,6 +54355,9 @@
           }
         }
       }
+    },
+    "Saved in Recordings" : {
+      "comment" : "Siri and Shortcuts confirmation after a recording stops."
     },
     "Saving %lld programmes…" : {
       "comment" : "TV guide import progress while the programmes are saved.",
@@ -58814,6 +58857,7 @@
         }
       }
     },
+    "Show Channel Schedule" : {},
     "Show Channels" : {
       "comment" : "VoiceOver label — video player screen.",
       "localizations" : {
@@ -59419,6 +59463,9 @@
           }
         }
       }
+    },
+    "Show the schedule of ${channel}" : {
+      "comment" : "Summary of a Shortcuts action, shown in the Shortcuts editor (${…} are parameters; keep them as written) — Shortcuts app."
     },
     "Showing the first %lld matches. Type more to narrow the search." : {
       "comment" : "Text — category and channel lists, Search screen. The placeholder is search limit.",
@@ -60379,6 +60426,7 @@
         }
       }
     },
+    "Siri & Shortcuts" : {},
     "Skip Back %lld Seconds" : {
       "comment" : "Button — menu bar and keyboard commands. The placeholder is skip backward interval).",
       "localizations" : {
@@ -61997,6 +62045,7 @@
         }
       }
     },
+    "Start or Stop Recording" : {},
     "Start the address with http:// or https://." : {
       "comment" : "Validation message of the playlist address field.",
       "localizations" : {
@@ -63772,6 +63821,7 @@
         }
       }
     },
+    "Stop the Recording" : {},
     "Stop the current recording to delete recordings." : {
       "comment" : "Text — Settings.",
       "localizations" : {
@@ -63974,6 +64024,7 @@
         }
       }
     },
+    "Stopped playback." : {},
     "Stopped recording %@. It's in Recordings." : {
       "comment" : "What Siri says or shows — Siri and Shortcuts. The placeholder is a name.",
       "localizations" : {
@@ -64277,6 +64328,7 @@
         }
       }
     },
+    "Stops what Fluxo is playing and closes the player. A recording in progress is saved." : {},
     "Storage" : {
       "comment" : "Settings section about disk space.",
       "localizations" : {
@@ -64378,6 +64430,7 @@
         }
       }
     },
+    "Stream" : {},
     "Stream files are in use while a channel plays. They are removed automatically when playback stops." : {
       "comment" : "Text — Settings.",
       "localizations" : {
@@ -65590,6 +65643,7 @@
         }
       }
     },
+    "TV" : {},
     "TV Guide" : {
       "comment" : "Name of a TV guide source that has no name.",
       "localizations" : {
@@ -68237,6 +68291,7 @@
         }
       }
     },
+    "The movie or episode you were watching, where you left it." : {},
     "The player is in another window." : {
       "comment" : "Text — separate player window (iPad, Mac).",
       "localizations" : {
@@ -69253,6 +69308,7 @@
         }
       }
     },
+    "Then say what you are looking for: a channel, a film, “football tonight”." : {},
     "This category is empty." : {
       "comment" : "Empty-state title — category and channel lists.",
       "localizations" : {
@@ -75868,6 +75924,7 @@
         }
       }
     },
+    "What your favorite channels show now." : {},
     "What's On" : {
       "comment" : "Shortcuts action name / short title of an App Shortcut tile — Siri and Shortcuts, Siri and Shortcuts (App Shortcuts).",
       "localizations" : {
@@ -77332,6 +77389,41 @@
         }
       }
     },
+    "You have %lld favorites, starting with %@." : {
+      "comment" : "Siri and Shortcuts dialog of Get Favorites. %1$ is the number of favorites (always more than three); %2$ is a list of the first three channel names.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You have %1$#@favorites@, starting with %2$@."
+          },
+          "substitutions" : {
+            "favorites" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg favorite"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg favorites"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "You have no favorite channels in Fluxo yet." : {},
+    "You haven't watched anything in Fluxo yet." : {},
     "You might like %@." : {
       "comment" : "What Siri says or shows — Siri and Shortcuts. The placeholder is top.",
       "localizations" : {
@@ -77736,6 +77828,7 @@
         }
       }
     },
+    "Your favorites are %@." : {},
     "epgshare01 publishes free guides by country, updated every day. Use them for channels you are allowed to watch." : {
       "comment" : "Text — TV guide sources (Settings).",
       "localizations" : {
@@ -78703,6 +78796,21 @@
           }
         }
       }
+    },
+    "“Continue watching in Fluxo”" : {
+      "comment" : "A Siri phrase shown in Settings: translate it as the Continue Watching phrase people say to Siri in this language, keeping “Fluxo”."
+    },
+    "“Open the TV guide in Fluxo”" : {
+      "comment" : "A Siri phrase shown in Settings: translate it as the Open Screen phrase people say to Siri in this language, keeping “Fluxo”."
+    },
+    "“Play Rai 1 in Fluxo”" : {
+      "comment" : "A Siri phrase shown in Settings: translate it as the Play Channel phrase people say to Siri in this language, keeping “Fluxo”."
+    },
+    "“Search Fluxo”" : {
+      "comment" : "A Siri phrase shown in Settings: translate it as the Search phrase people say to Siri in this language, keeping “Fluxo”."
+    },
+    "“What's on in Fluxo?”" : {
+      "comment" : "A Siri phrase shown in Settings: translate it as the What's On phrase people say to Siri in this language, keeping “Fluxo”."
     }
   },
   "version" : "1.1"

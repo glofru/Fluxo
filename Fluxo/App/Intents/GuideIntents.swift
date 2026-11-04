@@ -20,7 +20,7 @@ struct WhatsOnIntent: AppIntent {
     var channel: ChannelEntity?
 
     @Dependency
-    private var services: AppServices
+    var services: AppServices
 
     static var parameterSummary: some ParameterSummary {
         Summary("What's on \(\.$channel)")
@@ -89,7 +89,7 @@ struct SearchProgrammesIntent: AppIntent {
     var query: String
 
     @Dependency
-    private var services: AppServices
+    var services: AppServices
 
     static var parameterSummary: some ParameterSummary {
         Summary("Search the TV guide for \(\.$query)")
@@ -140,7 +140,7 @@ struct SetReminderIntent: AppIntent {
     var program: ProgramEntity
 
     @Dependency
-    private var services: AppServices
+    var services: AppServices
 
     static var parameterSummary: some ParameterSummary {
         Summary("Remind me about \(\.$program)")
@@ -181,6 +181,8 @@ enum FluxoDestination: String, AppEnum {
     case favorites
     case history
     case recordings
+    /// The Library tab (favorites, recently watched and recordings; on the Mac, its Recordings item).
+    case library
 
     static var typeDisplayRepresentation: TypeDisplayRepresentation {
         "Fluxo Screen"
@@ -194,6 +196,7 @@ enum FluxoDestination: String, AppEnum {
             .favorites: DisplayRepresentation(title: "Favorites", image: .init(systemName: "star"), synonyms: ["Favourites"]),
             .history: DisplayRepresentation(title: "Recently Watched", image: .init(systemName: "clock"), synonyms: ["History", "Continue Watching"]),
             .recordings: DisplayRepresentation(title: "Recordings", image: .init(systemName: "film.stack")),
+            .library: DisplayRepresentation(title: "Library", image: .init(systemName: "rectangle.stack")),
         ]
     }
 
@@ -211,6 +214,8 @@ enum FluxoDestination: String, AppEnum {
             return .history
         case .recordings:
             return .recordings
+        case .library:
+            return .library
         }
     }
 }
@@ -225,7 +230,7 @@ struct OpenFluxoIntent: OpenIntent {
     var target: FluxoDestination
 
     @Dependency
-    private var services: AppServices
+    var services: AppServices
 
     init() {}
 
@@ -235,7 +240,37 @@ struct OpenFluxoIntent: OpenIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        services.navigation.show(target.destination)
+        services.reveal(target.destination)
+        return .result()
+    }
+}
+
+/// Opens the schedule of a channel: today's programmes and the next days, from the TV guide, with reminders.
+struct ShowScheduleIntent: AppIntent {
+
+    static let title: LocalizedStringResource = "Show Channel Schedule"
+    static let description = IntentDescription("Opens the TV guide schedule of a channel: today and the next days, where you can set reminders.", categoryName: "TV Guide", searchKeywords: ["Guide", "EPG", "Programmes", "Listings", "Schedule"])
+    static let supportedModes: IntentModes = .foreground(.immediate)
+
+    @Parameter(title: "Channel", description: "Leave empty for the channel that is playing.", requestValueDialog: "Which channel?")
+    var channel: ChannelEntity?
+
+    @Dependency
+    var services: AppServices
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Show the schedule of \(\.$channel)")
+    }
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        guard let item = channel?.item ?? services.currentOrLastChannel() else {
+            throw FluxoIntentError.nothingPlaying
+        }
+        guard item.kind == .live else {
+            throw FluxoIntentError.noGuide
+        }
+        services.showSchedule(of: item)
         return .result()
     }
 }

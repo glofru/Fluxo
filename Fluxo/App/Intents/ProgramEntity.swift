@@ -77,7 +77,7 @@ struct ProgramEntity: AppEntity {
 struct ProgramEntityQuery: EntityStringQuery {
 
     @Dependency
-    private var services: AppServices
+    var services: AppServices
 
     func entities(for identifiers: [ProgramEntity.ID]) async throws -> [ProgramEntity] {
         let container = services.container

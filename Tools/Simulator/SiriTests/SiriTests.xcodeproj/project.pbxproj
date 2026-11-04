@@ -1,0 +1,24 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+		B0000000000000000000001 /* SiriTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000002; };
+		B0000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SiriTests.swift; sourceTree = "<group>"; };
+		B0000000000000000000003 = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SiriTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B0000000000000000000004 = {isa = PBXGroup; children = (B0000000000000000000002, B0000000000000000000005); sourceTree = "<group>"; };
+		B0000000000000000000005 = {isa = PBXGroup; children = (B0000000000000000000003); name = Products; sourceTree = "<group>"; };
+		B0000000000000000000006 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B0000000000000000000001); runOnlyForDeploymentPostprocessing = 0; };
+		B0000000000000000000007 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		B0000000000000000000008 = {isa = PBXNativeTarget; buildConfigurationList = B0000000000000000000009; buildPhases = (B0000000000000000000006, B0000000000000000000007); buildRules = (); dependencies = (); name = SiriTests; productName = SiriTests; productReference = B0000000000000000000003; productType = "com.apple.product-type.bundle.ui-testing"; };
+		B0000000000000000000009 = {isa = XCConfigurationList; buildConfigurations = (B000000000000000000000A); defaultConfigurationIsVisible = 0; defaultConfigurationName = Debug; };
+		B000000000000000000000A = {isa = XCBuildConfiguration; buildSettings = {
+			CODE_SIGN_STYLE = Automatic; CODE_SIGNING_ALLOWED = NO; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 26.1; PRODUCT_BUNDLE_IDENTIFIER = dev.local.SiriTests; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Debug; };
+		B000000000000000000000B = {isa = XCConfigurationList; buildConfigurations = (B000000000000000000000C); defaultConfigurationIsVisible = 0; defaultConfigurationName = Debug; };
+		B000000000000000000000C = {isa = XCBuildConfiguration; buildSettings = { SDKROOT = iphoneos; }; name = Debug; };
+		B000000000000000000000D = {isa = PBXProject; buildConfigurationList = B000000000000000000000B; compatibilityVersion = "Xcode 14.0"; mainGroup = B0000000000000000000004; productRefGroup = B0000000000000000000005; projectDirPath = ""; projectRoot = ""; targets = (B0000000000000000000008); };
+	};
+	rootObject = B000000000000000000000D;
+}

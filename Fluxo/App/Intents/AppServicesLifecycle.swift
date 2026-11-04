@@ -3,11 +3,14 @@
 //  Fluxo
 //
 
+import AppIntents
 import SwiftUI
 
 extension View {
     /// App-wide upkeep of the Apple Intelligence and Siri features: re-reads the model availability when the app
-    /// becomes active, and keeps Spotlight and the Siri phrase parameters in step with the favorites and history.
+    /// becomes active, keeps Spotlight and the Siri phrase parameters in step with the favorites and history, and
+    /// tells the system what is watched (intent donations), so Siri can suggest a channel at the time it is usually
+    /// watched and Apple Intelligence knows the user's habits.
     func appServicesLifecycle(_ services: AppServices) -> some View {
         modifier(AppServicesLifecycle(services: services))
     }
@@ -39,6 +42,14 @@ private struct AppServicesLifecycle: ViewModifier {
             }
             .onChange(of: services.library.favoriteKeys) {
                 services.spotlight.scheduleUpdate()
+            }
+            .onChange(of: services.player.currentItem?.bookmarkKey) { _, key in
+                guard key != nil, let item = services.player.currentItem else {
+                    return
+                }
+                services.donatePlay(item)
+                // The watch history changed: the phrases learn the channel.
+                services.spotlight.scheduleUpdate(after: .seconds(10))
             }
     }
 }

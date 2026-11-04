@@ -45,6 +45,7 @@ struct SettingsView: View {
             #endif
             GuideSettingsSection()
             IntelligenceSettingsSection()
+            SiriSettingsSection()
             recordingsSection
             storageSection
             aboutSection

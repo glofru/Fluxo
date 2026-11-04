@@ -19,7 +19,7 @@ struct ToggleFavoriteIntent: AppIntent {
     var channel: ChannelEntity?
 
     @Dependency
-    private var services: AppServices
+    var services: AppServices
 
     static var parameterSummary: some ParameterSummary {
         Summary("Toggle favorite for \(\.$channel)")
@@ -58,7 +58,7 @@ struct AddFavoriteIntent: AppIntent {
     var channel: ChannelEntity?
 
     @Dependency
-    private var services: AppServices
+    var services: AppServices
 
     static var parameterSummary: some ParameterSummary {
         Summary("Add \(\.$channel) to favorites")
@@ -81,24 +81,93 @@ struct AddFavoriteIntent: AppIntent {
     }
 }
 
-/// Opens Search with a query (the system "search in app" intent).
+/// Opens Search with a query (the system "search in app" intent). From iOS 27 and macOS 27 it adopts the system
+/// `searchInApp` schema (see `AppSchemaAdoption.swift`).
 struct SearchInFluxoIntent: ShowInAppSearchResultsIntent {
 
     static let title: LocalizedStringResource = "Search in Fluxo"
-    static let description = IntentDescription("Opens Fluxo's search with your words. Searches like “football tonight” also show matching programmes.", categoryName: "Library")
+    static let description = IntentDescription("Opens Fluxo's search with your words. Searches like “football tonight” also show matching programmes.", categoryName: "Library", searchKeywords: ["Find", "Channel", "Show", "Programme"])
     static let searchScopes: [StringSearchScope] = [.general, .tv, .movies]
 
     @Parameter(title: "Search", requestValueDialog: "What are you looking for?")
     var criteria: StringSearchCriteria
 
     @Dependency
-    private var services: AppServices
+    var services: AppServices
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        services.navigation.show(.search)
-        services.navigation.searchText = criteria.term
+        services.showSearch(criteria.term)
         return .result()
+    }
+}
+
+/// Removes a channel from the favorites; does nothing when it is not one.
+struct RemoveFavoriteIntent: AppIntent {
+
+    static let title: LocalizedStringResource = "Remove from Favorites"
+    static let description = IntentDescription("Removes a channel from your favorites. Nothing changes if it is not one.", categoryName: "Library")
+    static let supportedModes: IntentModes = .background
+
+    @Parameter(title: "Channel", description: "Leave empty for the channel that is playing.")
+    var channel: ChannelEntity?
+
+    @Dependency
+    var services: AppServices
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Remove \(\.$channel) from favorites")
+    }
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog & ShowsSnippetView {
+        guard let item = channel?.item ?? services.player.currentItem else {
+            throw FluxoIntentError.nothingPlaying
+        }
+        let wasFavorite = services.library.isFavorite(item)
+        if wasFavorite {
+            services.library.setFavorite(false, for: item)
+        }
+        let dialog: IntentDialog = wasFavorite ? "Removed \(item.displayName) from your favorites." : "\(item.displayName) is not in your favorites."
+        return .result(
+            dialog: dialog,
+            view: ConfirmationSnippetView(systemImage: "star.slash", title: item.displayName, subtitle: String(localized: "Not in your favorites"), tint: Theme.favorite)
+        )
+    }
+}
+
+/// The favorite channels, in the user's order, as a value for shortcuts and as an answer for Siri.
+struct GetFavoritesIntent: AppIntent {
+
+    static let title: LocalizedStringResource = "Get Favorites"
+    static let description = IntentDescription("Lists your favorite channels, movies and series, in your order.", categoryName: "Library")
+    static let supportedModes: IntentModes = .background
+
+    @Parameter(title: "Type")
+    var kind: ChannelKindAppEnum?
+
+    @Dependency
+    var services: AppServices
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Get favorite \(\.$kind)")
+    }
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ReturnsValue<[ChannelEntity]> & ProvidesDialog & ShowsSnippetView {
+        let container = services.container
+        let names = ChannelEntityQuery.playlistNames(container)
+        let favorites = LibraryLookup.bookmarks(playlistIDs: nil, historyLimit: 0, favoriteLimit: 200, in: container).favorites
+        let entities = favorites
+            .filter { kind == nil || $0.item.kind == kind?.contentKind }
+            .compactMap { ChannelEntity($0.item, playlistName: names[$0.item.playlistID]) }
+        guard !entities.isEmpty else {
+            throw FluxoIntentError.noFavorites
+        }
+        let rows = entities.map { ChannelListSnippetView.Row(id: $0.id, name: $0.name, kind: $0.item.kind, detail: $0.group) }
+        let top = entities.prefix(3).map(\.name).formatted(.list(type: .and))
+        let dialog: IntentDialog = entities.count <= 3 ? "Your favorites are \(top)." : "You have \(entities.count) favorites, starting with \(top)."
+        return .result(value: entities, dialog: dialog, view: ChannelListSnippetView(rows: rows))
     }
 }
 
@@ -117,7 +186,7 @@ struct FindChannelsIntent: AppIntent {
     var kind: ChannelKindAppEnum?
 
     @Dependency
-    private var services: AppServices
+    var services: AppServices
 
     static var parameterSummary: some ParameterSummary {
         Summary("Find \(\.$kind) matching \(\.$query)")
@@ -162,7 +231,7 @@ struct GetRecommendationsIntent: AppIntent {
     static let supportedModes: IntentModes = .background
 
     @Dependency
-    private var services: AppServices
+    var services: AppServices
 
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<[ChannelEntity]> & ProvidesDialog & ShowsSnippetView {

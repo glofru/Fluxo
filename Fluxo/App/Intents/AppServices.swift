@@ -31,7 +31,15 @@ final class AppServices {
         self.windows = windows
         self.intelligence = intelligence
         spotlight = ChannelSpotlightIndexer(container: container)
+        #if DEBUG
+        Self.debugShared = self
+        #endif
     }
+
+    #if DEBUG
+    /// The app's instance, for the debug harness (`intent:` routes run the intents in process).
+    private(set) static weak var debugShared: AppServices?
+    #endif
 
     /// The navigation of the main window used last (iPad windows each have their own).
     var navigation: AppNavigation {
@@ -42,7 +50,56 @@ final class AppServices {
     /// player already on screen stays in its window; otherwise it opens in the main window used last.
     func play(_ item: ChannelItem) {
         let windowID = player.isPresented ? nil : windows.preferredMainWindowID
+        if windowID != nil {
+            // The player opens under a sheet of the window: a channel schedule shown by an earlier request would
+            // hide it.
+            dismissSheets()
+        }
         PlayChannelAction(library: library, player: player, coordinator: windows, windowID: windowID)(item)
+    }
+
+    /// Shows a screen of the main window used last. A full-screen player gets out of the way (playback continues
+    /// in the mini player), since it would cover the screen.
+    func reveal(_ destination: AppNavigation.Destination) {
+        // As the close button does: into Picture in Picture when the user chose it, else the mini player.
+        player.closePlayer()
+        dismissSheets()
+        navigation.show(destination)
+    }
+
+    /// Closes the sheet an earlier request may have left open over the main window (a channel schedule), so what
+    /// the next request shows is not hidden behind it. Recordings are a screen of the Library tab, not a sheet.
+    private func dismissSheets() {
+        navigation.scheduleChannel = nil
+    }
+
+    /// Search with `term` typed in.
+    func showSearch(_ term: String) {
+        reveal(.search)
+        navigation.searchText = term
+    }
+
+    /// The schedule of a live channel (today and the next days from the guide), over the current screen.
+    func showSchedule(of item: ChannelItem) {
+        player.closePlayer()
+        navigation.scheduleChannel = item
+    }
+
+    /// Donates "Play <channel>" to the system after a channel starts, however it was started (an intent run by Siri
+    /// or Shortcuts is donated by the system as well; a repeat costs nothing).
+    func donatePlay(_ item: ChannelItem) {
+        #if DEBUG && os(macOS)
+        // A debug run on an isolated library shares the bundle identifier, and so the donations Siri learns from,
+        // with the user's copy of the app (as for Spotlight in `ChannelSpotlightIndexer`).
+        if DebugEnvironment.shared != nil {
+            return
+        }
+        #endif
+        let names = ChannelEntityQuery.playlistNames(container)
+        guard let entity = ChannelEntity(item, playlistName: names[item.playlistID]) else {
+            return
+        }
+        _ = PlayChannelIntent(channel: entity).donate()
     }
 
     /// The import IDs of every playlist with channels (intents search the whole library).
@@ -60,6 +117,18 @@ final class AppServices {
             try? await Task.sleep(for: .milliseconds(100))
         }
         return epg.hasGuide
+    }
+
+    /// What "Continue watching" resumes: the most recently watched movie or episode with a saved position, else the
+    /// channel watched last.
+    func continueWatchingItem() -> (item: ChannelItem, progress: WatchProgress?)? {
+        let history = LibraryLookup.bookmarks(playlistIDs: nil, historyLimit: 60, favoriteLimit: 0, in: container).history
+        for entry in history {
+            if let progress = library.watchProgress(for: entry.item) {
+                return (entry.item, progress)
+            }
+        }
+        return history.first.map { ($0.item, nil) }
     }
 
     /// The channel an intent without a channel parameter is about: the one playing, else the last watched.
@@ -87,6 +156,8 @@ enum FluxoIntentError: Error, CustomLocalizedStringResourceConvertible {
     case notificationsOff
     case noPlaylists
     case noSuggestions
+    case nothingWatched
+    case noFavorites
 
     var localizedStringResource: LocalizedStringResource {
         switch self {
@@ -114,6 +185,10 @@ enum FluxoIntentError: Error, CustomLocalizedStringResourceConvertible {
             return "Add a playlist in Fluxo first."
         case .noSuggestions:
             return "Fluxo has no suggestions yet. Watch a few channels or add favorites first."
+        case .nothingWatched:
+            return "You haven't watched anything in Fluxo yet."
+        case .noFavorites:
+            return "You have no favorite channels in Fluxo yet."
         }
     }
 }

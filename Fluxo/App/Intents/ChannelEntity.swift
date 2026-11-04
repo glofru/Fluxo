@@ -38,6 +38,10 @@ struct ChannelEntity: AppEntity, IndexedEntity {
     @Property(title: "Playlist")
     var playlistName: String?
 
+    /// The position in the playlist, from 1 (nil for a channel known only from the favorites or the history).
+    @Property(title: "Channel Number")
+    var number: Int?
+
     /// The channel itself, for playing it.
     let item: ChannelItem
 
@@ -51,6 +55,7 @@ struct ChannelEntity: AppEntity, IndexedEntity {
         self.group = ChannelCandidate.displayGroup(item.groupName)
         self.kind = ChannelKindAppEnum(item.kind)
         self.playlistName = playlistName
+        self.number = item.number
     }
 
     /// The system's reference to a channel, for on-screen awareness (`View.appEntityIdentifier(_:)`).
@@ -58,11 +63,14 @@ struct ChannelEntity: AppEntity, IndexedEntity {
         ChannelEntity(item).map { EntityIdentifier(for: $0) }
     }
 
+    /// The synonyms are the names people say for the playlist's name ("Sky Sport F1" for "IT: Sky Sport F1 FHD",
+    /// `ChannelSpokenNames`): Siri matches the words of "Play … in Fluxo" against the title and the synonyms.
     var displayRepresentation: DisplayRepresentation {
         DisplayRepresentation(
             title: "\(name)",
             subtitle: "\(TextParts.line([group, playlistName]))",
-            image: DisplayRepresentation.Image(systemName: item.kind.systemImage)
+            image: DisplayRepresentation.Image(systemName: item.kind.systemImage),
+            synonyms: ChannelSpokenNames.variants(of: name).map { "\($0)" }
         )
     }
 
@@ -72,7 +80,8 @@ struct ChannelEntity: AppEntity, IndexedEntity {
         attributes.title = name
         attributes.displayName = name
         attributes.contentDescription = TextParts.line([item.kind.title, group, playlistName])
-        attributes.keywords = [group, item.kind.title, playlistName].compactMap { $0 } + ChannelNameNormalizer.tokens(name)
+        attributes.keywords = [group, item.kind.title, playlistName].compactMap { $0 } + ChannelNameNormalizer.tokens(name) + ChannelSpokenNames.variants(of: name)
+        attributes.alternateNames = ChannelSpokenNames.variants(of: name)
         return attributes
     }
 }
@@ -123,7 +132,7 @@ enum ChannelKindAppEnum: String, AppEnum {
 struct ChannelEntityQuery: EntityStringQuery {
 
     @Dependency
-    private var services: AppServices
+    var services: AppServices
 
     static let suggestionLimit = 40
 
@@ -137,17 +146,59 @@ struct ChannelEntityQuery: EntityStringQuery {
         }
     }
 
+    /// What Siri runs with the words it heard for a channel ("Which channel?" answered, or Siri AI filling in a
+    /// parameter): the channel `AppServices.resolveChannel` picks first ("Rai Uno" → "Rai 1", "channel 5", the
+    /// favorite among same-named channels), then the other search results that have the numbers said.
     func entities(matching string: String) async throws -> [ChannelEntity] {
         let container = services.container
         let playlists = LibraryLookup.visiblePlaylists(in: container)
         let names = Dictionary(playlists.map { ($0.playlistID, $0.name) }, uniquingKeysWith: { first, _ in first })
-        let items = await LibraryLookup.searchChannels(string, importIDs: playlists.map(\.importID), limit: 30, in: container)
+        // Never a channel with other numbers: "Eurosport 7" offers no "Eurosport 1" that Siri could pick alone.
+        let digitTerm = ChannelResolver.digitsForNumberWords(string)
+        var items = await LibraryLookup.searchChannels(string, importIDs: playlists.map(\.importID), limit: 30, in: container)
+            .filter { ChannelResolver.hasNumbers(of: digitTerm, inName: $0.displayName) }
+        if let best = await services.resolveChannel(string)?.item {
+            items.removeAll { $0.bookmarkKey == best.bookmarkKey }
+            items.insert(best, at: 0)
+        }
         return items.compactMap { ChannelEntity($0, playlistName: names[$0.playlistID]) }
     }
 
+    /// What Siri knows by name for the phrases "Play … in Fluxo" (`updateAppShortcutParameters()`), and what the
+    /// Shortcuts app lists first: the favorites, the watch history, then the first live channels of each playlist.
     func suggestedEntities() async throws -> [ChannelEntity] {
-        try await Self.suggestions(container: services.container, limit: Self.suggestionLimit)
+        try await Self.parameterSuggestions(container: services.container)
     }
+
+    /// The suggestions plus the first live channels of each playlist (the main channels of a provider's list come
+    /// first), up to `parameterLimit`.
+    static func parameterSuggestions(container: ModelContainer, limit: Int = parameterLimit) async throws -> [ChannelEntity] {
+        var entities = try await suggestions(container: container, limit: suggestionLimit)
+        guard entities.count < limit else {
+            return entities
+        }
+        var seen = Set(entities.map(\.id))
+        let playlists = LibraryLookup.visiblePlaylists(in: container)
+        let names = Dictionary(playlists.map { ($0.playlistID, $0.name) }, uniquingKeysWith: { first, _ in first })
+        let perPlaylist = max(8, (limit - entities.count) / max(1, playlists.count))
+        for playlist in playlists {
+            var added = 0
+            for group in LibraryLookup.firstGroups(importIDs: [playlist.importID], kind: .live, limit: 4, in: container) {
+                for item in LibraryLookup.channels(importID: playlist.importID, groupName: group.name, limit: perPlaylist, in: container) {
+                    guard added < perPlaylist, entities.count < limit, let entity = ChannelEntity(item, playlistName: names[item.playlistID]),
+                          seen.insert(entity.id).inserted else {
+                        continue
+                    }
+                    entities.append(entity)
+                    added += 1
+                }
+            }
+        }
+        return entities
+    }
+
+    /// How many channels Siri knows by name.
+    static let parameterLimit = 80
 
     /// Favorites first, then the watch history, without repeats.
     static func suggestions(container: ModelContainer, limit: Int) async throws -> [ChannelEntity] {

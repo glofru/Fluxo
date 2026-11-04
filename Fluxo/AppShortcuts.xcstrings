@@ -1,6 +1,362 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "${action} in ${applicationName}" : {
+      "comment" : "Siri phrase of an App Shortcut. Keep ${applicationName} (the app name) and any other ${…} parameter exactly as written. Each phrase must contain ${applicationName}; write phrases people naturally say in this language. ${action} is “Start Recording” or “Stop Recording” (translated in Localizable.xcstrings).",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "ar" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "${action} في ${applicationName}",
+              "ابدأ التسجيل في ${applicationName}",
+              "سجّل هذا في ${applicationName}"
+            ]
+          }
+        },
+        "de" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "${action} in ${applicationName}",
+              "Starte die Aufnahme in ${applicationName}",
+              "Nimm das in ${applicationName} auf"
+            ]
+          }
+        },
+        "en" : {
+          "stringSet" : {
+            "state" : "new",
+            "values" : [
+              "${action} in ${applicationName}",
+              "${action} on ${applicationName}",
+              "Record this in ${applicationName}"
+            ]
+          }
+        },
+        "es" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "${action} en ${applicationName}",
+              "Empieza a grabar en ${applicationName}",
+              "Graba esto en ${applicationName}"
+            ]
+          }
+        },
+        "fr" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "${action} dans ${applicationName}",
+              "Lance l'enregistrement dans ${applicationName}",
+              "Enregistre ça dans ${applicationName}"
+            ]
+          }
+        },
+        "hi" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "${applicationName} में ${action}",
+              "${applicationName} में रिकॉर्डिंग शुरू करें",
+              "${applicationName} में इसे रिकॉर्ड करें"
+            ]
+          }
+        },
+        "id" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "${action} di ${applicationName}",
+              "Mulai merekam di ${applicationName}",
+              "Rekam ini di ${applicationName}"
+            ]
+          }
+        },
+        "it" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "${action} in ${applicationName}",
+              "${action} su ${applicationName}",
+              "Avvia la registrazione in ${applicationName}",
+              "Registra questo in ${applicationName}"
+            ]
+          }
+        },
+        "ja" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "${applicationName}で${action}",
+              "${applicationName}で録画を開始",
+              "${applicationName}でこれを録画"
+            ]
+          }
+        },
+        "ko" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "${applicationName}에서 ${action}",
+              "${applicationName}에서 녹화 시작",
+              "${applicationName}에서 이거 녹화해 줘"
+            ]
+          }
+        },
+        "nl" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "${action} in ${applicationName}",
+              "Start een opname in ${applicationName}",
+              "Neem dit op in ${applicationName}"
+            ]
+          }
+        },
+        "pl" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "${action} we ${applicationName}",
+              "Zacznij nagrywanie we ${applicationName}",
+              "Nagraj to we ${applicationName}"
+            ]
+          }
+        },
+        "pt-BR" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "${action} no ${applicationName}",
+              "Inicie a gravação no ${applicationName}",
+              "Grave isto no ${applicationName}"
+            ]
+          }
+        },
+        "ru" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "${action} в ${applicationName}",
+              "Начни запись в ${applicationName}",
+              "Запиши это в ${applicationName}"
+            ]
+          }
+        },
+        "tr" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "${applicationName}'da ${action}",
+              "${applicationName}'da kaydı başlat",
+              "${applicationName}'da bunu kaydet"
+            ]
+          }
+        },
+        "zh-Hans" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "在${applicationName}中${action}",
+              "在${applicationName}中开始录制",
+              "用${applicationName}录下这个"
+            ]
+          }
+        },
+        "zh-Hant" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "在${applicationName}中${action}",
+              "在${applicationName}中開始錄製",
+              "用${applicationName}錄下這個"
+            ]
+          }
+        }
+      }
+    },
+    "Continue watching in ${applicationName}" : {
+      "comment" : "Siri phrase of an App Shortcut. Keep ${applicationName} (the app name) and any other ${…} parameter exactly as written. Each phrase must contain ${applicationName}; write phrases people naturally say in this language.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "ar" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "تابع المشاهدة في ${applicationName}",
+              "استأنف المشاهدة في ${applicationName}",
+              "أكمل المشاهدة على ${applicationName}"
+            ]
+          }
+        },
+        "de" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Weiterschauen in ${applicationName}",
+              "Schau in ${applicationName} weiter",
+              "Setze die Wiedergabe in ${applicationName} fort"
+            ]
+          }
+        },
+        "en" : {
+          "stringSet" : {
+            "state" : "new",
+            "values" : [
+              "Continue watching in ${applicationName}",
+              "Continue watching on ${applicationName}",
+              "Resume watching in ${applicationName}",
+              "Keep watching in ${applicationName}",
+              "Resume my show in ${applicationName}"
+            ]
+          }
+        },
+        "es" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Sigue viendo en ${applicationName}",
+              "Continúa viendo en ${applicationName}",
+              "Reanuda lo que estaba viendo en ${applicationName}"
+            ]
+          }
+        },
+        "fr" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Reprends la lecture dans ${applicationName}",
+              "Continue à regarder dans ${applicationName}",
+              "Reprends mon programme sur ${applicationName}"
+            ]
+          }
+        },
+        "hi" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "${applicationName} में देखना जारी रखें",
+              "${applicationName} पर देखना जारी रखें",
+              "${applicationName} में वहीं से चलाएँ"
+            ]
+          }
+        },
+        "id" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Lanjutkan menonton di ${applicationName}",
+              "Lanjut nonton di ${applicationName}",
+              "Lanjutkan tontonan di ${applicationName}"
+            ]
+          }
+        },
+        "it" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Continua a guardare su ${applicationName}",
+              "Riprendi la visione su ${applicationName}",
+              "Continua a guardare in ${applicationName}",
+              "Riprendi a guardare su ${applicationName}"
+            ]
+          }
+        },
+        "ja" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "${applicationName}で続きを観る",
+              "${applicationName}で続きを再生",
+              "${applicationName}で視聴を再開"
+            ]
+          }
+        },
+        "ko" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "${applicationName}에서 이어서 보기",
+              "${applicationName}에서 이어 보기 해 줘",
+              "${applicationName}에서 보던 거 틀어 줘"
+            ]
+          }
+        },
+        "nl" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Verder kijken in ${applicationName}",
+              "Kijk verder in ${applicationName}",
+              "Hervat het kijken in ${applicationName}"
+            ]
+          }
+        },
+        "pl" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Oglądaj dalej we ${applicationName}",
+              "Wznów oglądanie we ${applicationName}",
+              "Kontynuuj oglądanie we ${applicationName}"
+            ]
+          }
+        },
+        "pt-BR" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Continue assistindo no ${applicationName}",
+              "Continuar assistindo no ${applicationName}",
+              "Retome o que eu estava vendo no ${applicationName}"
+            ]
+          }
+        },
+        "ru" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Продолжи просмотр в ${applicationName}",
+              "Продолжить просмотр в ${applicationName}",
+              "Досмотреть в ${applicationName}"
+            ]
+          }
+        },
+        "tr" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "${applicationName}'da izlemeye devam et",
+              "${applicationName}'da kaldığım yerden devam et",
+              "${applicationName} ile izlemeye devam et"
+            ]
+          }
+        },
+        "zh-Hans" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "在${applicationName}中继续观看",
+              "用${applicationName}继续看",
+              "在${applicationName}中接着看"
+            ]
+          }
+        },
+        "zh-Hant" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "在${applicationName}中繼續觀看",
+              "用${applicationName}繼續看",
+              "在${applicationName}中接著看"
+            ]
+          }
+        }
+      }
+    },
     "Favorite this channel in ${applicationName}" : {
       "comment" : "Siri phrase of an App Shortcut. Keep ${applicationName} (the app name) and any other ${…} parameter exactly as written. Each phrase must contain ${applicationName}; write phrases people naturally say in this language.",
       "extractionState" : "extracted_with_value",
@@ -10,7 +366,6 @@
             "state" : "translated",
             "values" : [
               "أضف هذه القناة إلى المفضلة في ${applicationName}",
-              "أضف ${channel} إلى مفضلتي في ${applicationName}",
               "أضف هذه القناة إلى مفضلتي في ${applicationName}"
             ]
           }
@@ -20,7 +375,6 @@
             "state" : "translated",
             "values" : [
               "Füge diesen Sender in ${applicationName} zu den Favoriten hinzu",
-              "Füge ${channel} zu meinen Favoriten in ${applicationName} hinzu",
               "Füge diesen Sender zu meinen Favoriten in ${applicationName} hinzu"
             ]
           }
@@ -30,7 +384,6 @@
             "state" : "new",
             "values" : [
               "Favorite this channel in ${applicationName}",
-              "Add ${channel} to my ${applicationName} favorites",
               "Add this channel to my ${applicationName} favorites"
             ]
           }
@@ -40,7 +393,6 @@
             "state" : "translated",
             "values" : [
               "Marca este canal como favorito en ${applicationName}",
-              "Añade ${channel} a mis favoritos de ${applicationName}",
               "Añade este canal a mis favoritos de ${applicationName}"
             ]
           }
@@ -50,7 +402,6 @@
             "state" : "translated",
             "values" : [
               "Ajoute cette chaîne aux favoris dans ${applicationName}",
-              "Ajoute ${channel} à mes favoris ${applicationName}",
               "Ajoute cette chaîne à mes favoris ${applicationName}"
             ]
           }
@@ -60,7 +411,6 @@
             "state" : "translated",
             "values" : [
               "${applicationName} में इस चैनल को पसंदीदा बनाएँ",
-              "${channel} को मेरे ${applicationName} पसंदीदा में जोड़ें",
               "इस चैनल को मेरे ${applicationName} पसंदीदा में जोड़ें"
             ]
           }
@@ -70,7 +420,6 @@
             "state" : "translated",
             "values" : [
               "Jadikan saluran ini favorit di ${applicationName}",
-              "Tambahkan ${channel} ke favorit ${applicationName} saya",
               "Tambahkan saluran ini ke favorit ${applicationName} saya"
             ]
           }
@@ -80,7 +429,6 @@
             "state" : "translated",
             "values" : [
               "Aggiungi questo canale ai preferiti in ${applicationName}",
-              "Aggiungi ${channel} ai miei preferiti di ${applicationName}",
               "Aggiungi questo canale ai miei preferiti di ${applicationName}"
             ]
           }
@@ -90,7 +438,6 @@
             "state" : "translated",
             "values" : [
               "${applicationName}でこのチャンネルをお気に入りに追加",
-              "${channel}を${applicationName}のお気に入りに追加",
               "このチャンネルを${applicationName}のお気に入りに追加"
             ]
           }
@@ -100,7 +447,6 @@
             "state" : "translated",
             "values" : [
               "${applicationName}에서 이 채널 즐겨찾기에 추가해 줘",
-              "${applicationName} 즐겨찾기에 ${channel} 추가해 줘",
               "이 채널 ${applicationName} 즐겨찾기에 추가해 줘"
             ]
           }
@@ -110,7 +456,6 @@
             "state" : "translated",
             "values" : [
               "Maak deze zender favoriet in ${applicationName}",
-              "Voeg ${channel} toe aan mijn favorieten in ${applicationName}",
               "Voeg deze zender toe aan mijn favorieten in ${applicationName}"
             ]
           }
@@ -120,7 +465,6 @@
             "state" : "translated",
             "values" : [
               "Dodaj ten kanał do ulubionych we ${applicationName}",
-              "Dodaj ${channel} do ulubionych we ${applicationName}",
               "Dodaj ten kanał do moich ulubionych we ${applicationName}"
             ]
           }
@@ -130,7 +474,6 @@
             "state" : "translated",
             "values" : [
               "Adicione este canal aos favoritos do ${applicationName}",
-              "Adicione ${channel} aos favoritos do ${applicationName}",
               "Favorite este canal no ${applicationName}"
             ]
           }
@@ -140,7 +483,6 @@
             "state" : "translated",
             "values" : [
               "Добавь этот канал в избранное в ${applicationName}",
-              "Добавь ${channel} в избранное ${applicationName}",
               "Добавь этот канал в мое избранное в ${applicationName}"
             ]
           }
@@ -150,7 +492,6 @@
             "state" : "translated",
             "values" : [
               "${applicationName}'da bu kanalı favorilere ekle",
-              "${channel} kanalını ${applicationName} favorilerime ekle",
               "Bu kanalı ${applicationName} favorilerime ekle"
             ]
           }
@@ -160,7 +501,6 @@
             "state" : "translated",
             "values" : [
               "在${applicationName}中收藏此频道",
-              "将${channel}添加到${applicationName}个人收藏",
               "将此频道添加到${applicationName}个人收藏"
             ]
           }
@@ -170,7 +510,6 @@
             "state" : "translated",
             "values" : [
               "在${applicationName}中將此頻道加入喜好",
-              "將${channel}加入${applicationName}喜好項目",
               "將此頻道加入${applicationName}喜好項目"
             ]
           }
@@ -207,7 +546,8 @@
             "values" : [
               "Open ${target} in ${applicationName}",
               "Show ${target} in ${applicationName}",
-              "Open the ${target} in ${applicationName}"
+              "Open the ${target} in ${applicationName}",
+              "Show my ${applicationName} ${target}"
             ]
           }
         },
@@ -365,7 +705,9 @@
               "شاهد ${target} في ${applicationName}",
               "شغّل ${target} على ${applicationName}",
               "أريد مشاهدة ${target} على ${applicationName}",
-              "شغّل لي ${target} في ${applicationName}"
+              "شغّل لي ${target} في ${applicationName}",
+              "شاهد التلفزيون في ${applicationName}",
+              "شغّل قناة في ${applicationName}"
             ]
           }
         },
@@ -376,7 +718,9 @@
               "Spiele ${target} in ${applicationName} ab",
               "Starte ${target} in ${applicationName}",
               "Mach ${target} in ${applicationName} an",
-              "Ich will ${target} in ${applicationName} sehen"
+              "Ich will ${target} in ${applicationName} sehen",
+              "Fernsehen in ${applicationName}",
+              "Spiele einen Sender in ${applicationName} ab"
             ]
           }
         },
@@ -388,7 +732,12 @@
               "Watch ${target} in ${applicationName}",
               "Play ${target} on ${applicationName}",
               "Watch ${target} on ${applicationName}",
-              "Put on ${target} in ${applicationName}"
+              "Put on ${target} in ${applicationName}",
+              "Switch to ${target} in ${applicationName}",
+              "Turn on ${target} in ${applicationName}",
+              "Play a channel in ${applicationName}",
+              "Watch TV in ${applicationName}",
+              "Watch something in ${applicationName}"
             ]
           }
         },
@@ -399,7 +748,9 @@
               "Reproduce ${target} en ${applicationName}",
               "Pon ${target} en ${applicationName}",
               "Quiero ver ${target} en ${applicationName}",
-              "Ver ${target} en ${applicationName}"
+              "Ver ${target} en ${applicationName}",
+              "Ver la tele en ${applicationName}",
+              "Pon un canal en ${applicationName}"
             ]
           }
         },
@@ -410,7 +761,9 @@
               "Lis ${target} dans ${applicationName}",
               "Mets ${target} sur ${applicationName}",
               "Lance ${target} dans ${applicationName}",
-              "Je veux regarder ${target} sur ${applicationName}"
+              "Je veux regarder ${target} sur ${applicationName}",
+              "Regarder la télé dans ${applicationName}",
+              "Mets une chaîne sur ${applicationName}"
             ]
           }
         },
@@ -422,7 +775,9 @@
               "${applicationName} में ${target} देखना है",
               "${applicationName} पर ${target} चलाएँ",
               "${applicationName} पर ${target} देखना है",
-              "${applicationName} में ${target} लगाएँ"
+              "${applicationName} में ${target} लगाएँ",
+              "${applicationName} पर टीवी देखें",
+              "${applicationName} में कोई चैनल चलाएँ"
             ]
           }
         },
@@ -434,7 +789,9 @@
               "Tonton ${target} di ${applicationName}",
               "Putar ${target} pakai ${applicationName}",
               "Tonton ${target} pakai ${applicationName}",
-              "Nyalakan ${target} di ${applicationName}"
+              "Nyalakan ${target} di ${applicationName}",
+              "Nonton TV di ${applicationName}",
+              "Putar saluran di ${applicationName}"
             ]
           }
         },
@@ -445,7 +802,13 @@
               "Riproduci ${target} in ${applicationName}",
               "Guarda ${target} su ${applicationName}",
               "Metti ${target} su ${applicationName}",
-              "Voglio guardare ${target} su ${applicationName}"
+              "Voglio guardare ${target} su ${applicationName}",
+              "Riproduci ${target} su ${applicationName}",
+              "Passa a ${target} su ${applicationName}",
+              "Metti ${target} in ${applicationName}",
+              "Metti un canale su ${applicationName}",
+              "Guarda la TV su ${applicationName}",
+              "Guarda qualcosa su ${applicationName}"
             ]
           }
         },
@@ -457,7 +820,9 @@
               "${applicationName}で${target}を観る",
               "${applicationName}で${target}を再生して",
               "${applicationName}で${target}を観たい",
-              "${applicationName}で${target}をつけて"
+              "${applicationName}で${target}をつけて",
+              "${applicationName}でテレビを観る",
+              "${applicationName}でチャンネルを再生"
             ]
           }
         },
@@ -469,7 +834,9 @@
               "${applicationName}에서 ${target} 틀어 줘",
               "${applicationName}로 ${target} 재생해 줘",
               "${applicationName}로 ${target} 보여 줘",
-              "${applicationName}에서 ${target} 켜 줘"
+              "${applicationName}에서 ${target} 켜 줘",
+              "${applicationName}에서 TV 보여 줘",
+              "${applicationName}에서 채널 틀어 줘"
             ]
           }
         },
@@ -481,7 +848,9 @@
               "Kijk ${target} in ${applicationName}",
               "Zet ${target} op in ${applicationName}",
               "Bekijk ${target} in ${applicationName}",
-              "Start ${target} in ${applicationName}"
+              "Start ${target} in ${applicationName}",
+              "Tv kijken in ${applicationName}",
+              "Zet een zender op in ${applicationName}"
             ]
           }
         },
@@ -493,7 +862,9 @@
               "Oglądaj ${target} we ${applicationName}",
               "Włącz ${target} we ${applicationName}",
               "Puść ${target} we ${applicationName}",
-              "Obejrzyj ${target} we ${applicationName}"
+              "Obejrzyj ${target} we ${applicationName}",
+              "Oglądaj telewizję we ${applicationName}",
+              "Włącz kanał we ${applicationName}"
             ]
           }
         },
@@ -505,7 +876,9 @@
               "Coloque ${target} no ${applicationName}",
               "Quero ver ${target} no ${applicationName}",
               "Quero assistir ${target} no ${applicationName}",
-              "Reproduzir ${target} no ${applicationName}"
+              "Reproduzir ${target} no ${applicationName}",
+              "Assistir TV no ${applicationName}",
+              "Coloque um canal no ${applicationName}"
             ]
           }
         },
@@ -517,7 +890,9 @@
               "Смотреть ${target} в ${applicationName}",
               "Воспроизведи ${target} в ${applicationName}",
               "Поставь ${target} в ${applicationName}",
-              "Хочу посмотреть ${target} в ${applicationName}"
+              "Хочу посмотреть ${target} в ${applicationName}",
+              "Смотреть телевизор в ${applicationName}",
+              "Включи канал в ${applicationName}"
             ]
           }
         },
@@ -529,7 +904,9 @@
               "${applicationName}'da ${target} izle",
               "${applicationName} ile ${target} oynat",
               "${applicationName} ile ${target} izle",
-              "${applicationName}'da ${target} başlat"
+              "${applicationName}'da ${target} başlat",
+              "${applicationName}'da televizyon izle",
+              "${applicationName}'da bir kanal aç"
             ]
           }
         },
@@ -541,7 +918,9 @@
               "在${applicationName}中观看${target}",
               "用${applicationName}播放${target}",
               "用${applicationName}看${target}",
-              "在${applicationName}上放${target}"
+              "在${applicationName}上放${target}",
+              "在${applicationName}中看电视",
+              "在${applicationName}中播放频道"
             ]
           }
         },
@@ -553,7 +932,9 @@
               "在${applicationName}中觀看${target}",
               "用${applicationName}播放${target}",
               "用${applicationName}看${target}",
-              "在${applicationName}上放${target}"
+              "在${applicationName}上放${target}",
+              "在${applicationName}中看電視",
+              "在${applicationName}中播放頻道"
             ]
           }
         }
@@ -589,7 +970,8 @@
             "values" : [
               "Remind me about ${program} in ${applicationName}",
               "Set a reminder in ${applicationName}",
-              "Set a ${applicationName} reminder"
+              "Set a ${applicationName} reminder",
+              "Remind me about a show in ${applicationName}"
             ]
           }
         },
@@ -1087,342 +1469,6 @@
         }
       }
     },
-    "Start recording in ${applicationName}" : {
-      "comment" : "Siri phrase of an App Shortcut. Keep ${applicationName} (the app name) and any other ${…} parameter exactly as written. Each phrase must contain ${applicationName}; write phrases people naturally say in this language.",
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "ar" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "ابدأ التسجيل في ${applicationName}",
-              "سجّل هذا في ${applicationName}",
-              "سجّل ${channel} في ${applicationName}"
-            ]
-          }
-        },
-        "de" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "Starte die Aufnahme in ${applicationName}",
-              "Nimm das in ${applicationName} auf",
-              "Nimm ${channel} in ${applicationName} auf"
-            ]
-          }
-        },
-        "en" : {
-          "stringSet" : {
-            "state" : "new",
-            "values" : [
-              "Start recording in ${applicationName}",
-              "Record this in ${applicationName}",
-              "Record ${channel} in ${applicationName}"
-            ]
-          }
-        },
-        "es" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "Empieza a grabar en ${applicationName}",
-              "Graba esto en ${applicationName}",
-              "Graba ${channel} en ${applicationName}"
-            ]
-          }
-        },
-        "fr" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "Lance l'enregistrement dans ${applicationName}",
-              "Enregistre ça dans ${applicationName}",
-              "Enregistre ${channel} dans ${applicationName}"
-            ]
-          }
-        },
-        "hi" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "${applicationName} में रिकॉर्डिंग शुरू करें",
-              "${applicationName} में इसे रिकॉर्ड करें",
-              "${applicationName} में ${channel} रिकॉर्ड करें"
-            ]
-          }
-        },
-        "id" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "Mulai merekam di ${applicationName}",
-              "Rekam ini di ${applicationName}",
-              "Rekam ${channel} di ${applicationName}"
-            ]
-          }
-        },
-        "it" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "Avvia la registrazione in ${applicationName}",
-              "Registra questo in ${applicationName}",
-              "Registra ${channel} in ${applicationName}"
-            ]
-          }
-        },
-        "ja" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "${applicationName}で録画を開始",
-              "${applicationName}でこれを録画",
-              "${applicationName}で${channel}を録画"
-            ]
-          }
-        },
-        "ko" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "${applicationName}에서 녹화 시작",
-              "${applicationName}에서 이거 녹화해 줘",
-              "${applicationName}에서 ${channel} 녹화해 줘"
-            ]
-          }
-        },
-        "nl" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "Start een opname in ${applicationName}",
-              "Neem dit op in ${applicationName}",
-              "Neem ${channel} op in ${applicationName}"
-            ]
-          }
-        },
-        "pl" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "Zacznij nagrywanie we ${applicationName}",
-              "Nagraj to we ${applicationName}",
-              "Nagraj ${channel} we ${applicationName}"
-            ]
-          }
-        },
-        "pt-BR" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "Inicie a gravação no ${applicationName}",
-              "Grave isto no ${applicationName}",
-              "Grave ${channel} no ${applicationName}"
-            ]
-          }
-        },
-        "ru" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "Начни запись в ${applicationName}",
-              "Запиши это в ${applicationName}",
-              "Запиши ${channel} в ${applicationName}"
-            ]
-          }
-        },
-        "tr" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "${applicationName}'da kaydı başlat",
-              "${applicationName}'da bunu kaydet",
-              "${applicationName}'da ${channel} kanalını kaydet"
-            ]
-          }
-        },
-        "zh-Hans" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "在${applicationName}中开始录制",
-              "用${applicationName}录下这个",
-              "在${applicationName}中录制${channel}"
-            ]
-          }
-        },
-        "zh-Hant" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "在${applicationName}中開始錄製",
-              "用${applicationName}錄下這個",
-              "在${applicationName}中錄製${channel}"
-            ]
-          }
-        }
-      }
-    },
-    "Stop recording in ${applicationName}" : {
-      "comment" : "Siri phrase of an App Shortcut. Keep ${applicationName} (the app name) and any other ${…} parameter exactly as written. Each phrase must contain ${applicationName}; write phrases people naturally say in this language.",
-      "extractionState" : "extracted_with_value",
-      "localizations" : {
-        "ar" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "أوقف التسجيل في ${applicationName}",
-              "أوقف تسجيل ${applicationName}"
-            ]
-          }
-        },
-        "de" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "Stoppe die Aufnahme in ${applicationName}",
-              "Beende die Aufnahme in ${applicationName}"
-            ]
-          }
-        },
-        "en" : {
-          "stringSet" : {
-            "state" : "new",
-            "values" : [
-              "Stop recording in ${applicationName}",
-              "Stop the ${applicationName} recording"
-            ]
-          }
-        },
-        "es" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "Deja de grabar en ${applicationName}",
-              "Detén la grabación de ${applicationName}"
-            ]
-          }
-        },
-        "fr" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "Arrête l'enregistrement dans ${applicationName}",
-              "Stoppe l'enregistrement ${applicationName}"
-            ]
-          }
-        },
-        "hi" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "${applicationName} में रिकॉर्डिंग रोकें",
-              "${applicationName} की रिकॉर्डिंग रोकें"
-            ]
-          }
-        },
-        "id" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "Hentikan rekaman di ${applicationName}",
-              "Hentikan perekaman ${applicationName}"
-            ]
-          }
-        },
-        "it" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "Interrompi la registrazione in ${applicationName}",
-              "Ferma la registrazione di ${applicationName}"
-            ]
-          }
-        },
-        "ja" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "${applicationName}で録画を停止",
-              "${applicationName}の録画を停止"
-            ]
-          }
-        },
-        "ko" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "${applicationName}에서 녹화 중단",
-              "${applicationName} 녹화 중단해 줘"
-            ]
-          }
-        },
-        "nl" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "Stop de opname in ${applicationName}",
-              "Stop de ${applicationName}-opname"
-            ]
-          }
-        },
-        "pl" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "Zatrzymaj nagrywanie we ${applicationName}",
-              "Zakończ nagrywanie we ${applicationName}"
-            ]
-          }
-        },
-        "pt-BR" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "Pare a gravação no ${applicationName}",
-              "Parar gravação no ${applicationName}",
-              "Pare a gravação do ${applicationName}"
-            ]
-          }
-        },
-        "ru" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "Останови запись в ${applicationName}",
-              "Заверши запись в ${applicationName}"
-            ]
-          }
-        },
-        "tr" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "${applicationName}'da kaydı durdur",
-              "${applicationName} kaydını durdur"
-            ]
-          }
-        },
-        "zh-Hans" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "在${applicationName}中停止录制",
-              "停止${applicationName}录制"
-            ]
-          }
-        },
-        "zh-Hant" : {
-          "stringSet" : {
-            "state" : "translated",
-            "values" : [
-              "在${applicationName}中停止錄製",
-              "停止${applicationName}錄製"
-            ]
-          }
-        }
-      }
-    },
     "What should I watch on ${applicationName}" : {
       "comment" : "Siri phrase of an App Shortcut. Keep ${applicationName} (the app name) and any other ${…} parameter exactly as written. Each phrase must contain ${applicationName}; write phrases people naturally say in this language.",
       "extractionState" : "extracted_with_value",
@@ -1625,9 +1671,7 @@
             "state" : "translated",
             "values" : [
               "ماذا يُعرض في ${applicationName}",
-              "ماذا يُعرض على التلفزيون في ${applicationName}",
-              "ماذا يُعرض على ${channel} في ${applicationName}",
-              "ما الذي يُعرض على ${channel} في ${applicationName}"
+              "ماذا يُعرض على التلفزيون في ${applicationName}"
             ]
           }
         },
@@ -1636,9 +1680,7 @@
             "state" : "translated",
             "values" : [
               "Was läuft in ${applicationName}",
-              "Was läuft im Fernsehen in ${applicationName}",
-              "Was läuft auf ${channel} in ${applicationName}",
-              "Was kommt auf ${channel} in ${applicationName}"
+              "Was läuft im Fernsehen in ${applicationName}"
             ]
           }
         },
@@ -1647,9 +1689,7 @@
             "state" : "new",
             "values" : [
               "What's on in ${applicationName}",
-              "What's on TV in ${applicationName}",
-              "What's on ${channel} in ${applicationName}",
-              "What's on ${channel} on ${applicationName}"
+              "What's on TV in ${applicationName}"
             ]
           }
         },
@@ -1658,9 +1698,7 @@
             "state" : "translated",
             "values" : [
               "Qué echan en ${applicationName}",
-              "Qué hay en la tele en ${applicationName}",
-              "Qué echan en ${channel} en ${applicationName}",
-              "Qué hay en ${channel} en ${applicationName}"
+              "Qué hay en la tele en ${applicationName}"
             ]
           }
         },
@@ -1669,9 +1707,7 @@
             "state" : "translated",
             "values" : [
               "Qu'est-ce qui passe sur ${applicationName}",
-              "Qu'y a-t-il à la télé sur ${applicationName}",
-              "Qu'est-ce qui passe sur ${channel} dans ${applicationName}",
-              "Que passe-t-il sur ${channel} dans ${applicationName}"
+              "Qu'y a-t-il à la télé sur ${applicationName}"
             ]
           }
         },
@@ -1680,9 +1716,7 @@
             "state" : "translated",
             "values" : [
               "${applicationName} में क्या चल रहा है",
-              "${applicationName} में TV पर क्या चल रहा है",
-              "${applicationName} में ${channel} पर क्या चल रहा है",
-              "${applicationName} में ${channel} पर क्या आ रहा है"
+              "${applicationName} में TV पर क्या चल रहा है"
             ]
           }
         },
@@ -1691,9 +1725,7 @@
             "state" : "translated",
             "values" : [
               "Ada acara apa di ${applicationName}",
-              "Apa yang tayang di TV di ${applicationName}",
-              "Apa yang tayang di ${channel} di ${applicationName}",
-              "Ada acara apa di ${channel} di ${applicationName}"
+              "Apa yang tayang di TV di ${applicationName}"
             ]
           }
         },
@@ -1702,9 +1734,7 @@
             "state" : "translated",
             "values" : [
               "Cosa c'è su ${applicationName}",
-              "Cosa c'è in TV su ${applicationName}",
-              "Cosa c'è su ${channel} in ${applicationName}",
-              "Cosa danno su ${channel} in ${applicationName}"
+              "Cosa c'è in TV su ${applicationName}"
             ]
           }
         },
@@ -1713,9 +1743,7 @@
             "state" : "translated",
             "values" : [
               "${applicationName}で今何やってる",
-              "${applicationName}で今放送中の番組は",
-              "${applicationName}で${channel}は何やってる",
-              "${applicationName}で${channel}の番組は"
+              "${applicationName}で今放送中の番組は"
             ]
           }
         },
@@ -1724,9 +1752,7 @@
             "state" : "translated",
             "values" : [
               "${applicationName}에서 지금 뭐 해",
-              "${applicationName}에서 지금 TV 뭐 해",
-              "${applicationName}에서 ${channel} 지금 뭐 해",
-              "${applicationName}로 ${channel} 뭐 하는지 알려 줘"
+              "${applicationName}에서 지금 TV 뭐 해"
             ]
           }
         },
@@ -1735,9 +1761,7 @@
             "state" : "translated",
             "values" : [
               "Wat is er te zien in ${applicationName}",
-              "Wat is er op tv in ${applicationName}",
-              "Wat is er op ${channel} in ${applicationName}",
-              "Wat zendt ${channel} uit in ${applicationName}"
+              "Wat is er op tv in ${applicationName}"
             ]
           }
         },
@@ -1746,9 +1770,7 @@
             "state" : "translated",
             "values" : [
               "Co leci we ${applicationName}",
-              "Co jest w telewizji we ${applicationName}",
-              "Co leci na ${channel} we ${applicationName}",
-              "Co jest na ${channel} we ${applicationName}"
+              "Co jest w telewizji we ${applicationName}"
             ]
           }
         },
@@ -1757,9 +1779,7 @@
             "state" : "translated",
             "values" : [
               "O que está passando no ${applicationName}",
-              "O que está passando na TV no ${applicationName}",
-              "O que está passando no ${channel} no ${applicationName}",
-              "O que passa no ${channel} no ${applicationName}"
+              "O que está passando na TV no ${applicationName}"
             ]
           }
         },
@@ -1768,9 +1788,7 @@
             "state" : "translated",
             "values" : [
               "Что идет в ${applicationName}",
-              "Что идет по телевизору в ${applicationName}",
-              "Что идет на ${channel} в ${applicationName}",
-              "Что сейчас на ${channel} в ${applicationName}"
+              "Что идет по телевизору в ${applicationName}"
             ]
           }
         },
@@ -1779,9 +1797,7 @@
             "state" : "translated",
             "values" : [
               "${applicationName}'da neler var",
-              "${applicationName}'da TV'de ne var",
-              "${applicationName}'da ${channel} kanalında ne var",
-              "${applicationName}'da ${channel} kanalında şu an ne var"
+              "${applicationName}'da TV'de ne var"
             ]
           }
         },
@@ -1790,9 +1806,7 @@
             "state" : "translated",
             "values" : [
               "${applicationName}上现在在播什么",
-              "${applicationName}上现在有什么电视节目",
-              "${applicationName}上${channel}在播什么",
-              "用${applicationName}看看${channel}在播什么"
+              "${applicationName}上现在有什么电视节目"
             ]
           }
         },
@@ -1801,9 +1815,7 @@
             "state" : "translated",
             "values" : [
               "${applicationName}上現在在播什麼",
-              "${applicationName}上現在有什麼電視節目",
-              "${applicationName}上${channel}在播什麼",
-              "用${applicationName}看看${channel}在播什麼"
+              "${applicationName}上現在有什麼電視節目"
             ]
           }
         }
