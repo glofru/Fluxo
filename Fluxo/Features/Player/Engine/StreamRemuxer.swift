@@ -65,11 +65,11 @@ final class StreamRemuxer {
         var errorDescription: String? {
             switch self {
             case .invalidConfiguration:
-                return "The stream configuration is invalid."
+                return String(localized: "The stream configuration is invalid.", comment: "Player error from the streaming engine.")
             case .unableToStart(let code):
-                return "Unable to start the stream engine (\(code))."
+                return String(localized: "Unable to start the stream engine (\(code)).", comment: "Player error; the number is a technical error code.")
             case .notRunning:
-                return "The stream is not running."
+                return String(localized: "The stream is not running.", comment: "Player error from the streaming engine.")
             }
         }
     }
@@ -271,7 +271,7 @@ final class StreamRemuxer {
             if recordingURL == progress?.url {
                 recordingURL = nil
             }
-            onEvent?(.recordingFailed(progress?.url, event.message ?? "Recording failed"))
+            onEvent?(.recordingFailed(progress?.url, event.message ?? String(localized: "Recording failed", comment: "Recording error shown when the engine gives no reason.")))
         }
     }
 
@@ -350,7 +350,7 @@ private struct EngineEvent {
 
     init(_ event: FluxoRemuxEvent) {
         kind = event.kind
-        message = event.message.map { String(cString: $0) }
+        message = event.message.map { EngineMessage.localized(String(cString: $0)) }
         switch event.state {
         case .idle:
             state = .idle
@@ -365,7 +365,7 @@ private struct EngineEvent {
         case .cancelled:
             state = .cancelled
         case .failed:
-            state = .failed(event.message.map { String(cString: $0) } ?? "Unknown error")
+            state = .failed(message ?? String(localized: "Unknown error", comment: "Player error shown when the streaming engine gives no reason."))
         }
         statistics = StreamRemuxer.WindowStatistics(
             segmentsWritten: Int(event.segments_written),
@@ -376,6 +376,46 @@ private struct EngineEvent {
         recordingPath = event.recording_path.map { String(cString: $0) }
         recordingDuration = event.recording_duration
         recordingBytes = event.recording_bytes
+    }
+}
+
+/// Translates the messages of the C engine (FluxoRemuxEngine.c), which are English: "<what failed>: <FFmpeg reason>",
+/// or the unsupported-protocol message. The part that says what failed is localized; FFmpeg's technical reason
+/// ("Connection refused", "Server returned 404 Not Found") is kept as it is.
+enum EngineMessage {
+    static func localized(_ message: String) -> String {
+        if message.hasPrefix("Unsupported stream type") {
+            if let start = message.range(of: ": ")?.upperBound, let end = message.range(of: "://")?.lowerBound, start < end {
+                let scheme = String(message[start..<end])
+                return String(localized: "Unsupported stream type: \(scheme):// streams cannot be played", comment: "Player error; the placeholder is a URL scheme such as srt.")
+            }
+            return String(localized: "Unsupported stream type", comment: "Player error: the stream uses a protocol the app cannot open.")
+        }
+        let parts = message.split(separator: ": ", maxSplits: 1).map(String.init)
+        guard let stage = parts.first, let localizedStage = stages[stage] else {
+            return message
+        }
+        guard parts.count == 2 else {
+            return localizedStage
+        }
+        return String(localized: "\(localizedStage): \(parts[1])", comment: "Player or recording error: what failed, then the technical reason (in English).")
+    }
+
+    /// The `what` / `stage` strings of FluxoRemuxEngine.c.
+    private static var stages: [String: String] {
+        [
+            "Unable to open the stream": String(localized: "Unable to open the stream", comment: "Player error."),
+            "Unable to create the HLS output": String(localized: "Unable to prepare the stream for playback", comment: "Player error: the app could not write the local copy of the stream."),
+            "Stream interrupted": String(localized: "Stream interrupted", comment: "Player error."),
+            "Connection lost": String(localized: "Connection lost", comment: "Player error: the live stream could not be reconnected."),
+            "Unable to write the stream": String(localized: "Unable to write the stream", comment: "Player error: the app could not write the local copy of the stream (for example, the disk is full)."),
+            "Recording failed": String(localized: "Recording failed", comment: "Recording error."),
+            "Unable to start the recording": String(localized: "Unable to start the recording", comment: "Recording error."),
+            "Recording stopped": String(localized: "Recording stopped", comment: "Recording error: the recording stopped because of a problem."),
+            "Unable to open the recording": String(localized: "Unable to open the recording", comment: "Error while saving a recording."),
+            "Unable to create the output file": String(localized: "Unable to create the output file", comment: "Error while saving a recording."),
+            "Unable to convert the recording": String(localized: "Unable to convert the recording", comment: "Error while saving a recording."),
+        ]
     }
 }
 

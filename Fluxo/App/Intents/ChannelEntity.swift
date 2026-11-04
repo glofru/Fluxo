@@ -61,7 +61,7 @@ struct ChannelEntity: AppEntity, IndexedEntity {
     var displayRepresentation: DisplayRepresentation {
         DisplayRepresentation(
             title: "\(name)",
-            subtitle: "\([group, playlistName].compactMap { $0 }.joined(separator: " · "))",
+            subtitle: "\(TextParts.line([group, playlistName]))",
             image: DisplayRepresentation.Image(systemName: item.kind.systemImage)
         )
     }
@@ -71,7 +71,7 @@ struct ChannelEntity: AppEntity, IndexedEntity {
         let attributes = defaultAttributeSet
         attributes.title = name
         attributes.displayName = name
-        attributes.contentDescription = [item.kind.title, group, playlistName].compactMap { $0 }.joined(separator: " · ")
+        attributes.contentDescription = TextParts.line([item.kind.title, group, playlistName])
         attributes.keywords = [group, item.kind.title, playlistName].compactMap { $0 } + ChannelNameNormalizer.tokens(name)
         return attributes
     }

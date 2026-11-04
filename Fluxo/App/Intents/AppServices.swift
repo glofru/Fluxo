@@ -75,7 +75,10 @@ final class AppServices {
 enum FluxoIntentError: Error, CustomLocalizedStringResourceConvertible {
     case channelNotFound(String)
     case nothingPlaying
+    /// The recording failed; the associated value is the error of the recording engine.
     case cannotRecord(String)
+    /// The channel cannot be recorded; the associated value is the full explanation.
+    case recordingUnavailable(LocalizedStringResource)
     case notRecording
     case noGuide
     case noProgrammes(String)
@@ -93,6 +96,8 @@ enum FluxoIntentError: Error, CustomLocalizedStringResourceConvertible {
             return "Nothing is playing in Fluxo."
         case .cannotRecord(let reason):
             return "Fluxo can't record this channel: \(reason)"
+        case .recordingUnavailable(let explanation):
+            return explanation
         case .notRecording:
             return "Fluxo is not recording."
         case .noGuide:

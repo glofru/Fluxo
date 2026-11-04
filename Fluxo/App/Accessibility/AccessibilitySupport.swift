@@ -81,7 +81,8 @@ enum CardTextMetrics {
 
 extension View {
     /// A segmented picker, or a menu at the accessibility text sizes: segments do not grow with Dynamic Type
-    /// and would squeeze their labels, a menu button shows the choice at full size.
+    /// and would squeeze their labels, a menu button shows the choice at full size. A menu also replaces the
+    /// segments when their labels do not fit the width (long translations on a small iPhone, large text).
     func segmentedPickerStyleAdaptingToTextSize() -> some View {
         modifier(AdaptiveSegmentedPickerStyle())
     }
@@ -96,8 +97,14 @@ private struct AdaptiveSegmentedPickerStyle: ViewModifier {
                 .pickerStyle(.menu)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else {
-            content
-                .pickerStyle(.segmented)
+            // The segmented picker's ideal width gives every segment the width of the longest label.
+            ViewThatFits(in: .horizontal) {
+                content
+                    .pickerStyle(.segmented)
+                content
+                    .pickerStyle(.menu)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
     }
 }
@@ -229,7 +236,7 @@ enum AccessibilityAnnouncer {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(Theme.brandGradient)
                     .frame(width: 76, height: 50)
-                Text("Sky Sport F1 HD, a long channel name")
+                Text(verbatim: "Sky Sport F1 HD, a long channel name")
                     .font(.body.weight(.semibold))
                 Button("See All") {}
                     .accessibilityButtonShape()

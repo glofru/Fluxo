@@ -217,7 +217,7 @@ struct ProgrammeRecommendationCard: View {
     private func accessibilityLabel(now: Date) -> String {
         let programme = recommendation.programme
         let time = programme.isOnAir(at: now) ? String(localized: "On now, \(GuideFormat.remaining(programme, at: now))") : GuideFormat.timeRange(programme)
-        return [programme.title, recommendation.channel.item.displayName, time, recommendation.reason].joined(separator: ", ")
+        return TextParts.spoken([programme.title, recommendation.channel.item.displayName, time, recommendation.reason])
     }
 }
 

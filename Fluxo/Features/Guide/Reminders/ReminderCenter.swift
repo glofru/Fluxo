@@ -26,6 +26,8 @@ final class ReminderCenter {
     nonisolated static let leadChoices = [0, 5, 10, 15, 30]
     nonisolated static let categoryIdentifier = "fluxo.programme-reminder"
     nonisolated static let watchActionIdentifier = "fluxo.programme-reminder.watch"
+    /// The language and time format the pending notifications were written in (`formatSignature`).
+    nonisolated static let formatSignatureKey = "guide.reminderFormatSignature"
 
     private static let logger = Logger(subsystem: "dev.watermelon.Fluxo", category: "Reminders")
 
@@ -44,6 +46,8 @@ final class ReminderCenter {
     private let delegate = ReminderNotificationDelegate()
     @ObservationIgnored
     private var didStart = false
+    @ObservationIgnored
+    private var localeObserver: (any NSObjectProtocol)?
 
     init(container: ModelContainer) {
         self.container = container
@@ -70,6 +74,14 @@ final class ReminderCenter {
         center.setNotificationCategories([UNNotificationCategory(identifier: Self.categoryIdentifier, actions: [watch], intentIdentifiers: [])])
         pruneEndedReminders()
         reloadKeys()
+        // The text of a notification is fixed when it is scheduled: rewrite the pending ones when the language
+        // or the time format changed since (while the app was not running, or while it runs).
+        localeObserver = NotificationCenter.default.addObserver(forName: NSLocale.currentLocaleDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.rewritePendingNotificationsIfFormatChanged()
+            }
+        }
+        rewritePendingNotificationsIfFormatChanged()
         Task {
             await refreshAuthorization()
         }
@@ -153,6 +165,37 @@ final class ReminderCenter {
             try? await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: reminder.key, content: content, trigger: trigger))
         }
         save()
+    }
+
+    /// Rewrites the pending notifications (same identifier, same fire date) when the language or the time
+    /// format differs from the one they were written in. Delivered ones are left alone, and none is added.
+    private func rewritePendingNotificationsIfFormatChanged() {
+        let signature = Self.formatSignature
+        let defaults = UserDefaults.fluxo
+        guard defaults.string(forKey: Self.formatSignatureKey) != signature else {
+            return
+        }
+        defaults.set(signature, forKey: Self.formatSignatureKey)
+        guard !keys.isEmpty else {
+            return
+        }
+        Task {
+            let center = UNUserNotificationCenter.current()
+            let pending = Set(await center.pendingNotificationRequests().map(\.identifier))
+            let reminders = (try? container.mainContext.fetch(EPGQueries.reminders())) ?? []
+            for reminder in reminders where pending.contains(reminder.key) && reminder.fireDate > .now {
+                let content = Self.notificationContent(key: reminder.key, title: reminder.title, channel: reminder.channel, start: reminder.start)
+                let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, reminder.fireDate.timeIntervalSinceNow), repeats: false)
+                try? await center.add(UNNotificationRequest(identifier: reminder.key, content: content, trigger: trigger))
+            }
+        }
+    }
+
+    /// The app's language and the current time format ("en|h:mm a"): what the text of a notification depends on.
+    private static var formatSignature: String {
+        let language = Bundle.main.preferredLocalizations.first ?? ""
+        let timeFormat = DateFormatter.dateFormat(fromTemplate: "jm", options: 0, locale: .current) ?? ""
+        return "\(language)|\(timeFormat)"
     }
 
     func refreshAuthorization() async {

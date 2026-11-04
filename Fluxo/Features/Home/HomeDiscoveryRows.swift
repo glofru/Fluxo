@@ -61,7 +61,7 @@ private struct BecauseYouWatchedContent: View {
             VStack(alignment: .leading, spacing: 10) {
                 HomeSectionHeader(
                     title: String(localized: "Because You Watched"),
-                    subtitle: [item.displayName, item.groupName.isEmpty ? nil : item.groupName, playlistName].compactMap { $0 }.joined(separator: " · "),
+                    subtitle: TextParts.line([item.displayName, item.groupName, playlistName]),
                     systemImage: "sparkles"
                 ) {
                     SeeAllLink(route: route)

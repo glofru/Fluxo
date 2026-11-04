@@ -103,7 +103,10 @@ struct PausePlaybackIntent: AppIntent {
             throw FluxoIntentError.nothingPlaying
         }
         services.player.pause()
-        return .result(dialog: "Paused \(channel.name ?? String(localized: "playback")).")
+        guard let name = channel.name else {
+            return .result(dialog: "Paused playback.")
+        }
+        return .result(dialog: "Paused \(name).")
     }
 }
 
@@ -122,7 +125,10 @@ struct ResumePlaybackIntent: AppIntent {
             throw FluxoIntentError.nothingPlaying
         }
         services.player.play()
-        return .result(dialog: "Resuming \(channel.name ?? String(localized: "playback")).")
+        guard let name = channel.name else {
+            return .result(dialog: "Resuming playback.")
+        }
+        return .result(dialog: "Resuming \(name).")
     }
 }
 
@@ -154,7 +160,6 @@ struct StartRecordingIntent: AppIntent {
         guard let playing = player.currentChannel else {
             throw FluxoIntentError.nothingPlaying
         }
-        let name = playing.name ?? String(localized: "this channel")
         if !player.isRecording {
             // A channel that just started can record once the engine has its first segment.
             let clock = ContinuousClock()
@@ -166,28 +171,37 @@ struct StartRecordingIntent: AppIntent {
                 try await Task.sleep(for: .milliseconds(250))
             }
             guard player.canRecord else {
-                throw FluxoIntentError.cannotRecord(Self.reason(for: playing))
+                throw FluxoIntentError.recordingUnavailable(Self.reason(for: playing))
             }
             player.startRecording()
             if let error = player.recordingError {
                 throw FluxoIntentError.cannotRecord(error)
             }
         }
+        let dialog: IntentDialog
+        let title: String
+        if let name = playing.name {
+            dialog = "Recording \(name)."
+            title = String(localized: "Recording \(name)", comment: "Siri and Shortcuts confirmation title; the placeholder is the channel name.")
+        } else {
+            dialog = "Recording this channel."
+            title = String(localized: "Recording", comment: "Siri and Shortcuts confirmation title when the channel has no name.")
+        }
         return .result(
-            dialog: "Recording \(name).",
-            view: ConfirmationSnippetView(systemImage: "record.circle.fill", title: String(localized: "Recording \(name)"), subtitle: String(localized: "Say “Stop recording in Fluxo” to stop."), tint: Theme.recording)
+            dialog: dialog,
+            view: ConfirmationSnippetView(systemImage: "record.circle.fill", title: title, subtitle: String(localized: "Say “Stop recording in Fluxo” to stop.", comment: "Siri and Shortcuts confirmation after a recording starts. Translate the phrase in quotes as the Stop Recording shortcut phrase of this language."), tint: Theme.recording)
         )
     }
 
     /// Why a channel cannot be recorded (see `PlaybackRoute`).
-    private static func reason(for channel: PlayableChannel) -> String {
+    private static func reason(for channel: PlayableChannel) -> LocalizedStringResource {
         switch channel.url?.pathExtension.lowercased() ?? "" {
         case "m3u8", "m3u":
-            return String(localized: "it plays straight from its HLS playlist.")
+            return LocalizedStringResource("Fluxo can't record this channel: it plays straight from its HLS playlist.", comment: "Siri and Shortcuts error. HLS is a streaming format name.")
         case "", "ts":
-            return String(localized: "the stream did not start.")
+            return LocalizedStringResource("Fluxo can't record this channel: the stream did not start.", comment: "Siri and Shortcuts error.")
         default:
-            return String(localized: "only live channels can be recorded.")
+            return LocalizedStringResource("Fluxo can't record this channel: only live channels can be recorded.", comment: "Siri and Shortcuts error: movies and series cannot be recorded.")
         }
     }
 }
@@ -207,8 +221,11 @@ struct StopRecordingIntent: AppIntent {
         guard player.isRecording else {
             throw FluxoIntentError.notRecording
         }
-        let name = player.currentChannel?.name ?? String(localized: "the channel")
+        let name = player.currentChannel?.name
         player.stopRecording()
+        guard let name else {
+            return .result(dialog: "Stopped recording. It's in Recordings.")
+        }
         return .result(dialog: "Stopped recording \(name). It's in Recordings.")
     }
 }

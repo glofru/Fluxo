@@ -41,7 +41,7 @@ struct RecordingsView: View {
                                 }
                                 .buttonStyle(.plain)
                                 .disabled(recording.isFinalizing)
-                                .accessibilityHint(recording.isFinalizing ? "Being saved" : "Plays the recording")
+                                .accessibilityHint(recording.isFinalizing ? Text("Being saved", comment: "VoiceOver hint of a recording that is still being written.") : Text("Plays the recording", comment: "VoiceOver hint of a recording in the list."))
                                 .swipeActions(edge: .trailing) {
                                     Button("Delete", systemImage: "trash", role: .destructive) {
                                         recordingToDelete = recording
@@ -61,7 +61,7 @@ struct RecordingsView: View {
                                 }
                             }
                         } footer: {
-                            Text("\(store.recordings.count) recordings · \(ByteCountFormatter.string(fromByteCount: store.totalBytes, countStyle: .file))")
+                            Text("\(store.recordings.count) recordings · \(store.totalBytes.formatted(.byteCount(style: .file)))", comment: "Footer of the recordings list: the number of recordings and their total size.")
                         }
                     }
                     .glassSheetContentBackground()
@@ -117,7 +117,7 @@ struct RecordingsView: View {
             } message: { _ in
                 Text("Playing a recording stops the live channel and saves the recording in progress.")
             }
-            .alert("Recording", isPresented: errorAlertBinding) {
+            .alert(Text("Recording", comment: "Title of the alert that shows a recording error."), isPresented: errorAlertBinding) {
                 Button("OK", role: .cancel) {
                     store.clearError()
                 }
@@ -213,7 +213,7 @@ private struct RecordingRow: View {
                     Text(Duration.seconds(duration), format: .time(pattern: duration >= 3600 ? .hourMinuteSecond : .minuteSecond))
                         .font(.caption.monospacedDigit())
                 }
-                Text(ByteCountFormatter.string(fromByteCount: recording.bytes, countStyle: .file))
+                Text(recording.bytes.formatted(.byteCount(style: .file)))
                     .font(.caption2)
                     .foregroundStyle(Theme.secondaryText)
             }

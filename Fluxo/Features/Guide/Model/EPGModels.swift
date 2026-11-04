@@ -30,7 +30,8 @@ final class EPGSource {
     var currentImportID: UUID?
     var lastRefreshedOn: Date?
     var lastAttemptOn: Date?
-    /// Message of the last failed refresh; cleared by a successful one.
+    /// Why the last refresh failed, as a `GuideRefreshFailure` code (shown with `lastErrorMessage`); cleared
+    /// by a successful one.
     var lastError: String?
     /// Channels listed by the file.
     var channelCount: Int = 0
@@ -102,7 +103,8 @@ final class EPGProgramme {
     /// `<category>` values, newline-separated.
     var categories: String = ""
     var icon: String?
-    /// Season / episode in a readable form ("S2 E5"), when the guide has one.
+    /// Season / episode as the guide's `onscreen` text, or "S2 E5" / "E5" / "S2" from its `xmltv_ns` numbers
+    /// (stored in that language-independent form, and localized by `GuideFormat.episode(_:)` when shown).
     var episode: String?
 
     init(

@@ -29,13 +29,13 @@ struct EPGRefreshProgress: Sendable, Equatable {
     var message: String {
         switch phase {
         case .connecting:
-            return String(localized: "Contacting the server…")
+            return String(localized: "Contacting the server…", comment: "TV guide download progress.")
         case .downloading:
-            return String(localized: "Downloading \(bytes.formatted(.byteCount(style: .file)))…")
+            return String(localized: "Downloading \(bytes.formatted(.byteCount(style: .file)))…", comment: "TV guide download progress; the placeholder is the size downloaded so far, such as 12 MB.")
         case .reading:
-            return String(localized: "Reading \(programmeCount.formatted()) programmes…")
+            return String(localized: "Reading \(programmeCount) programmes…", comment: "TV guide import progress; the number grows as programmes are read.")
         case .finishing:
-            return String(localized: "Saving \(programmeCount.formatted()) programmes…")
+            return String(localized: "Saving \(programmeCount) programmes…", comment: "TV guide import progress while the programmes are saved.")
         }
     }
 }
@@ -59,13 +59,13 @@ enum EPGImportError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .sourceNotFound:
-            return String(localized: "The guide source no longer exists.")
+            return String(localized: "The guide source no longer exists.", comment: "TV guide import error: the source was deleted during the download.")
         case .tooLarge(let bytes):
-            return String(localized: "The guide is larger than \(bytes.formatted(.byteCount(style: .file))). Use a smaller guide, for example one for your country only.")
+            return String(localized: "The guide is larger than \(bytes.formatted(.byteCount(style: .file))). Use a smaller guide, for example one for your country only.", comment: "TV guide import error; the placeholder is the size limit, such as 2 GB.")
         case .notXMLTV:
-            return String(localized: "No TV guide found. Is this an XMLTV file?")
+            return String(localized: "No TV guide found. Is this an XMLTV file?", comment: "TV guide import error: the file has no programmes. XMLTV is a file format name.")
         case .incomplete:
-            return String(localized: "The guide file was incomplete, so the previous guide was kept. It is downloaded again later.")
+            return String(localized: "The guide file was incomplete, so the previous guide was kept. It is downloaded again later.", comment: "TV guide import error.")
         }
     }
 }
@@ -614,7 +614,7 @@ actor EPGImporter {
             guard let source = try context.fetch(EPGQueries.source(uuid: sourceID)).first else {
                 return
             }
-            source.lastError = error.localizedDescription
+            source.lastError = GuideRefreshFailure(error).stored
             try context.save()
         } catch {
             Self.logger.error("Could not record a guide failure: \(error.localizedDescription, privacy: .public)")

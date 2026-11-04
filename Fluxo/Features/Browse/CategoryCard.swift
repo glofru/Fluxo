@@ -91,11 +91,7 @@ struct CategoryCard: View {
     }
 
     private var countText: String {
-        var text = Self.countText(group)
-        if let playlistName {
-            text += " · \(playlistName)"
-        }
-        return text
+        TextParts.line([Self.countText(group), playlistName])
     }
 
     /// "128 channels", "42 movies", "16 episodes".
@@ -111,7 +107,7 @@ struct CategoryCard: View {
     }
 
     private var accessibilityLabel: String {
-        [group.displayName, countText].joined(separator: ", ")
+        TextParts.spoken([group.displayName, Self.countText(group), playlistName])
     }
 }
 

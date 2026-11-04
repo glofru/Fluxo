@@ -63,9 +63,20 @@ struct NowNextReader<Content: View>: View {
 }
 
 enum GuideFormat {
-    /// "20:00 – 21:30".
+    /// "20:00–21:30".
+    ///
+    /// Two short times rather than a date interval format: the interval styles add the dates when a programme
+    /// runs past midnight and, in some languages (Japanese "20時00分～21時30分"), spell the times out, both too
+    /// long for the guide's blocks. Translators pick the range separator of their language.
     static func timeRange(_ programme: GuideProgramme) -> String {
-        "\(time(programme.start)) – \(time(programme.stop))"
+        guard programme.start < programme.stop else {
+            return time(programme.start)
+        }
+        // Each time in a first-strong isolate: an Arabic time ends with a letter ("9:30 م"), and without the
+        // isolates the bidi algorithm would show the end time first.
+        let start = "\u{2068}\(time(programme.start))\u{2069}"
+        let stop = "\u{2068}\(time(programme.stop))\u{2069}"
+        return String(localized: "\(start)–\(stop)", comment: "Time range of a programme in the TV guide: its start time, then its end time, as in 20:00–21:30. Use the range separator of your language.")
     }
 
     static func time(_ date: Date) -> String {
@@ -82,26 +93,55 @@ enum GuideFormat {
     static func remaining(_ programme: GuideProgramme, at date: Date) -> String {
         let seconds = max(60, programme.stop.timeIntervalSince(date))
         let value = Duration.seconds(seconds).formatted(.units(allowed: [.hours, .minutes], width: .abbreviated))
-        return String(localized: "\(value) left")
+        return String(localized: "\(value) left", comment: "Time left in the programme on now; the placeholder is a duration such as 45 min.")
     }
 
     /// "Today", "Tomorrow", "Wednesday 5 November".
     static func day(_ date: Date, calendar: Calendar = .current) -> String {
         if calendar.isDateInToday(date) {
-            return String(localized: "Today")
+            return String(localized: "Today", comment: "Day of a programme in the TV guide.")
         }
         if calendar.isDateInTomorrow(date) {
-            return String(localized: "Tomorrow")
+            return String(localized: "Tomorrow", comment: "Day of a programme in the TV guide.")
         }
         if calendar.isDateInYesterday(date) {
-            return String(localized: "Yesterday")
+            return String(localized: "Yesterday", comment: "Day of a programme in the TV guide.")
         }
         return date.formatted(.dateTime.weekday(.wide).day().month(.wide))
     }
 
+    /// The stored season / episode of a programme in the app's language: "S1 E5", "E5" and "S1" (the form
+    /// `XMLTVParser` stores for `xmltv_ns` numbers) are localized; any other text is the guide's own and is
+    /// shown as it is.
+    static func episode(_ stored: String) -> String {
+        let parts = stored.split(separator: " ")
+        func number(_ part: Substring, prefix: Character) -> Int? {
+            guard part.count > 1, part.first == prefix, part.dropFirst().allSatisfy({ $0.isASCII && $0.isNumber }) else {
+                return nil
+            }
+            return Int(part.dropFirst())
+        }
+        switch parts.count {
+        case 2:
+            if let season = number(parts[0], prefix: "S"), let episode = number(parts[1], prefix: "E") {
+                return String(localized: "S\(season) E\(episode)", comment: "Short season and episode label of a TV programme, as in 'S1 E5'. Keep it very short.")
+            }
+        case 1:
+            if let episode = number(parts[0], prefix: "E") {
+                return String(localized: "E\(episode)", comment: "Short episode label of a TV programme, as in 'E5'. Keep it very short.")
+            }
+            if let season = number(parts[0], prefix: "S") {
+                return String(localized: "S\(season)", comment: "Short season label of a TV programme, as in 'S1'. Keep it very short.")
+            }
+        default:
+            break
+        }
+        return stored
+    }
+
     /// "Today, 20:00 – 21:30".
     static func dayAndTime(_ programme: GuideProgramme) -> String {
-        "\(day(programme.start)), \(timeRange(programme))"
+        String(localized: "\(day(programme.start)), \(timeRange(programme))", comment: "When a programme airs: the day (Today, Tomorrow or a date), then its time range.")
     }
 
     /// The widest start times of the current locale ("10:58 AM" and "10:58 PM", or "10:58" and "22:58"), to
@@ -316,12 +356,12 @@ struct PlayerProgrammeInfo: View {
     private func accessibilityLabel(_ nowNext: NowNext, now: Date) -> String {
         var parts: [String] = []
         if let current = nowNext.current, current.isOnAir(at: now) {
-            parts.append(String(localized: "On now: \(current.title), until \(GuideFormat.time(current.stop))"))
+            parts.append(String(localized: "On now: \(current.title), until \(GuideFormat.time(current.stop))", comment: "VoiceOver description of a channel's programme on now; the placeholders are its title and end time."))
         }
         if let next = nowNext.next {
-            parts.append(String(localized: "Next at \(GuideFormat.time(next.start)): \(next.title)"))
+            parts.append(String(localized: "Next at \(GuideFormat.time(next.start)): \(next.title)", comment: "VoiceOver description of a channel's next programme; the placeholders are its start time and title."))
         }
-        return parts.joined(separator: ". ")
+        return TextParts.sentences(parts)
     }
 }
 

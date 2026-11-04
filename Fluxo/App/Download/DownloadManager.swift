@@ -20,7 +20,7 @@ enum DownloadError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .httpStatus(let status):
-            return "The server responded with HTTP \(status) (\(HTTPURLResponse.localizedString(forStatusCode: status)))."
+            return String(localized: "The server responded with HTTP \(String(status)) (\(HTTPURLResponse.localizedString(forStatusCode: status))).", comment: "Download error; the placeholders are the HTTP status code, such as 404, and its system description, such as 'not found'.")
         }
     }
 }

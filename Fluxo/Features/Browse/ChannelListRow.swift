@@ -166,7 +166,7 @@ struct ChannelListRow: View {
                         .font(.caption2)
                         .foregroundStyle(Theme.favorite)
                         .transition(.scale.combined(with: .opacity))
-                        .accessibilityLabel("Favorite")
+                        .accessibilityLabel(ChannelAccessibility.favoriteState)
                 }
             }
             if let subtitle, !subtitle.isEmpty {
@@ -195,7 +195,7 @@ struct ChannelNumberLabel: View {
             .lineLimit(1)
             .minimumScaleFactor(0.7)
             .frame(minWidth: 30, alignment: .trailing)
-            .accessibilityLabel("Channel \(number)")
+            .accessibilityLabel(Text("Channel \(number.formatted(.number.grouping(.never)))", comment: "VoiceOver: the channel number of the playlist, as in 'Channel 12'."))
     }
 }
 
@@ -254,7 +254,7 @@ struct RowProgrammeInfo: View {
         if let next = nowNext.next {
             parts.append(String(localized: "Next at \(GuideFormat.time(next.start)): \(next.title)"))
         }
-        return parts.joined(separator: ". ")
+        return TextParts.sentences(parts)
     }
 }
 

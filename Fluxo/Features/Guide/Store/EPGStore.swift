@@ -338,7 +338,7 @@ final class EPGStore {
     }
 
     private func sourceName(_ sourceID: UUID) -> String {
-        ((try? container.mainContext.fetch(EPGQueries.source(uuid: sourceID)))?.first?.name) ?? "TV Guide"
+        ((try? container.mainContext.fetch(EPGQueries.source(uuid: sourceID)))?.first?.name) ?? String(localized: "TV Guide", comment: "Name of a TV guide source that has no name.")
     }
 
     // MARK: - Matching

@@ -1,0 +1,330 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Fluxo Channel" : {
+      "comment" : "Name of the file type of a channel dragged out of the app, shown by Files and Finder (Info.plist UTTypeDescription).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "قناة Fluxo"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fluxo-Sender"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fluxo Channel"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Canal de Fluxo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chaîne Fluxo"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fluxo चैनल"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saluran Fluxo"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Canale Fluxo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fluxoチャンネル"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fluxo 채널"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fluxo-zender"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kanał Fluxo"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Canal do Fluxo"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Канал Fluxo"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fluxo Kanalı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fluxo 频道"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fluxo 頻道"
+          }
+        }
+      }
+    },
+    "M3U Playlist" : {
+      "comment" : "Name of the M3U playlist document type, shown by Files and Finder (Info.plist CFBundleTypeName). M3U is a file format name.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "قائمة تشغيل M3U"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "M3U-Playlist"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "M3U Playlist"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lista M3U"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Playlist M3U"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "M3U प्लेलिस्ट"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Daftar Putar M3U"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Playlist M3U"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "M3Uプレイリスト"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "M3U 재생목록"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "M3U-afspeellijst"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Playlista M3U"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Playlist M3U"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Плейлист M3U"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "M3U Çalma Listesi"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "M3U 播放列表"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "M3U 播放列表"
+          }
+        }
+      }
+    },
+    "NSLocalNetworkUsageDescription" : {
+      "comment" : "Permission prompt: why the app asks for Local Network access (Info.plist NSLocalNetworkUsageDescription).",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يستخدم Fluxo الشبكة المحلية للعثور على Chromecast وأجهزة Google Cast الأخرى، لتتمكن من مشاهدة القنوات على التلفزيون."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fluxo verwendet das lokale Netzwerk, um Chromecast und andere Google-Cast-Geräte zu finden, damit du Sender auf deinem Fernseher ansehen kannst."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Fluxo uses the local network to find Chromecast and other Google Cast devices, so you can watch channels on your TV."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fluxo usa la red local para encontrar dispositivos Chromecast y otros dispositivos Google Cast, para que puedas ver canales en tu TV."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fluxo utilise le réseau local pour trouver les appareils Chromecast et autres appareils Google Cast, afin que vous puissiez regarder des chaînes sur votre téléviseur."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fluxo, Chromecast और अन्य Google Cast डिवाइस ढूँढने के लिए लोकल नेटवर्क का उपयोग करता है, ताकि आप अपने TV पर चैनल देख सकें।"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fluxo menggunakan jaringan lokal untuk menemukan Chromecast dan perangkat Google Cast lainnya, sehingga Anda dapat menonton saluran di TV."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fluxo usa la rete locale per trovare Chromecast e altri dispositivi Google Cast, così puoi guardare i canali sulla TV."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fluxoはローカルネットワークを使用してChromecastやその他のGoogle Castデバイスを探し、テレビでチャンネルを視聴できるようにします。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TV에서 채널을 시청할 수 있도록 Fluxo가 로컬 네트워크를 사용하여 Chromecast 및 기타 Google Cast 기기를 찾습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fluxo gebruikt het lokale netwerk om Chromecast en andere Google Cast-apparaten te vinden, zodat je zenders op je tv kunt kijken."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fluxo używa sieci lokalnej do wyszukiwania Chromecasta i innych urządzeń Google Cast, aby umożliwić oglądanie kanałów na telewizorze."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Fluxo usa a rede local para encontrar o Chromecast e outros dispositivos Google Cast, para que você possa assistir aos canais na sua TV."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fluxo использует локальную сеть, чтобы находить Chromecast и другие устройства Google Cast, — так вы сможете смотреть каналы на телевизоре."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fluxo, kanalları TV'nizde izleyebilmeniz için Chromecast'i ve diğer Google Cast aygıtlarını bulmak amacıyla yerel ağı kullanır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fluxo 使用本地网络查找 Chromecast 及其他 Google Cast 设备，以便你在电视上观看频道。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fluxo 會使用區域網路尋找 Chromecast 及其他 Google Cast 裝置，讓你可以在電視上觀看頻道。"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.1"
+}

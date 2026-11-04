@@ -134,7 +134,7 @@ private struct ReminderRow: View {
                 Text(reminder.title)
                     .font(.body.weight(.medium))
                     .lineLimit(2)
-                Text("\(reminder.channelName ?? "Channel") · \(GuideFormat.day(reminder.start)), \(GuideFormat.time(reminder.start))")
+                Text("\(reminder.channelName ?? String(localized: "Channel", comment: "Stands in for the name of a reminder's channel when it is unknown.")) · \(GuideFormat.day(reminder.start)), \(GuideFormat.time(reminder.start))", comment: "Reminder row: the channel, the day (Today, Tomorrow or a date) and the start time.")
                     .font(.caption)
                     .foregroundStyle(Theme.secondaryText)
                     .lineLimit(1)
@@ -156,7 +156,7 @@ private struct ReminderRow: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.tint)
-            .accessibilityLabel("Watch \(reminder.channelName ?? "the channel")")
+            .accessibilityLabel(reminder.channelName.map { Text("Watch \($0)", comment: "VoiceOver label of the button that plays a reminder's channel; the placeholder is the channel name.") } ?? Text("Watch the channel", comment: "VoiceOver label of the button that plays a reminder's channel when its name is unknown."))
         }
         .accessibilityElement(children: .combine)
         .swipeActions(edge: .trailing) {

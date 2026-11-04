@@ -31,7 +31,7 @@ struct ProgrammeCandidate: Sendable {
     /// Ways to say why, best first (see `ReasonVariety`): the main reason, then the programme's category and its
     /// timing, so four favorites in a row do not all say "On your favorite channel".
     func reasonOptions(now: Date) -> [String] {
-        let category = programme.categories.first.map { $0.prefix(1).uppercased() + $0.dropFirst() }
+        let category = programme.categories.first.map { $0.prefix(1).uppercased(with: OnDeviceModel.responseLocale) + $0.dropFirst() }
         let startsSoon = programme.start > now && programme.start.timeIntervalSince(now) < 3_600
         var options: [String] = []
         if isFavorite {

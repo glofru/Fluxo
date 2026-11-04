@@ -79,7 +79,7 @@ struct ChannelItem: Identifiable, Hashable, Sendable {
 
     var displayName: String {
         guard let name, !name.isEmpty else {
-            return "No channel name"
+            return String(localized: "No channel name", comment: "Shown instead of the name of a channel that has none.")
         }
         return name
     }

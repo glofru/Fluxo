@@ -34,7 +34,7 @@ struct SearchView: View {
         }
 
         var title: String {
-            kind?.title ?? "All"
+            kind?.segmentTitle ?? String(localized: "All", comment: "Search scope: every content type (live TV, movies and series).")
         }
     }
 
@@ -130,7 +130,7 @@ struct SearchView: View {
             ContentUnavailableView {
                 Label("Search Your Playlists", systemImage: "sparkle.magnifyingglass")
             } description: {
-                Text("Searching \(scopeDescription(libraryScope)).")
+                Text(scopeDescription(libraryScope))
             }
         } else if let results {
             // While the next query runs, the previous results stay on screen instead of a spinner.
@@ -166,11 +166,15 @@ struct SearchView: View {
         }
     }
 
+    /// "Searching “Freeview”.", "Searching your playlist.", "Searching all 3 playlists."
     private func scopeDescription(_ libraryScope: LibraryScope) -> String {
         if case .playlist = libraryScope.selection, let name = libraryScope.playlistNames.values.first {
-            return "\"\(name)\""
+            return String(localized: "Searching “\(name)”.", comment: "Search screen: the search covers one playlist; the placeholder is its name.")
         }
-        return playlists.count == 1 ? "your playlist" : "all \(playlists.count) playlists"
+        if playlists.count == 1 {
+            return String(localized: "Searching your playlist.", comment: "Search screen: the search covers the only playlist.")
+        }
+        return String(localized: "Searching all \(playlists.count) playlists.", comment: "Search screen: the search covers every playlist; the number is how many.")
     }
 
     private func run(_ request: ChannelSearch.Request) async {
@@ -300,7 +304,7 @@ private struct SearchResultsList: View {
 
     private func subtitle(for item: ChannelItem) -> String {
         let playlistName = libraryScope.showsPlaylistNames ? libraryScope.playlistNames[item.playlistID] : nil
-        return [item.kind.title, item.groupName.isEmpty ? nil : item.groupName, playlistName].compactMap { $0 }.joined(separator: " · ")
+        return TextParts.line([item.kind.title, item.groupName, playlistName])
     }
 
     var body: some View {

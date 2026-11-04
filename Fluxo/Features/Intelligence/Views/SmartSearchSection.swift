@@ -61,7 +61,7 @@ struct SmartSearchSections: View {
     /// Kind, group and (with several playlists) playlist name, as in the regular channel results.
     private func subtitle(for item: ChannelItem) -> String {
         let playlistName = libraryScope.showsPlaylistNames ? libraryScope.playlistNames[item.playlistID] : nil
-        return [item.kind.title, item.groupName.isEmpty ? nil : item.groupName, playlistName].compactMap { $0 }.joined(separator: " · ")
+        return TextParts.line([item.kind.title, item.groupName, playlistName])
     }
 
     private func header(isFromModel: Bool) -> some View {
@@ -94,7 +94,7 @@ struct SmartSearchSections: View {
             }
             .scrollIndicators(.hidden)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Searching for \(chips.joined(separator: ", "))")
+            .accessibilityLabel("Searching for \(TextParts.spoken(chips))")
         }
     }
 
@@ -104,12 +104,14 @@ struct SmartSearchSections: View {
                 HStack(spacing: 8) {
                     ForEach(groups) { group in
                         NavigationLink(value: group.route) {
-                            Label("\(group.displayName) · \(group.channelCount.formatted())", systemImage: group.kind.systemImage)
+                            Label(TextParts.line([group.displayName, group.channelCount.formatted()]), systemImage: group.kind.systemImage)
                                 .font(.subheadline)
                                 .lineLimit(1)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 7)
                         }
+                        // The chip shows a bare number; VoiceOver says what it counts.
+                        .accessibilityLabel(TextParts.spoken([group.displayName, String(localized: "\(group.channelCount) channels")]))
                         .buttonStyle(.plain)
                         .glassEffect(.regular.interactive(), in: .capsule)
                     }
@@ -154,7 +156,7 @@ private struct SmartProgrammeRow: View {
                         Text(programme.title)
                             .font(.body.weight(.medium))
                             .lineLimit(2)
-                        Text([result.channel.displayName, playlistName].compactMap { $0 }.joined(separator: " · "))
+                        Text(TextParts.line([result.channel.displayName, playlistName]))
                             .font(.caption)
                             .foregroundStyle(Theme.secondaryText)
                             .lineLimit(1)
@@ -170,11 +172,11 @@ private struct SmartProgrammeRow: View {
             }
             .buttonStyle(.plain)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel([
+            .accessibilityLabel(TextParts.spoken([
                 programme.title,
                 result.channel.displayName,
                 isOnAir ? String(localized: "On now") : GuideFormat.dayAndTime(programme),
-            ].joined(separator: ", "))
+            ]))
             .accessibilityHint("Shows the programme")
             .accessibilityAddTraits(.isButton)
         }

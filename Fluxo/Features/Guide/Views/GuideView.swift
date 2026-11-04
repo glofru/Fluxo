@@ -254,7 +254,7 @@ struct GuideView: View {
 
     private var noChannelsDescription: String {
         let enabled = sources.filter(\.isEnabled)
-        if let error = enabled.compactMap(\.lastError).first {
+        if let error = enabled.compactMap(\.lastErrorMessage).first {
             return error
         }
         if enabled.allSatisfy({ $0.currentImportID == nil }) {
@@ -302,7 +302,7 @@ struct GuideView: View {
                     Label("Guide", systemImage: "ellipsis")
                 }
             }
-            .help(epg.progress.values.first?.message ?? "Guide options")
+            .help(epg.progress.values.first?.message ?? String(localized: "Guide options", comment: "Tooltip of the TV guide options menu."))
         }
     }
 
@@ -324,7 +324,7 @@ struct GuideView: View {
                     Text("All Categories")
                         .tag(String?.none)
                     ForEach(groups, id: \.self) { group in
-                        Text(group.isEmpty ? "Other" : group)
+                        Text(group.isEmpty ? String(localized: "Other", comment: "Name of the category that holds the channels without a category.") : group)
                             .tag(String?.some(group))
                     }
                 }

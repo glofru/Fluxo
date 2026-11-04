@@ -149,7 +149,7 @@ final class PlaylistChannelGroup: Identifiable {
 
     /// Title to show for the group; playlists without group-title end up in a single unnamed group.
     var displayName: String {
-        name.isEmpty ? "Other" : name
+        name.isEmpty ? String(localized: "Other", comment: "Name of the category that holds the channels without a category.") : name
     }
 
     var kind: ChannelContentKind {

@@ -360,7 +360,7 @@ struct ArtworkPlaceholder: View {
     private var initials: String {
         let words = name.split(whereSeparator: { $0 == " " || $0 == "-" || $0 == "|" || $0 == "_" }).prefix(2)
         let letters = words.compactMap { $0.first(where: { $0.isLetter || $0.isNumber }) }
-        let result = letters.map(String.init).joined().uppercased()
+        let result = letters.map(String.init).joined().uppercased(with: .current)
         return result.isEmpty ? "TV" : result
     }
 

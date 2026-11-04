@@ -24,11 +24,23 @@ enum ChannelContentKind: Int, CaseIterable, Identifiable, Sendable {
     var title: String {
         switch self {
         case .live:
-            return "Live TV"
+            return String(localized: "Live TV", comment: "Content type: live television channels. Used as a picker segment and a title.")
         case .movie:
-            return "Movies"
+            return String(localized: "Movies", comment: "Content type: on-demand movies. Used as a picker segment and a title.")
         case .series:
-            return "Series"
+            return String(localized: "Series", comment: "Content type: on-demand TV series. Used as a picker segment and a title.")
+        }
+    }
+
+    /// The kind in segmented controls (the search scopes, the Favorites filter, the Home picker). They give every
+    /// segment the same share of the width, about 80 points each on a small iPhone, so translations may use a
+    /// shorter word with the same meaning here ("Эфир" for "Прямой эфир"); `title` stays the full name.
+    var segmentTitle: String {
+        switch self {
+        case .live:
+            return String(localized: "Live TV (segment)", defaultValue: "Live TV", comment: "Content type: live television channels, as one of 3 or 4 equal segments of a picker (with All, Movies, Series). Keep it short, about 10 characters: a shorter word with the same meaning (such as Live) is fine.")
+        case .movie, .series:
+            return title
         }
     }
 

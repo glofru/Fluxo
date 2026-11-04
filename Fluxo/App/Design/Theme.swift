@@ -180,7 +180,7 @@ struct LiveBadge: View {
             LiveBadge()
             LiveBadge(compact: true)
         }
-        Text("Sky Sport F1").font(Theme.Typography.cardTitle)
+        Text(verbatim: "Sky Sport F1").font(Theme.Typography.cardTitle)
             .padding()
             .background(Theme.surface, in: .rect(cornerRadius: 16))
     }

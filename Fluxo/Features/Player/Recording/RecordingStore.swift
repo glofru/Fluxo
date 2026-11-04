@@ -46,6 +46,10 @@ final class RecordingStore {
 
     private static let mediaExtensions: Set<String> = ["mp4", "ts"]
 
+    /// Name of the recordings folder in Documents (and in the Files app). Never localized: the folder would
+    /// change, and the recordings be lost, with the language.
+    nonisolated static let folderName = "Recordings"
+
     init(directory: URL? = nil) {
         self.directory = directory ?? Self.defaultDirectory
         try? FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true)
@@ -67,10 +71,11 @@ final class RecordingStore {
         #endif
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
-        return documents.appendingPathComponent("Recordings", isDirectory: true)
+        return documents.appendingPathComponent(folderName, isDirectory: true)
     }
 
-    /// Returns a new, unique file URL for a recording of `channelName`.
+    /// Returns a new, unique file URL for a recording of `channelName`. The name is language-independent
+    /// ("Recording-2026-11-03T20-15-00" without a channel name); the title shown is in the metadata.
     func makeRecordingURL(channelName: String?, date: Date = Date()) -> URL {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -85,10 +90,11 @@ final class RecordingStore {
         return url
     }
 
-    /// Marks `url` as being written by the engine.
+    /// Marks `url` as being written by the engine. Without a `title` (a channel without a name), the list
+    /// shows a localized "Recording from <date>".
     func recordingDidStart(_ url: URL, title: String?) {
         Self.activeURLs.insert(url)
-        writeMetadata(RecordingMetadata(title: title ?? url.deletingPathExtension().lastPathComponent, createdOn: Date(), duration: nil), for: url)
+        writeMetadata(RecordingMetadata(title: title, createdOn: Date(), duration: nil), for: url)
         reload()
     }
 
@@ -161,10 +167,11 @@ final class RecordingStore {
             .map { url -> Recording in
                 let values = try? url.resourceValues(forKeys: Set(keys))
                 let metadata = readMetadata(for: url)
+                let createdOn = metadata?.createdOn ?? values?.creationDate ?? Date()
                 return Recording(
                     url: url,
-                    title: metadata?.title ?? url.deletingPathExtension().lastPathComponent,
-                    createdOn: metadata?.createdOn ?? values?.creationDate ?? Date(),
+                    title: Self.title(of: url, metadata: metadata, createdOn: createdOn),
+                    createdOn: createdOn,
                     duration: metadata?.duration,
                     bytes: Int64(values?.fileSize ?? 0),
                     isFinalizing: Self.activeURLs.contains(url) || Self.finalizingURLs.contains(url)
@@ -189,7 +196,7 @@ final class RecordingStore {
 
     private func conversionDidFinish(source: URL, destination: URL, result: Result<TimeInterval, ConversionError>) {
         Self.finalizingURLs.remove(source)
-        var metadata = readMetadata(for: source) ?? RecordingMetadata(title: source.deletingPathExtension().lastPathComponent, createdOn: Date(), duration: nil)
+        var metadata = readMetadata(for: source) ?? RecordingMetadata(title: nil, createdOn: Date(), duration: nil)
         switch result {
         case .success(let duration):
             metadata.duration = duration
@@ -240,6 +247,21 @@ final class RecordingStore {
         try? data.write(to: Self.metadataURL(for: url), options: .atomic)
     }
 
+    /// The title in the metadata; a localized "Recording from <date>" for a recording without one. A file without
+    /// metadata (copied into the folder) shows its name.
+    private static func title(of url: URL, metadata: RecordingMetadata?, createdOn: Date) -> String {
+        guard let metadata else {
+            return url.deletingPathExtension().lastPathComponent
+        }
+        // Earlier versions saved the file name ("Recording-2026-11-03T20-15-00") as the title of a recording
+        // without a channel name.
+        if let title = metadata.title, !title.isEmpty, title != url.deletingPathExtension().lastPathComponent {
+            return title
+        }
+        let date = createdOn.formatted(date: .abbreviated, time: .shortened)
+        return String(localized: "Recording from \(date)", comment: "Title of a recording of a channel that has no name; the placeholder is when it was recorded, such as Nov 3, 2026 at 20:15.")
+    }
+
     private nonisolated static func metadataURL(for url: URL) -> URL {
         // Hidden sidecar, e.g. ".News-2026-11-02T10-00-00.json".
         url.deletingLastPathComponent().appendingPathComponent(".\(url.deletingPathExtension().lastPathComponent).json")
@@ -280,14 +302,17 @@ final class RecordingStore {
         }
         guard result == 0 else {
             let message = buffer.withUnsafeBufferPointer { String(cString: $0.baseAddress!) }
-            return .failure(ConversionError(message: message.isEmpty ? "Unable to save the recording." : message))
+            return .failure(ConversionError(message: message.isEmpty
+                ? String(localized: "Unable to save the recording.", comment: "Error while saving a recording.")
+                : EngineMessage.localized(message)))
         }
         return .success(duration)
     }
 }
 
 private struct RecordingMetadata: Codable {
-    var title: String
+    /// Nil for a channel without a name (the title shown is then built in the current language).
+    var title: String?
     var createdOn: Date
     var duration: TimeInterval?
     var conversionFailed: Bool?

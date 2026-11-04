@@ -95,21 +95,23 @@ final class AVPlayerViewModel {
         var label: String {
             switch self {
             case .idle:
-                return "Idle"
+                return String(localized: "Idle", comment: "Player status: nothing is loaded.")
             case .connecting:
-                return "Connecting…"
+                return String(localized: "Connecting…", comment: "Player status: opening the stream.")
             case .buffering:
-                return "Buffering…"
+                return String(localized: "Buffering…", comment: "Player status: waiting for media data.")
             case .playing:
-                return "Playing"
+                return String(localized: "Playing", comment: "Player status.")
             case .paused:
-                return "Paused"
+                return String(localized: "Paused", comment: "Player status.")
             case .reconnecting(let attempt):
-                return attempt > 1 ? "Reconnecting (\(attempt))…" : "Reconnecting…"
+                return attempt > 1
+                    ? String(localized: "Reconnecting (\(attempt))…", comment: "Player status: the live stream dropped; the number is the reconnection attempt.")
+                    : String(localized: "Reconnecting…", comment: "Player status: the live stream dropped and the app reconnects.")
             case .ended:
-                return "Ended"
+                return String(localized: "Ended", comment: "Player status: the stream or video finished.")
             case .failed:
-                return "Playback failed"
+                return String(localized: "Playback failed", comment: "Player status: the stream could not be played.")
             }
         }
 
@@ -324,7 +326,7 @@ final class AVPlayerViewModel {
         }
         guard let url = channel.url else {
             currentChannel = channel
-            streamError = "This channel has no valid stream URL."
+            streamError = String(localized: "This channel has no valid stream URL.", comment: "Player error: the playlist entry has no usable address.")
             refreshPlaybackState()
             return
         }
@@ -690,7 +692,7 @@ final class AVPlayerViewModel {
             }
 
             guard let streamURL = SimpleHTTPServer.url(forFileNamed: configuration.playlistFileName) else {
-                streamError = "Unable to create the local stream address."
+                streamError = String(localized: "Unable to create the local stream address.", comment: "Player error: the in-app streaming server could not provide an address.")
                 refreshPlaybackState()
                 return
             }
@@ -806,7 +808,7 @@ final class AVPlayerViewModel {
     }
 
     private func handleItemFailure(_ error: Error?) {
-        let message = error?.localizedDescription ?? "Playback failed."
+        let message = error?.localizedDescription ?? String(localized: "Playback failed.", comment: "Player error shown when the system gives no reason.")
         if route != .direct, remuxer.isProcessing, itemRecoveryAttempts < 3 {
             // The engine still produces media: the player lost the local stream (e.g. the server
             // socket was reclaimed in the background). Restart the server and attach a fresh item.
@@ -906,7 +908,7 @@ final class AVPlayerViewModel {
             return
         }
         nowPlaying.update(
-            title: channel.name ?? "Fluxo",
+            title: channel.name ?? String(localized: "Fluxo", comment: "Now Playing title when the channel has no name; the app name."),
             isLive: isCasting ? (cast.mediaStatus?.isLive ?? true) : (route.isLiveRemux || player.currentItem?.duration.isIndefinite == true),
             elapsed: timeline.currentTime,
             duration: timeline.duration,
@@ -1104,7 +1106,7 @@ final class AVPlayerViewModel {
         guard Int64(inputSize) + onDemandFreeSpaceMargin > available else {
             return nil
         }
-        return "Not enough free space to play this recording."
+        return String(localized: "Not enough free space to play this recording.", comment: "Player error: playing a recorded file needs disk space for a temporary copy.")
     }
 
     // MARK: - Picture in Picture
@@ -1227,7 +1229,7 @@ final class AVPlayerViewModel {
                 return
             }
             if let message = error?.message {
-                castError = String(localized: "Casting stopped. \(message)")
+                castError = String(localized: "Casting stopped. \(message)", comment: "Cast error; the placeholder is the reason given by the Cast device.")
             }
             if isCastAdopted {
                 endCastingState()
@@ -1359,7 +1361,7 @@ final class AVPlayerViewModel {
         }
         guard let url = channel.url else {
             isLocalPlaybackSuspended = false
-            streamError = String(localized: "This channel has no valid stream URL.")
+            streamError = String(localized: "This channel has no valid stream URL.", comment: "Player error: the playlist entry has no usable address.")
             return
         }
         start(channel, url: url)
@@ -1452,8 +1454,8 @@ final class AVPlayerViewModel {
             return .buffering
         case .idle:
             if status.idleReason == .error {
-                let device = cast.connectedDevice?.name ?? String(localized: "The Cast device")
-                return .failed(String(localized: "\(device) stopped playing this stream."))
+                let device = cast.connectedDevice?.name ?? String(localized: "The Cast device", comment: "Stands in for the Chromecast name in an error when the name is unknown.")
+                return .failed(String(localized: "\(device) stopped playing this stream.", comment: "Cast error; the placeholder is the Chromecast name."))
             }
             return .ended
         }

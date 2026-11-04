@@ -39,11 +39,11 @@ final class MediaSelectionController {
             guard let badge, !title.localizedCaseInsensitiveContains(badge) else {
                 return title
             }
-            return "\(title) (\(badge))"
+            return String(localized: "\(title) (\(badge))", comment: "Audio or subtitle track in the player menu: the track name, then a short badge such as AD, CC or SDH.")
         }
         /// Spoken by VoiceOver: the title and what the badge means.
         var accessibilityLabel: String {
-            [title, badgeDescription].compactMap { $0 }.joined(separator: ", ")
+            TextParts.spoken([title, badgeDescription])
         }
         fileprivate let badgeDescription: String?
     }
@@ -211,13 +211,13 @@ final class MediaSelectionController {
     /// What the system shows while Subtitles is on Automatic ("Off", "English"), for the menu.
     var automaticSubtitleDescription: String {
         guard let item, let legibleGroup, let option = item.currentMediaSelection.selectedMediaOption(in: legibleGroup) else {
-            return String(localized: "Off")
+            return String(localized: "Off", comment: "Subtitles menu: no subtitles are shown.")
         }
         if let index = subtitleOptions.firstIndex(of: option) {
             return subtitleTracks[index].title
         }
         // Forced subtitles only.
-        return String(localized: "Off")
+        return String(localized: "Off", comment: "Subtitles menu: no subtitles are shown.")
     }
 
     private enum Kind {
@@ -228,25 +228,25 @@ final class MediaSelectionController {
     private static func tracks(for options: [AVMediaSelectionOption], kind: Kind) -> [Track] {
         var seen: [String: Int] = [:]
         return options.enumerated().map { index, option in
-            var title = option.displayName.isEmpty ? String(localized: "Track \(index + 1)") : option.displayName
+            var title = option.displayName.isEmpty ? String(localized: "Track \(index + 1)", comment: "Name of an audio or subtitle track that has no name; the number is its position.") : option.displayName
             // Two tracks of the same name ("English", "English") get a number.
             let count = (seen[title] ?? 0) + 1
             seen[title] = count
             if count > 1 {
-                title += " \(count)"
+                title = String(localized: "\(title) \(count)", comment: "A second audio or subtitle track with the same name gets a number, as in 'English 2'.")
             }
             let badge: (short: String, spoken: String)?
             switch kind {
             case .audio:
                 badge = option.hasMediaCharacteristic(.describesVideoForAccessibility)
-                    ? (String(localized: "AD"), String(localized: "Audio Description"))
+                    ? (String(localized: "AD", comment: "Short badge for an audio description track. Keep it very short."), String(localized: "Audio Description", comment: "Spoken meaning of the AD badge on an audio track."))
                     : nil
             case .subtitles:
                 if option.mediaType == .closedCaption {
-                    badge = (String(localized: "CC"), String(localized: "Closed Captions"))
+                    badge = (String(localized: "CC", comment: "Short badge for closed captions. Keep it very short."), String(localized: "Closed Captions", comment: "Spoken meaning of the CC badge on a subtitle track."))
                 } else if option.hasMediaCharacteristic(.transcribesSpokenDialogForAccessibility)
                     && option.hasMediaCharacteristic(.describesMusicAndSoundForAccessibility) {
-                    badge = (String(localized: "SDH"), String(localized: "Subtitles for the Deaf and Hard of Hearing"))
+                    badge = (String(localized: "SDH", comment: "Short badge for subtitles for the deaf and hard of hearing. Keep it very short."), String(localized: "Subtitles for the Deaf and Hard of Hearing", comment: "Spoken meaning of the SDH badge on a subtitle track."))
                 } else {
                     badge = nil
                 }
@@ -280,21 +280,21 @@ struct MediaSelectionMenu<Label: View>: View {
     private var accessibilityValue: String {
         var parts: [String] = []
         if let audio = controller.selectedAudioTrack, controller.audioTracks.count > 1, controller.audioTracks.indices.contains(audio) {
-            parts.append(String(localized: "Audio: \(controller.audioTracks[audio].accessibilityLabel)"))
+            parts.append(String(localized: "Audio: \(controller.audioTracks[audio].accessibilityLabel)", comment: "VoiceOver value of the Audio and Subtitles button; the placeholder is the audio track name."))
         }
         if !controller.subtitleTracks.isEmpty {
             switch controller.subtitleChoice {
             case .automatic:
-                parts.append(String(localized: "Subtitles: Automatic, \(controller.automaticSubtitleDescription)"))
+                parts.append(String(localized: "Subtitles: Automatic, \(controller.automaticSubtitleDescription)", comment: "VoiceOver value of the Audio and Subtitles button; the placeholder is what the system shows, such as Off or English."))
             case .off:
-                parts.append(String(localized: "Subtitles: Off"))
+                parts.append(String(localized: "Subtitles: Off", comment: "VoiceOver value of the Audio and Subtitles button."))
             case .track(let id) where controller.subtitleTracks.indices.contains(id):
-                parts.append(String(localized: "Subtitles: \(controller.subtitleTracks[id].accessibilityLabel)"))
+                parts.append(String(localized: "Subtitles: \(controller.subtitleTracks[id].accessibilityLabel)", comment: "VoiceOver value of the Audio and Subtitles button; the placeholder is the subtitle track name."))
             case .track:
                 break
             }
         }
-        return parts.joined(separator: ". ")
+        return TextParts.sentences(parts)
     }
 }
 

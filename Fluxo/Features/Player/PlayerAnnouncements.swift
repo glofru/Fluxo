@@ -73,14 +73,14 @@ private struct PlayerAnnouncer: View {
                     return
                 }
                 if isRecording {
-                    AccessibilityAnnouncer.announce(String(localized: "Recording started"))
+                    AccessibilityAnnouncer.announce(String(localized: "Recording started", comment: "VoiceOver announcement."))
                 } else if wasRecording, viewModel.currentChannel != nil {
-                    AccessibilityAnnouncer.announce(String(localized: "Recording stopped and saved to Recordings"))
+                    AccessibilityAnnouncer.announce(String(localized: "Recording stopped and saved to Recordings", comment: "VoiceOver announcement; Recordings is the name of the app's recordings screen."))
                 }
             }
             .onChange(of: viewModel.recordingError) { _, error in
                 if isVoiceOverEnabled, let error {
-                    AccessibilityAnnouncer.announce(String(localized: "Recording failed: \(error)"), priority: .high)
+                    AccessibilityAnnouncer.announce(String(localized: "Recording failed: \(error)", comment: "VoiceOver announcement; the placeholder is the error message."), priority: .high)
                 }
             }
             .onChange(of: viewModel.castError) { _, error in
@@ -93,15 +93,15 @@ private struct PlayerAnnouncer: View {
                     return
                 }
                 if isCasting, let device = viewModel.cast.connectedDevice {
-                    AccessibilityAnnouncer.announce(String(localized: "Playing on \(device.name)"))
+                    AccessibilityAnnouncer.announce(String(localized: "Playing on \(device.name)", comment: "VoiceOver announcement when casting starts; the placeholder is the Chromecast name."))
                 } else if !isCasting {
-                    AccessibilityAnnouncer.announce(String(localized: "Playing on this device"))
+                    AccessibilityAnnouncer.announce(String(localized: "Playing on this device", comment: "VoiceOver announcement when casting stops and playback comes back to the phone or Mac."))
                 }
             }
             .onChange(of: timeline.isAtLiveEdge) { _, isAtLive in
                 // Back to live after watching behind it (Go Live, or catching up).
                 if isVoiceOverEnabled, isAtLive, viewModel.isTimeShiftAvailable, viewModel.playbackState == .playing {
-                    AccessibilityAnnouncer.announce(String(localized: "Live"), priority: .low)
+                    AccessibilityAnnouncer.announce(String(localized: "Live", comment: "VoiceOver announcement: playback is at the live edge of a live channel."), priority: .low)
                 }
             }
     }
@@ -122,7 +122,7 @@ private struct PlayerAnnouncer: View {
                 return
             }
             spoken = .busy
-            AccessibilityAnnouncer.announce(String(localized: "Connection lost. Reconnecting"))
+            AccessibilityAnnouncer.announce(String(localized: "Connection lost. Reconnecting", comment: "VoiceOver announcement while the live stream reconnects."))
         case .playing:
             guard await settle(for: .milliseconds(600)) else {
                 return
@@ -131,27 +131,27 @@ private struct PlayerAnnouncer: View {
             if let name = startedChannel {
                 startedChannel = nil
                 spoken = .channel
-                AccessibilityAnnouncer.announce(isLive ? String(localized: "\(name), live") : String(localized: "Playing \(name)"))
+                AccessibilityAnnouncer.announce(isLive ? String(localized: "\(name), live", comment: "VoiceOver announcement when a live channel starts; the placeholder is the channel name.") : String(localized: "Playing \(name)", comment: "VoiceOver announcement when a video starts; the placeholder is its name."))
             } else if spoken != nil, spoken != .channel {
                 spoken = .channel
-                AccessibilityAnnouncer.announce(isLive ? String(localized: "Live") : String(localized: "Playing"))
+                AccessibilityAnnouncer.announce(isLive ? String(localized: "Live", comment: "VoiceOver announcement: playback is at the live edge of a live channel.") : String(localized: "Playing", comment: "VoiceOver announcement: playback resumed."))
             }
         case .paused:
             guard await settle(for: .milliseconds(600)) else {
                 return
             }
             spoken = .paused
-            AccessibilityAnnouncer.announce(String(localized: "Paused"), priority: .low)
+            AccessibilityAnnouncer.announce(String(localized: "Paused", comment: "VoiceOver announcement: playback paused."), priority: .low)
         case .ended:
             spoken = .ended
-            AccessibilityAnnouncer.announce(viewModel.isTimeShiftAvailable ? String(localized: "The stream ended") : String(localized: "Playback ended"))
+            AccessibilityAnnouncer.announce(viewModel.isTimeShiftAvailable ? String(localized: "The stream ended", comment: "VoiceOver announcement: the live stream ended.") : String(localized: "Playback ended", comment: "VoiceOver announcement: the video finished."))
         case .failed(let message):
             spoken = .failed
             startedChannel = nil
             let title = viewModel.isCasting
-                ? String(localized: "Can't play on the Cast device")
-                : String(localized: "Can't play this channel")
-            AccessibilityAnnouncer.announce(message.isEmpty ? title : "\(title). \(message)", priority: .high)
+                ? String(localized: "Can't play on the Cast device", comment: "VoiceOver announcement: the Chromecast could not play the channel.")
+                : String(localized: "Can't play this channel", comment: "VoiceOver announcement: playback failed.")
+            AccessibilityAnnouncer.announce(message.isEmpty ? title : String(localized: "\(title). \(message)", comment: "VoiceOver announcement of a playback failure: the failure, then the reason."), priority: .high)
         }
     }
 

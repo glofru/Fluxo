@@ -27,11 +27,11 @@ struct PlaylistImportProgress: Sendable, Equatable {
     var message: String {
         switch phase {
         case .connecting:
-            return "Contacting the server..."
+            return String(localized: "Contacting the server…", comment: "Playlist import progress.")
         case .downloading:
-            return "Imported \(channelCount.formatted()) channels..."
+            return String(localized: "Imported \(channelCount) channels…", comment: "Playlist import progress while downloading; the number grows as channels are read.")
         case .finalizing:
-            return "Finishing \(channelCount.formatted()) channels..."
+            return String(localized: "Finishing \(channelCount) channels…", comment: "Playlist import progress while the channels are saved.")
         }
     }
 }
@@ -49,9 +49,9 @@ enum PlaylistImportError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .playlistNotFound:
-            return "The playlist no longer exists."
+            return String(localized: "The playlist no longer exists.", comment: "Playlist import error: the playlist was deleted during the import.")
         case .noChannels:
-            return "No channels found. Is this an M3U playlist?"
+            return String(localized: "No channels found. Is this an M3U playlist?", comment: "Playlist import error: the downloaded file has no channels.")
         }
     }
 }

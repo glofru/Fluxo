@@ -134,7 +134,7 @@ private struct PlaylistManagementPresenter: ViewModifier {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: { playlist in
-                Text("\"\(playlist.name)\" and its \(playlist.channelCount.formatted()) channels, favorites and watch history will be removed from this device.")
+                Text("“\(playlist.name)” and its \(playlist.channelCount) channels, favorites and watch history will be removed from this device.", comment: "Message of the Delete Playlist alert; the placeholders are the playlist name and its number of channels.")
             }
             .alert("Playlist Error", isPresented: failureAlertBinding, presenting: importCenter.failure) { _ in
                 Button("OK", role: .cancel) {}

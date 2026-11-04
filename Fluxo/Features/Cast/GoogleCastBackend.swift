@@ -315,7 +315,9 @@ final class GoogleCastBackend: CastBackend {
         case .appDidEnterBackground:
             return .cancelled
         default:
-            return CastFailure(kind: .connection, message: GCKError.enumDescription(for: code))
+            // The SDK's description is English developer text: it goes to the log, not to the user.
+            logger.error("Cast error \(code.rawValue, privacy: .public): \(GCKError.enumDescription(for: code), privacy: .public)")
+            return CastFailure(kind: .connection, message: String(localized: "Couldn't connect to the Cast device.", comment: "Cast: shown when connecting to or playing on a Chromecast fails for a reason that has no specific message."))
         }
     }
 }

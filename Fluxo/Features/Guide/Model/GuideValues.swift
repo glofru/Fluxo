@@ -57,7 +57,7 @@ struct GuideProgramme: Identifiable, Hashable, Sendable {
             channelID: programme.channelID,
             start: programme.start,
             stop: programme.stop,
-            title: programme.title,
+            title: programme.title.isEmpty ? String(localized: "Untitled", comment: "Title of a TV guide programme that has none.") : programme.title,
             subtitle: programme.subtitle,
             summary: programme.summary,
             categories: programme.categories.isEmpty ? [] : programme.categories.components(separatedBy: "\n"),
@@ -92,10 +92,10 @@ struct GuideProgramme: Identifiable, Hashable, Sendable {
         return min(1, max(0, date.timeIntervalSince(start) / duration))
     }
 
-    /// "Subtitle · S1 E2", or nil when the guide has neither.
+    /// "Subtitle · S1 E2" (the episode in the app's language), or nil when the guide has neither.
     var detailLine: String? {
-        let parts = [subtitle.isEmpty ? nil : subtitle, episode].compactMap { $0 }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+        let line = TextParts.line([subtitle, episode.map(GuideFormat.episode)])
+        return line.isEmpty ? nil : line
     }
 }
 

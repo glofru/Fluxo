@@ -220,7 +220,7 @@ struct ProgrammeDetailView: View {
         }
         .scrollIndicators(.hidden)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Categories: \(programme.categories.joined(separator: ", "))")
+        .accessibilityLabel("Categories: \(TextParts.spoken(programme.categories))")
     }
 
     private func upNextSection(now: Date) -> some View {

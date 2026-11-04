@@ -168,7 +168,7 @@ struct SetReminderIntent: AppIntent {
             : "OK, I'll remind you when \(programme.title) starts."
         return .result(
             dialog: dialog,
-            view: ConfirmationSnippetView(systemImage: "bell.fill", title: programme.title, subtitle: "\(program.channel.name) · \(GuideFormat.dayAndTime(programme))")
+            view: ConfirmationSnippetView(systemImage: "bell.fill", title: programme.title, subtitle: TextParts.line([program.channel.name, GuideFormat.dayAndTime(programme)]))
         )
     }
 }

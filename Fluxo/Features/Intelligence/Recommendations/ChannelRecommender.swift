@@ -325,7 +325,9 @@ enum ChannelRecommender {
         guard !trimmed.isEmpty, trimmed.count <= 60 else {
             return fallback
         }
-        return trimmed.prefix(1).uppercased() + trimmed.dropFirst()
+        // The case mapping of the app's language (Turkish "izlediğin" → "İzlediğin"); scripts without case
+        // are left as they are.
+        return trimmed.prefix(1).uppercased(with: OnDeviceModel.responseLocale) + trimmed.dropFirst()
     }
 }
 

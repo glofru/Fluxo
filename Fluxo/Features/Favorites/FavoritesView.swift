@@ -203,7 +203,7 @@ struct FavoritesView: View {
             Text("All")
                 .tag(ChannelContentKind?.none)
             ForEach(kinds) { kind in
-                Text(kind.title)
+                Text(kind.segmentTitle)
                     .tag(ChannelContentKind?.some(kind))
             }
         }
@@ -372,14 +372,7 @@ private struct FavoriteRow: View {
     }
 
     private var subtitle: String {
-        var parts = [item.kind.title]
-        if !item.groupName.isEmpty {
-            parts.append(item.groupName)
-        }
-        if let playlistName {
-            parts.append(playlistName)
-        }
-        return parts.joined(separator: " · ")
+        TextParts.line([item.kind.title, item.groupName, playlistName])
     }
 
     @ViewBuilder

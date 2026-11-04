@@ -27,19 +27,19 @@ enum PlaylistURLValidation: Equatable {
             return
         }
         guard trimmed.contains("://") else {
-            self = .invalid("Start the address with http:// or https://.")
+            self = .invalid(String(localized: "Start the address with http:// or https://.", comment: "Validation message of the playlist address field."))
             return
         }
         guard let components = URLComponents(string: trimmed), let scheme = components.scheme?.lowercased() else {
-            self = .invalid("This is not a valid web address.")
+            self = .invalid(String(localized: "This is not a valid web address.", comment: "Validation message of the playlist address field."))
             return
         }
         guard scheme == "http" || scheme == "https" else {
-            self = .invalid("Only http:// and https:// playlists are supported.")
+            self = .invalid(String(localized: "Only http:// and https:// playlists are supported.", comment: "Validation message of the playlist address field."))
             return
         }
         guard let host = components.host, !host.isEmpty, let url = components.url else {
-            self = .invalid("The address has no server name.")
+            self = .invalid(String(localized: "The address has no server name.", comment: "Validation message of the playlist address field."))
             return
         }
         self = .valid(url)
@@ -65,7 +65,7 @@ enum PlaylistURLValidation: Equatable {
         if !file.isEmpty, file != "/", !["get", "playlist", "index", "get.php"].contains(file.lowercased()) {
             return file
         }
-        return url.host() ?? "Playlist"
+        return url.host() ?? String(localized: "Playlist", comment: "Default name of a playlist whose address has no usable name.")
     }
 }
 
@@ -130,7 +130,7 @@ struct AddPlaylistView: View {
                     }
 
                 HStack(spacing: 8) {
-                    TextField("URL", text: $urlText, prompt: Text("https://example.com/playlist.m3u"))
+                    TextField("URL", text: $urlText, prompt: Text(verbatim: "https://example.com/playlist.m3u"))
                         .focused($focusedField, equals: .url)
                         .textContentType(.URL)
                         .urlKeyboard()
@@ -245,7 +245,7 @@ struct AddPlaylistView: View {
     }
 
     private var namePlaceholder: String {
-        validation.url.map(PlaylistURLValidation.suggestedName(for:)) ?? "My playlist"
+        validation.url.map(PlaylistURLValidation.suggestedName(for:)) ?? String(localized: "My playlist", comment: "Placeholder of the playlist name field.")
     }
 
     private func prefill() {

@@ -49,21 +49,27 @@ struct ChannelProgrammeSummaryKey: PreferenceKey {
 
 enum ChannelAccessibility {
 
+    /// The spoken state of a channel that is a favorite (the star badge, a card's value). Its own key: in
+    /// several languages the button that adds a favorite ("Favorite") is a verb, which would read as an action.
+    static var favoriteState: String {
+        String(localized: "ChannelAccessibility.favoriteState", defaultValue: "Favorite", comment: "VoiceOver: the state of a channel that is in the favorites, read after its name (not the button that adds it). A noun or an adjective, such as 'Favorite' or 'In Favorites'.")
+    }
+
     /// "Channel 12, Sky Sport F1, Live TV, Favorite, On now: …". Parts that are nil or empty are left out.
     static func label(for item: ChannelItem, isFavorite: Bool, includesNumber: Bool = false, includesKind: Bool = true, extra: [String?] = []) -> String {
         var parts: [String] = []
         if includesNumber, let number = item.number {
-            parts.append(String(localized: "Channel \(number)"))
+            parts.append(String(localized: "Channel \(number.formatted(.number.grouping(.never)))", comment: "VoiceOver: the channel number of the playlist, as in 'Channel 12'."))
         }
         parts.append(item.displayName)
         if includesKind {
             parts.append(item.kind.title)
         }
         if isFavorite {
-            parts.append(String(localized: "Favorite"))
+            parts.append(favoriteState)
         }
         parts.append(contentsOf: extra.compactMap { $0 }.filter { !$0.isEmpty })
-        return parts.joined(separator: ", ")
+        return TextParts.spoken(parts)
     }
 
     /// The spoken programme on air: "On now: Evening News, 40 min left".

@@ -200,7 +200,7 @@ private struct PlaylistSidebarRow: View {
                         .foregroundStyle(Theme.secondaryText)
                         .lineLimit(1)
                 } else if playlist.currentImportID != nil {
-                    Text("\(playlist.channelCount.formatted()) channels")
+                    Text("\(playlist.channelCount) channels", comment: "A number of channels: of a playlist (Mac sidebar), a category card, or a count in Shortcuts.")
                         .font(.caption)
                         .foregroundStyle(Theme.secondaryText)
                 } else {

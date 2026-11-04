@@ -504,7 +504,7 @@ private struct PlayerTopBar: View {
 
     /// Closes the screen; playback continues (in Picture in Picture on iOS, when it can).
     private var closeButton: some View {
-        PlayerCircleButton(title: "Close Player", systemImage: "chevron.down", help: closeHelp) {
+        PlayerCircleButton(title: String(localized: "Close Player", comment: "Player button that hides the player; playback continues."), systemImage: "chevron.down", help: closeHelp) {
             viewModel.closePlayer()
         }
         .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
@@ -514,7 +514,7 @@ private struct PlayerTopBar: View {
 
     /// Stops playback and closes the player.
     private var stopButton: some View {
-        PlayerCircleButton(title: "Stop Playback", systemImage: "xmark", help: "Stop playback and close the player") {
+        PlayerCircleButton(title: String(localized: "Stop Playback", comment: "Player button that stops playback and closes the player."), systemImage: "xmark", help: String(localized: "Stop playback and close the player", comment: "Tooltip of the Stop Playback button.")) {
             viewModel.stop()
         }
         .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
@@ -524,9 +524,9 @@ private struct PlayerTopBar: View {
 
     private var closeHelp: String {
         #if os(macOS)
-        return "Close the player (playback continues)"
+        return String(localized: "Close the player (playback continues)", comment: "Tooltip of the Close Player button on the Mac.")
         #else
-        return "Close the player (playback continues in Picture in Picture)"
+        return String(localized: "Close the player (playback continues in Picture in Picture)", comment: "Tooltip of the Close Player button on iPhone and iPad.")
         #endif
     }
 
@@ -543,7 +543,7 @@ private struct PlayerTopBar: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(viewModel.currentChannel?.name ?? "No channel")
+                    Text(viewModel.currentChannel?.name ?? String(localized: "No channel", comment: "Player title when nothing is playing."))
                         .font(Theme.Typography.playerTitle)
                         .lineLimit(lineLimit)
                         .fixedSize(horizontal: false, vertical: true)
@@ -637,7 +637,8 @@ private struct PlayerTopBar: View {
                     interacted()
                     sidePanel.wrappedValue.toggle()
                 } label: {
-                    Image(systemName: "sidebar.right")
+                    // The panel is on the trailing edge, so the symbol follows the layout direction.
+                    Image(systemName: "sidebar.trailing")
                         .symbolVariant(sidePanel.wrappedValue ? .fill : .none)
                         .contentTransition(.symbolEffect(.replace))
                         .frame(width: Self.buttonSize, height: Self.buttonSize)
@@ -692,20 +693,20 @@ private struct PlayerStatusBadges: View {
     private var status: some View {
         switch viewModel.playbackState {
         case .connecting:
-            busyBadge("Connecting…")
+            busyBadge(String(localized: "Connecting…", comment: "Player status: opening the stream."))
         case .buffering:
-            busyBadge("Buffering…")
+            busyBadge(String(localized: "Buffering…", comment: "Player status: waiting for media data."))
         case .reconnecting:
             PlayerBadge(text: viewModel.playbackState.label, systemImage: "wifi.exclamationmark", tint: Theme.warning)
         case .failed:
-            PlayerBadge(text: "Error", systemImage: "exclamationmark.triangle.fill", tint: Theme.error)
+            PlayerBadge(text: String(localized: "Error", comment: "Player status badge: playback failed."), systemImage: "exclamationmark.triangle.fill", tint: Theme.error)
         case .ended:
-            PlayerBadge(text: "Ended", systemImage: "checkmark.circle", tint: Theme.secondaryText)
+            PlayerBadge(text: String(localized: "Ended", comment: "Player status: the stream or video finished."), systemImage: "checkmark.circle", tint: Theme.secondaryText)
         case .idle:
-            PlayerBadge(text: "Idle", systemImage: nil, tint: Theme.secondaryText)
+            PlayerBadge(text: String(localized: "Idle", comment: "Player status: nothing is loaded."), systemImage: nil, tint: Theme.secondaryText)
         case .playing, .paused:
             if viewModel.playbackState == .paused {
-                PlayerBadge(text: "Paused", systemImage: "pause.fill", tint: Theme.secondaryText)
+                PlayerBadge(text: String(localized: "Paused", comment: "Player status."), systemImage: "pause.fill", tint: Theme.secondaryText)
             } else if viewModel.isTimeShiftAvailable {
                 // The bottom live control shows LIVE or the time behind live.
                 if let group = viewModel.currentItem?.groupName, !group.isEmpty {
@@ -714,7 +715,7 @@ private struct PlayerStatusBadges: View {
             } else if isLive {
                 LiveBadge()
             } else {
-                PlayerBadge(text: "Playing", systemImage: "play.fill", tint: Theme.secondaryText)
+                PlayerBadge(text: String(localized: "Playing", comment: "Player status."), systemImage: "play.fill", tint: Theme.secondaryText)
             }
         }
     }
@@ -927,7 +928,7 @@ private struct PlayerTimelineBar: View {
                     }
                     .accessibilityIdentifier("player.scrubber")
 
-                Text(isLive ? PlayerTime.format(upper - lower) : "-\(PlayerTime.format(upper - position))")
+                Text(isLive ? PlayerTime.format(upper - lower) : String(localized: "-\(PlayerTime.format(upper - position))", comment: "Time remaining in the player, as in -12:34."))
                     .frame(minWidth: 52, alignment: .trailing)
                     .accessibilityLabel(isLive ? "Time-shift buffer \(PlayerTime.spoken(upper - lower))" : "\(PlayerTime.spoken(upper - position)) remaining")
             }
@@ -1020,12 +1021,12 @@ private struct PlayerTransport: View {
         HStack(spacing: 14) {
             HStack(spacing: 0) {
                 if viewModel.canZap {
-                    transportButton("Previous Channel", systemImage: "backward.end.fill", help: "Previous channel in this group") {
+                    transportButton(String(localized: "Previous Channel", comment: "Player button."), systemImage: "backward.end.fill", help: String(localized: "Previous channel in this group", comment: "Tooltip of the Previous Channel button.")) {
                         viewModel.previousChannel()
                     }
                 }
 
-                transportButton("Back \(back) seconds", systemImage: "gobackward.\(back)", help: "Back \(back) seconds") {
+                transportButton(String(localized: "Back \(back) seconds", comment: "Player button that skips back; the number is how many seconds."), systemImage: "gobackward.\(back)", help: String(localized: "Back \(back) seconds", comment: "Player button that skips back; the number is how many seconds.")) {
                     viewModel.skipBackward()
                 }
                 .disabled(!viewModel.canSeek)
@@ -1054,13 +1055,13 @@ private struct PlayerTransport: View {
             .help(isPaused ? "Play" : "Pause")
 
             HStack(spacing: 0) {
-                transportButton("Forward \(forward) seconds", systemImage: "goforward.\(forward)", help: "Forward \(forward) seconds") {
+                transportButton(String(localized: "Forward \(forward) seconds", comment: "Player button that skips forward; the number is how many seconds."), systemImage: "goforward.\(forward)", help: String(localized: "Forward \(forward) seconds", comment: "Player button that skips forward; the number is how many seconds.")) {
                     viewModel.skipForward()
                 }
                 .disabled(!viewModel.canSeek || (viewModel.isTimeShiftAvailable && timeline.isAtLiveEdge))
 
                 if viewModel.canZap {
-                    transportButton("Next Channel", systemImage: "forward.end.fill", help: "Next channel in this group") {
+                    transportButton(String(localized: "Next Channel", comment: "Player button."), systemImage: "forward.end.fill", help: String(localized: "Next channel in this group", comment: "Tooltip of the Next Channel button.")) {
                         viewModel.nextChannel()
                     }
                 }
@@ -1267,7 +1268,9 @@ private struct PlayerStatusOverlay: View {
             PlayerMessageCard(
                 systemImage: "checkmark.circle.fill",
                 tint: Theme.secondaryText,
-                title: viewModel.isTimeShiftAvailable ? "The Stream Ended" : "Playback Ended",
+                title: viewModel.isTimeShiftAvailable
+                    ? String(localized: "The Stream Ended", comment: "Player message: the live stream ended.")
+                    : String(localized: "Playback Ended", comment: "Player message: the video finished."),
                 message: nil
             ) {
                 if viewModel.canSeek {
@@ -1391,16 +1394,10 @@ private struct RoutePicker: UIViewRepresentable {
 // MARK: - Formatting
 
 enum PlayerTime {
-    /// "m:ss" or "h:mm:ss".
+    /// "m:ss" or "h:mm:ss", with the digits and separators of the current locale.
     static func format(_ interval: TimeInterval) -> String {
         let seconds = Int(max(0, interval).rounded())
-        let hours = seconds / 3600
-        let minutes = (seconds % 3600) / 60
-        let remainder = seconds % 60
-        if hours > 0 {
-            return String(format: "%d:%02d:%02d", hours, minutes, remainder)
-        }
-        return String(format: "%d:%02d", minutes, remainder)
+        return Duration.seconds(seconds).formatted(.time(pattern: seconds >= 3600 ? .hourMinuteSecond : .minuteSecond))
     }
 
     /// Spoken form for VoiceOver, e.g. "2 minutes, 5 seconds".

@@ -168,7 +168,7 @@ private struct GuideSourceRow: View {
         guard let file = EPGImporter.fileName(of: source.url) else {
             return from
         }
-        return "\(from) · \(file)"
+        return TextParts.line([from, file])
     }
 
     @ViewBuilder
@@ -184,11 +184,15 @@ private struct GuideSourceRow: View {
         } else if !source.isEnabled {
             Text("Off")
                 .foregroundStyle(Theme.secondaryText)
-        } else if let error = source.lastError {
+        } else if let error = source.lastErrorMessage {
             Label(error, systemImage: "exclamationmark.triangle.fill")
                 .foregroundStyle(Theme.warning)
         } else if let refreshed = source.lastRefreshedOn {
-            Text("\(source.programmeCount.formatted()) programmes · \(source.storedChannelCount.formatted()) of \(source.channelCount.formatted()) channels · updated \(refreshed.formatted(.relative(presentation: .named)))")
+            Text(TextParts.line([
+                String(localized: "\(source.programmeCount) programmes", comment: "Status of a TV guide source: how many programmes it has."),
+                String(localized: "\(source.storedChannelCount) of \(source.channelCount) channels", comment: "Status of a TV guide source: channels used by the playlists out of all its channels."),
+                String(localized: "updated \(refreshed.formatted(.relative(presentation: .named)))", comment: "Status of a TV guide source: when it was downloaded, as in 'updated 2 hours ago'. Lowercase: it follows other parts of the line."),
+            ]))
                 .foregroundStyle(Theme.secondaryText)
         } else {
             Text("Not loaded yet")
@@ -277,7 +281,7 @@ struct AddGuideSourceView: View {
                     Button("Use Free Guide for \(Self.countryName(region))", systemImage: "globe") {
                         if let file = Self.freeGuides.first(where: { $0.region == region })?.file, let url = Self.freeGuideURL(file: file) {
                             urlText = url.absoluteString
-                            name = "epgshare01 · \(Self.countryName(region))"
+                            name = TextParts.line(["epgshare01", Self.countryName(region)])
                         }
                     }
                 } header: {

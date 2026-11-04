@@ -117,7 +117,8 @@ final class FluxoIntelligence {
         let model = SystemLanguageModel.default
         switch model.availability {
         case .available:
-            return model.supportsLocale(Locale.current) ? .available : .unsupportedLanguage
+            // The language the responses are written in (the app's), which can differ from the system's.
+            return model.supportsLocale(OnDeviceModel.responseLocale) ? .available : .unsupportedLanguage
         case .unavailable(.appleIntelligenceNotEnabled):
             return .appleIntelligenceOff
         case .unavailable(.modelNotReady):
@@ -161,15 +162,50 @@ final class FluxoIntelligence {
 /// Shared settings of the on-device model sessions.
 enum OnDeviceModel {
 
-    /// English name of the language the app runs in, for the instructions ("Write in Italian.").
-    static var responseLanguageName: String {
-        let code = Locale.current.language.languageCode?.identifier ?? "en"
-        return Locale(identifier: "en").localizedString(forLanguageCode: code) ?? "English"
+    /// The localization the app runs in ("it", "pt-BR", "zh-Hant"): the language of its interface, which the
+    /// generated text must match. Not `Locale.current`, whose language may be one the app has no strings for,
+    /// and whose identifier can drop the script ("zh-TW").
+    static var responseLanguage: Locale.Language {
+        Locale.Language(identifier: Bundle.main.preferredLocalizations.first ?? "en")
     }
 
-    /// Language code of the app ("it"), for checking the language of generated text.
+    /// The locale of the app's language, for case mapping of generated text (Turkish dotted İ).
+    static var responseLocale: Locale {
+        Locale(identifier: responseLanguage.minimalIdentifier)
+    }
+
+    /// English name of the language the app runs in, for the instructions ("Write in Italian."). Names the
+    /// script or the region where they matter: "Chinese (Traditional)", "Portuguese (Brazil)".
+    static var responseLanguageName: String {
+        let english = Locale(identifier: "en")
+        let language = responseLanguage
+        let code = language.languageCode?.identifier ?? "en"
+        let name = english.localizedString(forLanguageCode: code) ?? "English"
+        if code == "zh" {
+            let script = language.maximalIdentifier.contains("Hant") ? "Hant" : "Hans"
+            return "\(name) (\(english.localizedString(forScriptCode: script) ?? script))"
+        }
+        if let region = language.region?.identifier, let regionName = english.localizedString(forRegionCode: region) {
+            return "\(name) (\(regionName))"
+        }
+        return name
+    }
+
+    /// Language code of the app ("it", "zh"), for prompts that only depend on the language.
     static var responseLanguageCode: String {
-        Locale.current.language.languageCode?.identifier ?? "en"
+        responseLanguage.languageCode?.identifier ?? "en"
+    }
+
+    /// Whether `detected` (from `NLLanguageRecognizer`) is the app's language. Chinese is compared with its
+    /// script, as the recognizer tells Simplified ("zh-Hans") from Traditional ("zh-Hant"); other languages by
+    /// their code ("pt" for pt-BR).
+    static func isResponseLanguage(_ detected: NLLanguage) -> Bool {
+        let code = responseLanguageCode
+        guard code == "zh" else {
+            return Locale.Language(identifier: detected.rawValue).languageCode?.identifier == code
+        }
+        let script = responseLanguage.maximalIdentifier.contains("Hant") ? NLLanguage.traditionalChinese : .simplifiedChinese
+        return detected == script
     }
 
     /// The instruction that makes the model write user-facing text in the app's language.
@@ -181,14 +217,13 @@ enum OnDeviceModel {
     /// in English when the prompt is English and the names in it are not; such texts are then translated in one
     /// request (they are a few short lines). Returns the input when it is already right or the translation fails.
     static func localized(_ texts: [String]) async -> [String] {
-        let target = responseLanguageCode
         let joined = texts.joined(separator: ". ")
         guard !texts.isEmpty, !joined.isEmpty else {
             return texts
         }
         let recognizer = NLLanguageRecognizer()
         recognizer.processString(joined)
-        guard let detected = recognizer.dominantLanguage?.rawValue, !detected.hasPrefix(target) else {
+        guard let detected = recognizer.dominantLanguage, !isResponseLanguage(detected) else {
             return texts
         }
         do {

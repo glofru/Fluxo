@@ -183,7 +183,7 @@ private struct DebugStatusBadge: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .glassEffect(.regular, in: .capsule)
-            .accessibilityLabel("Debug: \(text)")
+            .accessibilityLabel(Text(verbatim: "Debug: \(text)"))
     }
 }
 

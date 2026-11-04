@@ -66,7 +66,7 @@ struct ProgramEntity: AppEntity {
     var displayRepresentation: DisplayRepresentation {
         DisplayRepresentation(
             title: "\(title)",
-            subtitle: "\(channel.name) · \(GuideFormat.dayAndTime(programme))",
+            subtitle: "\(TextParts.line([channel.name, GuideFormat.dayAndTime(programme)]))",
             image: DisplayRepresentation.Image(systemName: "calendar.day.timeline.left")
         )
     }

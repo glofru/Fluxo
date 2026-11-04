@@ -314,13 +314,18 @@ private struct BillboardPage: View {
     }
 
     private var kindLabel: String {
-        switch item.kind {
+        Self.kindLabel(for: item.kind)
+    }
+
+    /// The badge of a featured item.
+    static func kindLabel(for kind: ChannelContentKind) -> String {
+        switch kind {
         case .live:
-            return "Live Now"
+            return String(localized: "Live Now", comment: "Badge of a featured live channel on the Home page.")
         case .movie:
-            return "Featured Movie"
+            return String(localized: "Featured Movie", comment: "Badge of a featured movie on the Home page.")
         case .series:
-            return "Featured Series"
+            return String(localized: "Featured Series", comment: "Badge of a featured series on the Home page.")
         }
     }
 
@@ -433,7 +438,7 @@ private struct FeaturedCard: View {
                 artwork
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Label(item.kind == .live ? "Live Now" : "Featured \(item.kind == .movie ? "Movie" : "Series")", systemImage: item.kind.systemImage)
+                    Label(BillboardPage.kindLabel(for: item.kind), systemImage: item.kind.systemImage)
                         .font(.caption.weight(.semibold))
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
@@ -477,7 +482,7 @@ private struct FeaturedCard: View {
                         .padding(8)
                         .glassEffect(.regular, in: .circle)
                         .padding(14)
-                        .accessibilityLabel("Favorite")
+                        .accessibilityLabel(ChannelAccessibility.favoriteState)
                 }
             }
             .contentShape(shape)

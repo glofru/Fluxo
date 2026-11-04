@@ -512,7 +512,7 @@ private final class DragProbe {
         return Color.clear
             .frame(width: 1, height: 1)
             .accessibilityElement()
-            .accessibilityLabel("Drag probe")
+            .accessibilityLabel(Text(verbatim: "Drag probe"))
             .accessibilityValue(value)
             .accessibilityIdentifier("player.dragProbe")
     }
@@ -529,14 +529,16 @@ extension Notification.Name {
 
 #Preview("Player over the app") {
     @Previewable @State var isPresented = true
-    Button("Open") {
+    Button {
         isPresented = true
+    } label: {
+        Text(verbatim: "Open")
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .playerPresentation(isPresented: isPresented, isVisible: true, sourceID: nil, onDismiss: { isPresented = false }) {
         Color.black
             .overlay {
-                Text("Drag me down")
+                Text(verbatim: "Drag me down")
                     .foregroundStyle(.white)
             }
     }

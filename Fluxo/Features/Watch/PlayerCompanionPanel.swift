@@ -112,6 +112,14 @@ private struct PlayerCompanionHeader: View {
     let videoEdge: HorizontalEdge
     let onSwapSides: (() -> Void)?
 
+    @Environment(\.layoutDirection) private var layoutDirection
+
+    /// Whether the video is on the left of the screen: the panes are placed by leading / trailing edge, which
+    /// is the right in a right-to-left language.
+    private var isVideoOnTheLeft: Bool {
+        (videoEdge == .leading) == (layoutDirection == .leftToRight)
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             if let item = viewModel.currentItem {
@@ -147,7 +155,7 @@ private struct PlayerCompanionHeader: View {
                 }
                 .buttonStyle(.plain)
                 .glassEffect(.regular.interactive(), in: .circle)
-                .accessibilityLabel(videoEdge == .leading ? "Move Video to the Right" : "Move Video to the Left")
+                .accessibilityLabel(isVideoOnTheLeft ? "Move Video to the Right" : "Move Video to the Left")
                 .help("Swap the video and this panel")
             }
         }

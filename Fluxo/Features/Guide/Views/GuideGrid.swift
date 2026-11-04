@@ -8,7 +8,8 @@
 import SwiftUI
 
 /// Geometry of the time grid: `pointsPerMinute` points per minute of real time (so a day with a daylight saving
-/// change is shorter or longer), a pinned channel column on the left and a pinned time ruler on top.
+/// change is shorter or longer), a pinned channel column on the leading edge and a pinned time ruler on top.
+/// Right-to-left languages get the mirrored grid: the channel column on the right and time running leftwards.
 struct GuideMetrics: Equatable {
     let pointsPerMinute: CGFloat
     let channelColumnWidth: CGFloat
@@ -55,7 +56,7 @@ struct GuideSelection: Identifiable, Hashable {
 
 /// Channels × time for one day: rows are lazy and each loads its own programmes when it appears.
 ///
-/// The channel column stays on the left while scrolling sideways, and the time ruler stays on top while
+/// The channel column stays on the leading edge while scrolling sideways, and the time ruler stays on top while
 /// scrolling down (a pinned section header). Both pins and the "sticky" programme titles are `visualEffect`
 /// offsets computed from the scroll geometry, so scrolling never re-renders the rows. A line marks the current
 /// time on today's grid.
@@ -150,6 +151,8 @@ private struct GuideTimeRuler: View {
     let metrics: GuideMetrics
     let now: Date
 
+    @Environment(\.layoutDirection) private var layoutDirection
+
     var body: some View {
         let isToday = Calendar.current.isDate(day, inSameDayAs: now)
         let columnWidth = metrics.channelColumnWidth
@@ -162,7 +165,7 @@ private struct GuideTimeRuler: View {
                             .font(slot.isMultiple(of: 2) ? .caption.weight(.semibold).monospacedDigit() : .caption2.monospacedDigit())
                             .foregroundStyle(slot.isMultiple(of: 2) ? AnyShapeStyle(.primary) : AnyShapeStyle(Theme.secondaryText))
                             .padding(.leading, 6)
-                            .fadingUnderPinnedColumn(columnWidth: columnWidth, inset: 6)
+                            .fadingUnderPinnedColumn(columnWidth: columnWidth, inset: 6, layoutDirection: layoutDirection)
                         Spacer(minLength: 0)
                         Rectangle()
                             .fill(.separator)
@@ -172,14 +175,20 @@ private struct GuideTimeRuler: View {
                     .offset(x: CGFloat(slot) * 30 * metrics.pointsPerMinute)
                 }
                 if isToday {
-                    Text(GuideFormat.time(now))
-                        .font(.caption2.weight(.bold).monospacedDigit())
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Theme.liveFill, in: .capsule)
-                        .fixedSize()
-                        .offset(x: metrics.x(for: now, dayStart: day) - 20, y: metrics.rulerHeight - 18)
+                    // A zero-width anchor on the now line, with the pill centered over it: the pill is as wide
+                    // as the time needs ("20:15", "10:15 PM", "午後10:15", larger text).
+                    Color.clear
+                        .frame(width: 0, height: 0)
+                        .overlay(alignment: .top) {
+                            Text(GuideFormat.time(now))
+                                .font(.caption2.weight(.bold).monospacedDigit())
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Theme.liveFill, in: .capsule)
+                                .fixedSize()
+                        }
+                        .offset(x: metrics.x(for: now, dayStart: day), y: metrics.rulerHeight - 18)
                         .accessibilityHidden(true)
                 }
             }
@@ -197,8 +206,8 @@ private struct GuideTimeRuler: View {
                 .overlay(alignment: .trailing) {
                     GuideColumnSeparator()
                 }
-                .visualEffect { content, proxy in
-                    content.offset(x: max(0, -proxy.frame(in: .scrollView).minX))
+                .visualEffect { [layoutDirection] content, proxy in
+                    content.offset(x: max(0, -proxy.leadingInsetInScrollView(layoutDirection)))
                 }
                 .zIndex(1)
         }
@@ -232,13 +241,28 @@ private struct GuideColumnSeparator: View {
     }
 }
 
+private extension GeometryProxy {
+    /// How far the view's leading edge is from the leading edge of the scroll view's visible area, in the
+    /// reading direction (negative once it has scrolled past it).
+    ///
+    /// Offsets are mirrored in right-to-left layouts but geometry frames are not, so there the distance is
+    /// measured from the right edge of the visible area to the right edge of the view.
+    func leadingInsetInScrollView(_ layoutDirection: LayoutDirection) -> CGFloat {
+        let frame = frame(in: .scrollView)
+        guard layoutDirection == .rightToLeft, let visible = bounds(of: .scrollView) else {
+            return frame.minX
+        }
+        return visible.width - frame.maxX
+    }
+}
+
 private extension View {
     /// Fades the view out while it slides under the pinned channel column, so its glyphs are never cut in half
     /// at the column edge: fully visible while its content (`inset` points from its leading edge) is clear of the
     /// column, invisible once that content reaches it.
-    func fadingUnderPinnedColumn(columnWidth: CGFloat, inset: CGFloat) -> some View {
+    func fadingUnderPinnedColumn(columnWidth: CGFloat, inset: CGFloat, layoutDirection: LayoutDirection) -> some View {
         visualEffect { content, proxy in
-            let contentStart = proxy.frame(in: .scrollView).minX + inset
+            let contentStart = proxy.leadingInsetInScrollView(layoutDirection) + inset
             return content.opacity(Double(min(1, max(0, (contentStart - columnWidth) / inset))))
         }
     }
@@ -253,6 +277,7 @@ private struct GuideRow: View {
     let onSelect: (GuideSelection) -> Void
 
     @Environment(EPGStore.self) private var epg
+    @Environment(\.layoutDirection) private var layoutDirection
     @State private var programmes: [GuideProgramme] = []
     @State private var loadedKey: LoadKey?
 
@@ -275,6 +300,7 @@ private struct GuideRow: View {
                             channel: channel,
                             now: now,
                             columnWidth: columnWidth,
+                            layoutDirection: layoutDirection,
                             onSelect: onSelect
                         )
                         .frame(width: max(0, span.width - 3), height: metrics.rowHeight - 8)
@@ -287,8 +313,8 @@ private struct GuideRow: View {
                         .foregroundStyle(Theme.tertiaryText)
                         .padding(.horizontal, 10)
                         .frame(height: metrics.rowHeight)
-                        .visualEffect { content, proxy in
-                            content.offset(x: max(0, columnWidth - proxy.frame(in: .scrollView).minX))
+                        .visualEffect { [layoutDirection] content, proxy in
+                            content.offset(x: max(0, columnWidth - proxy.leadingInsetInScrollView(layoutDirection)))
                         }
                 }
                 if Calendar.current.isDate(day, inSameDayAs: now) {
@@ -309,8 +335,8 @@ private struct GuideRow: View {
                 .overlay(alignment: .trailing) {
                     GuideColumnSeparator()
                 }
-                .visualEffect { content, proxy in
-                    content.offset(x: max(0, -proxy.frame(in: .scrollView).minX))
+                .visualEffect { [layoutDirection] content, proxy in
+                    content.offset(x: max(0, -proxy.leadingInsetInScrollView(layoutDirection)))
                 }
                 .zIndex(1)
         }
@@ -402,6 +428,8 @@ private struct GuideProgrammeCell: View {
     let channel: GuideChannel
     let now: Date
     let columnWidth: CGFloat
+    /// Passed in rather than read here: the row already reads it, and there are many cells.
+    let layoutDirection: LayoutDirection
     let onSelect: (GuideSelection) -> Void
 
     @Environment(EPGStore.self) private var epg
@@ -455,11 +483,11 @@ private struct GuideProgrammeCell: View {
                     .padding(.horizontal, Self.textInset)
                     .padding(.vertical, 6)
                     .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
-                    .visualEffect { content, geometry in
+                    .visualEffect { [layoutDirection] content, geometry in
                         // Keep the title in view while the start of the block is under the channel column, until
                         // only `stickyWidth` points of the block are left; then fade it out rather than letting
                         // the column cut its glyphs.
-                        let minX = geometry.frame(in: .scrollView).minX
+                        let minX = geometry.leadingInsetInScrollView(layoutDirection)
                         let hidden = max(0, columnWidth - minX)
                         let shift = min(hidden, max(0, geometry.size.width - Self.stickyWidth))
                         let textStart = minX + shift + Self.textInset
@@ -473,6 +501,8 @@ private struct GuideProgrammeCell: View {
                             Rectangle()
                             LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
                                 .frame(width: Self.textInset)
+                                // Unit points are not mirrored: the fade belongs at the trailing end in either direction.
+                                .flipsForRightToLeftLayoutDirection(true)
                         }
                     }
                 }
@@ -542,11 +572,18 @@ private struct GuideProgrammeCell: View {
         if isReminded {
             parts.append(String(localized: "Reminder set"))
         }
-        return parts.joined(separator: ", ")
+        return TextParts.spoken(parts)
     }
 }
 
 #Preview("Guide grid") {
     GuideGrid(channels: GuidePreviewData.channels, day: Calendar.current.startOfDay(for: .now), scrollToNowRequest: 0) { _ in }
         .fluxoPreviewEnvironment(GuidePreviewData.container)
+}
+
+#Preview("Guide grid, right to left") {
+    GuideGrid(channels: GuidePreviewData.channels, day: Calendar.current.startOfDay(for: .now), scrollToNowRequest: 0) { _ in }
+        .fluxoPreviewEnvironment(GuidePreviewData.container)
+        .environment(\.layoutDirection, .rightToLeft)
+        .environment(\.locale, Locale(identifier: "ar"))
 }

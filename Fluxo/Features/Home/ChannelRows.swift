@@ -64,6 +64,8 @@ struct HomeSectionHeader<Accessory: View>: View {
 
     var body: some View {
         // At the accessibility text sizes the "See All" link moves under the title, which may then wrap.
+        // Otherwise the title may still take two lines next to the link: translations of titles such as
+        // "Because You Watched" are often longer than the English and would be cut off on small iPhones.
         AdaptiveStack(verticalAlignment: .firstTextBaseline, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 if let systemImage {
@@ -74,7 +76,8 @@ struct HomeSectionHeader<Accessory: View>: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .font(.title3.bold())
-                        .lineLimit(dynamicTypeSize.prefersStackedLayout ? 3 : 1)
+                        .lineLimit(dynamicTypeSize.prefersStackedLayout ? 3 : 2)
+                        .fixedSize(horizontal: false, vertical: true)
                         .accessibilityAddTraits(.isHeader)
                     if let subtitle {
                         Text(subtitle)
@@ -192,7 +195,7 @@ struct GroupItem: Identifiable, Hashable, Sendable {
     }
 
     var displayName: String {
-        name.isEmpty ? "Other" : name
+        name.isEmpty ? String(localized: "Other", comment: "Name of the category that holds the channels without a category.") : name
     }
 
     init(importID: UUID, playlistID: UUID, name: String, channelCount: Int, kind: ChannelContentKind) {
@@ -270,14 +273,14 @@ struct RecentlyWatchedRow: View {
     var body: some View {
         if !bookmarks.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                HomeSectionHeader(title: "Continue Watching", systemImage: "clock.arrow.circlepath") {
+                HomeSectionHeader(title: String(localized: "Continue Watching", comment: "Home page section: videos and channels watched recently."), systemImage: "clock.arrow.circlepath") {
                     SeeAllLink(route: .history(playlistIDs: playlistIDs))
                 }
                 CardRow {
                     ForEach(bookmarks) { bookmark in
                         let item = ChannelItem(bookmark)
                         CompactChannelCard(item: item, watchedAt: bookmark.lastWatchedAt, extraActions: [
-                            ChannelCardAction(title: "Remove from History", systemImage: "minus.circle", role: .destructive) {
+                            ChannelCardAction(title: String(localized: "Remove from History", comment: "Context menu action of a Continue Watching item."), systemImage: "minus.circle", role: .destructive) {
                                 library.removeFromHistory(item)
                             },
                         ])
@@ -308,7 +311,7 @@ struct FavoritesRow: View {
     var body: some View {
         if !bookmarks.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                HomeSectionHeader(title: "Favorites", systemImage: "star.fill") {
+                HomeSectionHeader(title: String(localized: "Favorites", comment: "Home page section: the favorite channels."), systemImage: "star.fill") {
                     SeeAllLink(route: .favorites(playlistIDs: playlistIDs))
                 }
                 CardRow {
@@ -427,7 +430,7 @@ struct CompactChannelCard: View {
             ChannelContextMenu(item: item, isFavorite: library.isFavorite(item), extraActions: extraActions)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityValue(isFavorite ? Text("Favorite") : Text(verbatim: ""))
+        .accessibilityValue(isFavorite ? ChannelAccessibility.favoriteState : "")
         .accessibilityHint(item.kind == .live ? "Plays the channel" : "Resumes the video")
         .channelAccessibilityActions(item, isFavorite: isFavorite)
     }
@@ -538,7 +541,7 @@ struct HistoryView: View {
         if bookmark.watchCount > 1 {
             parts.append(String(localized: "Watched \(bookmark.watchCount) times"))
         }
-        return parts.joined(separator: " · ")
+        return TextParts.line(parts)
     }
 }
 

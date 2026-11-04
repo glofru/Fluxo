@@ -237,16 +237,22 @@ struct SettingsView: View {
         #if os(macOS)
         return (player.recordings.directory.path as NSString).abbreviatingWithTildeInPath
         #else
-        return "Files › On My \(UIDevice.current.model) › Fluxo › Recordings"
+        // One string per device, because several languages decline the device name ("Na moim iPhonie",
+        // "iPhone'umda"). The folder is passed in: its name on disk is the same in every language.
+        let folder = RecordingStore.folderName
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            return String(localized: "Files › On My iPad › Fluxo › \(folder)", comment: "Where recordings are on an iPad, as a path in the Files app. Use the names the Files app shows in this language ('Files', 'On My iPad'). Fluxo is the app's folder; the placeholder is the name of the recordings folder on disk ('Recordings'), which is never translated.")
+        }
+        return String(localized: "Files › On My iPhone › Fluxo › \(folder)", comment: "Where recordings are on an iPhone, as a path in the Files app. Use the names the Files app shows in this language ('Files', 'On My iPhone'). Fluxo is the app's folder; the placeholder is the name of the recordings folder on disk ('Recordings'), which is never translated.")
         #endif
     }
 
     private var confirmationTitle: String {
         switch confirmation {
         case .deleteRecordings:
-            return "Delete All Recordings?"
+            return String(localized: "Delete All Recordings?", comment: "Title of the confirmation in Settings.")
         case .clearHistory:
-            return "Clear Watch History?"
+            return String(localized: "Clear Watch History?", comment: "Title of the confirmation in Settings.")
         case nil:
             return ""
         }

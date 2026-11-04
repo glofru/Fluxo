@@ -238,9 +238,9 @@ struct OnNowCard: View {
             GuideFormat.remaining(programme, at: .now),
         ]
         if isFavorite {
-            parts.append(String(localized: "Favorite"))
+            parts.append(ChannelAccessibility.favoriteState)
         }
-        return parts.joined(separator: ", ")
+        return TextParts.spoken(parts)
     }
 
     /// The programme's own image when the guide has one, otherwise the channel logo decoded tiny and blurred,

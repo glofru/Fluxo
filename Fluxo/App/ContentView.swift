@@ -130,7 +130,7 @@ struct PlayerBottomAccessory: View {
                 artwork(for: channel, isInline: isInline)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(channel.name ?? "No channel name")
+                    Text(channel.name ?? String(localized: "No channel name", comment: "Shown instead of the name of a channel that has none."))
                         .font(isInline ? .footnote.weight(.semibold) : Theme.Typography.cardTitle)
                         .lineLimit(1)
                     if !isInline {

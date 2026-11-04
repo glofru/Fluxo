@@ -282,7 +282,7 @@ struct HomeView: View {
         if case .playlist = scope.selection, let name = scope.playlistNames.values.first {
             return name
         }
-        return "Home"
+        return String(localized: "Home", comment: "Title of the Home page.")
     }
 
     private func playlistsInScope(_ scope: LibraryScope) -> [Playlist] {
@@ -322,7 +322,7 @@ struct PlaylistSwitcher: View {
         ScrollView(.horizontal) {
             GlassEffectContainer(spacing: 8) {
                 HStack(spacing: 8) {
-                    chip(title: "All Playlists", systemImage: "square.stack.fill", glassID: Self.allGlassID, isSelected: selection == .all, isUpdating: false) {
+                    chip(title: String(localized: "All Playlists", comment: "Home page playlist switcher: show every playlist."), systemImage: "square.stack.fill", glassID: Self.allGlassID, isSelected: selection == .all, isUpdating: false) {
                         selection = .all
                     }
 
@@ -527,7 +527,7 @@ private struct ContentKindHeader: View {
         if available.count > 1 {
             Picker("Content", selection: $kind) {
                 ForEach(available) { kind in
-                    Label(kind.title, systemImage: kind.systemImage)
+                    Label(kind.segmentTitle, systemImage: kind.systemImage)
                         .tag(kind)
                 }
             }

@@ -264,8 +264,10 @@ final class XMLTVParser: NSObject, XMLParserDelegate {
             return
         }
         self.programme = nil
+        // A programme without a title keeps an empty one: the guide is stored, and "Untitled" is shown in the
+        // language of the moment (`GuideProgramme.init(_:)`).
         if programme.title.isEmpty {
-            programme.title = programme.subtitle.isEmpty ? "Untitled" : programme.subtitle
+            programme.title = programme.subtitle
         }
         if programmeIsOpenEnded {
             openEnded[programme.channelID] = programme
@@ -338,7 +340,10 @@ final class XMLTVParser: NSObject, XMLParserDelegate {
 
     // MARK: - Values
 
-    /// "0.4.0/1" (zero-based season . episode . part) → "S1 E5".
+    /// "0.4.0/1" (zero-based season . episode . part) → "S1 E5", "E5" or "S1".
+    ///
+    /// This form is stored, so it is the same in every language; `GuideFormat.episode(_:)` localizes it when it
+    /// is shown.
     static func episode(fromXMLTVNS value: String) -> String? {
         let parts = value.split(separator: ".", omittingEmptySubsequences: false).map { $0.trimmingCharacters(in: .whitespaces) }
         func number(_ index: Int) -> Int? {

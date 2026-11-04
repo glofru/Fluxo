@@ -136,7 +136,7 @@ private struct GuideSearchRow: View {
                             Color.clear
                         }
                         .accessibilityHidden(true)
-                        Text([result.channel.displayName, playlistName].compactMap { $0 }.joined(separator: " · "))
+                        Text(TextParts.line([result.channel.displayName, playlistName]))
                             .lineLimit(1)
                     }
                     .font(.caption)

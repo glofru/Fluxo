@@ -90,7 +90,7 @@ struct ProgrammeListSnippetView: View {
                         Text(row.programme.title)
                             .font(.subheadline.weight(.medium))
                             .lineLimit(1)
-                        Text([row.channelName, row.note].compactMap { $0 }.joined(separator: " · "))
+                        Text(TextParts.line([row.channelName, row.note]))
                             .font(.caption)
                             .foregroundStyle(Theme.secondaryText)
                             .lineLimit(1)
