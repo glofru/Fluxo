@@ -29,7 +29,12 @@ extension View {
     }
 
     /// Marks this view as the source of the zoom into `route`'s screen.
-    func routeTransitionSource(_ route: ChannelRoute, cornerRadius: CGFloat = 20) -> some View {
+    ///
+    /// The source's styling is applied to the view at rest too, not only during the zoom: give `cornerRadius`
+    /// only for artwork that already has that shape (it then changes nothing on screen). A whole section, or a
+    /// card with text under its artwork, must stay unclipped (nil), or its corners cut off what is drawn
+    /// there, such as the channel count under the last line of a category card.
+    func routeTransitionSource(_ route: ChannelRoute, cornerRadius: CGFloat? = nil) -> some View {
         modifier(RouteTransitionSourceModifier(id: route, cornerRadius: cornerRadius))
     }
 
@@ -73,15 +78,20 @@ private struct PlayerSourceModifier: ViewModifier {
 private struct RouteTransitionSourceModifier<ID: Hashable>: ViewModifier {
 
     let id: ID
-    let cornerRadius: CGFloat
+    /// nil: the source keeps its own shape (nothing is clipped).
+    let cornerRadius: CGFloat?
 
     @Environment(\.routeTransitionNamespace) private var routeNamespace
 
     func body(content: Content) -> some View {
         #if os(iOS)
         if let namespace = routeNamespace {
-            content.matchedTransitionSource(id: id, in: namespace) { source in
-                source.clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            if let cornerRadius {
+                content.matchedTransitionSource(id: id, in: namespace) { source in
+                    source.clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                }
+            } else {
+                content.matchedTransitionSource(id: id, in: namespace)
             }
         } else {
             content

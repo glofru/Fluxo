@@ -50,7 +50,10 @@ struct CategoryCard: View {
     /// Strip cards grow a little with the text size, and their names wrap.
     private var scale = CardScale(maximum: 1.3)
 
-    private let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
+    /// Corner radius of the mosaic, the shape the category's screen zooms out of.
+    static let cornerRadius: CGFloat = 20
+
+    private let shape = RoundedRectangle(cornerRadius: CategoryCard.cornerRadius, style: .continuous)
 
     var body: some View {
         let width = scale.scaled(size.width)
@@ -59,10 +62,15 @@ struct CategoryCard: View {
                 CategoryMosaic(group: group, height: size.mosaicHeight)
                     .frame(maxWidth: fillsWidth ? .infinity : width)
                     .frame(height: size.mosaicHeight)
+                    // The logo tiles inside follow its corners (concentric).
+                    .containerShape(shape)
                     .clipShape(shape)
                     .overlay {
                         shape.strokeBorder(Theme.surfaceStroke)
                     }
+                    // The category zooms out of the mosaic only: a rounded clip of the whole card would cut
+                    // the corners of the name and the count under it.
+                    .routeTransitionSource(group.route, cornerRadius: CategoryCard.cornerRadius)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(group.displayName)
@@ -82,7 +90,6 @@ struct CategoryCard: View {
         }
         .buttonStyle(CardButtonStyle())
         .cardHoverEffect()
-        .routeTransitionSource(group.route, cornerRadius: 20)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(accessibilityLabel))
         .accessibilityAddTraits(.isButton)
@@ -167,7 +174,8 @@ struct CategoryMosaic: View {
         .foregroundStyle(.white.opacity(0.9))
     }
 
-    /// Logos on light tiles, so dark logos stay readable on the tint.
+    /// Logos on light tiles, so dark logos stay readable on the tint. Each tile's outer corner is concentric
+    /// with the card's (its radius less the padding), the inner ones keep a small fixed radius.
     private func logos(in size: CGSize) -> some View {
         let spacing: CGFloat = 6
         let padding: CGFloat = 8
@@ -181,7 +189,7 @@ struct CategoryMosaic: View {
                             Color.clear
                         }
                         .frame(width: tileSize.width, height: tileSize.height)
-                        .background(.white.opacity(0.82), in: .rect(cornerRadius: 9, style: .continuous))
+                        .background(.white.opacity(0.82), in: ConcentricRectangle(corners: .concentric(minimum: .fixed(9))))
                     }
                 }
             }
