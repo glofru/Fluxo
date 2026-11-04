@@ -32,6 +32,7 @@ struct HomeView: View {
     /// The navigation path and the Recordings sheet.
     @Environment(AppNavigation.self) private var navigation
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage("home.contentKind") private var kindRawValue = ChannelContentKind.live.rawValue
     /// Number of groups per content kind in the scope; nil until counted.
     @State private var groupCounts: [ChannelContentKind: Int]?
@@ -98,7 +99,7 @@ struct HomeView: View {
                 isShowingRecordings.wrappedValue = false
                 player.playRecording(recording)
             }
-            .presentationDetents([.medium, .large])
+            .mediumAndLargeDetentsAdaptingToTextSize()
             .zoomTransition(sourceID: Self.recordingsSourceID, in: sheetNamespace)
         }
         #endif
@@ -115,7 +116,7 @@ struct HomeView: View {
             scrollContent(scope: scope, topInset: proxy.safeAreaInsets.top)
                 .ignoresSafeArea(edges: .top)
                 .onScrollGeometryChange(for: Bool.self) { geometry in
-                    let threshold = isShowingBillboard ? FeaturedCarousel.billboardHeight - 40 : 24
+                    let threshold = isShowingBillboard ? FeaturedCarousel.billboardHeight(for: dynamicTypeSize) - 40 : 24
                     return geometry.contentOffset.y + geometry.contentInsets.top > threshold
                 } action: { _, isPast in
                     isScrolledPastHero = isPast
@@ -366,6 +367,7 @@ struct PlaylistSwitcher: View {
     private func chip(title: String, systemImage: String?, glassID: String, isSelected: Bool, isUpdating: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 6) {
+                SelectionCheckmark(isSelected: isSelected)
                 if isUpdating {
                     ProgressView()
                         .controlSize(.mini)
@@ -383,7 +385,7 @@ struct PlaylistSwitcher: View {
             .contentShape(.capsule)
         }
         .buttonStyle(.plain)
-        .glassEffect(isSelected ? .regular.tint(Theme.accent).interactive() : .regular.interactive(), in: .capsule)
+        .glassEffect(isSelected ? .regular.tint(Theme.accentFill).interactive() : .regular.interactive(), in: .capsule)
         .glassEffectID(isSelected ? Self.selectionGlassID : glassID, in: glassNamespace)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
@@ -432,7 +434,7 @@ private struct PlaylistStatusBanner: View {
                                 .font(.subheadline.weight(.semibold))
                             Text("No channels yet. Refresh to download them.")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Theme.secondaryText)
                         }
                         Spacer()
                         Button("Refresh", systemImage: "arrow.clockwise") {
@@ -483,7 +485,7 @@ struct HomeEmptyState: View {
                     .font(.largeTitle.bold())
                 Text("Add an M3U playlist to watch live TV, movies and series. You can add as many playlists as you like and switch between them here.")
                     .font(.body)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.secondaryText)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 420)
             }
@@ -497,6 +499,7 @@ struct HomeEmptyState: View {
                     .padding(.vertical, 4)
             }
             .buttonStyle(.glassProminent)
+            .tint(Theme.accentFill)
             .controlSize(.large)
         }
         .padding(32)
@@ -528,7 +531,7 @@ private struct ContentKindHeader: View {
                         .tag(kind)
                 }
             }
-            .pickerStyle(.segmented)
+            .segmentedPickerStyleAdaptingToTextSize()
             .labelsHidden()
             .padding(.horizontal, HomeLayout.horizontalMargin)
         } else {

@@ -165,6 +165,8 @@ struct ProgrammeProgressBar: View {
 struct ChannelProgrammeLine: View {
     let item: ChannelItem
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
         NowNextReader(item: item) { nowNext in
             if let nowNext {
@@ -179,25 +181,43 @@ struct ChannelProgrammeLine: View {
     @ViewBuilder
     private func content(_ nowNext: NowNext, now: Date) -> some View {
         if let current = nowNext.current, current.isOnAir(at: now) {
-            HStack(spacing: 6) {
-                ProgrammeProgressBar(progress: current.progress(at: now), height: 3)
-                    .frame(width: 28)
-                Text(current.title)
-                    .lineLimit(1)
-                Text("· \(GuideFormat.remaining(current, at: now))")
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .layoutPriority(-1)
+            let stacked = dynamicTypeSize.prefersStackedLayout
+            Group {
+                if stacked {
+                    // The title on lines of its own, then the progress and the time left.
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(current.title)
+                            .lineLimit(3)
+                        HStack(spacing: 6) {
+                            ProgrammeProgressBar(progress: current.progress(at: now), height: 3)
+                                .frame(width: 28)
+                            Text(GuideFormat.remaining(current, at: now))
+                                .foregroundStyle(Theme.tertiaryText)
+                        }
+                    }
+                } else {
+                    HStack(spacing: 6) {
+                        ProgrammeProgressBar(progress: current.progress(at: now), height: 3)
+                            .frame(width: 28)
+                        Text(current.title)
+                            .lineLimit(1)
+                        Text("· \(GuideFormat.remaining(current, at: now))")
+                            .foregroundStyle(Theme.tertiaryText)
+                            .lineLimit(1)
+                            .layoutPriority(-1)
+                    }
+                }
             }
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Theme.secondaryText)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("On now: \(current.title), \(GuideFormat.remaining(current, at: now))")
+            .channelProgrammeSummary(ChannelAccessibility.onNow(current, at: now))
         } else if let next = nowNext.next {
             Text("Next \(GuideFormat.time(next.start)): \(next.title)")
                 .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+                .foregroundStyle(Theme.secondaryText)
+                .lineLimit(dynamicTypeSize.prefersStackedLayout ? 3 : 1)
                 .accessibilityLabel("Next at \(GuideFormat.time(next.start)): \(next.title)")
         }
     }
@@ -206,6 +226,10 @@ struct ChannelProgrammeLine: View {
 /// Bottom overlay of a live channel card: the programme on air over a soft scrim, with its progress.
 struct ChannelCardProgrammeOverlay: View {
     let item: ChannelItem
+
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         if item.kind == .live {
@@ -227,7 +251,7 @@ struct ChannelCardProgrammeOverlay: View {
             Text(programme.title)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.white)
-                .lineLimit(1)
+                .lineLimit(dynamicTypeSize.prefersStackedLayout ? 2 : 1)
                 .shadow(color: .black.opacity(0.4), radius: 2, y: 1)
             ProgrammeProgressBar(progress: programme.progress(at: now), tint: .white, height: 3)
         }
@@ -236,9 +260,13 @@ struct ChannelCardProgrammeOverlay: View {
         .padding(.bottom, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
-            LinearGradient(colors: [.clear, .black.opacity(0.65)], startPoint: .top, endPoint: .bottom)
+            LinearGradient(colors: [.clear, .black.opacity(reduceTransparency || contrast == .increased ? 0.85 : 0.65)], startPoint: .top, endPoint: .bottom)
         }
+        // A preview over the artwork: it stops growing at AX1 (the card's label, and the rows, have it whole).
+        .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+        // The card speaks it in its own label.
         .accessibilityHidden(true)
+        .channelProgrammeSummary(ChannelAccessibility.onNow(programme, at: now))
     }
 }
 
@@ -267,7 +295,7 @@ struct PlayerProgrammeInfo: View {
                         .lineLimit(1)
                     Text(GuideFormat.timeRange(current))
                         .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.secondaryText)
                         .lineLimit(1)
                         .layoutPriority(-1)
                 }
@@ -277,7 +305,7 @@ struct PlayerProgrammeInfo: View {
             if let next = nowNext.next {
                 Text("Next \(GuideFormat.time(next.start)) · \(next.title)")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.secondaryText)
                     .lineLimit(1)
             }
         }

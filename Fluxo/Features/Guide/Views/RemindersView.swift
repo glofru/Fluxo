@@ -91,7 +91,7 @@ struct RemindersView: View {
                         .font(.headline)
                     Text("Reminders cannot alert you until you allow notifications for Fluxo.")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.secondaryText)
                 }
             } icon: {
                 Image(systemName: "bell.slash.fill")
@@ -127,7 +127,7 @@ private struct ReminderRow: View {
         HStack(spacing: 12) {
             LogoImage(source: reminder.channelLogo, size: CGSize(width: 48, height: 32)) { _ in
                 Image(systemName: "tv")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.secondaryText)
             }
             .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
@@ -136,7 +136,7 @@ private struct ReminderRow: View {
                     .lineLimit(2)
                 Text("\(reminder.channelName ?? "Channel") · \(GuideFormat.day(reminder.start)), \(GuideFormat.time(reminder.start))")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.secondaryText)
                     .lineLimit(1)
                 if isOnAir {
                     Text("On now")

@@ -66,7 +66,7 @@ struct ProgrammeDetailView: View {
             }
             .glassSheetContentBackground()
         }
-        .presentationDetents([.medium, .large])
+        .mediumAndLargeDetentsAdaptingToTextSize()
         .task(id: ref) {
             guard let ref else {
                 return
@@ -127,12 +127,12 @@ struct ProgrammeDetailView: View {
             if let detail = programme.detailLine {
                 Text(detail)
                     .font(.headline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.secondaryText)
             }
             HStack(spacing: 10) {
                 LogoImage(source: channel.logo, size: CGSize(width: 40, height: 26)) { _ in
                     Image(systemName: "tv")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.secondaryText)
                 }
                 .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
@@ -140,7 +140,7 @@ struct ProgrammeDetailView: View {
                         .font(.subheadline.weight(.semibold))
                     Text("\(GuideFormat.dayAndTime(programme)) · \(GuideFormat.duration(programme))")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.secondaryText)
                         .monospacedDigit()
                 }
             }
@@ -150,7 +150,7 @@ struct ProgrammeDetailView: View {
                     ProgrammeProgressBar(progress: programme.progress(at: now), height: 5)
                     Text(GuideFormat.remaining(programme, at: now))
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.secondaryText)
                         .fixedSize()
                 }
                 .accessibilityElement(children: .ignore)
@@ -187,6 +187,7 @@ struct ProgrammeDetailView: View {
                 .lineLimit(1)
         }
         .buttonStyle(.glassProminent)
+        .tint(Theme.accentFill)
         .disabled(channel.url == nil)
     }
 
@@ -228,16 +229,19 @@ struct ProgrammeDetailView: View {
                 .font(.headline)
             ForEach(upNext) { next in
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
-                    GuideTimeColumnText(date: next.start)
-                        .font(.subheadline.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(next.title)
-                            .font(.subheadline.weight(.medium))
-                        if let detail = next.detailLine {
-                            Text(detail)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                    // The time above the title at the accessibility text sizes; the bell stays on the side.
+                    AdaptiveStack(verticalAlignment: .firstTextBaseline, spacing: 12) {
+                        GuideTimeColumnText(date: next.start)
+                            .font(.subheadline.monospacedDigit())
+                            .foregroundStyle(Theme.secondaryText)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(next.title)
+                                .font(.subheadline.weight(.medium))
+                            if let detail = next.detailLine {
+                                Text(detail)
+                                    .font(.caption)
+                                    .foregroundStyle(Theme.secondaryText)
+                            }
                         }
                     }
                     Spacer(minLength: 8)

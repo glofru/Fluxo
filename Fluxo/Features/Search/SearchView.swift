@@ -55,6 +55,7 @@ struct SearchView: View {
 
     @Environment(EPGStore.self) private var epg
     @Environment(FluxoIntelligence.self) private var intelligence: FluxoIntelligence?
+    @Environment(\.accessibilityVoiceOverEnabled) private var isVoiceOverEnabled
 
     private var libraryScope: LibraryScope {
         LibraryScope(playlists: playlists, selection: PlaylistSelection(rawValue: selectionRawValue))
@@ -83,6 +84,24 @@ struct SearchView: View {
                 }
                 .task(id: request) {
                     await run(request)
+                }
+                .task(id: results?.request) {
+                    // VoiceOver hears how many results a query found, once typing pauses (the results only
+                    // replace what the list shows, the focus stays in the search field).
+                    guard isVoiceOverEnabled, let results, !results.request.term.isEmpty else {
+                        return
+                    }
+                    try? await Task.sleep(for: .seconds(1))
+                    guard !Task.isCancelled else {
+                        return
+                    }
+                    let count = results.channels.count
+                    AccessibilityAnnouncer.announce(
+                        count == 0 && results.groups.isEmpty
+                            ? String(localized: "No results")
+                            : String(localized: "\(count) channels, \(results.groups.count) categories"),
+                        priority: .low
+                    )
                 }
                 .task(id: SmartSearchKey(request: request, usesModel: intelligence?.isAvailable ?? false)) {
                     await runSmartSearch(request)

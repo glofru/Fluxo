@@ -32,6 +32,18 @@ struct FeaturedCarousel: View {
     /// Height of a billboard page below the top inset.
     static let billboardHeight: CGFloat = 380
 
+    /// The billboard grows at the accessibility text sizes, where its title and buttons take more room.
+    static func billboardHeight(for size: DynamicTypeSize) -> CGFloat {
+        switch size {
+        case .accessibility1, .accessibility2:
+            return 540
+        case .accessibility3, .accessibility4, .accessibility5:
+            return 660
+        default:
+            return billboardHeight
+        }
+    }
+
     let importIDs: [UUID]
     var style: Style = .cards
     /// Billboard: height of the status bar and navigation bar the billboard runs under.
@@ -40,6 +52,7 @@ struct FeaturedCarousel: View {
     var isShowingBillboard: Binding<Bool>?
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var items: [ChannelItem] = []
     @State private var currentID: UUID?
     /// Imports the current `items` were picked from; nil until the first load finishes.
@@ -128,7 +141,7 @@ struct FeaturedCarousel: View {
         if loadedImportIDs == nil {
             // Same height as the billboard while the picks load, so the page does not jump.
             BillboardBackdrop(item: nil)
-                .frame(height: topInset + Self.billboardHeight)
+                .frame(height: topInset + Self.billboardHeight(for: dynamicTypeSize))
                 .accessibilityHidden(true)
         } else if items.isEmpty {
             // Nothing to feature: keep the content clear of the toolbar.
@@ -149,7 +162,7 @@ struct FeaturedCarousel: View {
             .scrollTargetBehavior(.paging)
             .scrollPosition(id: $currentID)
             .scrollIndicators(.hidden)
-            .frame(height: topInset + Self.billboardHeight)
+            .frame(height: topInset + Self.billboardHeight(for: dynamicTypeSize))
             // One backdrop for every page, behind the pager rather than inside it: the pager clips its pages,
             // and the backdrop has to grow above the billboard when Home is pulled down. It cross-fades to the
             // artwork of the page that settles.
@@ -214,16 +227,19 @@ private struct BillboardPage: View {
 
     @Environment(\.playChannel) private var playChannel
     @Environment(ChannelLibrary.self) private var library
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// The player zooms out of this page's artwork.
     @State private var sourceID = UUID().uuidString
 
     var body: some View {
         let isFavorite = library.isFavorite(item)
+        let isLarge = dynamicTypeSize.prefersStackedLayout
         ZStack(alignment: .bottomLeading) {
             Color.clear
 
             VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .bottom, spacing: 16) {
+                // At the accessibility text sizes the title goes under the artwork, with the whole width.
+                AdaptiveStack(verticalAlignment: .bottom, spacing: 16) {
                     artwork
                         .playerTransitionSource(id: sourceID)
                         .contextMenu {
@@ -237,16 +253,17 @@ private struct BillboardPage: View {
                             .foregroundStyle(.tint)
                         Text(item.displayName)
                             .font(Theme.Typography.heroTitle)
-                            .lineLimit(3)
+                            .lineLimit(isLarge ? 4 : 3)
                             .minimumScaleFactor(0.85)
                         if !item.groupName.isEmpty {
                             Text(item.groupName)
                                 .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
+                                .foregroundStyle(Theme.secondaryText)
+                                .lineLimit(isLarge ? 2 : 1)
                         }
                     }
                     .accessibilityElement(children: .combine)
+                    .accessibilityAddTraits(.isHeader)
                 }
 
                 // Glass belongs to the controls, not to the artwork.
@@ -260,6 +277,7 @@ private struct BillboardPage: View {
                                 .padding(.horizontal, 8)
                         }
                         .buttonStyle(.glassProminent)
+                        .tint(Theme.accentFill)
 
                         if item.url != nil {
                             Button {
@@ -283,7 +301,7 @@ private struct BillboardPage: View {
             .padding(.trailing, HomeLayout.horizontalMargin + trailingInset)
             .padding(.bottom, 30)
         }
-        .frame(height: topInset + FeaturedCarousel.billboardHeight)
+        .frame(height: topInset + FeaturedCarousel.billboardHeight(for: dynamicTypeSize))
         .contentShape(.rect)
         .onTapGesture {
             playChannel(item, from: sourceID)
@@ -292,6 +310,7 @@ private struct BillboardPage: View {
         .accessibilityAction(named: item.kind == .live ? "Watch Live" : "Play") {
             playChannel(item, from: sourceID)
         }
+        .channelAccessibilityActions(item, isFavorite: isFavorite)
     }
 
     private var kindLabel: String {
@@ -321,6 +340,7 @@ private struct BillboardPage: View {
         .background(.thinMaterial)
         .clipShape(.rect(cornerRadius: 16, style: .continuous))
         .shadow(color: .black.opacity(0.3), radius: 16, y: 8)
+        .artworkIgnoresInvertColors()
     }
 }
 
@@ -435,7 +455,7 @@ private struct FeaturedCard: View {
                         .font(.headline)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 9)
-                        .glassEffect(.regular.tint(Theme.accent).interactive(), in: .capsule)
+                        .glassEffect(.regular.tint(Theme.accentFill).interactive(), in: .capsule)
                         .padding(.top, 4)
                 }
                 .foregroundStyle(.white)

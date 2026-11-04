@@ -53,7 +53,7 @@ struct RecordingsView: View {
                                         ShareLink(item: recording.url) {
                                             Label("Share", systemImage: "square.and.arrow.up")
                                         }
-                                        .tint(Theme.accent)
+                                        .tint(Theme.accentFill)
                                     }
                                 }
                                 .contextMenu {
@@ -199,7 +199,7 @@ private struct RecordingRow: View {
                     .lineLimit(1)
                 Text(recording.createdOn, format: .dateTime.day().month().year().hour().minute())
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.secondaryText)
             }
 
             Spacer()
@@ -208,14 +208,14 @@ private struct RecordingRow: View {
                 if recording.isFinalizing {
                     Text("Saving…")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.secondaryText)
                 } else if let duration = recording.duration {
                     Text(Duration.seconds(duration), format: .time(pattern: duration >= 3600 ? .hourMinuteSecond : .minuteSecond))
                         .font(.caption.monospacedDigit())
                 }
                 Text(ByteCountFormatter.string(fromByteCount: recording.bytes, countStyle: .file))
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.secondaryText)
             }
         }
         .contentShape(.rect)

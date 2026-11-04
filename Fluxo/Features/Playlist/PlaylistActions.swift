@@ -123,7 +123,7 @@ private struct PlaylistManagementPresenter: ViewModifier {
                         AddPlaylistView(playlist: playlist)
                     }
                 }
-                .presentationDetents([.medium, .large])
+                .mediumAndLargeDetentsAdaptingToTextSize()
                 #if os(macOS)
                 .frame(minWidth: 460, minHeight: 300)
                 #endif

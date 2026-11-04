@@ -41,6 +41,7 @@ struct ChannelLogoTile: View {
         .frame(width: size.width, height: size.height)
         .background(Theme.tileBackground, in: shape)
         .clipShape(shape)
+        .artworkIgnoresInvertColors()
         .overlay {
             shape.strokeBorder(Theme.surfaceStroke)
         }
@@ -64,6 +65,7 @@ struct ChannelListRow: View {
     @Environment(AppNavigation.self) private var navigation
     @Environment(EPGStore.self) private var epg: EPGStore?
     @Environment(\.playChannel) private var playChannel
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var sourceID = UUID().uuidString
 
     var body: some View {
@@ -71,46 +73,27 @@ struct ChannelListRow: View {
         Button {
             playChannel(item, from: sourceID)
         } label: {
-            HStack(spacing: 12) {
-                if showsNumber, let number = item.number {
-                    ChannelNumberLabel(number: number)
-                }
-
-                ChannelLogoTile(item: item, size: item.kind.usesPosterArtwork ? Self.posterSize : Self.logoSize, cornerRadius: 10)
-                    .playerTransitionSource(id: sourceID, cornerRadius: 10)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text(item.displayName)
-                            .font(.body.weight(.semibold))
-                            .lineLimit(1)
-                        if isFavorite {
-                            Image(systemName: "star.fill")
-                                .font(.caption2)
-                                .foregroundStyle(Theme.favorite)
-                                .transition(.scale.combined(with: .opacity))
-                                .accessibilityHidden(true)
+            Group {
+                if dynamicTypeSize.prefersStackedLayout {
+                    // Accessibility sizes: the artwork on a row of its own, the text below with the whole width.
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 12) {
+                            number
+                            artwork
+                            Spacer(minLength: 0)
+                            playGlyph
                         }
+                        details(isFavorite: isFavorite)
                     }
-                    if let subtitle, !subtitle.isEmpty {
-                        Text(subtitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                    if item.kind == .live {
-                        RowProgrammeInfo(item: item)
-                    } else {
-                        WatchProgressLine(item: item)
+                } else {
+                    HStack(spacing: 12) {
+                        number
+                        artwork
+                        details(isFavorite: isFavorite)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        playGlyph
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                Image(systemName: "play.circle.fill")
-                    .font(.title2)
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(.tint)
-                    .accessibilityHidden(true)
             }
             .padding(.vertical, 4)
             .contentShape(.rect)
@@ -126,26 +109,77 @@ struct ChannelListRow: View {
             Button("Play", systemImage: "play.fill") {
                 playChannel(item, from: sourceID)
             }
-            .tint(Theme.accent)
+            .tint(Theme.accentFill)
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             if item.url != nil {
                 Button(isFavorite ? "Unfavorite" : "Favorite", systemImage: isFavorite ? "star.slash.fill" : "star.fill") {
                     library.toggleFavorite(item)
                 }
-                .tint(Theme.favorite)
+                .tint(Theme.favoriteFill)
             }
             if item.kind == .live, epg?.hasGuide == true {
                 Button("Guide", systemImage: "calendar.day.timeline.left") {
                     navigation.scheduleChannel = item
                 }
-                .tint(Theme.cyan)
+                .tint(Theme.cyanFill)
             }
         }
+        // One element: "Channel 3, Sky Sport F1, Favorite, Sport, On now: …", activated to play.
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
-        .accessibilityAction(named: isFavorite ? "Remove from Favorites" : "Add to Favorites") {
-            library.toggleFavorite(item)
+        .accessibilityHint(item.kind == .live ? "Plays the channel" : "Plays the video")
+        .channelAccessibilityActions(item, isFavorite: isFavorite)
+    }
+
+    @ViewBuilder
+    private var number: some View {
+        if showsNumber, let number = item.number {
+            ChannelNumberLabel(number: number)
+        }
+    }
+
+    private var artwork: some View {
+        ChannelLogoTile(item: item, size: item.kind.usesPosterArtwork ? Self.posterSize : Self.logoSize, cornerRadius: 10)
+            .playerTransitionSource(id: sourceID, cornerRadius: 10)
+            // The name follows as text.
+            .accessibilityHidden(true)
+    }
+
+    private var playGlyph: some View {
+        Image(systemName: "play.circle.fill")
+            .font(.title2)
+            .symbolRenderingMode(.hierarchical)
+            .foregroundStyle(.tint)
+            .accessibilityHidden(true)
+    }
+
+    private func details(isFavorite: Bool) -> some View {
+        let stacked = dynamicTypeSize.prefersStackedLayout
+        return VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(item.displayName)
+                    .font(.body.weight(.semibold))
+                    .lineLimit(stacked ? 4 : 1)
+                if isFavorite {
+                    Image(systemName: "star.fill")
+                        .font(.caption2)
+                        .foregroundStyle(Theme.favorite)
+                        .transition(.scale.combined(with: .opacity))
+                        .accessibilityLabel("Favorite")
+                }
+            }
+            if let subtitle, !subtitle.isEmpty {
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(Theme.secondaryText)
+                    .lineLimit(stacked ? 3 : 1)
+            }
+            if item.kind == .live {
+                RowProgrammeInfo(item: item)
+            } else {
+                WatchProgressLine(item: item)
+            }
         }
     }
 }
@@ -157,7 +191,7 @@ struct ChannelNumberLabel: View {
     var body: some View {
         Text(number, format: .number.grouping(.never))
             .font(.footnote.weight(.semibold).monospacedDigit())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Theme.secondaryText)
             .lineLimit(1)
             .minimumScaleFactor(0.7)
             .frame(minWidth: 30, alignment: .trailing)
@@ -168,6 +202,8 @@ struct ChannelNumberLabel: View {
 /// LIVE, the programme on air with its progress and time left, and what comes next. Empty without a guide.
 struct RowProgrammeInfo: View {
     let item: ChannelItem
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         NowNextReader(item: item) { nowNext in
@@ -188,22 +224,22 @@ struct RowProgrammeInfo: View {
                     LiveBadge(compact: true)
                     Text(current.title)
                         .font(.caption.weight(.medium))
-                        .lineLimit(1)
+                        .lineLimit(dynamicTypeSize.prefersStackedLayout ? 3 : 1)
                 }
                 HStack(spacing: 8) {
                     ProgrammeProgressBar(progress: current.progress(at: now), tint: Theme.live, height: 3)
                         .frame(maxWidth: 140)
                     Text(GuideFormat.remaining(current, at: now))
                         .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.secondaryText)
                         .lineLimit(1)
                 }
             }
             if let next = nowNext.next {
                 Text("Next \(GuideFormat.time(next.start)) · \(next.title)")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .foregroundStyle(Theme.secondaryText)
+                    .lineLimit(dynamicTypeSize.prefersStackedLayout ? 3 : 1)
             }
         }
         .accessibilityElement(children: .ignore)
@@ -235,7 +271,7 @@ struct WatchProgressLine: View {
                     .frame(maxWidth: 120)
                 Text(WatchProgressFormat.remaining(progress))
                     .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.secondaryText)
                     .lineLimit(1)
             }
             .accessibilityElement(children: .ignore)

@@ -20,6 +20,7 @@ struct ChannelScheduleView: View {
     @Environment(EPGStore.self) private var epg
     @Environment(\.playChannel) private var playChannel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var ref: GuideChannelRef?
     @State private var programmes: [GuideProgramme]?
@@ -44,6 +45,7 @@ struct ChannelScheduleView: View {
                         playChannel(item)
                     }
                     .buttonStyle(.glassProminent)
+                    .tint(Theme.accentFill)
                 }
             }
         }
@@ -101,21 +103,23 @@ struct ChannelScheduleView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 14) {
+        AdaptiveStack(spacing: 14) {
             ChannelLogoTile(item: item, size: CGSize(width: 84, height: 56), cornerRadius: 12)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.displayName)
                     .font(.headline)
-                    .lineLimit(2)
+                    .lineLimit(4)
                 if !item.groupName.isEmpty {
                     Text(item.groupName)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .foregroundStyle(Theme.secondaryText)
+                        .lineLimit(2)
                 }
             }
         }
         .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
     }
 
     private func row(_ programme: GuideProgramme, now: Date) -> some View {
@@ -124,33 +128,35 @@ struct ChannelScheduleView: View {
         return Button {
             detail = programme
         } label: {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
+            // At the accessibility text sizes the time goes above the title, which then has the whole width.
+            AdaptiveStack(verticalAlignment: .firstTextBaseline, spacing: 12) {
                 GuideTimeColumnText(date: programme.start)
                     .font(.subheadline.monospacedDigit().weight(isOnAir ? .semibold : .regular))
-                    .foregroundStyle(isOnAir ? AnyShapeStyle(Theme.live) : AnyShapeStyle(.secondary))
+                    .foregroundStyle(isOnAir ? AnyShapeStyle(Theme.live) : AnyShapeStyle(Theme.secondaryText))
 
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
+                    // LIVE above the title at the accessibility text sizes, so the title wraps at the margin.
+                    AdaptiveStack(spacing: 6) {
                         if isOnAir {
                             LiveBadge(compact: true)
                         }
                         Text(programme.title)
                             .font(.body.weight(isOnAir ? .semibold : .regular))
                             .foregroundStyle(.primary)
-                            .lineLimit(2)
+                            .lineLimit(dynamicTypeSize.prefersStackedLayout ? 5 : 2)
                     }
                     if let detailLine = programme.detailLine {
                         Text(detailLine)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                            .foregroundStyle(Theme.secondaryText)
+                            .lineLimit(dynamicTypeSize.prefersStackedLayout ? 3 : 1)
                     }
                     if isOnAir {
                         HStack(spacing: 8) {
                             ProgrammeProgressBar(progress: programme.progress(at: now), tint: Theme.live, height: 4)
                             Text(GuideFormat.remaining(programme, at: now))
                                 .font(.caption2.monospacedDigit())
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Theme.secondaryText)
                                 .fixedSize()
                         }
                     }
@@ -174,7 +180,7 @@ struct ChannelScheduleView: View {
                         await epg.reminders.toggle(programme, on: item)
                     }
                 }
-                .tint(Theme.accent)
+                .tint(Theme.accentFill)
             }
         }
     }
@@ -227,10 +233,15 @@ private struct ChannelScheduleSheet: ViewModifier {
             .sheet(item: usesInspector ? .constant(nil) : $navigation.scheduleChannel) { item in
                 ChannelScheduleView(item: item)
                     // iPad (portrait, narrow windows): a centered form sheet the height of the window; a half
-                    // height sheet would sit at the bottom of the screen.
-                    .presentationDetents(DeviceIdiom.isPad ? [.large] : [.medium, .large])
+                    // height sheet would sit at the bottom of the screen. iPhone: medium and large, or large only at
+                    // the accessibility text sizes.
                     .if(DeviceIdiom.isPad) { sheet in
-                        sheet.presentationSizing(.form)
+                        sheet
+                            .presentationDetents([.large])
+                            .presentationSizing(.form)
+                    }
+                    .if(!DeviceIdiom.isPad) { sheet in
+                        sheet.mediumAndLargeDetentsAdaptingToTextSize()
                     }
             }
     }

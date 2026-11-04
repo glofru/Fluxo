@@ -316,6 +316,7 @@ private struct PlayerWindowPlaceholder: View {
                             .padding(.vertical, 4)
                     }
                     .buttonStyle(.glassProminent)
+                    .tint(Theme.accentFill)
                     .controlSize(.large)
                 }
             }

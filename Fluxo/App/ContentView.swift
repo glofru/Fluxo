@@ -49,6 +49,8 @@ struct ContentView: View {
             // URLs and M3U files dropped on the window add a playlist (iPad, macOS).
             .playlistDropDestination()
             .watchProgressRecording(player: viewModel)
+            // Announcements are system-wide: with several windows (iPad) only the main window used last speaks.
+            .playerAnnouncements(viewModel, isEnabled: coordinator.preferredMainWindowID ?? windowID == windowID)
             .environment(\.playChannel, PlayChannelAction(library: library, player: viewModel, coordinator: coordinator, windowID: windowID))
             .channelWindowOpening(coordinator: coordinator)
             .sensoryFeedback(.selection, trigger: library.favoriteToggleCount)
@@ -140,6 +142,20 @@ struct PlayerBottomAccessory: View {
                 }
                 .layoutPriority(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                // One element for VoiceOver ("Sky Sport F1, Live, Sport", in the "Mini Player" container); activating
+                // it opens the player.
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityHint("Now playing. Opens the player")
+                .accessibilityAction {
+                    openPlayer()
+                }
+                .accessibilityInputLabels([Text("Now Playing"), Text("Open Player"), Text(channel.name ?? "")])
+                // The bar keeps its height: at the accessibility text sizes a long press shows the channel in the
+                // Large Content Viewer.
+                .accessibilityShowsLargeContentViewer {
+                    Label(channel.name ?? String(localized: "No channel name"), systemImage: "play.tv")
+                }
 
                 if !isInline {
                     CastButton(cast: viewModel.cast, style: .miniPlayer)
@@ -157,6 +173,8 @@ struct PlayerBottomAccessory: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(isPaused ? "Play" : "Pause")
+                .accessibilityInputLabels(isPaused ? [Text("Play"), Text("Resume")] : [Text("Pause")])
+                .largeContentControl(isPaused ? String(localized: "Play") : String(localized: "Pause"), systemImage: isPaused ? "play.fill" : "pause.fill")
                 .sensoryFeedback(.impact(weight: .light), trigger: playPauseTaps)
 
                 if !isInline {
@@ -169,8 +187,10 @@ struct PlayerBottomAccessory: View {
                             .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.secondaryText)
                     .accessibilityLabel("Stop Playback")
+                    .accessibilityInputLabels([Text("Stop Playback"), Text("Stop")])
+                    .largeContentControl(String(localized: "Stop Playback"), systemImage: "xmark")
                 }
             }
             .padding(.leading, isInline ? 6 : 8)
@@ -190,9 +210,16 @@ struct PlayerBottomAccessory: View {
                     }
             )
             .playerTransitionSource(id: PlayerTransition.miniPlayerID, cornerRadius: 24)
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             .accessibilityElement(children: .contain)
+            .accessibilityLabel("Mini Player")
             .accessibilityIdentifier("miniPlayer")
             .accessibilityAction(named: "Open Player", openPlayer)
+            #if os(iOS)
+            .accessibilityAction(.magicTap) {
+                viewModel.togglePlayPause()
+            }
+            #endif
             .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: placement)
         } else {
             // Not reached: the accessory is disabled while nothing plays (`playerAccessory(isVisible:)`).
@@ -255,21 +282,21 @@ struct PlayerBottomAccessory: View {
             .foregroundStyle(Theme.recording)
         } else if viewModel.isPictureInPictureActive {
             Label("Picture in Picture", systemImage: "pip")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.secondaryText)
         } else if viewModel.playbackState.isBusy {
             Text(viewModel.playbackState.label)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.secondaryText)
         } else if isLive && viewModel.playbackState == .playing {
             HStack(spacing: 6) {
                 LiveBadge(compact: true)
                 if let group = viewModel.currentItem?.groupName, !group.isEmpty {
                     Text(group)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.secondaryText)
                 }
             }
         } else {
             Text(viewModel.playbackState.label)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.secondaryText)
         }
     }
 

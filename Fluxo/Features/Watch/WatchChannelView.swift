@@ -37,13 +37,17 @@ struct WatchChannelView: View {
     /// The channel list / guide next to the video in a wide player (iPad in landscape); remembered.
     @AppStorage(PlayerSidePanelLayout.storageKey) private var showsSidePanel = false
 
-    @Environment(\.accessibilityVoiceOverEnabled) private var isVoiceOverEnabled
+    /// Any assistive technology (VoiceOver, Switch Control, Voice Control, Full Keyboard Access): the controls
+    /// stay on screen, since a control that hides while the user moves to it cannot be reached.
+    @Environment(\.accessibilityEnabled) private var isAssistiveTechnologyEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.displayPosture) private var posture
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @AppStorage(FoldablePlayerPreferences.panelWhenPartlyOpenKey) private var showsPanelWhenPartlyOpen = true
     @AppStorage(FoldablePlayerPreferences.panelWhenFlatKey) private var showsPanelWhenFlat = false
     @AppStorage(FoldablePlayerPreferences.videoOnTrailingSideKey) private var videoOnTrailingSide = false
+    /// VoiceOver lands on the channel name when the player opens.
+    @AccessibilityFocusState private var isTitleFocused: Bool
 
     var body: some View {
         GeometryReader { proxy in
@@ -94,6 +98,26 @@ struct WatchChannelView: View {
         // The player is a layer over the app (see `PlayerPresentation`): only its own subtree goes dark, so the
         // app underneath keeps the system appearance (it shows while the player is dragged down).
         .environment(\.colorScheme, .dark)
+        // The player covers the app: VoiceOver stays inside it, a two-finger double tap (Magic Tap) plays or
+        // pauses, and the escape gesture (a two-finger Z) closes it.
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isModal)
+        #if os(iOS)
+        .accessibilityAction(.magicTap) {
+            viewModel.togglePlayPause()
+        }
+        #else
+        .accessibilityAction(.escape) {
+            viewModel.closePlayer()
+        }
+        #endif
+        .onAppear {
+            AccessibilityAnnouncer.screenChanged()
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(350))
+                isTitleFocused = true
+            }
+        }
         .animation(.easeInOut(duration: 0.25), value: controlsVisible)
         .animation(reduceMotion ? nil : .smooth(duration: 0.35), value: viewModel.isCasting)
         .task(id: AutoHide(interaction: interactionCount, canHide: canAutoHide)) {
@@ -152,7 +176,7 @@ struct WatchChannelView: View {
                 isShowingRecordings = false
                 viewModel.playRecording(recording)
             }
-            .presentationDetents([.medium, .large])
+            .mediumAndLargeDetentsAdaptingToTextSize()
         }
     }
 
@@ -165,6 +189,8 @@ struct WatchChannelView: View {
 
             AVVideoPlayer(surface: viewModel.surface)
                 .ignoresSafeArea()
+                // Video keeps its real colors under Smart Invert.
+                .artworkIgnoresInvertColors()
                 .onAppear {
                     viewModel.playerViewDidAppear()
                 }
@@ -212,6 +238,7 @@ struct WatchChannelView: View {
                     isShowingRecordings: $isShowingRecordings,
                     sidePanel: isSidePanelAvailable ? $showsSidePanel : nil,
                     showsBottomBar: !layout.isStacked,
+                    titleFocus: $isTitleFocused,
                     interacted: registerInteraction
                 )
                 .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98)))
@@ -287,7 +314,7 @@ struct WatchChannelView: View {
 
     private var canAutoHide: Bool {
         // Not while casting: there is no video to uncover, and the controls drive the Chromecast.
-        controlsVisible && viewModel.playbackState == .playing && !isScrubbing && !isShowingRecordings && !isVoiceOverEnabled
+        controlsVisible && viewModel.playbackState == .playing && !isScrubbing && !isShowingRecordings && !isAssistiveTechnologyEnabled
             && !viewModel.isCasting
     }
 
@@ -373,6 +400,7 @@ private struct PlayerCircleButton: View {
         .buttonStyle(.plain)
         .glassEffect(glass.interactive(), in: .circle)
         .accessibilityLabel(title)
+        .largeContentControl(title, systemImage: systemImage)
         .help(help ?? title)
     }
 }
@@ -385,13 +413,16 @@ private struct PlayerChrome: View {
     let sidePanel: Binding<Bool>?
     /// False when the transport controls sit in the other pane of a foldable (see `PlayerPaneLayout`).
     var showsBottomBar = true
+    var titleFocus: AccessibilityFocusState<Bool>.Binding
     let interacted: () -> Void
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
+        let scrim = Theme.Player.scrim(reduceTransparency: reduceTransparency, increasedContrast: contrast == .increased)
         VStack(spacing: 0) {
-            PlayerTopBar(viewModel: viewModel, isShowingRecordings: $isShowingRecordings, sidePanel: sidePanel, interacted: interacted)
+            PlayerTopBar(viewModel: viewModel, isShowingRecordings: $isShowingRecordings, sidePanel: sidePanel, titleFocus: titleFocus, interacted: interacted)
             Spacer(minLength: 0)
             if showsBottomBar {
                 PlayerBottomBar(viewModel: viewModel, isScrubbing: $isScrubbing, interacted: interacted)
@@ -400,11 +431,11 @@ private struct PlayerChrome: View {
         .background {
             // Scrims keep the title and the timeline legible on bright video (stronger without transparency).
             VStack(spacing: 0) {
-                LinearGradient(colors: [Theme.Player.scrim(reduceTransparency: reduceTransparency), .clear], startPoint: .top, endPoint: .bottom)
+                LinearGradient(colors: [scrim, .clear], startPoint: .top, endPoint: .bottom)
                     .frame(height: 220)
                 Spacer(minLength: 0)
                 if showsBottomBar {
-                    LinearGradient(colors: [.clear, Theme.Player.scrim(reduceTransparency: reduceTransparency)], startPoint: .top, endPoint: .bottom)
+                    LinearGradient(colors: [.clear, scrim], startPoint: .top, endPoint: .bottom)
                         .frame(height: 280)
                 }
             }
@@ -422,10 +453,12 @@ private struct PlayerTopBar: View {
     let viewModel: AVPlayerViewModel
     @Binding var isShowingRecordings: Bool
     let sidePanel: Binding<Bool>?
+    var titleFocus: AccessibilityFocusState<Bool>.Binding
     let interacted: () -> Void
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.playerSplitControl) private var splitControl
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// Room the window's corners need: on iPad, a window shows its controls (close, minimize, full screen) in
     /// a top corner, over the app's content. Zero otherwise.
     @State private var cornerInsets = RectangleCornerInsets()
@@ -441,7 +474,7 @@ private struct PlayerTopBar: View {
                         actions
                         stopButton
                     }
-                    title(lineLimit: 2)
+                    title(lineLimit: dynamicTypeSize.prefersStackedLayout ? 3 : 2)
                 }
             } else {
                 HStack(spacing: 12) {
@@ -454,6 +487,9 @@ private struct PlayerTopBar: View {
             }
         }
         .font(.body.weight(.medium))
+        // The buttons keep their size at the accessibility text sizes (they show in the Large Content Viewer
+        // instead); the channel name and its status grow up to AX2.
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
         // The buttons move aside for the window controls (and the window's rounded corners) rather than sitting
         // under them.
         .padding(.leading, max(Self.edgePadding, cornerInsets.topLeading.width))
@@ -471,6 +507,8 @@ private struct PlayerTopBar: View {
         PlayerCircleButton(title: "Close Player", systemImage: "chevron.down", help: closeHelp) {
             viewModel.closePlayer()
         }
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+        .accessibilityInputLabels([Text("Close Player"), Text("Close"), Text("Minimize")])
         .accessibilityIdentifier("player.close")
     }
 
@@ -479,6 +517,8 @@ private struct PlayerTopBar: View {
         PlayerCircleButton(title: "Stop Playback", systemImage: "xmark", help: "Stop playback and close the player") {
             viewModel.stop()
         }
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+        .accessibilityInputLabels([Text("Stop Playback"), Text("Stop")])
         .accessibilityIdentifier("player.stop")
     }
 
@@ -511,6 +551,7 @@ private struct PlayerTopBar: View {
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityAddTraits(.isHeader)
+                .accessibilityFocused(titleFocus)
                 // Now / next from the TV guide (live channels with a guide only).
                 PlayerProgrammeInfo(item: viewModel.currentItem)
             }
@@ -551,12 +592,26 @@ private struct PlayerTopBar: View {
                 .buttonStyle(PlayerIconButtonStyle())
                 .disabled(!viewModel.isPictureInPicturePossible && !viewModel.isPictureInPictureActive)
                 .accessibilityLabel(viewModel.isPictureInPictureActive ? "Exit Picture in Picture" : "Picture in Picture")
+                .largeContentControl(viewModel.isPictureInPictureActive ? String(localized: "Exit Picture in Picture") : String(localized: "Picture in Picture"), systemImage: "pip.enter")
                 .help("Picture in Picture")
+            }
+
+            // Audio tracks and subtitles, when the item has a choice (not while a Chromecast plays it).
+            if !viewModel.isCasting {
+                MediaSelectionMenu(controller: viewModel.mediaSelection) {
+                    Image(systemName: "captions.bubble")
+                        .frame(width: Self.buttonSize, height: Self.buttonSize)
+                        .contentShape(.circle)
+                }
+                .buttonStyle(.plain)
+                .largeContentControl(String(localized: "Audio and Subtitles"), systemImage: "captions.bubble")
+                .accessibilityIdentifier("player.mediaSelection")
             }
 
             RoutePicker(player: viewModel.player)
                 .frame(width: Self.buttonSize, height: Self.buttonSize)
                 .accessibilityLabel("AirPlay")
+                .largeContentControl("AirPlay", systemImage: "airplay.video")
                 .help("AirPlay")
 
             // Google Cast (iOS only: there is no Cast sender SDK for macOS).
@@ -615,8 +670,10 @@ private struct PlayerTopBar: View {
             .menuIndicator(.hidden)
             .buttonStyle(.plain)
             .accessibilityLabel("More")
+            .largeContentControl(String(localized: "More"), systemImage: "ellipsis")
         }
         .glassEffect(.regular.interactive(), in: .capsule)
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
     }
 }
 
@@ -643,21 +700,21 @@ private struct PlayerStatusBadges: View {
         case .failed:
             PlayerBadge(text: "Error", systemImage: "exclamationmark.triangle.fill", tint: Theme.error)
         case .ended:
-            PlayerBadge(text: "Ended", systemImage: "checkmark.circle", tint: .secondary)
+            PlayerBadge(text: "Ended", systemImage: "checkmark.circle", tint: Theme.secondaryText)
         case .idle:
-            PlayerBadge(text: "Idle", systemImage: nil, tint: .secondary)
+            PlayerBadge(text: "Idle", systemImage: nil, tint: Theme.secondaryText)
         case .playing, .paused:
             if viewModel.playbackState == .paused {
-                PlayerBadge(text: "Paused", systemImage: "pause.fill", tint: .secondary)
+                PlayerBadge(text: "Paused", systemImage: "pause.fill", tint: Theme.secondaryText)
             } else if viewModel.isTimeShiftAvailable {
                 // The bottom live control shows LIVE or the time behind live.
                 if let group = viewModel.currentItem?.groupName, !group.isEmpty {
-                    PlayerBadge(text: group, systemImage: nil, tint: .secondary)
+                    PlayerBadge(text: group, systemImage: nil, tint: Theme.secondaryText)
                 }
             } else if isLive {
                 LiveBadge()
             } else {
-                PlayerBadge(text: "Playing", systemImage: "play.fill", tint: .secondary)
+                PlayerBadge(text: "Playing", systemImage: "play.fill", tint: Theme.secondaryText)
             }
         }
     }
@@ -672,7 +729,7 @@ private struct PlayerStatusBadges: View {
                 .controlSize(.mini)
             Text(text)
         }
-        .foregroundStyle(.secondary)
+        .foregroundStyle(Theme.secondaryText)
     }
 }
 
@@ -752,7 +809,10 @@ private struct PlayerBottomBar: View {
                 .transition(.opacity)
             }
 
+            // Media timelines and transport run left to right in every language (as in the system players): only
+            // their placement mirrors in right-to-left layouts.
             PlayerTimelineBar(viewModel: viewModel, timeline: viewModel.timeline, isScrubbing: $isScrubbing, interacted: interacted)
+                .environment(\.layoutDirection, .leftToRight)
 
             GlassEffectContainer(spacing: 18) {
                 ViewThatFits(in: .horizontal) {
@@ -762,6 +822,7 @@ private struct PlayerBottomBar: View {
                             .frame(minWidth: 170, alignment: .leading)
                         Spacer(minLength: 0)
                         PlayerTransport(viewModel: viewModel, timeline: viewModel.timeline, namespace: glassNamespace, interacted: interacted)
+                            .environment(\.layoutDirection, .leftToRight)
                         Spacer(minLength: 0)
                         LiveControl(viewModel: viewModel, timeline: viewModel.timeline, namespace: glassNamespace, interacted: interacted)
                             .frame(minWidth: 170, alignment: .trailing)
@@ -770,6 +831,7 @@ private struct PlayerBottomBar: View {
                     // Compact: the transport on its own row.
                     VStack(spacing: 14) {
                         PlayerTransport(viewModel: viewModel, timeline: viewModel.timeline, namespace: glassNamespace, interacted: interacted)
+                            .environment(\.layoutDirection, .leftToRight)
                         HStack {
                             RecordControl(viewModel: viewModel, timeline: viewModel.timeline, namespace: glassNamespace, interacted: interacted)
                             Spacer(minLength: 0)
@@ -779,8 +841,12 @@ private struct PlayerBottomBar: View {
                 }
             }
             .animation(reduceMotion ? nil : .smooth(duration: 0.4), value: MorphState(viewModel))
+            // The controls keep their size from here on: at the accessibility text sizes a long press shows them
+            // in the Large Content Viewer.
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         }
         .font(.body.weight(.medium))
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
         .padding(.horizontal)
         .padding(.bottom, 12)
     }
@@ -979,10 +1045,12 @@ private struct PlayerTransport: View {
                     .contentShape(.circle)
             }
             .buttonStyle(.plain)
-            .glassEffect(isPaused ? .regular.tint(Theme.accent).interactive() : .regular.interactive(), in: .circle)
+            .glassEffect(isPaused ? .regular.tint(Theme.accentFill).interactive() : .regular.interactive(), in: .circle)
             .glassEffectID("transport.play", in: namespace)
             .sensoryFeedback(.impact(weight: .light), trigger: playPauseTaps)
             .accessibilityLabel(isPaused ? "Play" : "Pause")
+            .accessibilityInputLabels(isPaused ? [Text("Play"), Text("Resume")] : [Text("Pause")])
+            .largeContentControl(isPaused ? String(localized: "Play") : String(localized: "Pause"), systemImage: isPaused ? "play.fill" : "pause.fill")
             .help(isPaused ? "Play" : "Pause")
 
             HStack(spacing: 0) {
@@ -1014,6 +1082,7 @@ private struct PlayerTransport: View {
         }
         .buttonStyle(PlayerIconButtonStyle())
         .accessibilityLabel(label)
+        .largeContentControl(label, systemImage: systemImage)
         .help(help)
     }
 }
@@ -1052,6 +1121,8 @@ private struct RecordControl: View {
             .glassEffectID("record", in: namespace)
             .accessibilityLabel("Stop Recording")
             .accessibilityValue(PlayerTime.spoken(timeline.recordingDuration))
+            .accessibilityInputLabels([Text("Stop Recording"), Text("Stop Record")])
+            .largeContentControl(String(localized: "Stop Recording"), systemImage: "stop.fill")
             .help("Stop recording")
         } else if viewModel.canRecord {
             Button {
@@ -1071,6 +1142,8 @@ private struct RecordControl: View {
             .glassEffect(.regular.interactive(), in: .capsule)
             .glassEffectID("record", in: namespace)
             .accessibilityLabel("Record")
+            .accessibilityHint("Records this channel to Recordings")
+            .largeContentControl(String(localized: "Record"), systemImage: "record.circle")
             .help("Record this channel")
         }
     }
@@ -1106,6 +1179,7 @@ private struct LiveControl: View {
                     .glassEffectID("live", in: namespace)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("Live")
+                    .accessibilityAddTraits(.isStaticText)
                 } else {
                     Button {
                         interacted()
@@ -1129,6 +1203,7 @@ private struct LiveControl: View {
                     .glassEffectID("live", in: namespace)
                     .accessibilityLabel("Go Live")
                     .accessibilityValue("\(PlayerTime.spoken(timeline.timeBehindLive)) behind live")
+                    .largeContentControl(String(localized: "Go Live"), systemImage: "forward.end.alt.fill")
                     .help("Jump to the live edge")
                 }
             }
@@ -1180,6 +1255,7 @@ private struct PlayerStatusOverlay: View {
                     viewModel.retry()
                 }
                 .buttonStyle(.glassProminent)
+                .tint(Theme.accentFill)
                 if viewModel.isCasting {
                     Button("Play on This Device", systemImage: "iphone") {
                         viewModel.stopCasting()
@@ -1190,7 +1266,7 @@ private struct PlayerStatusOverlay: View {
         case .ended:
             PlayerMessageCard(
                 systemImage: "checkmark.circle.fill",
-                tint: .secondary,
+                tint: Theme.secondaryText,
                 title: viewModel.isTimeShiftAvailable ? "The Stream Ended" : "Playback Ended",
                 message: nil
             ) {
@@ -1199,11 +1275,13 @@ private struct PlayerStatusOverlay: View {
                         viewModel.play()
                     }
                     .buttonStyle(.glassProminent)
+                    .tint(Theme.accentFill)
                 } else {
                     Button("Try Again", systemImage: "arrow.clockwise") {
                         viewModel.retry()
                     }
                     .buttonStyle(.glassProminent)
+                    .tint(Theme.accentFill)
                 }
             }
         default:
@@ -1229,6 +1307,27 @@ private struct PlayerMessageCard<Actions: View>: View {
     @ViewBuilder let actions: () -> Actions
 
     var body: some View {
+        // Between the top and bottom controls; at large text sizes the card scrolls rather than running under them.
+        ViewThatFits(in: .vertical) {
+            card
+            ScrollView {
+                card
+            }
+            .scrollBounceBehavior(.basedOnSize)
+        }
+        .padding(.vertical, Self.chromeClearance)
+    }
+
+    /// Room left for the top bar and the transport controls around the card.
+    private static var chromeClearance: CGFloat {
+        #if os(macOS)
+        return 90
+        #else
+        return 150
+        #endif
+    }
+
+    private var card: some View {
         VStack(spacing: 12) {
             Image(systemName: systemImage)
                 .font(.largeTitle)
@@ -1236,18 +1335,21 @@ private struct PlayerMessageCard<Actions: View>: View {
                 .accessibilityHidden(true)
             Text(title)
                 .font(.headline)
+                .multilineTextAlignment(.center)
+                .accessibilityAddTraits(.isHeader)
             if let message {
                 Text(message)
                     .font(.callout)
                     .multilineTextAlignment(.center)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.secondaryText)
             }
             actions()
         }
         .padding(24)
         .frame(maxWidth: 420)
         .glassEffect(.regular, in: .rect(cornerRadius: 24))
-        .padding()
+        .padding(.horizontal)
+        .dynamicTypeSize(...DynamicTypeSize.accessibility3)
     }
 }
 

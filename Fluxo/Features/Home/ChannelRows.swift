@@ -60,27 +60,36 @@ struct HomeSectionHeader<Accessory: View>: View {
     var systemImage: String?
     @ViewBuilder var accessory: () -> Accessory
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            if let systemImage {
-                Image(systemName: systemImage)
-                    .foregroundStyle(.tint)
-                    .accessibilityHidden(true)
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.title3.bold())
-                    .lineLimit(1)
-                if let subtitle {
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+        // At the accessibility text sizes the "See All" link moves under the title, which may then wrap.
+        AdaptiveStack(verticalAlignment: .firstTextBaseline, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                        .foregroundStyle(.tint)
+                        .accessibilityHidden(true)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.title3.bold())
+                        .lineLimit(dynamicTypeSize.prefersStackedLayout ? 3 : 1)
+                        .accessibilityAddTraits(.isHeader)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(Theme.secondaryText)
+                            .lineLimit(dynamicTypeSize.prefersStackedLayout ? 2 : 1)
+                    }
                 }
             }
-            Spacer(minLength: 8)
+            if !dynamicTypeSize.prefersStackedLayout {
+                Spacer(minLength: 8)
+            }
             accessory()
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, HomeLayout.horizontalMargin)
     }
 }
@@ -95,25 +104,50 @@ extension HomeSectionHeader where Accessory == EmptyView {
 
 /// "See all" link shown in section headers.
 struct SeeAllLink: View {
+    /// What `count` counts, for VoiceOver ("See All, 17 channels").
+    enum Unit {
+        case channels
+        case categories
+    }
+
     let route: ChannelRoute
     var count: Int?
+    var unit: Unit = .channels
 
     var body: some View {
         NavigationLink(value: route) {
             HStack(spacing: 4) {
                 if let count {
                     Text(count.formatted())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.secondaryText)
                 }
                 Text("See All")
-                Image(systemName: "chevron.right")
+                Image(systemName: "chevron.forward")
                     .font(.caption.bold())
                     .accessibilityHidden(true)
             }
             .font(.subheadline)
+            .accessibilityButtonShape()
+            // A 44 pt tall target around the short text.
+            .frame(minHeight: 44)
+            .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .foregroundStyle(.tint)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityInputLabels([Text("See All")])
+    }
+
+    private var accessibilityLabel: Text {
+        guard let count else {
+            return Text("See All")
+        }
+        switch unit {
+        case .channels:
+            return Text("See All, \(count) channels")
+        case .categories:
+            return Text("See All, \(count) categories")
+        }
     }
 }
 
@@ -315,23 +349,28 @@ struct CompactChannelCard: View {
 
     @Environment(ChannelLibrary.self) private var library
     @Environment(\.playChannel) private var playChannel
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var sourceID = UUID().uuidString
+    private var scale = CardScale(maximum: 1.25)
 
     private let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
 
     var body: some View {
         let progress = library.watchProgress(for: item)
+        let isFavorite = library.isFavorite(item)
         Button {
             playChannel(item, from: sourceID)
         } label: {
             HStack(spacing: 12) {
                 ChannelLogoTile(item: item, size: item.kind.usesPosterArtwork ? Self.posterSize : Self.logoSize, cornerRadius: 10)
+                    // The name follows as text.
+                    .accessibilityHidden(true)
                     .overlay(alignment: .bottomTrailing) {
                         Image(systemName: "play.fill")
                             .font(.system(size: 9, weight: .bold))
                             .foregroundStyle(.white)
                             .frame(width: 20, height: 20)
-                            .background(Theme.accent, in: .circle)
+                            .background(Theme.accentFill, in: .circle)
                             .overlay {
                                 Circle().strokeBorder(.white.opacity(0.6), lineWidth: 1)
                             }
@@ -343,14 +382,14 @@ struct CompactChannelCard: View {
                     // Two lines: long IPTV names ("Test Pattern (MPEG-TS)") stay readable on small phones.
                     Text(item.displayName)
                         .font(Theme.Typography.cardTitle)
-                        .lineLimit(2)
+                        .lineLimit(CardTextMetrics.titleLineLimit(2, at: dynamicTypeSize))
                         .fixedSize(horizontal: false, vertical: true)
 
                     if let progress {
                         ProgrammeProgressBar(progress: progress.fraction, tint: Theme.accent, height: 4)
                         Text(WatchProgressFormat.remaining(progress))
                             .font(Theme.Typography.cardSubtitle.monospacedDigit())
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.secondaryText)
                     } else if item.kind == .live {
                         NowNextReader(item: item) { nowNext in
                             if let current = nowNext?.current {
@@ -358,8 +397,8 @@ struct CompactChannelCard: View {
                                     LiveBadge(compact: true)
                                     Text(current.title)
                                         .font(Theme.Typography.cardSubtitle)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
+                                        .foregroundStyle(Theme.secondaryText)
+                                        .lineLimit(CardTextMetrics.titleLineLimit(1, at: dynamicTypeSize))
                                 }
                             } else if let watchedAt {
                                 lastWatched(watchedAt)
@@ -372,7 +411,7 @@ struct CompactChannelCard: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(10)
-            .frame(width: Self.width, alignment: .leading)
+            .frame(width: scale.scaled(Self.width), alignment: .leading)
             .frame(minHeight: 72)
             // A content surface: glass is kept for the controls and navigation layer.
             .background(Theme.surface, in: shape)
@@ -388,13 +427,15 @@ struct CompactChannelCard: View {
             ChannelContextMenu(item: item, isFavorite: library.isFavorite(item), extraActions: extraActions)
         }
         .accessibilityElement(children: .combine)
+        .accessibilityValue(isFavorite ? Text("Favorite") : Text(verbatim: ""))
         .accessibilityHint(item.kind == .live ? "Plays the channel" : "Resumes the video")
+        .channelAccessibilityActions(item, isFavorite: isFavorite)
     }
 
     private func lastWatched(_ date: Date) -> some View {
         Text(date, format: .relative(presentation: .named))
             .font(Theme.Typography.cardSubtitle)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Theme.secondaryText)
     }
 }
 

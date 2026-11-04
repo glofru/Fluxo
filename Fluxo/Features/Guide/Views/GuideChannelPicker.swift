@@ -50,7 +50,7 @@ struct GuideChannelPicker: View {
                 Section(searchText.isEmpty ? "Guide Channels" : "Results") {
                     if isLoaded && choices.isEmpty {
                         Text(searchText.isEmpty ? "The guide sources have no channels yet." : "No guide channel matches \"\(searchText)\".")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.secondaryText)
                     }
                     ForEach(choices) { choice in
                         Button {
@@ -96,7 +96,7 @@ struct GuideChannelPicker: View {
                 isLoaded = true
             }
         }
-        .presentationDetents([.medium, .large])
+        .mediumAndLargeDetentsAdaptingToTextSize()
         #if os(macOS)
         .frame(minWidth: 420, minHeight: 460)
         #endif
@@ -107,7 +107,7 @@ struct GuideChannelPicker: View {
             if let icon {
                 LogoImage(source: icon, size: CGSize(width: 40, height: 26)) { _ in
                     Image(systemName: "tv")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.secondaryText)
                 }
                 .accessibilityHidden(true)
             }
@@ -116,7 +116,7 @@ struct GuideChannelPicker: View {
                     .foregroundStyle(.primary)
                 subtitle
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.secondaryText)
                     .lineLimit(1)
             }
             Spacer(minLength: 8)

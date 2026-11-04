@@ -75,7 +75,7 @@ struct PersonalizingIndicator: View {
             Text("Personalizing…")
         }
         .font(.caption.weight(.medium))
-        .foregroundStyle(.secondary)
+        .foregroundStyle(Theme.secondaryText)
         .accessibilityElement(children: .combine)
     }
 }

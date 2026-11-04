@@ -69,11 +69,14 @@ struct OnNowRow: View {
                     } label: {
                         HStack(spacing: 4) {
                             Text("TV Guide")
-                            Image(systemName: "chevron.right")
+                            Image(systemName: "chevron.forward")
                                 .font(.caption.bold())
                                 .accessibilityHidden(true)
                         }
                         .font(.subheadline)
+                        .accessibilityButtonShape()
+                        .frame(minHeight: 44)
+                        .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.tint)
@@ -140,49 +143,71 @@ struct OnNowCard: View {
 
     @Environment(\.playChannel) private var playChannel
     @Environment(ChannelLibrary.self) private var library
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var sourceID = UUID().uuidString
+    private var scale = CardScale(maximum: 1.15)
 
     private let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
 
     var body: some View {
         let item = entry.item
         let programme = entry.programme
-        let height = (width * OnNowCard.size.height / OnNowCard.size.width).rounded()
+        let isFavorite = library.isFavorite(item)
+        // Standard cards grow a little with the text size (grids pass their own width); the height then follows
+        // the text.
+        let cardWidth = width == OnNowCard.size.width ? scale.scaled(width) : width
+        let height = (cardWidth * OnNowCard.size.height / OnNowCard.size.width).rounded()
+        let lines = { (standard: Int) in CardTextMetrics.titleLineLimit(standard, at: dynamicTypeSize) }
         Button {
             playChannel(item, from: sourceID)
         } label: {
             TimelineView(.everyMinute) { context in
                 VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 8) {
-                        ChannelLogoTile(item: item, size: CGSize(width: 46, height: 30), cornerRadius: 7)
+                    if dynamicTypeSize.prefersStackedLayout {
+                        // The channel name under its logo and LIVE, with the card's whole width.
+                        HStack(spacing: 8) {
+                            ChannelLogoTile(item: item, size: CGSize(width: 46, height: 30), cornerRadius: 7)
+                            Spacer(minLength: 4)
+                            LiveBadge(compact: true)
+                        }
                         Text(item.displayName)
                             .font(.caption.weight(.semibold))
-                            .lineLimit(1)
-                        Spacer(minLength: 4)
-                        LiveBadge(compact: true)
+                            .lineLimit(lines(1))
+                    } else {
+                        HStack(spacing: 8) {
+                            ChannelLogoTile(item: item, size: CGSize(width: 46, height: 30), cornerRadius: 7)
+                            Text(item.displayName)
+                                .font(.caption.weight(.semibold))
+                                .lineLimit(1)
+                            Spacer(minLength: 4)
+                            LiveBadge(compact: true)
+                        }
                     }
 
                     Spacer(minLength: 0)
 
                     Text(programme.title)
                         .font(.headline)
-                        .lineLimit(2)
+                        .lineLimit(lines(2))
                         .multilineTextAlignment(.leading)
-                    HStack(spacing: 6) {
+                    AdaptiveStack(spacing: 6) {
                         Text(GuideFormat.timeRange(programme))
-                        Text("·")
+                        if !dynamicTypeSize.prefersStackedLayout {
+                            Text("·")
+                        }
                         Text(GuideFormat.remaining(programme, at: context.date))
                     }
                     .font(.caption.monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.8))
-                    .lineLimit(1)
+                    .foregroundStyle(.white.opacity(0.85))
+                    .lineLimit(lines(1))
 
                     StreamProgressBar(progress: programme.progress(at: context.date))
                 }
             }
             .foregroundStyle(.white)
             .padding(14)
-            .frame(width: width, height: height, alignment: .topLeading)
+            .frame(width: cardWidth, alignment: .topLeading)
+            .frame(minHeight: height, alignment: .topLeading)
             .background {
                 backdrop
             }
@@ -199,9 +224,23 @@ struct OnNowCard: View {
             ChannelContextMenu(item: item, isFavorite: library.isFavorite(item))
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text("\(programme.title), on \(item.displayName), \(GuideFormat.timeRange(programme))"))
+        .accessibilityLabel(Text(accessibilityLabel(isFavorite: isFavorite)))
         .accessibilityHint("Plays the channel")
         .accessibilityAddTraits(.isButton)
+        .channelAccessibilityActions(item, isFavorite: isFavorite)
+    }
+
+    private func accessibilityLabel(isFavorite: Bool) -> String {
+        let programme = entry.programme
+        var parts = [
+            String(localized: "\(programme.title), on \(entry.item.displayName)"),
+            GuideFormat.timeRange(programme),
+            GuideFormat.remaining(programme, at: .now),
+        ]
+        if isFavorite {
+            parts.append(String(localized: "Favorite"))
+        }
+        return parts.joined(separator: ", ")
     }
 
     /// The programme's own image when the guide has one, otherwise the channel logo decoded tiny and blurred,
@@ -214,6 +253,7 @@ struct OnNowCard: View {
                     LogoImage(source: icon, size: proxy.size, contentMode: .fill) { _ in
                         blurredLogo(in: proxy.size)
                     }
+                    .artworkIgnoresInvertColors()
                 } else {
                     blurredLogo(in: proxy.size)
                 }

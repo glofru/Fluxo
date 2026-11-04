@@ -102,7 +102,7 @@ struct CastDevicePicker: View {
                         .font(.headline)
                     Text(castingLine)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.secondaryText)
                         .lineLimit(2)
                 }
             }
@@ -136,7 +136,7 @@ struct CastDevicePicker: View {
         HStack(spacing: 12) {
             ProgressView()
             Text("Looking for Cast devices…")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.secondaryText)
         }
         .accessibilityElement(children: .combine)
     }
@@ -159,7 +159,7 @@ struct CastDevicePicker: View {
                     if let model = device.model, model != device.name {
                         Text(model)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.secondaryText)
                     }
                 }
                 Spacer(minLength: 8)
@@ -250,7 +250,7 @@ private struct CastPickerPresentation: ViewModifier {
                 .presentationSizing(.form.fitted(horizontal: false, vertical: true))
         } else {
             content
-                .presentationDetents([.medium, .large])
+                .mediumAndLargeDetentsAdaptingToTextSize()
         }
     }
 }
@@ -304,7 +304,7 @@ struct CastVolumeControl: View {
                 .frame(width: 28)
                 .accessibilityHidden(true)
         }
-        .foregroundStyle(.secondary)
+        .foregroundStyle(Theme.secondaryText)
     }
 
     private var volume: Double {

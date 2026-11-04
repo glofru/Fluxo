@@ -100,7 +100,7 @@ struct CategoryStrip: View {
             let route = ChannelRoute.categories(importIDs: scope.importIDs, kind: kind)
             VStack(alignment: .leading, spacing: 10) {
                 HomeSectionHeader(title: String(localized: "Categories"), systemImage: "square.grid.2x2.fill") {
-                    SeeAllLink(route: route, count: totalCount)
+                    SeeAllLink(route: route, count: totalCount, unit: .categories)
                 }
                 CardRow {
                     ForEach(groups) { group in

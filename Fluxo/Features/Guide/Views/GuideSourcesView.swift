@@ -105,7 +105,7 @@ private struct GuideSourceRow: View {
                     .truncationMode(.middle)
                 Text(origin)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.secondaryText)
                     .lineLimit(1)
                 status
                     .font(.caption)
@@ -129,7 +129,7 @@ private struct GuideSourceRow: View {
             Button("Refresh", systemImage: "arrow.clockwise") {
                 epg.refresh(source.uuid)
             }
-            .tint(Theme.accent)
+            .tint(Theme.accentFill)
         }
         .confirmationDialog("Delete \(source.name)?", isPresented: $confirmsDelete, titleVisibility: .visible) {
             Button("Delete Guide Source", role: .destructive) {
@@ -180,19 +180,19 @@ private struct GuideSourceRow: View {
                 Text(progress.message)
                     .monospacedDigit()
             }
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Theme.secondaryText)
         } else if !source.isEnabled {
             Text("Off")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.secondaryText)
         } else if let error = source.lastError {
             Label(error, systemImage: "exclamationmark.triangle.fill")
                 .foregroundStyle(Theme.warning)
         } else if let refreshed = source.lastRefreshedOn {
             Text("\(source.programmeCount.formatted()) programmes · \(source.storedChannelCount.formatted()) of \(source.channelCount.formatted()) channels · updated \(refreshed.formatted(.relative(presentation: .named)))")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.secondaryText)
         } else {
             Text("Not loaded yet")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.secondaryText)
         }
     }
 
@@ -312,7 +312,7 @@ struct AddGuideSourceView: View {
                 isURLFocused = true
             }
         }
-        .presentationDetents([.medium, .large])
+        .mediumAndLargeDetentsAdaptingToTextSize()
         #if os(macOS)
         .frame(minWidth: 460, minHeight: 380)
         #endif

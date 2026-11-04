@@ -92,6 +92,7 @@ struct GuideGrid: View {
                     Section {
                         ForEach(channels) { channel in
                             GuideRow(channel: channel, day: day, metrics: metrics, now: now, onSelect: onSelect)
+                                .id(channel.id)
                         }
                     } header: {
                         GuideTimeRuler(day: day, metrics: metrics, now: now)
@@ -101,6 +102,8 @@ struct GuideGrid: View {
             }
             .scrollPosition($position)
             .scrollIndicators(.hidden)
+            // VoiceOver: the Channels rotor jumps from channel to channel (each row is a container named after it).
+            .accessibilityRotor("Channels", entries: channels, entryID: \.id, entryLabel: \.item.displayName)
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
                 geometry.contentSize.width
             } action: { _, _ in
@@ -157,7 +160,7 @@ private struct GuideTimeRuler: View {
                     VStack(alignment: .leading, spacing: 0) {
                         Text(GuideFormat.time(date))
                             .font(slot.isMultiple(of: 2) ? .caption.weight(.semibold).monospacedDigit() : .caption2.monospacedDigit())
-                            .foregroundStyle(slot.isMultiple(of: 2) ? .primary : .secondary)
+                            .foregroundStyle(slot.isMultiple(of: 2) ? AnyShapeStyle(.primary) : AnyShapeStyle(Theme.secondaryText))
                             .padding(.leading, 6)
                             .fadingUnderPinnedColumn(columnWidth: columnWidth, inset: 6)
                         Spacer(minLength: 0)
@@ -174,7 +177,7 @@ private struct GuideTimeRuler: View {
                         .foregroundStyle(.white)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(Color.guideNow, in: .capsule)
+                        .background(Theme.liveFill, in: .capsule)
                         .fixedSize()
                         .offset(x: metrics.x(for: now, dayStart: day) - 20, y: metrics.rulerHeight - 18)
                         .accessibilityHidden(true)
@@ -186,7 +189,7 @@ private struct GuideTimeRuler: View {
 
             Text(GuideFormat.day(day))
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.secondaryText)
                 .lineLimit(1)
                 .padding(.horizontal, 10)
                 .frame(width: columnWidth, height: metrics.rulerHeight, alignment: .leading)
@@ -281,7 +284,7 @@ private struct GuideRow: View {
                 if loadedKey == key, programmes.isEmpty {
                     Text("No information")
                         .font(.caption)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(Theme.tertiaryText)
                         .padding(.horizontal, 10)
                         .frame(height: metrics.rowHeight)
                         .visualEffect { content, proxy in
@@ -315,6 +318,9 @@ private struct GuideRow: View {
         .overlay(alignment: .bottom) {
             Divider()
         }
+        // The channel, then its programmes in time order.
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(channel.item.displayName)
         .task(id: key) {
             let interval = DateInterval(start: day, duration: metrics.dayDuration)
             let loaded = await epg.programmes(for: channel.ref, in: interval)
@@ -400,6 +406,8 @@ private struct GuideProgrammeCell: View {
 
     @Environment(EPGStore.self) private var epg
     @Environment(\.playChannel) private var playChannel
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+    @Environment(\.colorSchemeContrast) private var contrast
 
     private let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
     /// Leading padding of the text.
@@ -418,6 +426,13 @@ private struct GuideProgrammeCell: View {
                 if proxy.size.width >= 28 {
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 4) {
+                            if isOnAir && differentiateWithoutColor {
+                                // The block on air is told apart by its tint; with Differentiate Without Color
+                                // a symbol says it too.
+                                Image(systemName: "dot.radiowaves.left.and.right")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(Theme.live)
+                            }
                             if isReminded {
                                 Image(systemName: "bell.fill")
                                     .font(.caption2)
@@ -429,14 +444,14 @@ private struct GuideProgrammeCell: View {
                         }
                         Text(GuideFormat.timeRange(programme))
                             .font(.caption2.monospacedDigit())
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.secondaryText)
                             .lineLimit(1)
                         if isOnAir {
                             ProgrammeProgressBar(progress: programme.progress(at: now), height: 3)
                                 .frame(maxWidth: 120)
                         }
                     }
-                    .foregroundStyle(isOver ? .secondary : .primary)
+                    .foregroundStyle(isOver ? AnyShapeStyle(Theme.secondaryText) : AnyShapeStyle(.primary))
                     .padding(.horizontal, Self.textInset)
                     .padding(.vertical, 6)
                     .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
@@ -465,7 +480,9 @@ private struct GuideProgrammeCell: View {
             .background(background(isOnAir: isOnAir, isOver: isOver), in: shape)
             .overlay {
                 if isOnAir {
-                    shape.strokeBorder(.tint.opacity(0.6), lineWidth: 1)
+                    shape.strokeBorder(.tint.opacity(contrast == .increased ? 1 : 0.6), lineWidth: contrast == .increased || differentiateWithoutColor ? 2 : 1)
+                } else if contrast == .increased {
+                    shape.strokeBorder(Theme.surfaceStroke)
                 }
             }
             .clipShape(shape)
@@ -491,9 +508,21 @@ private struct GuideProgrammeCell: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityLabel(isOnAir: isOnAir, isReminded: isReminded))
+        .accessibilityLabel(accessibilityLabel(isOnAir: isOnAir, isOver: isOver, isReminded: isReminded))
         .accessibilityHint("Shows the details")
         .accessibilityAddTraits(.isButton)
+        .accessibilityActions {
+            Button("Watch \(channel.item.displayName)") {
+                playChannel(channel.item)
+            }
+            if ReminderCenter.canRemind(programme) {
+                Button(isReminded ? "Cancel Reminder" : "Remind Me") {
+                    Task {
+                        await epg.reminders.toggle(programme, on: channel.item)
+                    }
+                }
+            }
+        }
     }
 
     private func background(isOnAir: Bool, isOver: Bool) -> AnyShapeStyle {
@@ -503,10 +532,12 @@ private struct GuideProgrammeCell: View {
         return isOver ? AnyShapeStyle(.fill.quaternary) : AnyShapeStyle(.fill.tertiary)
     }
 
-    private func accessibilityLabel(isOnAir: Bool, isReminded: Bool) -> String {
+    private func accessibilityLabel(isOnAir: Bool, isOver: Bool, isReminded: Bool) -> String {
         var parts = [programme.title, channel.item.displayName, GuideFormat.timeRange(programme)]
         if isOnAir {
-            parts.append(String(localized: "On now"))
+            parts.append(String(localized: "On now, \(GuideFormat.remaining(programme, at: now))"))
+        } else if isOver {
+            parts.append(String(localized: "Ended"))
         }
         if isReminded {
             parts.append(String(localized: "Reminder set"))

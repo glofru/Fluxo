@@ -25,7 +25,7 @@ struct SmartSearchSections: View {
                 HStack(spacing: 10) {
                     ProgressView()
                     Text("Understanding your search…")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.secondaryText)
                 }
                 .accessibilityElement(children: .combine)
             } header: {
@@ -69,7 +69,7 @@ struct SmartSearchSections: View {
             Label("Smart Results", systemImage: "sparkles")
             if isFromModel {
                 Text("· Apple Intelligence")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.secondaryText)
             }
         }
     }
@@ -134,7 +134,8 @@ private struct SmartProgrammeRow: View {
             let programme = result.programme
             let isOnAir = programme.isOnAir(at: context.date)
             Button(action: action) {
-                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                // At the accessibility text sizes the time goes above the title.
+                AdaptiveStack(verticalAlignment: .firstTextBaseline, spacing: 12) {
                     VStack(alignment: .leading, spacing: 2) {
                         if isOnAir {
                             LiveBadge(compact: true)
@@ -145,7 +146,7 @@ private struct SmartProgrammeRow: View {
                             if !Calendar.current.isDateInToday(programme.start) {
                                 Text(GuideFormat.day(programme.start))
                                     .font(.caption2)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(Theme.secondaryText)
                             }
                         }
                     }
@@ -155,7 +156,7 @@ private struct SmartProgrammeRow: View {
                             .lineLimit(2)
                         Text([result.channel.displayName, playlistName].compactMap { $0 }.joined(separator: " · "))
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.secondaryText)
                             .lineLimit(1)
                         if isOnAir {
                             ProgrammeProgressBar(progress: programme.progress(at: context.date))

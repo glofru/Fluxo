@@ -107,7 +107,8 @@ private struct GuideSearchRow: View {
         let isOnAir = programme.isOnAir(at: now)
         let isReminded = epg.reminders.isScheduled(programme)
         Button(action: onSelect) {
-            HStack(alignment: .top, spacing: 12) {
+            // At the accessibility text sizes the time goes above the title.
+            AdaptiveStack(verticalAlignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
                     GuideTimeColumnText(date: programme.start)
                         .font(.subheadline.weight(.semibold).monospacedDigit())
@@ -127,7 +128,7 @@ private struct GuideSearchRow: View {
                     if let detail = programme.detailLine {
                         Text(detail)
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.secondaryText)
                             .lineLimit(1)
                     }
                     HStack(spacing: 6) {
@@ -139,7 +140,7 @@ private struct GuideSearchRow: View {
                             .lineLimit(1)
                     }
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.secondaryText)
                     if isOnAir {
                         ProgrammeProgressBar(progress: programme.progress(at: now), height: 3)
                             .frame(maxWidth: 160)
@@ -174,12 +175,12 @@ private struct GuideSearchRow: View {
                         await epg.reminders.toggle(programme, on: result.channel)
                     }
                 }
-                .tint(Theme.accent)
+                .tint(Theme.accentFill)
             } else {
                 Button("Watch", systemImage: "play.fill") {
                     playChannel(result.channel)
                 }
-                .tint(Theme.live)
+                .tint(Theme.liveFill)
             }
         }
     }

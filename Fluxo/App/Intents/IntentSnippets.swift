@@ -25,7 +25,7 @@ struct NowNextSnippetView: View {
                         LiveBadge(compact: true)
                         Text(GuideFormat.remaining(current, at: now))
                             .font(.caption.weight(.medium))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.secondaryText)
                     }
                     Text(current.title)
                         .font(.headline)
@@ -33,7 +33,7 @@ struct NowNextSnippetView: View {
                     if let detail = current.detailLine {
                         Text(detail)
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.secondaryText)
                             .lineLimit(1)
                     }
                     ProgrammeProgressBar(progress: current.progress(at: now), height: 4)
@@ -92,7 +92,7 @@ struct ProgrammeListSnippetView: View {
                             .lineLimit(1)
                         Text([row.channelName, row.note].compactMap { $0 }.joined(separator: " · "))
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.secondaryText)
                             .lineLimit(1)
                     }
                 }
@@ -137,7 +137,7 @@ struct ChannelListSnippetView: View {
                                 }
                             }
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.secondaryText)
                         }
                     }
                 }
@@ -186,7 +186,7 @@ struct ConfirmationSnippetView: View {
                 if let subtitle {
                     Text(subtitle)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.secondaryText)
                         .lineLimit(2)
                 }
             }

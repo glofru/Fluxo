@@ -207,7 +207,7 @@ struct FavoritesView: View {
                     .tag(ChannelContentKind?.some(kind))
             }
         }
-        .pickerStyle(.segmented)
+        .segmentedPickerStyleAdaptingToTextSize()
         .labelsHidden()
     }
 
@@ -256,6 +256,7 @@ struct FavoritesView: View {
                     .padding(.horizontal, 6)
             }
             .buttonStyle(.glassProminent)
+            .tint(Theme.accentFill)
         }
     }
 
@@ -297,6 +298,7 @@ private struct FavoriteRow: View {
     @Environment(AppNavigation.self) private var navigation
     @Environment(EPGStore.self) private var epg
     @Environment(\.playChannel) private var playChannel
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var sourceID = UUID().uuidString
 
     var body: some View {
@@ -304,18 +306,20 @@ private struct FavoriteRow: View {
             Button {
                 playChannel(item, from: sourceID)
             } label: {
-                HStack(spacing: 14) {
+                // At the accessibility text sizes the artwork sits above the text, which gets the whole width.
+                AdaptiveStack(spacing: 14) {
                     ChannelLogoTile(item: item, size: item.kind.usesPosterArtwork ? Self.posterSize : Self.logoSize, cornerRadius: 12)
                         .playerTransitionSource(id: sourceID, cornerRadius: 12)
+                        .accessibilityHidden(true)
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(item.displayName)
                             .font(.headline)
-                            .lineLimit(2)
+                            .lineLimit(dynamicTypeSize.prefersStackedLayout ? 5 : 2)
                         Text(subtitle)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                            .foregroundStyle(Theme.secondaryText)
+                            .lineLimit(dynamicTypeSize.prefersStackedLayout ? 3 : 1)
                         if item.kind == .live {
                             RowProgrammeInfo(item: item)
                         } else {
@@ -327,6 +331,8 @@ private struct FavoriteRow: View {
                 .contentShape(.rect)
             }
             .buttonStyle(.plain)
+            .accessibilityHint(item.kind == .live ? "Plays the channel" : "Plays the video")
+            .channelAccessibilityActions(item, isFavorite: true)
 
             Menu {
                 actions
@@ -338,8 +344,9 @@ private struct FavoriteRow: View {
             }
             .menuStyle(.button)
             .buttonStyle(.borderless)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Theme.secondaryText)
             .accessibilityLabel("More Actions")
+            .accessibilityHint(item.displayName)
         }
         .padding(.vertical, 4)
         .contextMenu {
@@ -349,7 +356,7 @@ private struct FavoriteRow: View {
             Button("Play", systemImage: "play.fill") {
                 playChannel(item, from: sourceID)
             }
-            .tint(Theme.accent)
+            .tint(Theme.accentFill)
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button("Remove", systemImage: "star.slash.fill", role: .destructive) {
@@ -359,12 +366,8 @@ private struct FavoriteRow: View {
                 Button("Guide", systemImage: "calendar.day.timeline.left") {
                     navigation.scheduleChannel = item
                 }
-                .tint(Theme.cyan)
+                .tint(Theme.cyanFill)
             }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityAction(named: "Remove from Favorites") {
-            library.setFavorite(false, for: item)
         }
     }
 

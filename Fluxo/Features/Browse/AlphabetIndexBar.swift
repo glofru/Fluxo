@@ -25,7 +25,7 @@ struct AlphabetIndexBar: View {
                     .background {
                         if letter == activeLetter {
                             Circle()
-                                .fill(Theme.accent)
+                                .fill(Theme.accentFill)
                                 .frame(width: 17, height: 17)
                         }
                     }
@@ -50,7 +50,7 @@ struct AlphabetIndexBar: View {
                     .font(.largeTitle.bold())
                     .foregroundStyle(.white)
                     .frame(width: 64, height: 64)
-                    .background(Theme.accent.gradient, in: .rect(cornerRadius: 16, style: .continuous))
+                    .background(Theme.accentFill.gradient, in: .rect(cornerRadius: 16, style: .continuous))
                     .shadow(color: .black.opacity(0.25), radius: 10, y: 4)
                     .offset(x: -80)
                     .transition(.scale.combined(with: .opacity))

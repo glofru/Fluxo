@@ -34,6 +34,21 @@ struct GuideView: View {
     @State private var showsSources = false
     @State private var showsAddSource = false
     @State private var scrollToNowRequest = 0
+    @AppStorage("guide.layout") private var layout = GuideLayout.automatic
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    /// The time grid, or the list of channels with what is on now and next (the automatic layout at the
+    /// accessibility text sizes, where a grid shows too little; also handy with VoiceOver).
+    private var showsList: Bool {
+        switch layout {
+        case .automatic:
+            return dynamicTypeSize.prefersStackedLayout
+        case .grid:
+            return false
+        case .list:
+            return true
+        }
+    }
 
     private var scope: LibraryScope {
         LibraryScope(playlists: playlists, selection: PlaylistSelection(rawValue: selectionRawValue))
@@ -90,7 +105,7 @@ struct GuideView: View {
             NavigationStack {
                 RemindersView()
             }
-            .presentationDetents([.medium, .large])
+            .mediumAndLargeDetentsAdaptingToTextSize()
         }
         .sheet(isPresented: $showsAddSource) {
             AddGuideSourceView()
@@ -99,7 +114,7 @@ struct GuideView: View {
             NavigationStack {
                 GuideSourcesView()
             }
-            .presentationDetents([.medium, .large])
+            .mediumAndLargeDetentsAdaptingToTextSize()
         }
     }
 
@@ -167,6 +182,7 @@ struct GuideView: View {
                     showsSources = true
                 }
                 .buttonStyle(.glassProminent)
+                .tint(Theme.accentFill)
             }
         } else if !term.isEmpty {
             GuideSearchResultsView(term: term, importIDs: scope.importIDs, showsPlaylistNames: scope.showsPlaylistNames, playlistNames: scope.playlistNames) { selection in
@@ -179,6 +195,8 @@ struct GuideView: View {
             let visible = groupFilter.map { group in channels.filter { $0.item.groupName == group } } ?? channels
             if visible.isEmpty {
                 noChannels
+            } else if showsList {
+                GuideChannelList(channels: visible)
             } else {
                 VStack(spacing: 0) {
                     if groupFilter == nil && Calendar.current.isDateInToday(day) {
@@ -211,7 +229,7 @@ struct GuideView: View {
                 if let message = epg.progress.values.first?.message {
                     Text(message)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.secondaryText)
                         .monospacedDigit()
                 }
             }
@@ -226,6 +244,7 @@ struct GuideView: View {
                     epg.refreshAll()
                 }
                 .buttonStyle(.glassProminent)
+                .tint(Theme.accentFill)
                 Button("Guide Sources") {
                     showsSources = true
                 }
@@ -268,6 +287,13 @@ struct GuideView: View {
                 Button("Guide Sources…", systemImage: "list.bullet.rectangle") {
                     showsSources = true
                 }
+                Picker("Layout", systemImage: showsList ? "list.bullet" : "calendar.day.timeline.left", selection: $layout) {
+                    ForEach(GuideLayout.allCases, id: \.self) { layout in
+                        Text(layout.title)
+                            .tag(layout)
+                    }
+                }
+                .pickerStyle(.menu)
             } label: {
                 if epg.isRefreshing {
                     ProgressView()
@@ -319,6 +345,39 @@ struct GuideView: View {
     }
 }
 
+/// How the guide shows its channels.
+enum GuideLayout: String, CaseIterable {
+    /// The grid, or the list at the accessibility text sizes.
+    case automatic
+    case grid
+    case list
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .automatic:
+            return "Automatic"
+        case .grid:
+            return "Grid"
+        case .list:
+            return "List"
+        }
+    }
+}
+
+/// The guide as a list: each channel with what is on now (with its progress) and next. A tap plays the channel;
+/// swipe, the context menu or the VoiceOver actions open its schedule for today and the next days.
+private struct GuideChannelList: View {
+    let channels: [GuideChannel]
+
+    var body: some View {
+        List(channels) { channel in
+            ChannelListRow(item: channel.item, subtitle: channel.item.groupName.isEmpty ? nil : channel.item.groupName, showsNumber: false)
+        }
+        .listStyle(.plain)
+        .accessibilityRotor("Channels", entries: channels, entryID: \.id, entryLabel: \.item.displayName)
+    }
+}
+
 /// Day chips (today and the next days) and "Now".
 private struct GuideDayBar: View {
     @Binding var day: Date
@@ -343,9 +402,11 @@ private struct GuideDayBar: View {
                             .font(.subheadline.weight(.semibold))
                             .padding(.horizontal, 12)
                             .padding(.vertical, 7)
+                            .frame(minHeight: 44)
+                            .contentShape(.capsule)
                     }
                     .buttonStyle(.plain)
-                    .glassEffect(.regular.tint(Theme.accent).interactive(), in: .capsule)
+                    .glassEffect(.regular.tint(Theme.accentFill).interactive(), in: .capsule)
                     .accessibilityHint("Scrolls the guide to the current time")
 
                     ForEach(days, id: \.self) { date in
@@ -355,10 +416,15 @@ private struct GuideDayBar: View {
                                 day = date
                             }
                         } label: {
-                            Text(label(for: date))
-                                .font(.subheadline.weight(isSelected ? .semibold : .regular))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 7)
+                            HStack(spacing: 4) {
+                                SelectionCheckmark(isSelected: isSelected)
+                                Text(label(for: date))
+                            }
+                            .font(.subheadline.weight(isSelected ? .semibold : .regular))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .frame(minHeight: 44)
+                            .contentShape(.capsule)
                         }
                         .buttonStyle(.plain)
                         .glassEffect(isSelected ? .regular.tint(Theme.accent.opacity(0.35)).interactive() : .regular.interactive(), in: .capsule)
@@ -398,6 +464,7 @@ private struct GuideNoSourcesView: View {
         } actions: {
             Button("Add Guide Source", systemImage: "plus", action: onAdd)
                 .buttonStyle(.glassProminent)
+                .tint(Theme.accentFill)
         }
     }
 }

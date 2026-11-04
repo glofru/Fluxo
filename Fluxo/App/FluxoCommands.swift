@@ -3,8 +3,9 @@
 //  Fluxo
 //
 //  Menu bar commands (macOS, and the iPad menu bar / keyboard shortcut overlay):
-//  File > New Window (iPad) / Add Playlist / Refresh / Refresh TV Guide, a Go menu with the app's sections, and a
-//  Playback menu that drives the single app-wide player. Commands act on the focused window.
+//  File > New Window (iPad) / Add Playlist / Refresh / Refresh TV Guide, a Go menu with the app's sections (⌘1 to ⌘6
+//  and ⌘F, every screen from the keyboard), and a Playback menu that drives the single app-wide player. Commands act
+//  on the focused window.
 //
 
 import SwiftData
@@ -94,7 +95,8 @@ private struct NewWindowButton: View {
 }
 #endif
 
-/// Go: the sections of the focused window (⌘1 … ⌘6), and Search (⌘F).
+/// Go: the sections of the focused window (⌘1 … ⌘6), and Search (⌘F). Keyboard access to every screen (Full Keyboard
+/// Access, Voice Control "Press Command 2").
 private struct GoMenuItems: View {
     let windows: WindowCoordinator
 
@@ -219,6 +221,12 @@ private struct PlaybackMenuItems: View {
             player.toggleFillsScreen()
         }
         .disabled(!hasChannel)
+
+        // Audio tracks and subtitles of what plays (keyboard and menu bar access to the player's menu).
+        Menu("Audio and Subtitles") {
+            MediaSelectionMenuContent(controller: player.mediaSelection)
+        }
+        .disabled(!player.mediaSelection.hasChoices || player.isCasting)
 
         Divider()
 

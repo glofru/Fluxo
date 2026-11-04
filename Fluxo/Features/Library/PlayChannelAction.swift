@@ -44,6 +44,35 @@ struct PlayChannelAction: Equatable {
         player?.play(item)
     }
 
+    /// Plays a live channel and starts recording it as soon as the engine can (its input is open), within 20 s.
+    /// Says why when it cannot.
+    @MainActor
+    func playAndRecord(_ item: ChannelItem) {
+        guard let player else {
+            return
+        }
+        self(item)
+        Task { @MainActor in
+            let clock = ContinuousClock()
+            let deadline = clock.now + .seconds(20)
+            while !player.canRecord, !player.isRecording, clock.now < deadline {
+                if case .failed = player.playbackState {
+                    break
+                }
+                try? await Task.sleep(for: .milliseconds(250))
+            }
+            guard player.currentItem?.id == item.id else {
+                // Another channel started meanwhile.
+                return
+            }
+            if player.canRecord, !player.isRecording {
+                player.startRecording()
+            } else if !player.isRecording {
+                AccessibilityAnnouncer.announce(String(localized: "\(item.displayName) can't be recorded"), priority: .high)
+            }
+        }
+    }
+
     static func == (lhs: PlayChannelAction, rhs: PlayChannelAction) -> Bool {
         lhs.library === rhs.library && lhs.player === rhs.player && lhs.coordinator === rhs.coordinator && lhs.windowID == rhs.windowID
     }

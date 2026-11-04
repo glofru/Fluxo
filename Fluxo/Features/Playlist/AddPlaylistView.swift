@@ -142,7 +142,9 @@ struct AddPlaylistView: View {
                             urlText = ""
                         } label: {
                             Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Theme.secondaryText)
+                                .frame(minWidth: 44, minHeight: 44)
+                                .contentShape(.rect)
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Clear URL")
@@ -191,7 +193,7 @@ struct AddPlaylistView: View {
                                 .font(.headline)
                             Text(message)
                                 .font(.callout)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Theme.secondaryText)
                         }
                     } icon: {
                         Image(systemName: "exclamationmark.triangle.fill")

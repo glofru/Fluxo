@@ -76,6 +76,8 @@ struct CategoryDetailView: View {
     let title: String
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(ChannelLibrary.self) private var library
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage(BrowsePreferences.storageKey) private var preferences = BrowsePreferences()
 
     /// The category shown; starts as the one of the route and changes with the chip bar.
@@ -210,6 +212,7 @@ struct CategoryDetailView: View {
             }
         }
         .listStyle(.plain)
+        .channelListRotors(model.items, library: library)
         // Room for the A–Z index along the trailing edge.
         .contentMargins(.trailing, showsLetterIndex ? 26 : 0, for: .scrollContent)
         .scrollDismissesKeyboard(.immediately)
@@ -224,7 +227,7 @@ struct CategoryDetailView: View {
 
     private func grid(kind: ChannelContentKind, order: ChannelSortOrder) -> some View {
         GeometryReader { geometry in
-            let metrics = GridMetrics(width: geometry.size.width, usesPosters: kind.usesPosterArtwork)
+            let metrics = GridMetrics(width: geometry.size.width, usesPosters: kind.usesPosterArtwork, isLargeText: dynamicTypeSize.prefersStackedLayout)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 20) {
                     if order == .mostWatched, !model.mostWatched.isEmpty {
@@ -255,6 +258,7 @@ struct CategoryDetailView: View {
                 }
                 .padding(.vertical, 12)
             }
+            .channelListRotors(model.items, library: library)
             .scrollDismissesKeyboard(.immediately)
         }
     }
@@ -268,7 +272,7 @@ struct CategoryDetailView: View {
         } else if let request = model.request, !request.term.isEmpty, model.items.count >= CategoryChannelsModel.searchLimit {
             Text("Showing the first \(CategoryChannelsModel.searchLimit) matches. Type more to narrow the search.")
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.secondaryText)
         }
     }
 
@@ -396,11 +400,14 @@ struct GridMetrics {
     let columns: [GridItem]
     let cardWidth: CGFloat
 
-    init(width: CGFloat, usesPosters: Bool) {
-        let minimum: CGFloat = usesPosters ? 104 : 158
+    /// - Parameter isLargeText: the accessibility text sizes: wider cards (one live card per row on a phone), so
+    ///   their titles and programmes stay readable.
+    init(width: CGFloat, usesPosters: Bool, isLargeText: Bool = false) {
+        let minimum: CGFloat = isLargeText ? (usesPosters ? 150 : 300) : (usesPosters ? 104 : 158)
         let spacing = HomeLayout.rowSpacing
         let available = max(minimum, width - HomeLayout.horizontalMargin * 2)
-        let count = max(usesPosters ? 3 : 2, Int((available + spacing) / (minimum + spacing)))
+        let fewest = isLargeText ? (usesPosters ? 2 : 1) : (usesPosters ? 3 : 2)
+        let count = max(fewest, Int((available + spacing) / (minimum + spacing)))
         let fitted = (available - spacing * CGFloat(count - 1)) / CGFloat(count)
         // Narrow phones: never narrower than what still shows a readable card.
         cardWidth = max(usesPosters ? 92 : 140, floor(fitted))

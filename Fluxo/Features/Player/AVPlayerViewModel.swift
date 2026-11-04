@@ -179,6 +179,8 @@ final class AVPlayerViewModel {
 
     let player = AVPlayer()
     let timeline = PlaybackTimeline()
+    /// Audio tracks and subtitles of the item that plays.
+    let mediaSelection = MediaSelectionController()
     let recordings: RecordingStore
     /// The platform player view, kept alive across player screen presentations for PiP.
     let surface: PlayerSurface
@@ -723,6 +725,7 @@ final class AVPlayerViewModel {
 
         player.pause()
         player.replaceCurrentItem(with: nil)
+        mediaSelection.attach(nil)
 
         let recordings = recordings
         remuxer.stop(recordingCompletion: { url in
@@ -767,6 +770,10 @@ final class AVPlayerViewModel {
                 guard let self, let item, item === self.player.currentItem else {
                     return
                 }
+                if status == .readyToPlay {
+                    // HLS renditions are known once the playlist is read.
+                    self.mediaSelection.reload()
+                }
                 if status == .failed {
                     self.handleItemFailure(item.error)
                 } else if status == .readyToPlay, let position = self.pendingResumePosition {
@@ -795,6 +802,7 @@ final class AVPlayerViewModel {
             .store(in: &itemCancellables)
 
         player.replaceCurrentItem(with: item)
+        mediaSelection.attach(item)
     }
 
     private func handleItemFailure(_ error: Error?) {

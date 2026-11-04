@@ -297,10 +297,11 @@ private struct SettingsHeader: View {
 
     @Query(sort: \Playlist.createdOn) private var playlists: [Playlist]
     @Environment(ChannelLibrary.self) private var library
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(spacing: 14) {
-            HStack(spacing: 14) {
+            AdaptiveStack(spacing: 14) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 15, style: .continuous)
                         .fill(Theme.brandGradient)
@@ -321,12 +322,15 @@ private struct SettingsHeader: View {
                         .font(.title2.bold())
                     Text("Version \(SettingsViewModel.appVersion)")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.secondaryText)
                 }
                 Spacer(minLength: 0)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            HStack(spacing: 8) {
+            // Four tiles side by side; one row each at the accessibility text sizes.
+            let layout = dynamicTypeSize.prefersStackedLayout ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
+            layout {
                 stat(value: playlists.count, title: "Playlists", systemImage: "list.bullet.rectangle")
                 stat(value: playlists.reduce(0) { $0 + $1.channelCount }, title: "Channels", systemImage: "play.tv")
                 stat(value: library.favoriteKeys.count, title: "Favorites", systemImage: "star.fill")
@@ -336,17 +340,40 @@ private struct SettingsHeader: View {
         .padding(.vertical, 6)
     }
 
+    @ViewBuilder
     private func stat(value: Int, title: LocalizedStringKey, systemImage: String) -> some View {
+        if dynamicTypeSize.prefersStackedLayout {
+            HStack(spacing: 10) {
+                Image(systemName: systemImage)
+                    .foregroundStyle(.tint)
+                    .accessibilityHidden(true)
+                Text(value, format: .number.notation(.compactName))
+                    .font(.headline.monospacedDigit())
+                Text(title)
+                    .foregroundStyle(Theme.secondaryText)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Theme.surface, in: .rect(cornerRadius: 12, style: .continuous))
+            .accessibilityElement(children: .combine)
+        } else {
+            statTile(value: value, title: title, systemImage: systemImage)
+        }
+    }
+
+    private func statTile(value: Int, title: LocalizedStringKey, systemImage: String) -> some View {
         VStack(spacing: 3) {
             Image(systemName: systemImage)
                 .font(.caption)
                 .foregroundStyle(.tint)
+                .accessibilityHidden(true)
             Text(value, format: .number.notation(.compactName))
                 .font(.headline.monospacedDigit())
                 .lineLimit(1)
             Text(title)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.secondaryText)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
         }

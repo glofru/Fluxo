@@ -46,13 +46,18 @@ struct CategoryCard: View {
     /// Fills the grid column instead of a fixed width (category browser).
     var fillsWidth = false
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// Strip cards grow a little with the text size, and their names wrap.
+    private var scale = CardScale(maximum: 1.3)
+
     private let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
 
     var body: some View {
+        let width = scale.scaled(size.width)
         NavigationLink(value: group.route) {
             VStack(alignment: .leading, spacing: 8) {
                 CategoryMosaic(group: group, height: size.mosaicHeight)
-                    .frame(maxWidth: fillsWidth ? .infinity : size.width)
+                    .frame(maxWidth: fillsWidth ? .infinity : width)
                     .frame(height: size.mosaicHeight)
                     .clipShape(shape)
                     .overlay {
@@ -63,15 +68,15 @@ struct CategoryCard: View {
                     Text(group.displayName)
                         .font(Theme.Typography.cardTitle)
                         .foregroundStyle(.primary)
-                        .lineLimit(1)
+                        .lineLimit(CardTextMetrics.titleLineLimit(1, at: dynamicTypeSize))
                     Text(countText)
                         .font(Theme.Typography.cardSubtitle)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .foregroundStyle(Theme.secondaryText)
+                        .lineLimit(CardTextMetrics.titleLineLimit(1, at: dynamicTypeSize))
                 }
                 .padding(.horizontal, 2)
             }
-            .frame(width: fillsWidth ? nil : size.width, alignment: .leading)
+            .frame(width: fillsWidth ? nil : width, alignment: .leading)
             .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: .leading)
             .contentShape(.rect)
         }
@@ -81,6 +86,7 @@ struct CategoryCard: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(accessibilityLabel))
         .accessibilityAddTraits(.isButton)
+        .accessibilityInputLabels([Text(group.displayName)])
         .help(group.displayName)
     }
 
@@ -269,11 +275,12 @@ struct CategoryChipBar: View {
             onSelect(group)
         } label: {
             HStack(spacing: 6) {
+                SelectionCheckmark(isSelected: isSelected)
                 Text(group.displayName)
                     .lineLimit(1)
                 Text(group.channelCount, format: .number)
                     .font(.caption.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(isSelected ? AnyShapeStyle(Color.white.opacity(0.8)) : AnyShapeStyle(.secondary))
+                    .foregroundStyle(isSelected ? AnyShapeStyle(Color.white.opacity(0.85)) : AnyShapeStyle(Theme.secondaryText))
             }
             .font(.subheadline.weight(isSelected ? .semibold : .regular))
             .foregroundStyle(isSelected ? Color.white : Color.primary)
@@ -282,7 +289,7 @@ struct CategoryChipBar: View {
             .contentShape(.capsule)
         }
         .buttonStyle(.plain)
-        .glassEffect(isSelected ? .regular.tint(Theme.accent).interactive() : .regular.interactive(), in: .capsule)
+        .glassEffect(isSelected ? .regular.tint(Theme.accentFill).interactive() : .regular.interactive(), in: .capsule)
         .glassEffectID(isSelected ? "category.selection" : group.id, in: glassNamespace)
         .accessibilityLabel(Text("\(group.displayName), \(CategoryCard.countText(group))"))
         .accessibilityAddTraits(isSelected ? .isSelected : [])

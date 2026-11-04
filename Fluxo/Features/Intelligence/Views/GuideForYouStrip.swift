@@ -83,12 +83,12 @@ struct GuideForYouStrip: View {
                     } else if list.isPersonalized {
                         Text("Apple Intelligence")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.secondaryText)
                     }
                     Spacer(minLength: 8)
                     Image(systemName: "chevron.down")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.secondaryText)
                         .rotationEffect(.degrees(isCollapsed ? -90 : 0))
                         .accessibilityHidden(true)
                 }
@@ -169,7 +169,7 @@ struct ProgrammeRecommendationCard: View {
                 .accessibilityHidden(true)
             }
             .font(.caption.weight(.medium))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Theme.secondaryText)
             .monospacedDigit()
 
             Text(programme.title)
@@ -178,7 +178,7 @@ struct ProgrammeRecommendationCard: View {
                 .multilineTextAlignment(.leading)
             Text(recommendation.channel.item.displayName)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.secondaryText)
                 .lineLimit(1)
             // Secondary text (readable on the card in dark mode too), with a tinted icon.
             Label {
@@ -186,7 +186,7 @@ struct ProgrammeRecommendationCard: View {
                     .lineLimit(Self.reasonLines)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.secondaryText)
             } icon: {
                 Image(systemName: isPersonalized ? "sparkles" : "star")
                     .foregroundStyle(.tint)

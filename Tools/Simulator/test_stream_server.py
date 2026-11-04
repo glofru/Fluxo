@@ -10,6 +10,9 @@ Serves on 127.0.0.1 only (never another interface; the simulator shares the Mac'
                        MAX_LIVE_CLIENTS at once (more get 503, so a retry loop cannot start many encoders)
   /movie/clip.mp4      a 60 s on-demand MP4 (byte ranges supported)
   /movie/clip.ts       the same clip as an on-demand MPEG-TS file
+  /tracks/master.m3u8  a 60 s on-demand HLS with two audio renditions (English, Italiano: an audio description)
+                       and two WebVTT subtitle renditions (English SDH, Italiano), for the player's Audio and
+                       Subtitles menu
   /logo/<n>.png        a 200x120 gradient logo (n = 0 to 239), used by the "large" debug seed
   /poster/<n>.png      a 240x360 gradient poster
 
@@ -41,6 +44,7 @@ CONTENT_TYPES = {
     ".m3u": "audio/x-mpegurl",
     ".ts": "video/mp2t",
     ".mp4": "video/mp4",
+    ".vtt": "text/vtt",
 }
 
 
@@ -76,6 +80,7 @@ class Streams:
         self.hls_dir = os.path.join(work, "hls")
         self.clip_mp4 = os.path.join(work, "clip.mp4")
         self.clip_ts = os.path.join(work, "clip.ts")
+        self.tracks_dir = os.path.join(work, "tracks")
         self.hls_process = None
         self.stopping = threading.Event()
         self.clients = set()
@@ -100,6 +105,54 @@ class Streams:
             [self.ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", self.clip_mp4,
              "-c", "copy", "-bsf:v", "h264_mp4toannexb", "-f", "mpegts", self.clip_ts],
             check=True)
+
+    def prepare_tracks(self):
+        """The on-demand HLS with alternate audio and subtitles (/tracks/): the video with the English audio,
+        an Italian audio-only rendition (tagged as an audio description), and one WebVTT subtitle file per
+        language, each as a single-segment playlist."""
+        master = os.path.join(self.tracks_dir, "master.m3u8")
+        if os.path.exists(master):
+            return
+        log("generating the on-demand HLS with audio and subtitle renditions")
+        os.makedirs(self.tracks_dir, exist_ok=True)
+        common = [self.ffmpeg, "-hide_banner", "-loglevel", "error", "-y"]
+        hls = ["-f", "hls", "-hls_time", "4", "-hls_playlist_type", "vod"]
+        subprocess.run(
+            common + ["-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=30:duration=60",
+                      "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=60",
+                      "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-g", "60",
+                      "-c:a", "aac", "-b:a", "96k"] + hls
+            + ["-hls_segment_filename", os.path.join(self.tracks_dir, "main-%03d.ts"), os.path.join(self.tracks_dir, "main.m3u8")],
+            check=True)
+        subprocess.run(
+            common + ["-f", "lavfi", "-i", "sine=frequency=880:sample_rate=48000:duration=60", "-c:a", "aac", "-b:a", "96k"] + hls
+            + ["-hls_segment_filename", os.path.join(self.tracks_dir, "audio-it-%03d.ts"), os.path.join(self.tracks_dir, "audio-it.m3u8")],
+            check=True)
+        texts = {"en": "[Music] Subtitle line {} in English", "it": "Sottotitolo {} in italiano"}
+        for language, text in texts.items():
+            # The MPEG-TS segments start at 1.4 s (90 kHz clock): the cues are mapped onto that timeline.
+            cues = ["WEBVTT", "X-TIMESTAMP-MAP=MPEGTS:126000,LOCAL:00:00:00.000", ""]
+            for index in range(12):
+                start = index * 5
+                cues += [f"00:00:{start:02d}.000 --> 00:00:{start + 4:02d}.000", text.format(index + 1), ""]
+            with open(os.path.join(self.tracks_dir, f"subs-{language}.vtt"), "w") as file:
+                file.write("\n".join(cues))
+            with open(os.path.join(self.tracks_dir, f"subs-{language}.m3u8"), "w") as file:
+                file.write("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:60\n#EXT-X-PLAYLIST-TYPE:VOD\n"
+                           f"#EXTINF:60.0,\nsubs-{language}.vtt\n#EXT-X-ENDLIST\n")
+        with open(master, "w") as file:
+            file.write(
+                "#EXTM3U\n#EXT-X-VERSION:4\n"
+                '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="English",LANGUAGE="en",DEFAULT=YES,AUTOSELECT=YES\n'
+                '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="Italiano",LANGUAGE="it",DEFAULT=NO,AUTOSELECT=YES,'
+                'CHARACTERISTICS="public.accessibility.describes-video",URI="audio-it.m3u8"\n'
+                '#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="English",LANGUAGE="en",DEFAULT=NO,AUTOSELECT=YES,'
+                'CHARACTERISTICS="public.accessibility.transcribes-spoken-dialog,public.accessibility.describes-music-and-sound",'
+                'URI="subs-en.m3u8"\n'
+                '#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="Italiano",LANGUAGE="it",DEFAULT=NO,AUTOSELECT=YES,'
+                'URI="subs-it.m3u8"\n'
+                '#EXT-X-STREAM-INF:BANDWIDTH=2000000,CODECS="avc1.64001f,mp4a.40.2",RESOLUTION=1280x720,AUDIO="aud",SUBTITLES="subs"\n'
+                "main.m3u8\n")
 
     def live_input_arguments(self, pattern):
         return ["-re", "-f", "lavfi", "-i", f"{pattern}=size=1280x720:rate=30",
@@ -133,6 +186,7 @@ class Streams:
             ("Test Pattern (MPEG-TS)", "Test Streams", f"{base}/live/test-pattern"),
             ("Test Clip (MP4)", "Test On Demand", f"{base}/movie/clip.mp4"),
             ("Test Clip (MPEG-TS)", "Test On Demand", f"{base}/movie/clip.ts"),
+            ("Test Clip (Audio and Subtitles)", "Test On Demand", f"{base}/tracks/master.m3u8"),
         ]
         lines = ["#EXTM3U"]
         for name, group, url in entries:
@@ -199,6 +253,13 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_error(404)
                 return
             self.send_file(os.path.join(self.streams.hls_dir, name), send_body, cacheable=name.endswith(".ts"))
+        elif path.startswith("/tracks/"):
+            name = path[len("/tracks/"):]
+            # Only plain file names of the tracks directory.
+            if not re.fullmatch(r"[A-Za-z0-9_-]+\.(m3u8|ts|vtt)", name):
+                self.send_error(404)
+                return
+            self.send_file(os.path.join(self.streams.tracks_dir, name), send_body, cacheable=not name.endswith(".m3u8"))
         elif re.fullmatch(r"/(logo|poster)/\d{1,3}\.png", path):
             kind, number = path[1:-len(".png")].split("/")
             size = (200, 120) if kind == "logo" else (240, 360)
@@ -321,6 +382,7 @@ def main():
     os.makedirs(arguments.work, exist_ok=True)
     streams = Streams(arguments.ffmpeg, arguments.work, arguments.port)
     streams.prepare_clips()
+    streams.prepare_tracks()
     streams.start_hls()
 
     Handler.streams = streams

@@ -162,6 +162,8 @@ enum DebugSeedCatalog {
         let onDemand: [(String, String)] = [
             ("Test Clip (MP4)", "\(base)/movie/clip.mp4"),
             ("Test Clip (MPEG-TS)", "\(base)/movie/clip.ts"),
+            // Two audio renditions (one an audio description) and two subtitle renditions (one SDH).
+            ("Test Clip (Audio and Subtitles)", "\(base)/tracks/master.m3u8"),
         ]
         for (name, url) in onDemand {
             playlist.entries.append(.init(name: name, group: "Test On Demand", url: url, logo: DebugArtwork.poster(title: name, subtitle: "Loopback")))

@@ -11,6 +11,7 @@ library that never touches a real one. Everything here runs on the Mac; nothing 
 | `cleanup.sh` | Deletes clones by name prefix (`fluxo-…` only). |
 | `test-stream.sh` | Loopback-only test streams for the player: live HLS, live raw MPEG-TS, on-demand MP4 / TS, and an M3U playlist of them. |
 | `gesture-tests.sh` | Real touches on a kept clone (`GestureTests/`, an XCUITest bundle that drives the installed app): mini player tap and swipe up, the player's drag down (follows, springs back, closes on a long drag or a flick, ignores horizontal drags), scrubbing that never closes the player, the X that stops playback, and nothing above the tab bar while nothing plays (at launch, back from the background, after stopping with the tab bar minimized, after a relaunch). Needs `test-stream.sh`; quit Fluxo on other booted clones first, since every simulator shares the Mac's loopback interface and so the player's local stream port. |
+| `accessibility-audit.sh` | The Xcode accessibility audit (`AccessibilityAudit/`, an XCUITest bundle) of 15 screens of the installed app on a kept clone, in the variants `default`, `ax5` (the largest text size; also audits Dynamic Type and clipped text) and `contrast` (dark mode, Increase Contrast). One `report.txt` per variant with every issue, accepted ones marked with the reason (`knownIssues`), and a screenshot per screen, in `/tmp/fluxo-shots/<clone>/accessibility-audit/<variant>/`. With `FLUXO_TEST_STREAM_URL` (test-stream.sh running) it also checks the player's Audio and Subtitles menu. |
 | `contact_sheet.swift` | Combines screenshots into one labelled grid (`run.sh` does it when a run makes several). |
 
 The app side is in `Fluxo/App/Debug` (`DebugLaunchOptions`, `DebugHarness`, `DebugRoutes`, `DebugSeeder`,
@@ -185,7 +186,7 @@ generated M3U files, then gets favorites, a watch history and three recordings:
   Arabic and Greek names.
 - **Cinema Club**: 96 movies in 8 groups and 4 series groups (episodes `Show S01E01`), with Xtream-style
   `/movie/` and `/series/` URLs.
-- **Loopback Test**: "Test Pattern (HLS)", "Test Pattern (MPEG-TS)", "Test Clip (MP4)", "Test Clip
+- **Loopback Test**: "Test Pattern (HLS)", "Test Pattern (MPEG-TS)", "Test Clip (MP4)", "Test Clip (Audio and Subtitles)", "Test Clip
   (MPEG-TS)" (the streams of `test-stream.sh`) and "Unreachable Channel" (fails at once).
 
 Live channels have iptv-org style `tvg-id`s (`SkySportF1.it`, `BBCOneHD.uk`). Logos and posters are
@@ -210,7 +211,7 @@ It serves on `127.0.0.1:18080` only (`PORT=` changes the port; the address canno
 Simulator shares the Mac's loopback interface): `/playlist.m3u`, `/hls/live.m3u8` (live HLS with a 2
 minute window, played directly by AVPlayer), `/live/test-pattern` and `/live.ts` (live raw MPEG-TS
 through the remux engine, one real-time encoder per client, at most 4 at once, more get 503),
-`/movie/clip.mp4` and `/movie/clip.ts` (60 s on demand, with byte ranges), and `/logo/<n>.png`,
+`/movie/clip.mp4` and `/movie/clip.ts` (60 s on demand, with byte ranges), `/tracks/master.m3u8` (60 s on demand HLS with an English and an Italian audio rendition, the latter tagged as an audio description, and English SDH and Italian WebVTT subtitles: "Test Clip (Audio and Subtitles)"), and `/logo/<n>.png`,
 `/poster/<n>.png`. It needs `ffmpeg` (`/opt/homebrew/bin/ffmpeg`, or `FFMPEG=`), and `/usr/bin/python3`.
 The content is synthetic test patterns, so the loopback bind is its only protection; do not change it.
 

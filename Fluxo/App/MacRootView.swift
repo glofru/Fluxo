@@ -159,7 +159,7 @@ private struct MacSidebar: View {
             Section("Playlists") {
                 if playlists.isEmpty {
                     Text("No playlists yet")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.secondaryText)
                 }
                 ForEach(playlists) { playlist in
                     PlaylistSidebarRow(playlist: playlist, progress: importCenter.progress[playlist.uuid])
@@ -197,12 +197,12 @@ private struct PlaylistSidebarRow: View {
                 if let progress {
                     Text(progress.message)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.secondaryText)
                         .lineLimit(1)
                 } else if playlist.currentImportID != nil {
                     Text("\(playlist.channelCount.formatted()) channels")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.secondaryText)
                 } else {
                     Text("No channels yet")
                         .font(.caption)

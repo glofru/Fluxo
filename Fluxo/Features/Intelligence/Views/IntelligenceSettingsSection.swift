@@ -20,7 +20,7 @@ struct IntelligenceSettingsSection: View {
                             Text("Personal Suggestions and Smart Search")
                             Text("For You, For You Tonight, natural-language search and programme summaries.")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Theme.secondaryText)
                         }
                     } icon: {
                         Image(systemName: "sparkles")
@@ -31,7 +31,7 @@ struct IntelligenceSettingsSection: View {
                 if let explanation = intelligence.status.explanation, intelligence.status != .turnedOff {
                     Label(explanation, systemImage: "info.circle")
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.secondaryText)
                 }
             } header: {
                 Text("Apple Intelligence")

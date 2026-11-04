@@ -171,7 +171,7 @@ private struct PlayerChannelList: View {
                 LazyVStack(alignment: .leading, spacing: 2) {
                     Text(item.groupName.isEmpty ? String(localized: "Other") : item.groupName)
                         .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.secondaryText)
                         .textCase(.uppercase)
                         .padding(.horizontal, 18)
                         .padding(.bottom, 6)
@@ -201,7 +201,7 @@ private struct PlayerChannelList: View {
                     if viewModel.isRecording {
                         Label("Stop recording to switch channel.", systemImage: "record.circle")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.secondaryText)
                             .padding(18)
                     }
                 }
@@ -369,7 +369,7 @@ private struct PlayerScheduleHeader: View {
                 .frame(width: 32, height: 32)
                 .contentShape(.circle)
                 .buttonStyle(.plain)
-                .glassEffect(.regular.tint(Theme.accent).interactive(), in: .circle)
+                .glassEffect(.regular.tint(Theme.accentFill).interactive(), in: .circle)
                 .disabled(!canPlay)
                 .help("Watch this channel")
 
@@ -432,7 +432,7 @@ private struct PlayerGuideList: View {
                             } header: {
                                 Text(GuideFormat.day(day.day))
                                     .font(.footnote.weight(.semibold))
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(Theme.secondaryText)
                                     .textCase(.uppercase)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 6)
@@ -494,7 +494,7 @@ private struct PlayerGuideRow: View {
                 if let detail = programme.detailLine {
                     Text(detail)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.secondaryText)
                         .lineLimit(1)
                 }
                 if isOnAir {
@@ -502,7 +502,7 @@ private struct PlayerGuideRow: View {
                         ProgrammeProgressBar(progress: programme.progress(at: now), tint: Theme.live, height: 3)
                         Text(GuideFormat.remaining(programme, at: now))
                             .font(.caption2.monospacedDigit())
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.secondaryText)
                             .fixedSize()
                     }
                 }

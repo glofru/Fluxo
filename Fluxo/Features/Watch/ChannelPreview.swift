@@ -28,15 +28,20 @@ struct ChannelPreview: View {
     @Environment(ChannelLibrary.self) private var library
     @Environment(\.playChannel) private var playChannel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// The player zooms out of this card's artwork. Unique per card: the same channel can be in several rows.
     @State private var sourceID = UUID().uuidString
+    /// What the channel shows now, for VoiceOver (published by the guide overlay).
+    @State private var programmeSummary: String?
+    /// Standard-size cards grow with the text size, so their titles stay readable.
+    private var scale = CardScale()
 
     private let borderShape = RoundedRectangle(cornerRadius: 16, style: .continuous)
 
     private var size: CGSize {
         let standard = item.kind.usesPosterArtwork ? Self.posterSize : Self.liveSize
         guard let width else {
-            return standard
+            return scale.scaled(standard)
         }
         return CGSize(width: width, height: (width * standard.height / standard.width).rounded())
     }
@@ -61,14 +66,17 @@ struct ChannelPreview: View {
                                 .background(.thinMaterial, in: .circle)
                                 .padding(8)
                                 .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
-                                .accessibilityLabel("Favorite")
+                                .accessibilityHidden(true)
                         }
                     }
                     // What a live channel shows now, from the TV guide.
                     .overlay(alignment: .bottom) {
-                        ChannelCardProgrammeOverlay(item: item)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                            .clipShape(borderShape)
+                        // At the accessibility text sizes it goes under the title instead (see below).
+                        if !dynamicTypeSize.prefersStackedLayout {
+                            ChannelCardProgrammeOverlay(item: item)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                                .clipShape(borderShape)
+                        }
                     }
                     // How far a movie or episode was watched.
                     .overlay(alignment: .bottom) {
@@ -100,18 +108,28 @@ struct ChannelPreview: View {
                 // subtitle are as tall, and a one-line name leaves no gap above its subtitle.
                 Text(item.displayName)
                     .font(Theme.Typography.cardTitle)
-                    .lineLimit(subtitle == nil ? 2 : 1, reservesSpace: true)
+                    // (Not at the accessibility sizes: there the reserved lines would leave large gaps.)
+                    .lineLimit(CardTextMetrics.titleLineLimit(subtitle == nil ? 2 : 1, at: dynamicTypeSize), reservesSpace: !dynamicTypeSize.prefersStackedLayout)
                     .multilineTextAlignment(.leading)
 
                 if let subtitle {
                     Text(subtitle)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .foregroundStyle(Theme.secondaryText)
+                        .lineLimit(CardTextMetrics.titleLineLimit(1, at: dynamicTypeSize))
+                }
+
+                if dynamicTypeSize.prefersStackedLayout, item.kind == .live {
+                    ChannelProgrammeLine(item: item)
+                        .accessibilityHidden(true)
                 }
             }
             .frame(width: size.width, alignment: .leading)
             .contentShape(Rectangle())
+            // What the channel shows now (from the overlay, or the line under the title), for the label.
+            .onPreferenceChange(ChannelProgrammeSummaryKey.self) { summary in
+                programmeSummary = summary
+            }
         }
         .buttonStyle(CardButtonStyle())
         .cardHoverEffect()
@@ -123,21 +141,13 @@ struct ChannelPreview: View {
         .channelDraggable(item)
         .accessibilityLabel(Text(accessibilityLabel(isFavorite: isFavorite)))
         .accessibilityHint(item.kind == .live ? "Plays the channel" : "Plays the video")
-        .accessibilityAction(named: isFavorite ? "Remove from Favorites" : "Add to Favorites") {
-            library.toggleFavorite(item)
-        }
+        .channelAccessibilityActions(item, isFavorite: isFavorite)
         .help(item.displayName)
     }
 
     private func accessibilityLabel(isFavorite: Bool) -> String {
-        var parts = [item.displayName, item.kind.title]
-        if let subtitle {
-            parts.append(subtitle)
-        }
-        if isFavorite {
-            parts.append("Favorite")
-        }
-        return parts.joined(separator: ", ")
+        let progress = library.watchProgress(for: item).map(WatchProgressFormat.remaining)
+        return ChannelAccessibility.label(for: item, isFavorite: isFavorite, extra: [programmeSummary, progress, subtitle])
     }
 
     private var artworkBackground: some ShapeStyle {
@@ -299,6 +309,7 @@ struct ChannelArtwork: View {
             }
         }
         .frame(width: size.width, height: size.height)
+        .artworkIgnoresInvertColors()
         .onPreferenceChange(ArtworkUnavailableKey.self) { unavailable in
             isUnavailable = unavailable
         }

@@ -128,7 +128,7 @@ private struct PlayerCompanionHeader: View {
                 if let group = viewModel.currentItem?.groupName, !group.isEmpty {
                     Text(group)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.secondaryText)
                         .lineLimit(1)
                 }
                 PlayerProgrammeInfo(item: viewModel.currentItem)
@@ -404,7 +404,7 @@ private struct PlayerCompanionSchedule: View {
                     } else if let detailLine = programme.detailLine {
                         Text(detailLine)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.secondaryText)
                             .lineLimit(1)
                     }
                 }
