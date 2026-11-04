@@ -7,7 +7,12 @@
 //
 //  Every channel menu shows the same two items (`ChannelLinkMenuItems`): the context menus of the cards and rows
 //  (through `ChannelContextMenu`), Favorites, the player's side panel and its ••• menu, the Playback menu of the
-//  menu bar (macOS, iPad keyboards), and the VoiceOver actions of the cards and rows.
+//  menu bar (macOS, iPad keyboards), and the VoiceOver actions of the cards and rows. The episodes of the series
+//  page have them too. Where the menu is not about the stream itself, the items say whose link it is
+//  (`StreamLinkMenuItems.Target`): a programme of the TV guide offers the link of its channel ("Copy Channel
+//  Link"), the series page's ••• menu the link of the episode its Play button plays ("Copy Link to S1 E4"). A
+//  series card or row does not know that episode until it is looked up, so its menu has "Copy Episode Link"
+//  (`SeriesLinkCopy`), and the toast then names the episode ("Link to S1 E4 Copied").
 //
 //  Copying confirms with a short toast at the top of the window, a success haptic (iPhone) and a VoiceOver
 //  announcement (`LinkCopyFeedback`, one per window, set up by `linkCopyFeedbackHost()` at its root, above the
@@ -23,6 +28,7 @@
 //  (`org.nspasteboard.ConcealedType`), so clipboard history managers do not keep the password.
 //
 
+import SwiftData
 import SwiftUI
 #if os(iOS)
 import UIKit
@@ -127,9 +133,15 @@ final class LinkCopyFeedback {
     struct Confirmation: Equatable, Identifiable {
         let id = UUID()
         let containsCredentials: Bool
+        /// The episode of a series whose link was copied from a menu that could not name it (a series card): the
+        /// toast names it.
+        var episode: EpisodeRef?
 
         var title: String {
-            String(localized: "LinkCopied.title", defaultValue: "Link Copied", comment: "Toast after Copy Link: the stream link of a channel, movie or episode is on the clipboard.")
+            if let episode {
+                return String(localized: "LinkCopied.episodeTitle", defaultValue: "Link to \(EpisodeFormat.code(episode)) Copied", comment: "Toast after Copy Episode Link of a series: the stream link of the episode to watch next is on the clipboard. The placeholder is the short episode label, such as S1 E4.")
+            }
+            return String(localized: "LinkCopied.title", defaultValue: "Link Copied", comment: "Toast after Copy Link: the stream link of a channel, movie or episode is on the clipboard.")
         }
 
         /// The warning of a link with credentials.
@@ -141,7 +153,10 @@ final class LinkCopyFeedback {
         }
 
         var spokenText: String {
-            TextParts.sentences([title, detail])
+            let spokenTitle = episode.map {
+                String(localized: "LinkCopied.episodeSpoken", defaultValue: "Link to \(EpisodeFormat.spokenCode($0)) copied", comment: "VoiceOver, after Copy Episode Link of a series. The placeholder is the spoken season and episode, such as 'Season 1, episode 4'.")
+            }
+            return TextParts.sentences([spokenTitle ?? title, detail])
         }
 
         /// Long enough to read the warning.
@@ -155,11 +170,11 @@ final class LinkCopyFeedback {
     private(set) var copyCount = 0
     @ObservationIgnored private var hideTask: Task<Void, Never>?
 
-    /// Copies `link` and confirms it. `duration` overrides how long the toast shows (the debug harness holds it
-    /// for its screenshots).
-    func copy(_ link: StreamLink, duration: Duration? = nil) {
+    /// Copies `link` and confirms it; `episode` names the episode in the confirmation. `duration` overrides how
+    /// long the toast shows (the debug harness holds it for its screenshots).
+    func copy(_ link: StreamLink, episode: EpisodeRef? = nil, duration: Duration? = nil) {
         StreamLinkPasteboard.copy(link)
-        let confirmation = Confirmation(containsCredentials: link.containsCredentials)
+        let confirmation = Confirmation(containsCredentials: link.containsCredentials, episode: episode)
         self.confirmation = confirmation
         copyCount += 1
         AccessibilityAnnouncer.announce(confirmation.spokenText)
@@ -175,12 +190,12 @@ final class LinkCopyFeedback {
 
     /// Copies `link` with the confirmation of `feedback` (the window's), or with only the announcement when the
     /// view is outside a window root that hosts one (previews).
-    static func copy(_ link: StreamLink, feedback: LinkCopyFeedback?) {
+    static func copy(_ link: StreamLink, feedback: LinkCopyFeedback?, episode: EpisodeRef? = nil) {
         if let feedback {
-            feedback.copy(link)
+            feedback.copy(link, episode: episode)
         } else {
             StreamLinkPasteboard.copy(link)
-            AccessibilityAnnouncer.announce(Confirmation(containsCredentials: link.containsCredentials).spokenText)
+            AccessibilityAnnouncer.announce(Confirmation(containsCredentials: link.containsCredentials, episode: episode).spokenText)
         }
     }
 }
@@ -298,20 +313,88 @@ struct ChannelLinkMenuItems: View {
 
 /// Copy Link and Share of a stream URL; `name` titles the share sheet's preview and an e-mail's subject.
 struct StreamLinkMenuItems: View {
+
+    /// Whose link the items copy and share, when the menu is about something else.
+    enum Target: Equatable {
+        /// The stream the menu is about: "Copy Link", "Share".
+        case stream
+        /// The channel of a programme (TV guide): "Copy Channel Link", "Share Channel".
+        case channel
+        /// The episode a series plays next (the series page): "Copy Link to S1 E4", "Share S1 E4".
+        case episode(EpisodeRef)
+    }
+
     let url: URL?
     let name: String
+    var target: Target = .stream
 
     @Environment(\.linkCopyFeedback) private var feedback
 
     var body: some View {
         if let link = StreamLink(url) {
-            Button("Copy Link", systemImage: "link") {
-                LinkCopyFeedback.copy(link, feedback: feedback)
+            Button(copyTitle, systemImage: "link") {
+                LinkCopyFeedback.copy(link, feedback: feedback, episode: episode)
             }
-            // The system's own "Share" label (localized by the system). The preview gives the share sheet a
-            // title, so it does not load the stream to make one. (No icon: an SF Symbol exports as a blank image
-            // there, and the system's link placeholder reads better.)
-            ShareLink(item: link.url, subject: Text(verbatim: name), preview: SharePreview(name))
+            // The preview gives the share sheet a title, so it does not load the stream to make one. (No icon: an
+            // SF Symbol exports as a blank image there, and the system's link placeholder reads better.)
+            if let shareTitle {
+                ShareLink(Text(shareTitle), item: link.url, subject: Text(verbatim: name), preview: SharePreview(name))
+            } else {
+                // The system's own "Share" label (localized by the system).
+                ShareLink(item: link.url, subject: Text(verbatim: name), preview: SharePreview(name))
+            }
         }
+    }
+
+    private var copyTitle: String {
+        switch target {
+        case .stream:
+            String(localized: "Copy Link", comment: "Menu item and VoiceOver action (verb): copies the stream link (URL) of a channel, movie or episode to the clipboard, to play it in another app or on another device.")
+        case .channel:
+            String(localized: "Copy Channel Link", comment: "Menu item of a programme of the TV guide: copies the stream link of its channel to the clipboard.")
+        case .episode(let episode):
+            String(localized: "Copy Link to \(EpisodeFormat.code(episode))", comment: "Menu item of a series page: copies the stream link of the episode its Play button plays. The placeholder is the short episode label, such as S1 E4.")
+        }
+    }
+
+    /// The episode the confirmation names ("Link to S1 E4 Copied").
+    private var episode: EpisodeRef? {
+        if case .episode(let episode) = target {
+            return episode
+        }
+        return nil
+    }
+
+    /// nil for the system's "Share".
+    private var shareTitle: String? {
+        switch target {
+        case .stream:
+            nil
+        case .channel:
+            String(localized: "Share Channel", comment: "Menu item of a programme of the TV guide: shares the stream link of its channel.")
+        case .episode(let episode):
+            String(localized: "Share \(EpisodeFormat.code(episode))", comment: "Menu item of a series page: shares the stream link of the episode its Play button plays. The placeholder is the short episode label, such as S1 E4.")
+        }
+    }
+}
+
+/// Copy Episode Link of a series card or row: looks up the episode its Continue or Play would play, then copies
+/// that episode's link with a confirmation that names it ("Link to S1 E4 Copied"). Says so when the series has
+/// no episode with a network link.
+@MainActor
+enum SeriesLinkCopy {
+    static func copy(_ series: SeriesItem, library: ChannelLibrary, container: ModelContainer, feedback: LinkCopyFeedback?) async {
+        guard let nextUp = await SeriesPlayback.nextUp(for: series, library: library, container: container),
+              let link = StreamLink(nextUp.episode.url)
+        else {
+            AccessibilityAnnouncer.announce(String(localized: "\(series.title) has no episode link to copy", comment: "VoiceOver, after Copy Episode Link of a series whose playlist no longer lists an episode with a stream link."), priority: .high)
+            return
+        }
+        LinkCopyFeedback.copy(link, feedback: feedback, episode: nextUp.episode.series)
+    }
+
+    /// The menu item's title.
+    static var title: String {
+        String(localized: "Copy Episode Link", comment: "Menu item of a series card or row: copies the stream link of the episode Continue (or Play) would play, the one the viewer is up to.")
     }
 }

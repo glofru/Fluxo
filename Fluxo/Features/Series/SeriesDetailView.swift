@@ -201,6 +201,12 @@ private struct SeriesHero: View {
 
                     Menu {
                         watchedActions
+                        // Copy Link and Share of the episode the Play button plays, named, since the page is
+                        // the series'.
+                        if let nextUp, let episode = nextUp.episode.series, StreamLink(nextUp.episode.url) != nil {
+                            Divider()
+                            StreamLinkMenuItems(url: nextUp.episode.url, name: nextUp.episode.displayName, target: .episode(episode))
+                        }
                     } label: {
                         Image(systemName: "ellipsis")
                             .font(.headline)

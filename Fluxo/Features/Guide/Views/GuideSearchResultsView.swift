@@ -167,6 +167,11 @@ private struct GuideSearchRow: View {
                     }
                 }
             }
+            // The link of the channel (a programme has none of its own), named so, in its own group.
+            if StreamLink(result.channel.url) != nil {
+                Divider()
+                StreamLinkMenuItems(url: result.channel.url, name: result.channel.displayName, target: .channel)
+            }
         }
         .swipeActions(edge: .trailing) {
             if ReminderCenter.canRemind(programme, now: now) {

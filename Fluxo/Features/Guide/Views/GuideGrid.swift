@@ -536,6 +536,11 @@ private struct GuideProgrammeCell: View {
                     }
                 }
             }
+            // The link of the channel (a programme has none of its own), named so, in its own group.
+            if StreamLink(channel.item.url) != nil {
+                Divider()
+                StreamLinkMenuItems(url: channel.item.url, name: channel.item.displayName, target: .channel)
+            }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel(isOnAir: isOnAir, isOver: isOver, isReminded: isReminded))

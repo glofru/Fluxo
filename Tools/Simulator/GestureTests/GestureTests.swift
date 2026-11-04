@@ -444,6 +444,66 @@ final class GestureTests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
     }
 
+    /// Copy Episode Link in the context menu of a series card (a category of series): the menu, then the toast that names
+    /// the episode Continue would play. The menu is screenshotted before the checks, so a build without the item
+    /// still shows its menu.
+    func testCopyLinkFromSeriesCard() {
+        let app = launchCopyLink("group:Series | Sci-Fi;wait:2")
+        let card = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Orbit'")).firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 30), "the Orbit series card")
+        sleep(2)
+        card.press(forDuration: 1.2)
+        sleep(1)
+        shot("copy-\(appearance)-11-series-card-menu")
+        let copy = app.buttons["Copy Episode Link"]
+        XCTAssertTrue(copy.waitForExistence(timeout: 5), "Copy Episode Link in the series menu")
+        copy.tap()
+        // After the episode lookup; the toast is hidden from accessibility (VoiceOver hears an announcement).
+        usleep(900_000)
+        shot("copy-\(appearance)-12-series-card-toast")
+    }
+
+    /// Copy Link to S… and Share S… in the ••• menu of a series page: the episode its Play button plays.
+    func testCopyLinkFromSeriesPage() {
+        let app = launchCopyLink("series:Orbit;wait:2")
+        let more = app.buttons["More Actions"]
+        XCTAssertTrue(more.waitForExistence(timeout: 30), "the series page's More Actions menu")
+        sleep(2)
+        more.tap()
+        sleep(1)
+        shot("copy-\(appearance)-13-series-page-menu")
+        let copy = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Copy Link to S'")).firstMatch
+        XCTAssertTrue(copy.waitForExistence(timeout: 5), "Copy Link to the next episode in the menu")
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Share S'")).firstMatch.exists, "Share the next episode in the menu")
+        copy.tap()
+        usleep(900_000)
+        shot("copy-\(appearance)-14-series-page-toast")
+    }
+
+    /// Copy Channel Link and Share Channel in the context menu of a programme of the TV guide.
+    func testCopyLinkFromGuideProgramme() {
+        let app = launchCopyLink("seed-guide;guide;wait:3")
+        let cell = app.buttons.matching(NSPredicate(format: "NOT (label BEGINSWITH 'Sky Sport F1') AND label CONTAINS ', Sky Sport F1, ' AND label CONTAINS 'On now'")).firstMatch
+        XCTAssertTrue(cell.waitForExistence(timeout: 30), "the programme on now on Sky Sport F1")
+        sleep(2)
+        // The block on now began earlier, so its frame reaches under the channel column (whose own menu a press at
+        // its center would open): press the middle of the part right of the column.
+        let window = app.windows.firstMatch.frame
+        let visible = cell.frame.intersection(window)
+        let left = max(visible.minX, window.minX + 130)
+        app.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: (left + visible.maxX) / 2, dy: visible.midY))
+            .press(forDuration: 1.2)
+        sleep(1)
+        shot("copy-\(appearance)-15-guide-menu")
+        let copy = app.buttons["Copy Channel Link"]
+        XCTAssertTrue(copy.waitForExistence(timeout: 5), "Copy Channel Link in the programme menu")
+        XCTAssertTrue(app.buttons["Share Channel"].exists, "Share Channel in the programme menu")
+        copy.tap()
+        usleep(900_000)
+        shot("copy-\(appearance)-16-guide-toast")
+    }
+
     /// Screenshots of layouts in both orientations (`simctl` cannot rotate a simulator). Runs only when
     /// `TEST_RUNNER_FLUXO_LAYOUT_SHOTS` lists scenes, separated by `;;`, each `name|portrait or landscape|light or
     /// dark|route` (the route is a `-FluxoDebugRoute`, `;`-separated), e.g.

@@ -279,7 +279,7 @@ struct SeriesListRow: View {
     }
 }
 
-/// Continue / Play and the favorite of a series.
+/// Continue / Play, the favorite, and Copy Episode Link of a series.
 struct SeriesContextMenu: View {
 
     let series: SeriesItem
@@ -287,6 +287,7 @@ struct SeriesContextMenu: View {
     @Environment(ChannelLibrary.self) private var library
     @Environment(\.playChannel) private var playChannel
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.linkCopyFeedback) private var linkCopyFeedback
 
     var body: some View {
         let isFavorite = library.series.isFavorite(series)
@@ -301,6 +302,17 @@ struct SeriesContextMenu: View {
 
         Button(isFavorite ? "Remove from Favorites" : "Add to Favorites", systemImage: isFavorite ? "star.slash" : "star") {
             library.series.toggleFavorite(series)
+        }
+
+        // The link of the episode Continue would play, in its own group as in every channel menu. (No Share: the
+        // episode is only known once it is looked up, after the menu closed.)
+        Divider()
+        Button(SeriesLinkCopy.title, systemImage: "link") {
+            let container = modelContext.container
+            let feedback = linkCopyFeedback
+            Task {
+                await SeriesLinkCopy.copy(series, library: library, container: container, feedback: feedback)
+            }
         }
     }
 }
@@ -327,7 +339,7 @@ extension View {
         modifier(SeriesSummaryLoader(series: series))
     }
 
-    /// Continue and favorite as custom actions (the VoiceOver Actions rotor), and the title for Voice Control.
+    /// Continue, favorite and Copy Episode Link as custom actions (the VoiceOver Actions rotor), and the title for Voice Control.
     func seriesAccessibilityActions(_ series: SeriesItem) -> some View {
         modifier(SeriesAccessibilityActions(series: series))
     }
@@ -360,6 +372,7 @@ private struct SeriesAccessibilityActions: ViewModifier {
     @Environment(ChannelLibrary.self) private var library
     @Environment(\.playChannel) private var playChannel
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.linkCopyFeedback) private var linkCopyFeedback
 
     func body(content: Content) -> some View {
         let isFavorite = library.series.isFavorite(series)
@@ -379,6 +392,14 @@ private struct SeriesAccessibilityActions: ViewModifier {
                             ? String(localized: "Removed \(series.title) from Favorites")
                             : String(localized: "Added \(series.title) to Favorites")
                     )
+                }
+                // Announces "Link to season 1, episode 4 copied" (and the credentials warning) itself.
+                Button(SeriesLinkCopy.title) {
+                    let container = modelContext.container
+                    let feedback = linkCopyFeedback
+                    Task {
+                        await SeriesLinkCopy.copy(series, library: library, container: container, feedback: feedback)
+                    }
                 }
             }
     }
