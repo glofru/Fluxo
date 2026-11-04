@@ -307,6 +307,37 @@ Tools/Simulator/run.sh --device "iPhone 17e" --clone fluxo-mykey-1 --step-shots 
     --route "player:Sky Sport F1;cast:Living Room;wait:3;cast-picker;stop-casting"
 ```
 
+## iPhone with a hinge (iPhone Duo)
+
+The iPhone Duo (`iPhone19,4`) is a book-style foldable: a cover display (466 x 678 pt) used folded, and an inner
+display (951 x 669 pt in landscape) that folds across its middle. The iOS 27.1 SDK describes it to apps with
+`onHingeChange` / `UIHingeInteraction` (the hinge status, closed / partially open / fully open, and its angle),
+`GeometryProxy.reservedRegions(kind:)` (`.division`: where content should divide in two, the fold; `.occlusion`),
+and, on the cover display, the vertical bar (`UITraitCollection.verticalBarEdge`; SwiftUI `toolbarVerticalBehavior`,
+`axisBehavior`, `toolbarVerticalCompressionBehavior`), which puts the status bar, the toolbar items and the tab bar
+in one column on the trailing edge. `ArrangementView` (`.split` / `.overlay`) arranges two views side by side or
+overlaid.
+
+- **Posture** (`App/Foldable/DisplayPosture.swift`): the root of the window reads the hinge, the active division and
+  occlusion regions and the vertical bar edge once, and shares them as `\.displayPosture`. `split()` is where the
+  window divides: the system's division region, or, on a device with a hinge showing the app on its inner display
+  without one, the middle of the long side. On every other device it is nil and nothing changes.
+- **Player** (`PlayerPaneLayout`, `PlayerCompanionPanel`): open like a book, the video takes one half and the other
+  half shows the companion panel: what plays (channel, category, programme on air and next), the other channels
+  of its category with what they show (a tap switches channel in place; not while recording) and the channel's
+  schedule (a tap opens a programme, with its reminder). Nothing is drawn on the fold, the top bar uses its phone
+  layout in its half, and a button swaps the sides. Fully open (flat), the video gets the whole display; the top
+  bar's split button shows the panel. Standing like a laptop (the fold from side to side), the video goes to the
+  upper half with its top bar, the timeline and the transport stay on the lower half (always visible), above the
+  channel list. The choices (panel when partly open / flat, video side) are remembered. The video view keeps its
+  identity in every layout, so folding, unfolding or toggling the panel never interrupts playback.
+- **Cover display**: the system's vertical bar is part of the safe area, which every screen respects. The Home
+  billboard pages are as wide as the screen and run under the bar (and the side safe areas of a phone in
+  landscape) with their text clear of it, so the next page never shows under the bar; the billboard's fade covers
+  the extended artwork too. The player covers the bar, as on other iPhones.
+- **Testing**: the simulator cannot open the hinge, see "iPhone Duo" in `Tools/Simulator/README.md` for the
+  simulated postures (`-FluxoDebugPosture`, the `posture:` route) and the gesture test.
+
 ## TV guide (EPG)
 
 The Guide (`Features/Guide`) is a tab on iOS and a sidebar entry on macOS. It shows a time grid of the live

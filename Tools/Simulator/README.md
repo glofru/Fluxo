@@ -217,11 +217,32 @@ The iPhone Duo simulator has two integrated displays, `LCD` and `LCD-1`; `run.sh
 screenshot both (`--display=` of `simctl io`). The screens are listed by `xcrun simctl io <udid>
 enumerate`, and `xcrun simctl io <udid> screenConfig --display=LCD power off|on` switches one off.
 
-What the screenshots showed with the current app (iOS 27.2 runtime): on `LCD` (1398 x 2034 px) the app
-runs with the status bar and the tab bar along the right edge and its content clipped on that side;
-`LCD-1` (2007 x 2853 px) stays black, both on the Home Screen and with Fluxo running, and switching `LCD`
-off does not light it up. `simctl` has no fold or posture control, so whatever makes the second display
-show content has to come from the app (e.g. a scene for that display) or from Simulator.app.
+The simulator is a book-style foldable (`iPhone19,4`): `LCD` is the cover display (466 x 678 pt, the
+hinge side on the left, used folded) and `LCD-1` the inner display (669 x 951 pt, natively landscape, 951 x
+669 pt, folding across its middle). The clone boots folded: the app runs on `LCD`, reports its hinge as
+closed (`onHingeChange`), no reserved regions, and the system puts the status bar, the toolbar items and the
+tab bar in one vertical bar on the trailing edge (`UITraitCollection.verticalBarEdge`, part of the safe area).
+`LCD-1` stays black. Neither `simctl` nor Xcode's tools can open the hinge (the runtime's own display-swap
+tool is not shipped), so the inner display and the open postures cannot be seen in the simulator.
+Harness runs log what the app receives (`Display posture: window 466 x 678; hinge closed 0°; …` in
+`app.log`).
+
+To check the layouts of the open postures, simulate one on a larger simulator (the iPad Pro 13-inch shows the
+951 x 669 pt inner display centered, with a dashed line on the fold):
+
+```sh
+Tools/Simulator/run.sh --device "iPad Pro 13-inch (M5)" --clone fluxo-mykey-2 --step-shots \
+    --route "seed-guide;player:Sky Sport F1;posture:flat;posture:tabletop;posture:closed" -- -FluxoDebugPosture book
+```
+
+| Argument / route | Effect |
+|---|---|
+| `-FluxoDebugPosture closed\|book\|flat\|tabletop` | Simulated hinge and fold: closed; partly open with the fold from top to bottom (book); fully open (flat); partly open with the fold from side to side (the phone standing like a laptop). |
+| `-FluxoDebugPostureSize <w>x<h>\|full` | Size of the simulated display (default 951x669, 669x951 for tabletop, 466x678 for closed); `full` keeps the window. |
+| `posture:<closed\|book\|flat\|tabletop\|real>` | Changes the simulated posture while the app runs (playback continues). |
+
+`GestureTests.testFoldableChannelListScrollsAndSwitchesWithoutClosing` (needs a simulator of at least
+951 x 669 pt) scrolls the channel list next to the video, switches channel from it and hides it.
 
 ## Driving the simulator (taps and swipes)
 

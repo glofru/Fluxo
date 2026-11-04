@@ -326,6 +326,15 @@ enum DebugRoutes {
         DebugRoute("delete-playlist:<name>", "The delete confirmation (nothing is deleted).") { context, argument in
             context.playlistActions.requestDelete(try context.playlist(named: argument))
         },
+        DebugRoute("posture:<closed|book|flat|tabletop|real>", "Simulates the hinge of the iPhone Duo (see DebugPosture.swift); real stops simulating.") { _, argument in
+            #if os(iOS)
+            let value = argument.lowercased()
+            guard value == "real" || DebugPostureSimulation.Mode(rawValue: value) != nil else {
+                throw DebugRouteError.invalidArgument("posture", argument)
+            }
+            DebugPostureSimulation.shared.mode = DebugPostureSimulation.Mode(rawValue: value)
+            #endif
+        },
         DebugRoute("wait:<seconds>", "Waits before the next route.") { _, argument in
             guard let seconds = Double(argument), seconds >= 0 else {
                 throw DebugRouteError.invalidArgument("wait", argument)

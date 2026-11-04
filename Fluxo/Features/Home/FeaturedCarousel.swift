@@ -44,6 +44,14 @@ struct FeaturedCarousel: View {
     @State private var currentID: UUID?
     /// Imports the current `items` were picked from; nil until the first load finishes.
     @State private var loadedImportIDs: [UUID]?
+    /// Billboard: the side safe areas (a phone in landscape, the vertical bar of a foldable iPhone's cover
+    /// display). The pages run under them, their content stays clear of them.
+    @State private var sideInsets = SideInsets()
+
+    private struct SideInsets: Equatable {
+        var leading: CGFloat = 0
+        var trailing: CGFloat = 0
+    }
 
     var body: some View {
         // A container (not a Group) so `.task` runs even while there is nothing to show yet.
@@ -68,6 +76,11 @@ struct FeaturedCarousel: View {
         }
         .onChange(of: items.isEmpty, initial: true) { _, isEmpty in
             isShowingBillboard?.wrappedValue = !isEmpty
+        }
+        .onGeometryChange(for: SideInsets.self) { proxy in
+            SideInsets(leading: proxy.safeAreaInsets.leading, trailing: proxy.safeAreaInsets.trailing)
+        } action: { insets in
+            sideInsets = insets
         }
     }
 
@@ -125,12 +138,14 @@ struct FeaturedCarousel: View {
             ScrollView(.horizontal) {
                 LazyHStack(spacing: 0) {
                     ForEach(items) { item in
-                        BillboardPage(item: item, topInset: topInset)
+                        BillboardPage(item: item, topInset: topInset, leadingInset: sideInsets.leading, trailingInset: sideInsets.trailing)
                             .containerRelativeFrame(.horizontal)
                     }
                 }
                 .scrollTargetLayout()
             }
+            // Pages as wide as the screen: inside the side safe areas the next page would show under them.
+            .ignoresSafeArea(.container, edges: .horizontal)
             .scrollTargetBehavior(.paging)
             .scrollPosition(id: $currentID)
             .scrollIndicators(.hidden)
@@ -194,6 +209,8 @@ private struct BillboardPage: View {
 
     let item: ChannelItem
     let topInset: CGFloat
+    var leadingInset: CGFloat = 0
+    var trailingInset: CGFloat = 0
 
     @Environment(\.playChannel) private var playChannel
     @Environment(ChannelLibrary.self) private var library
@@ -262,7 +279,8 @@ private struct BillboardPage: View {
                 }
                 .controlSize(.large)
             }
-            .padding(.horizontal, HomeLayout.horizontalMargin)
+            .padding(.leading, HomeLayout.horizontalMargin + leadingInset)
+            .padding(.trailing, HomeLayout.horizontalMargin + trailingInset)
             .padding(.bottom, 30)
         }
         .frame(height: topInset + FeaturedCarousel.billboardHeight)
@@ -337,6 +355,9 @@ private struct BillboardBackdrop: View {
                 startPoint: .top,
                 endPoint: .bottom
             )
+            // Over the extended artwork too (side safe areas, the vertical bar of a foldable's cover display):
+            // otherwise it shows there unfaded, with a hard edge.
+            .ignoresSafeArea(.container, edges: .horizontal)
             .allowsHitTesting(false)
         }
         .visualEffect { content, proxy in

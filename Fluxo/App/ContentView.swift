@@ -81,6 +81,8 @@ struct ContentView: View {
             .debugSnapshots()
             .debugHarness(player: viewModel, navigation: navigation)
             #endif
+            // The hinge, fold and vertical bar of a foldable iPhone, for the player's two-pane layout.
+            .readsDisplayPosture()
             .environment(navigation)
             .defaultAppStorage(.fluxo)
             .tint(Theme.accent)

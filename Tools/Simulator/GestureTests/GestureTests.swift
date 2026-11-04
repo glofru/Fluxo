@@ -7,7 +7,8 @@
 //  finger holds), springs back from a short one, ignores horizontal drags and closes on a long drag or a flick,
 //  it covers the whole screen in portrait and landscape (also pulled up), Home's cover stretches over a real
 //  pull down, scrubbing the timeline never closes the player, its X stops playback, and nothing shows above the
-//  tab bar while nothing plays.
+//  tab bar while nothing plays. On a (simulated) foldable, the channel list beside the video scrolls and switches
+//  channel without moving the player.
 //  The app runs with the debug harness (seeded in-memory library, routes) and the test streams of
 //  test-stream.sh. Screenshots of the steps go to $FLUXO_SHOTS (default /tmp/fluxo-shots/gesture-tests).
 //
@@ -19,10 +20,10 @@ final class GestureTests: XCTestCase {
 
     let out = ProcessInfo.processInfo.environment["FLUXO_SHOTS"] ?? "/tmp/fluxo-shots/gesture-tests"
 
-    func launch(_ route: String) -> XCUIApplication {
+    func launch(_ route: String, arguments: [String] = []) -> XCUIApplication {
         let app = XCUIApplication(bundleIdentifier: "dev.watermelon.Fluxo")
         // Light mode whatever the simulator uses: `darkShareOfBottomRows` tells the player from the app by color.
-        app.launchArguments = ["-FluxoDebugStore", "memory", "-FluxoDebugSeed", "sample", "-FluxoDebugRoute", route, "-FluxoDebugAppearance", "light"]
+        app.launchArguments = ["-FluxoDebugStore", "memory", "-FluxoDebugSeed", "sample", "-FluxoDebugRoute", route, "-FluxoDebugAppearance", "light"] + arguments
         app.launch()
         return app
     }
@@ -168,6 +169,50 @@ final class GestureTests: XCTestCase {
         let top = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
         top.press(forDuration: 0.02, thenDragTo: top.withOffset(CGVector(dx: 0, dy: 140)), withVelocity: .fast, thenHoldForDuration: 0)
         waitPlayerOpen(app, false)
+    }
+
+    /// The player of a foldable iPhone open like a book (simulated with -FluxoDebugPosture; needs a simulator of
+    /// at least 951 x 669 pt, e.g. an iPad): scrolling the channel list beside the video never moves or closes
+    /// the player, a tap on a channel plays it in place, and the top bar button gives the display back to the
+    /// video.
+    func testFoldableChannelListScrollsAndSwitchesWithoutClosing() {
+        let app = launch("seed-guide;player:Sky Sport F1;wait:2", arguments: ["-FluxoDebugPosture", "book"])
+        waitPlayerSettled(app, timeout: 40)
+        let list = app.descendants(matching: .any)["player.companion.channels"]
+        XCTAssertTrue(list.waitForExistence(timeout: 10), "the channel list shows beside the video")
+        shot("foldable-0-book")
+        let middle = list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
+        middle.press(forDuration: 0.05, thenDragTo: middle.withOffset(CGVector(dx: 0, dy: -260)), withVelocity: .fast, thenHoldForDuration: 0)
+        sleep(1)
+        let top = list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2))
+        top.press(forDuration: 0.05, thenDragTo: top.withOffset(CGVector(dx: 0, dy: 300)), withVelocity: .slow, thenHoldForDuration: 0)
+        sleep(1)
+        shot("foldable-1-scrolled")
+        waitPlayerOpen(app, true)
+        XCTAssertEqual(dragProbe(app)["maxOffset"] ?? 0, 0, accuracy: 1, "the list's scrolling never dragged the player")
+        let other = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == 'player.companion.channel' AND label CONTAINS 'Sky Sport Uno'")).firstMatch
+        XCTAssertTrue(other.waitForExistence(timeout: 5), "another channel of the category is listed")
+        other.tap()
+        sleep(2)
+        shot("foldable-2-switched")
+        waitPlayerOpen(app, true)
+        let nowPlaying = app.descendants(matching: .any)["player.companion.nowPlaying"]
+        XCTAssertTrue(nowPlaying.waitForExistence(timeout: 5), "the panel shows what plays")
+        XCTAssertTrue(nowPlaying.label.contains("Sky Sport Uno"), "the tapped channel plays: \(nowPlaying.label)")
+        let schedule = app.buttons["Schedule"]
+        XCTAssertTrue(schedule.waitForExistence(timeout: 5), "live channels with a guide have a schedule")
+        schedule.tap()
+        sleep(2)
+        shot("foldable-2b-schedule")
+        waitPlayerOpen(app, true)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.5)).tap()
+        let toggle = app.buttons["player.splitToggle"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5), "the top bar offers to hide the channels")
+        toggle.tap()
+        sleep(2)
+        shot("foldable-3-full")
+        XCTAssertFalse(list.exists, "the video has the whole display")
+        waitPlayerOpen(app, true)
     }
 
     func testPlayerCoversTheScreenInEveryOrientation() {

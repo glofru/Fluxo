@@ -19,6 +19,9 @@ import SwiftUI
 ///
 /// Controls hide after a few seconds of playback without interaction; a tap (or moving the mouse on macOS)
 /// shows them again. They never hide while paused, failed, scrubbing or with VoiceOver running.
+///
+/// On a foldable iPhone that is open, the video and a companion panel (the category's channels and the
+/// schedule) can share the display, one on each side of the fold, see `PlayerPaneLayout`.
 struct WatchChannelView: View {
 
     static let autoHideDelay: Duration = .seconds(4)
@@ -34,51 +37,41 @@ struct WatchChannelView: View {
 
     @Environment(\.accessibilityVoiceOverEnabled) private var isVoiceOverEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.displayPosture) private var posture
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @AppStorage(FoldablePlayerPreferences.panelWhenPartlyOpenKey) private var showsPanelWhenPartlyOpen = true
+    @AppStorage(FoldablePlayerPreferences.panelWhenFlatKey) private var showsPanelWhenFlat = false
+    @AppStorage(FoldablePlayerPreferences.videoOnTrailingSideKey) private var videoOnTrailingSide = false
 
     var body: some View {
-        ZStack {
-            Color.black
-                .ignoresSafeArea()
+        GeometryReader { proxy in
+            let layout = PlayerPaneLayout.make(
+                posture: posture,
+                size: proxy.size,
+                insets: proxy.safeAreaInsets,
+                showsPanelWhenPartlyOpen: showsPanelWhenPartlyOpen,
+                showsPanelWhenFlat: showsPanelWhenFlat,
+                videoOnTrailingSide: videoOnTrailingSide
+            )
+            ZStack(alignment: .topLeading) {
+                Color.black
+                    .ignoresSafeArea()
 
-            AVVideoPlayer(surface: viewModel.surface)
-                .ignoresSafeArea()
-                .onAppear {
-                    viewModel.playerViewDidAppear()
+                // Always the first view, whatever the layout: the video view keeps its identity (and the
+                // playback its layer) when the posture changes.
+                stage(layout: layout)
+                    .frame(width: layout.video.width, height: layout.video.height)
+                    .position(x: layout.video.midX, y: layout.video.midY)
+
+                if let panel = layout.panel {
+                    panelPane(layout: layout)
+                        .frame(width: panel.width, height: panel.height)
+                        .position(x: panel.midX, y: panel.midY)
+                        .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 }
-                .onDisappear {
-                    viewModel.playerViewDidDisappear()
-                }
-                .accessibilityHidden(true)
-
-            if viewModel.isCasting {
-                // A Chromecast plays the channel: where, and its volume, instead of the (stopped) video.
-                CastingBackdrop(viewModel: viewModel)
-                    .transition(.opacity)
             }
-
-            tapTarget
-
-            // Escape closes the player even while the controls are hidden.
-            Button("Close Player") {
-                viewModel.closePlayer()
-            }
-            .keyboardShortcut(.cancelAction)
-            .opacity(0)
-            .frame(width: 0, height: 0)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
-
-            PlayerStatusOverlay(viewModel: viewModel)
-
-            if controlsVisible {
-                PlayerChrome(
-                    viewModel: viewModel,
-                    isScrubbing: $isScrubbing,
-                    isShowingRecordings: $isShowingRecordings,
-                    interacted: registerInteraction
-                )
-                .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98)))
-            }
+            .environment(\.playerSplitControl, splitControl(for: layout))
+            .animation(reduceMotion ? .easeInOut(duration: 0.2) : .smooth(duration: 0.45), value: layout)
         }
         // The player is a layer over the app (see `PlayerPresentation`): only its own subtree goes dark, so the
         // app underneath keeps the system appearance (it shows while the player is dragged down).
@@ -142,6 +135,101 @@ struct WatchChannelView: View {
                 viewModel.playRecording(recording)
             }
             .presentationDetents([.medium, .large])
+        }
+    }
+
+    /// The video, the tap target, the status overlay and the controls that fade.
+    private func stage(layout: PlayerPaneLayout) -> some View {
+        ZStack {
+            Color.black
+                .ignoresSafeArea()
+
+            AVVideoPlayer(surface: viewModel.surface)
+                .ignoresSafeArea()
+                .onAppear {
+                    viewModel.playerViewDidAppear()
+                }
+                .onDisappear {
+                    viewModel.playerViewDidDisappear()
+                }
+                .accessibilityHidden(true)
+
+            if viewModel.isCasting {
+                // A Chromecast plays the channel: where, and its volume, instead of the (stopped) video.
+                CastingBackdrop(viewModel: viewModel)
+                    .transition(.opacity)
+            }
+
+            tapTarget
+
+            // Escape closes the player even while the controls are hidden.
+            Button("Close Player") {
+                viewModel.closePlayer()
+            }
+            .keyboardShortcut(.cancelAction)
+            .opacity(0)
+            .frame(width: 0, height: 0)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+
+            PlayerStatusOverlay(viewModel: viewModel)
+
+            if controlsVisible {
+                PlayerChrome(
+                    viewModel: viewModel,
+                    isScrubbing: $isScrubbing,
+                    isShowingRecordings: $isShowingRecordings,
+                    showsBottomBar: !layout.isStacked,
+                    interacted: registerInteraction
+                )
+                .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98)))
+            }
+        }
+        // Half of a foldable's display is phone-sized: the top bar uses its phone layout there. (A value, not a
+        // conditional modifier, so the video view is never recreated.)
+        .environment(\.horizontalSizeClass, layout.mode == .sideBySide ? .compact : horizontalSizeClass)
+    }
+
+    /// The other half of a foldable's display: the companion panel beside the video, or the controls (and the
+    /// panel) below it.
+    @ViewBuilder
+    private func panelPane(layout: PlayerPaneLayout) -> some View {
+        switch layout.mode {
+        case .full:
+            EmptyView()
+        case .sideBySide:
+            PlayerCompanionPanel(viewModel: viewModel, videoEdge: layout.videoEdge) {
+                videoOnTrailingSide.toggle()
+            }
+        case .stacked:
+            VStack(spacing: 0) {
+                PlayerBottomBar(viewModel: viewModel, isScrubbing: $isScrubbing, interacted: registerInteraction)
+                    .padding(.top, 14)
+                if layout.showsPanelList {
+                    PlayerCompanionPanel(viewModel: viewModel, showsHeader: false)
+                } else {
+                    Spacer(minLength: 0)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .background {
+                PlayerCompanionPanel.background
+                    .ignoresSafeArea()
+            }
+        }
+    }
+
+    private func splitControl(for layout: PlayerPaneLayout) -> PlayerSplitControl {
+        PlayerSplitControl(
+            isAvailable: layout.canSplit,
+            isShown: layout.isStacked ? layout.showsPanelList : layout.mode == .sideBySide,
+            isStacked: layout.isStacked || (posture.split()?.axis == .vertical)
+        ) {
+            if posture.isPartiallyOpen {
+                showsPanelWhenPartlyOpen.toggle()
+            } else {
+                showsPanelWhenFlat.toggle()
+            }
         }
     }
 
@@ -261,6 +349,8 @@ private struct PlayerChrome: View {
     let viewModel: AVPlayerViewModel
     @Binding var isScrubbing: Bool
     @Binding var isShowingRecordings: Bool
+    /// False when the transport controls sit in the other pane of a foldable (see `PlayerPaneLayout`).
+    var showsBottomBar = true
     let interacted: () -> Void
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -269,7 +359,9 @@ private struct PlayerChrome: View {
         VStack(spacing: 0) {
             PlayerTopBar(viewModel: viewModel, isShowingRecordings: $isShowingRecordings, interacted: interacted)
             Spacer(minLength: 0)
-            PlayerBottomBar(viewModel: viewModel, isScrubbing: $isScrubbing, interacted: interacted)
+            if showsBottomBar {
+                PlayerBottomBar(viewModel: viewModel, isScrubbing: $isScrubbing, interacted: interacted)
+            }
         }
         .background {
             // Scrims keep the title and the timeline legible on bright video (stronger without transparency).
@@ -277,8 +369,10 @@ private struct PlayerChrome: View {
                 LinearGradient(colors: [Theme.Player.scrim(reduceTransparency: reduceTransparency), .clear], startPoint: .top, endPoint: .bottom)
                     .frame(height: 220)
                 Spacer(minLength: 0)
-                LinearGradient(colors: [.clear, Theme.Player.scrim(reduceTransparency: reduceTransparency)], startPoint: .top, endPoint: .bottom)
-                    .frame(height: 280)
+                if showsBottomBar {
+                    LinearGradient(colors: [.clear, Theme.Player.scrim(reduceTransparency: reduceTransparency)], startPoint: .top, endPoint: .bottom)
+                        .frame(height: 280)
+                }
             }
             .ignoresSafeArea()
             .allowsHitTesting(false)
@@ -296,6 +390,7 @@ private struct PlayerTopBar: View {
     let interacted: () -> Void
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.playerSplitControl) private var splitControl
     /// Room the window's corners need: on iPad, a window shows its controls (close, minimize, full screen) in
     /// a top corner, over the app's content. Zero otherwise.
     @State private var cornerInsets = RectangleCornerInsets()
@@ -387,9 +482,27 @@ private struct PlayerTopBar: View {
         }
     }
 
-    /// Picture in Picture, AirPlay, Cast (iOS; full screen on macOS) and the menu, on one glass capsule.
+    /// The companion panel of a foldable (see `PlayerPaneLayout`), then Picture in Picture, AirPlay, Cast (iOS;
+    /// full screen on macOS) and the menu, on one glass capsule.
     private var actions: some View {
         HStack(spacing: 0) {
+            if splitControl.isAvailable {
+                Button {
+                    interacted()
+                    splitControl.toggle()
+                } label: {
+                    Image(systemName: splitControl.isStacked ? "rectangle.split.1x2" : "rectangle.split.2x1")
+                        .symbolVariant(splitControl.isShown ? .fill : .none)
+                        .contentTransition(.symbolEffect(.replace))
+                        .frame(width: Self.buttonSize, height: Self.buttonSize)
+                        .contentShape(.circle)
+                }
+                .buttonStyle(PlayerIconButtonStyle())
+                .accessibilityLabel(splitControl.isShown ? "Hide Channels" : "Show Channels")
+                .accessibilityIdentifier("player.splitToggle")
+                .help(splitControl.isShown ? "Give the whole display to the video" : "Show the channels next to the video")
+            }
+
             if viewModel.isPictureInPictureSupported && !viewModel.isCasting {
                 Button {
                     interacted()
