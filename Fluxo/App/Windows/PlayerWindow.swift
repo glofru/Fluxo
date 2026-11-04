@@ -114,6 +114,8 @@ struct PlayerWindowView: View {
     @State private var item: ChannelItem?
     /// The channel is no longer in its playlist (it was refreshed or deleted).
     @State private var isMissing = false
+    /// The status bar the player asks for (from its controls); nil while it is not shown.
+    @State private var playerStatusBar: PlayerStatusBarStyle?
 
     private var showsPlayer: Bool {
         coordinator.shows(.player, in: windowID, isActive: player.isPresented) && player.currentChannel != nil
@@ -141,6 +143,13 @@ struct PlayerWindowView: View {
             }
         }
         .animation(.easeInOut(duration: 0.25), value: showsPlayer)
+        // The status bar shows with the player's controls, in light content (see `PlayerStatusBar.swift`).
+        .onPlayerStatusBarChange { style in
+            withAnimation(.easeInOut(duration: 0.25)) {
+                playerStatusBar = style
+            }
+        }
+        .playerStatusBar(showsPlayer ? playerStatusBar ?? .app : .app)
         .navigationTitle(item?.displayName ?? value?.name ?? "")
         #if os(iOS)
         .background {

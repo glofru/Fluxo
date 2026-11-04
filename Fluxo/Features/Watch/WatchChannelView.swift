@@ -18,13 +18,16 @@ import SwiftUI
 ///   skip back / forward, play / pause, Go Live and record.
 ///
 /// Controls hide after a few seconds of playback without interaction; a tap (or moving the mouse on macOS)
-/// shows them again. They never hide while paused, failed, scrubbing or with VoiceOver running.
+/// shows them again. They never hide while paused, failed, scrubbing or with VoiceOver running. On iOS the status
+/// bar (time, battery) shows and hides with them, see `PlayerStatusBar.swift`.
 ///
 /// On a foldable iPhone that is open, the video and a companion panel (the category's channels and the
 /// schedule) can share the display, one on each side of the fold, see `PlayerPaneLayout`.
 struct WatchChannelView: View {
 
     static let autoHideDelay: Duration = .seconds(4)
+    /// The controls fade out in 0.25 s; the status bar hides after them.
+    static let statusBarHideDelay: Duration = .milliseconds(300)
 
     let viewModel: AVPlayerViewModel
 
@@ -34,6 +37,15 @@ struct WatchChannelView: View {
     @State private var isScrubbing = false
     @State private var isShowingRecordings = false
     @State private var hoverThrottle = HoverThrottle()
+    /// Follows `controlsVisible`, but hides only once the controls have faded out (see `statusBarStyle`).
+    @State private var isStatusBarHidden = false
+    #if os(iOS)
+    @State private var topSafeArea = PlayerTopSafeArea()
+    #endif
+    #if DEBUG
+    /// Debug harness (`player-controls:show`): the controls stay on screen for screenshots.
+    @State private var debugPinsControls = false
+    #endif
     /// The channel list / guide next to the video in a wide player (iPad in landscape); remembered.
     @AppStorage(PlayerSidePanelLayout.storageKey) private var showsSidePanel = false
 
@@ -95,6 +107,11 @@ struct WatchChannelView: View {
             .environment(\.playerSplitControl, splitControl(for: layout))
             .animation(reduceMotion ? .easeInOut(duration: 0.2) : .smooth(duration: 0.45), value: layout)
         }
+        #if os(iOS)
+        // The status bar shows and hides with the controls; on iPad that changes the top safe area, which must
+        // not move the controls (see `PlayerTopSafeArea`).
+        .playerSteadyTopSafeArea($topSafeArea)
+        #endif
         // The player is a layer over the app (see `PlayerPresentation`): only its own subtree goes dark, so the
         // app underneath keeps the system appearance (it shows while the player is dragged down).
         .environment(\.colorScheme, .dark)
@@ -133,6 +150,30 @@ struct WatchChannelView: View {
             NSCursor.setHiddenUntilMouseMoves(true)
             #endif
         }
+        .task(id: controlsVisible) {
+            guard !controlsVisible else {
+                isStatusBarHidden = false
+                return
+            }
+            try? await Task.sleep(for: Self.statusBarHideDelay)
+            if !Task.isCancelled {
+                isStatusBarHidden = true
+            }
+        }
+        #if DEBUG
+        .onReceive(NotificationCenter.default.publisher(for: .fluxoDebugPlayerControls)) { notification in
+            // Debug harness: shows (and keeps) or hides the controls, as a tap on the video would.
+            guard let show = notification.object as? Bool else {
+                return
+            }
+            debugPinsControls = show
+            if show {
+                showControls()
+            } else {
+                controlsVisible = false
+            }
+        }
+        #endif
         .onChange(of: viewModel.currentChannel?.id) {
             // Zapped to another channel: show its name and status.
             showControls()
@@ -161,12 +202,12 @@ struct WatchChannelView: View {
             }
         }
         #else
-        // The status bar takes the app's style (dark text in light mode), which would be unreadable over the
-        // video: it stays hidden while the player is on screen, and comes back as soon as the player moves off
-        // it to hand the video to Picture in Picture.
-        .statusBarHidden(!viewModel.isClosingIntoPictureInPicture)
         .persistentSystemOverlays(controlsVisible ? .automatic : .hidden)
         #endif
+        // The status bar (time, battery) shows with the controls, in light content, and hides once they faded
+        // out; the view that hosts the player sets it (see `PlayerStatusBar.swift`). Handing the video to Picture
+        // in Picture gives it back to the app at once.
+        .preference(key: PlayerStatusBarPreferenceKey.self, value: statusBarStyle)
         .sensoryFeedback(.selection, trigger: viewModel.currentChannel?.id)
         .sensoryFeedback(trigger: viewModel.isRecording) { _, isRecording in
             isRecording ? .impact(weight: .medium) : .success
@@ -242,6 +283,9 @@ struct WatchChannelView: View {
                     interacted: registerInteraction
                 )
                 .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98)))
+                // Above the video while it fades out too: without it the removed controls ended up under the video
+                // view, so they disappeared at once instead of fading out with the status bar.
+                .zIndex(1)
             }
         }
         // Half of a foldable's display is phone-sized: the top bar uses its phone layout there. (A value, not a
@@ -312,9 +356,24 @@ struct WatchChannelView: View {
             .accessibilityHidden(true)
     }
 
+    /// The status bar shows with the controls, and hides right after they faded out (`statusBarHideDelay`), not
+    /// with them: on iPad hiding it shrinks the top safe area, and the controls, while they fade out, would
+    /// follow it up instead of staying where they are.
+    private var statusBarStyle: PlayerStatusBarStyle {
+        if viewModel.isClosingIntoPictureInPicture {
+            return .app
+        }
+        return controlsVisible || !isStatusBarHidden ? .overVideo : .hidden
+    }
+
     private var canAutoHide: Bool {
+        #if DEBUG
+        if debugPinsControls {
+            return false
+        }
+        #endif
         // Not while casting: there is no video to uncover, and the controls drive the Chromecast.
-        controlsVisible && viewModel.playbackState == .playing && !isScrubbing && !isShowingRecordings && !isAssistiveTechnologyEnabled
+        return controlsVisible && viewModel.playbackState == .playing && !isScrubbing && !isShowingRecordings && !isAssistiveTechnologyEnabled
             && !viewModel.isCasting
     }
 

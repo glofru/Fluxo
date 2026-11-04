@@ -91,6 +91,8 @@ private struct PlayerPresentationModifier<Player: View>: ViewModifier {
     /// The player covers the whole app and nothing moves: the app underneath is hidden (opacity 0, so it keeps
     /// its state) and the GPU does not draw it for the whole viewing session.
     @State private var coversApp = false
+    /// The status bar the player asks for (from its controls); nil while it is not shown.
+    @State private var playerStatusBar: PlayerStatusBarStyle?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     #if DEBUG
     @State private var dragProbe = DragProbe()
@@ -160,6 +162,12 @@ private struct PlayerPresentationModifier<Player: View>: ViewModifier {
         } action: { layout in
             self.layout = layout
         }
+        .onPlayerStatusBarChange { style in
+            withAnimation(.easeInOut(duration: 0.25)) {
+                playerStatusBar = style
+            }
+        }
+        .playerStatusBar(statusBarStyle(offset: offset))
         .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(duration: 0.42, bounce: 0.12), value: isPresented)
         .animation(isDragging ? nil : .spring(duration: 0.38, bounce: 0), value: isVisible)
         .environment(\.playerSourceFrames, sourceFrames)
@@ -283,6 +291,23 @@ private struct PlayerPresentationModifier<Player: View>: ViewModifier {
             dragOffset = height
         }
         onDismiss()
+    }
+
+    /// The status bar for the player at `offset`: the player's own (with its controls) while it covers the screen;
+    /// light content while it is dragged and its black is still under the status bar (so it shows as the app
+    /// comes into view, even with the controls hidden); the app's own once the player's top edge passed below it,
+    /// over the dimmed app.
+    private func statusBarStyle(offset: CGFloat) -> PlayerStatusBarStyle {
+        guard isPresented, isVisible, let playerStatusBar else {
+            return .app
+        }
+        if offset > layout.insets.top {
+            return .app
+        }
+        if isDragging || offset != 0 {
+            return playerStatusBar == .hidden ? .overVideo : playerStatusBar
+        }
+        return playerStatusBar
     }
 
     /// iOS-like rubber band: grows ever more slowly and never passes `limit`.
@@ -524,6 +549,8 @@ private final class DragProbe {
 extension Notification.Name {
     /// Debug harness: holds the player at a drag offset (the object is a CGFloat).
     static let fluxoDebugPlayerDrag = Notification.Name("FluxoDebugPlayerDrag")
+    /// Debug harness: shows and keeps (true) or hides (false) the player's controls (the object is a Bool).
+    static let fluxoDebugPlayerControls = Notification.Name("FluxoDebugPlayerControls")
 }
 #endif
 

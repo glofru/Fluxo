@@ -337,6 +337,13 @@ enum DebugRoutes {
             }
             NotificationCenter.default.post(name: .fluxoDebugPlayerDrag, object: CGFloat(points))
         },
+        DebugRoute("player-controls:<show|hide>", "Shows the player's controls and keeps them on screen (show), or hides them like a tap on the video (hide).") { _, argument in
+            let values = ["show": true, "hide": false]
+            guard let show = values[argument.lowercased()] else {
+                throw DebugRouteError.invalidArgument("player-controls", argument)
+            }
+            NotificationCenter.default.post(name: .fluxoDebugPlayerControls, object: show)
+        },
         DebugRoute("open-player", "Opens the player screen for what plays (from Picture in Picture too), like a tap on the mini player.") { context, _ in
             context.player.presentPlayer()
             await context.wait(timeout: 4) { context.player.isPresented }
