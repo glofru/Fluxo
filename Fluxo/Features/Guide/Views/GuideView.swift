@@ -21,9 +21,8 @@ struct GuideView: View {
     @AppStorage(PlaylistSelection.storageKey) private var selectionRawValue = ""
 
     @Environment(EPGStore.self) private var epg
-    #if DEBUG
+    /// Its `guideFocus`: a channel to show (Full Guide in the player).
     @Environment(AppNavigation.self) private var navigation
-    #endif
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -37,6 +36,11 @@ struct GuideView: View {
     @State private var showsSources = false
     @State private var showsAddSource = false
     @State private var scrollToNowRequest = 0
+    /// The channel shown at the request of another screen (`AppNavigation.guideFocus`): its row is scrolled to and
+    /// highlighted.
+    @State private var focusedChannelID: UUID?
+    /// Bumped to scroll to `focusedChannelID`.
+    @State private var focusRequest = 0
     @AppStorage("guide.layout") private var layout = GuideLayout.automatic
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -76,6 +80,7 @@ struct GuideView: View {
                     if let groupFilter, !loaded.contains(where: { $0.item.groupName == groupFilter }) {
                         self.groupFilter = nil
                     }
+                    await applyFocus(scope: scope)
                     #if DEBUG
                     await openDebugScreens(channels: loaded)
                     #endif
@@ -89,6 +94,11 @@ struct GuideView: View {
                     }
                 }
                 #endif
+                .onChange(of: navigation.guideFocus, initial: true) {
+                    Task {
+                        await applyFocus(scope: self.scope)
+                    }
+                }
                 .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: RunLoop.main)) { _ in
                     // Past midnight: the grid moves on to the new day.
                     let today = Calendar.current.startOfDay(for: .now)
@@ -150,6 +160,49 @@ struct GuideView: View {
         )
     }
 
+    // MARK: - Focus
+
+    /// Shows the channel of `AppNavigation.guideFocus` (Full Guide in the player): today's grid (or the list) at
+    /// now, scrolled to its row, highlighted. A channel of a playlist that the selection hides switches to All
+    /// Playlists first; the request waits for the guide's channels to load.
+    private func applyFocus(scope: LibraryScope) async {
+        guard let focus = navigation.guideFocus else {
+            return
+        }
+        let item = focus.item
+        searchText = ""
+        if !scope.playlistIDs.contains(item.playlistID) {
+            // The channel list reloads for the new scope, and calls this again.
+            selectionRawValue = PlaylistSelection.all.rawValue
+            return
+        }
+        guard let channels else {
+            return
+        }
+        var match = channels.first { $0.id == item.id }
+            // Favorites and the history keep the row UUID they were made from, which a refresh replaces.
+            ?? channels.first { item.url != nil && $0.item.url == item.url && $0.item.playlistID == item.playlistID }
+        if match == nil, let ref = await epg.guideRef(for: item) {
+            // A duplicate of a listed channel (HD / SD): the guide lists the first one with the same programmes.
+            match = channels.first { $0.ref == ref }
+        }
+        guard navigation.guideFocus == focus else {
+            return
+        }
+        navigation.guideFocus = nil
+        guard let match else {
+            return
+        }
+        if let groupFilter, groupFilter != match.item.groupName {
+            self.groupFilter = nil
+        }
+        day = Calendar.current.startOfDay(for: .now)
+        selection = nil
+        focusedChannelID = match.id
+        focusRequest &+= 1
+        AccessibilityAnnouncer.announce(String(localized: "\(match.item.displayName) in the TV guide", comment: "VoiceOver announcement when the TV guide opens at a channel (Full Guide in the player); the placeholder is the channel name."))
+    }
+
     #if DEBUG
     /// `-FluxoDebugGuideSearch <term>` searches, `-FluxoDebugGuideDetail YES` opens the programme on air of the
     /// first channel (see `DebugGuideDemo`).
@@ -209,7 +262,7 @@ struct GuideView: View {
             if visible.isEmpty {
                 noChannels
             } else if showsList {
-                GuideChannelList(channels: visible)
+                GuideChannelList(channels: visible, focusedChannelID: focusedChannelID, focusRequest: focusRequest)
             } else {
                 VStack(spacing: 0) {
                     if groupFilter == nil && Calendar.current.isDateInToday(day) {
@@ -220,7 +273,7 @@ struct GuideView: View {
                     GuideDayBar(day: $day, dayCount: Self.dayCount) {
                         scrollToNowRequest += 1
                     }
-                    GuideGrid(channels: visible, day: day, scrollToNowRequest: scrollToNowRequest) { selection in
+                    GuideGrid(channels: visible, day: day, scrollToNowRequest: scrollToNowRequest, focusedChannelID: focusedChannelID, focusRequest: focusRequest) { selection in
                         self.selection = selection
                     }
                     .id(groupFilter)
@@ -333,7 +386,8 @@ struct GuideView: View {
                 }
             }
             if groups.count > 1 {
-                Picker("Category", selection: $groupFilter) {
+                // Another category: the highlight of a channel shown from the player goes.
+                Picker("Category", selection: Binding(get: { groupFilter }, set: { groupFilter = $0; focusedChannelID = nil })) {
                     Text("All Categories")
                         .tag(String?.none)
                     ForEach(groups, id: \.self) { group in
@@ -381,13 +435,35 @@ enum GuideLayout: String, CaseIterable {
 /// swipe, the context menu or the VoiceOver actions open its schedule for today and the next days.
 private struct GuideChannelList: View {
     let channels: [GuideChannel]
+    /// Highlighted and scrolled to on `focusRequest` (Full Guide in the player).
+    var focusedChannelID: UUID?
+    var focusRequest = 0
 
     var body: some View {
-        List(channels) { channel in
-            ChannelListRow(item: channel.item, subtitle: channel.item.groupName.isEmpty ? nil : channel.item.groupName, showsNumber: false)
+        ScrollViewReader { proxy in
+            List(channels) { channel in
+                ChannelListRow(item: channel.item, subtitle: channel.item.groupName.isEmpty ? nil : channel.item.groupName, showsNumber: false)
+                    .listRowBackground(channel.id == focusedChannelID ? Theme.accent.opacity(0.2) : nil)
+                    .id(channel.id)
+            }
+            .listStyle(.plain)
+            .accessibilityRotor("Channels", entries: channels, entryID: \.id, entryLabel: \.item.displayName)
+            .onAppear {
+                scrollToFocus(proxy)
+            }
+            .onChange(of: focusRequest) {
+                scrollToFocus(proxy)
+            }
         }
-        .listStyle(.plain)
-        .accessibilityRotor("Channels", entries: channels, entryID: \.id, entryLabel: \.item.displayName)
+    }
+
+    private func scrollToFocus(_ proxy: ScrollViewProxy) {
+        guard let focusedChannelID, channels.contains(where: { $0.id == focusedChannelID }) else {
+            return
+        }
+        DispatchQueue.main.async {
+            proxy.scrollTo(focusedChannelID, anchor: .center)
+        }
     }
 }
 

@@ -152,6 +152,7 @@ first that contains the text.
 | `play-url:<url>` | Plays any URL full screen. |
 | `close-player`, `stop` | Closes the player screen (playback continues); stops playback. |
 | `dismiss-player` | Closes the player like its chevron or a swipe down (into Picture in Picture when the device supports it; the Simulator does not, so the mini player shows). |
+| `player-guide[:full]` | The player's guide control, like a tap on what is on now in its top bar: the playing channel's schedule, at now, in the side panel (wide players), the other pane (open foldable) or a sheet over the video; `player-guide:full` then chooses Full Guide (the player closes and the TV Guide shows the channel, scrolled to its row, highlighted). Needs a guide, e.g. `seed-guide`. |
 | `open-player` | Opens the player for what plays, like a tap on the mini player. |
 | `player-drag:<points>` | Holds the player screen dragged down by that many points, as a finger would (`player-drag:0` releases it). |
 | `player-controls:<show\|hide>` | Shows the player's controls and keeps them on screen until `player-controls:hide` (screenshots of the controls, the status bar); `hide` hides them like a tap on the video. |

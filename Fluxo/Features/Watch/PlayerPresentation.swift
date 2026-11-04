@@ -551,6 +551,8 @@ extension Notification.Name {
     static let fluxoDebugPlayerDrag = Notification.Name("FluxoDebugPlayerDrag")
     /// Debug harness: shows and keeps (true) or hides (false) the player's controls (the object is a Bool).
     static let fluxoDebugPlayerControls = Notification.Name("FluxoDebugPlayerControls")
+    /// Debug harness (`player-guide`): the player's guide control (nil), or Full Guide ("full").
+    static let fluxoDebugPlayerGuide = Notification.Name("FluxoDebugPlayerGuide")
 }
 #endif
 

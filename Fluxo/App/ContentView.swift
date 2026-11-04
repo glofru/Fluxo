@@ -38,6 +38,12 @@ struct ContentView: View {
                 onDismiss: viewModel.closePlayer
             ) {
                 WatchChannelView(viewModel: viewModel)
+                    // Full Guide in the player's channel guide: the player closes (playback continues, in Picture in
+                    // Picture when it can) and this window's TV guide shows the channel.
+                    .environment(\.openChannelGuide, OpenChannelGuideAction { [viewModel, navigation] item in
+                        viewModel.closePlayer()
+                        navigation.showInGuide(item)
+                    })
                     // On-screen awareness: "Add this to my favorites" or "Record this" can resolve the channel
                     // that is playing through Siri and Apple Intelligence.
                     .appEntityIdentifier(viewModel.currentItem.flatMap(ChannelEntity.entityIdentifier(for:)))

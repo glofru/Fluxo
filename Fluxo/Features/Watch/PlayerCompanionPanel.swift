@@ -39,6 +39,8 @@ struct PlayerCompanionPanel: View {
     static let background = Color(white: 0.08)
 
     let viewModel: AVPlayerViewModel
+    /// Channels or schedule; owned by the player, whose guide control switches it to the schedule.
+    @Binding var section: Section
     /// The channel, its programme and its category on top (off when the controls sit right above the panel).
     var showsHeader = true
     /// Which side of the video the panel is on: the button that swaps them points the other way.
@@ -46,7 +48,6 @@ struct PlayerCompanionPanel: View {
     var onSwapSides: (() -> Void)?
 
     @Environment(EPGStore.self) private var epg
-    @State private var section: Section = .channels
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -79,7 +80,14 @@ struct PlayerCompanionPanel: View {
                 PlayerCompanionChannelList(viewModel: viewModel)
             case .schedule:
                 if let item = viewModel.currentItem {
+                    HStack {
+                        Spacer(minLength: 0)
+                        PlayerFullGuideButton(item: item)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 4)
                     PlayerCompanionSchedule(item: item)
+                        .id(item.id)
                 }
             }
         }
@@ -345,100 +353,25 @@ private struct PlayerCompanionChannelRow: View {
 
 // MARK: - Schedule
 
-/// The next programmes of the playing channel; a tap shows a programme's details (and its reminder).
+/// The schedule of the playing channel, at now; a tap shows a programme's details (and its reminder).
 private struct PlayerCompanionSchedule: View {
-    static let programmeLimit = 30
-
     let item: ChannelItem
 
-    @Environment(EPGStore.self) private var epg
-    @State private var ref: GuideChannelRef?
-    @State private var programmes: [GuideProgramme]?
-    @State private var detail: GuideProgramme?
+    @State private var detail: PlayerScheduleSelection?
 
     var body: some View {
-        Group {
-            if let programmes {
-                if programmes.isEmpty {
-                    ContentUnavailableView("No Programmes", systemImage: "calendar.badge.exclamationmark", description: Text("The TV guide has nothing scheduled for this channel."))
-                } else {
-                    TimelineView(.everyMinute) { context in
-                        List(programmes) { programme in
-                            row(programme, now: context.date)
-                                .listRowBackground(Color.clear)
-                        }
-                        .listStyle(.plain)
-                        .scrollContentBackground(.hidden)
-                    }
-                }
-            } else {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
+        PlayerChannelSchedule(item: item) { selection in
+            detail = selection
         }
-        .task(id: ScheduleKey(item: item, revision: epg.revision)) {
-            let ref = await epg.guideRef(for: item)
-            self.ref = ref
-            if let ref {
-                programmes = await epg.upcoming(for: ref, from: .now, limit: Self.programmeLimit)
-            } else {
-                programmes = []
-            }
+        .sheet(item: $detail) { selection in
+            ProgrammeDetailView(programme: selection.programme, channel: item, ref: selection.ref)
         }
-        .sheet(item: $detail) { programme in
-            ProgrammeDetailView(programme: programme, channel: item, ref: ref)
-        }
-    }
-
-    private struct ScheduleKey: Equatable {
-        let item: ChannelItem
-        let revision: Int
-    }
-
-    private func row(_ programme: GuideProgramme, now: Date) -> some View {
-        let isOnAir = programme.isOnAir(at: now)
-        return Button {
-            detail = programme
-        } label: {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                // As wide as the widest time, so the titles line up.
-                GuideTimeColumnText(date: programme.start)
-                    .font(.subheadline.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(isOnAir ? AnyShapeStyle(Theme.live) : AnyShapeStyle(.secondary))
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        if isOnAir {
-                            LiveBadge(compact: true)
-                        }
-                        Text(programme.title)
-                            .font(.subheadline.weight(isOnAir ? .semibold : .regular))
-                            .lineLimit(2)
-                    }
-                    if isOnAir {
-                        ProgrammeProgressBar(progress: programme.progress(at: now), tint: Theme.live, height: 3)
-                    } else if let detailLine = programme.detailLine {
-                        Text(detailLine)
-                            .font(.caption)
-                            .foregroundStyle(Theme.secondaryText)
-                            .lineLimit(1)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                if epg.reminders.isScheduled(programme) {
-                    Image(systemName: "bell.fill")
-                        .font(.caption)
-                        .foregroundStyle(Theme.lilac)
-                        .accessibilityLabel("Reminder set")
-                }
-            }
-            .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
     }
 }
 
 #Preview("Companion panel") {
-    PlayerCompanionPanel(viewModel: AVPlayerViewModel(), onSwapSides: {})
+    @Previewable @State var section = PlayerCompanionPanel.Section.channels
+    PlayerCompanionPanel(viewModel: AVPlayerViewModel(), section: $section, onSwapSides: {})
         .frame(width: 470, height: 660)
         .environment(\.colorScheme, .dark)
         .fluxoPreviewEnvironment()

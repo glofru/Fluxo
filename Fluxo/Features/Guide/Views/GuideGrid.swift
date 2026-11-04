@@ -67,11 +67,21 @@ struct GuideGrid: View {
     let day: Date
     /// Bumped to scroll to the current time.
     let scrollToNowRequest: Int
+    /// A channel shown at the request of another screen (Full Guide in the player): highlighted, and scrolled to
+    /// (with the current time) when `focusRequest` changes.
+    var focusedChannelID: UUID?
+    var focusRequest = 0
     let onSelect: (GuideSelection) -> Void
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 72
     @State private var position = ScrollPosition(x: 0, y: 0)
+    /// The last `focusRequest` this grid scrolled for (a grid made for a new category starts over).
+    @State private var appliedFocusRequest = 0
+    /// Height of the visible area, to place the focused row in it.
+    @State private var viewportHeight: CGFloat = 0
+    /// The focused row has been scrolled to: placements keep it in view until the user scrolls or asks for now.
+    @State private var keepsFocusedRow = false
 
     private var metrics: GuideMetrics {
         let isCompact = horizontalSizeClass == .compact
@@ -92,7 +102,7 @@ struct GuideGrid: View {
                 LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                     Section {
                         ForEach(channels) { channel in
-                            GuideRow(channel: channel, day: day, metrics: metrics, now: now, onSelect: onSelect)
+                            GuideRow(channel: channel, day: day, metrics: metrics, now: now, isFocused: channel.id == focusedChannelID, onSelect: onSelect)
                                 .id(channel.id)
                         }
                     } header: {
@@ -105,12 +115,13 @@ struct GuideGrid: View {
             .scrollIndicators(.hidden)
             // VoiceOver: the Channels rotor jumps from channel to channel (each row is a container named after it).
             .accessibilityRotor("Channels", entries: channels, entryID: \.id, entryLabel: \.item.displayName)
-            .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                geometry.contentSize.width
-            } action: { _, _ in
+            .onScrollGeometryChange(for: PlacementGeometry.self) { geometry in
+                PlacementGeometry(contentWidth: geometry.contentSize.width, viewportHeight: geometry.containerSize.height)
+            } action: { _, geometry in
+                viewportHeight = geometry.viewportHeight
                 // The lazy content gets its real width after the first layout: place the grid again until the
-                // user scrolls it.
-                if !position.isPositionedByUser {
+                // user scrolls it (and until a focused channel's row could be placed, which needs the height).
+                if !position.isPositionedByUser || focusRequest != appliedFocusRequest {
                     scrollToCurrentTime(animated: false)
                 }
             }
@@ -119,22 +130,44 @@ struct GuideGrid: View {
             scrollToCurrentTime(animated: false)
         }
         .onChange(of: scrollToNowRequest) {
+            keepsFocusedRow = false
+            scrollToCurrentTime(animated: true)
+        }
+        .onChange(of: focusRequest) {
             scrollToCurrentTime(animated: true)
         }
         .onChange(of: day) {
+            keepsFocusedRow = false
             scrollToCurrentTime(animated: false)
         }
     }
 
-    /// Today: half an hour before now. Other days: the same time of day.
+    private struct PlacementGeometry: Equatable {
+        let contentWidth: CGFloat
+        let viewportHeight: CGFloat
+    }
+
+    /// Today: half an hour before now. Other days: the same time of day. A focus request not served yet also
+    /// scrolls down to its channel.
     private func scrollToCurrentTime(animated: Bool) {
         let calendar = Calendar.current
         let now = Date.now
         let timeOfDay = now.timeIntervalSince(calendar.startOfDay(for: now))
         let minutes = max(0, timeOfDay / 60 - 30)
         let x = CGFloat(minutes) * metrics.pointsPerMinute
+        // Once the grid knows its height, which places the row. Until the user scrolls, later placements (the
+        // first layouts change the size) keep the row in view: one that set only x would reset y.
+        if focusRequest != appliedFocusRequest && viewportHeight > 0 && focusedRowOffset() != nil {
+            appliedFocusRequest = focusRequest
+            keepsFocusedRow = true
+        }
+        let y = keepsFocusedRow && (!position.isPositionedByUser || animated) ? focusedRowOffset() : nil
         let apply = {
-            position.scrollTo(x: x)
+            if let y {
+                position.scrollTo(x: x, y: y)
+            } else {
+                position.scrollTo(x: x)
+            }
         }
         if animated {
             withAnimation(.smooth, apply)
@@ -142,6 +175,22 @@ struct GuideGrid: View {
             // After the first layout, so the content size is known.
             DispatchQueue.main.async(execute: apply)
         }
+    }
+}
+
+extension GuideGrid {
+    /// The vertical offset that shows the focused channel's row in the upper third of the grid, under the pinned
+    /// ruler (rows have a fixed height); nil when that channel is not in the grid.
+    fileprivate func focusedRowOffset() -> CGFloat? {
+        guard let focusedChannelID, let index = channels.firstIndex(where: { $0.id == focusedChannelID }) else {
+            return nil
+        }
+        let metrics = metrics
+        let rowsArea = max(0, viewportHeight - metrics.rulerHeight)
+        let contentHeight = metrics.rulerHeight + CGFloat(channels.count) * metrics.rowHeight + 24
+        let maxOffset = max(0, contentHeight - viewportHeight)
+        let offset = CGFloat(index) * metrics.rowHeight - max(0, rowsArea - metrics.rowHeight) / 3
+        return min(maxOffset, max(0, offset))
     }
 }
 
@@ -274,6 +323,8 @@ private struct GuideRow: View {
     let day: Date
     let metrics: GuideMetrics
     let now: Date
+    /// The channel the guide was opened at (Full Guide in the player): its cell is highlighted.
+    var isFocused = false
     let onSelect: (GuideSelection) -> Void
 
     @Environment(EPGStore.self) private var epg
@@ -329,7 +380,7 @@ private struct GuideRow: View {
             .frame(width: metrics.dayWidth, height: metrics.rowHeight, alignment: .topLeading)
             .padding(.leading, columnWidth)
 
-            GuideChannelCell(channel: channel)
+            GuideChannelCell(channel: channel, isFocused: isFocused)
                 .frame(width: columnWidth, height: metrics.rowHeight)
                 .background(GuidePinnedBackground())
                 .overlay(alignment: .trailing) {
@@ -359,9 +410,11 @@ private struct GuideRow: View {
     }
 }
 
-/// The channel's logo and name; tapping plays it.
+/// The channel's logo and name; tapping plays it. The channel the guide was opened at is tinted, with a bar on
+/// its leading edge.
 private struct GuideChannelCell: View {
     let channel: GuideChannel
+    var isFocused = false
 
     @Environment(\.playChannel) private var playChannel
     @Environment(ChannelLibrary.self) private var library
@@ -397,6 +450,17 @@ private struct GuideChannelCell: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background {
+                if isFocused {
+                    Theme.accent.opacity(0.22)
+                        .overlay(alignment: .leading) {
+                            Rectangle()
+                                .fill(Theme.accent)
+                                .frame(width: 3)
+                        }
+                        .accessibilityHidden(true)
+                }
+            }
             .contentShape(.rect)
         }
         .buttonStyle(.plain)

@@ -36,6 +36,14 @@ struct WatchChannelView: View {
     @State private var interactionCount = 0
     @State private var isScrubbing = false
     @State private var isShowingRecordings = false
+    /// The playing channel's guide in a sheet over the video (players with no room for a panel next to it).
+    @State private var isShowingChannelGuide = false
+    /// Full Guide was chosen in that sheet: the app's guide shows this channel once the sheet is gone.
+    @State private var pendingFullGuide: ChannelItem?
+    /// Bumped when the guide control is used with the side panel already on its Guide tab: back to now.
+    @State private var sidePanelGuideRequest = 0
+    /// What a foldable's companion pane shows (the guide control switches it to the schedule).
+    @State private var companionSection: PlayerCompanionPanel.Section = .channels
     @State private var hoverThrottle = HoverThrottle()
     /// Follows `controlsVisible`, but hides only once the controls have faded out (see `statusBarStyle`).
     @State private var isStatusBarHidden = false
@@ -45,9 +53,14 @@ struct WatchChannelView: View {
     #if DEBUG
     /// Debug harness (`player-controls:show`): the controls stay on screen for screenshots.
     @State private var debugPinsControls = false
+    /// Debug harness (`player-guide`): bumped to use the guide control.
+    @State private var debugShowsChannelGuide = 0
     #endif
     /// The channel list / guide next to the video in a wide player (iPad in landscape); remembered.
     @AppStorage(PlayerSidePanelLayout.storageKey) private var showsSidePanel = false
+    @AppStorage(PlayerSidePanelLayout.tabStorageKey) private var sidePanelTab: PlayerSidePanelTab = .channels
+    @Environment(EPGStore.self) private var epg
+    @Environment(\.openChannelGuide) private var openChannelGuide
 
     /// Any assistive technology (VoiceOver, Switch Control, Voice Control, Full Keyboard Access): the controls
     /// stay on screen, since a control that hides while the user moves to it cannot be reached.
@@ -96,7 +109,7 @@ struct WatchChannelView: View {
                 }
 
                 if let sidePanel = layout.sidePanel {
-                    PlayerSidePanel(viewModel: viewModel) {
+                    PlayerSidePanel(viewModel: viewModel, guideRequest: sidePanelGuideRequest) {
                         showsSidePanel = false
                     }
                     .frame(width: sidePanel.width, height: sidePanel.height)
@@ -161,6 +174,19 @@ struct WatchChannelView: View {
             }
         }
         #if DEBUG
+        .onReceive(NotificationCenter.default.publisher(for: .fluxoDebugPlayerGuide)) { notification in
+            // Debug harness (`player-guide`): the guide control, or Full Guide in its sheet.
+            if (notification.object as? String) == "full", let item = viewModel.currentItem {
+                if isShowingChannelGuide {
+                    pendingFullGuide = item
+                    isShowingChannelGuide = false
+                } else {
+                    openChannelGuide(item)
+                }
+            } else {
+                debugShowsChannelGuide += 1
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .fluxoDebugPlayerControls)) { notification in
             // Debug harness: shows (and keeps) or hides the controls, as a tap on the video would.
             guard let show = notification.object as? Bool else {
@@ -211,6 +237,23 @@ struct WatchChannelView: View {
         .sensoryFeedback(.selection, trigger: viewModel.currentChannel?.id)
         .sensoryFeedback(trigger: viewModel.isRecording) { _, isRecording in
             isRecording ? .impact(weight: .medium) : .success
+        }
+        .sheet(isPresented: $isShowingChannelGuide, onDismiss: openPendingFullGuide) {
+            if let item = viewModel.currentItem {
+                PlayerChannelGuideSheet(item: item) {
+                    pendingFullGuide = item
+                    isShowingChannelGuide = false
+                }
+                .playerChannelGuideSheetPresentation()
+                // Dark like the player it covers (the sheet would otherwise follow the app's appearance).
+                .preferredColorScheme(.dark)
+            }
+        }
+        .onChange(of: viewModel.currentItem?.id) {
+            // Zapped to a channel without a guide (or to a movie): its sheet has nothing to show.
+            if isShowingChannelGuide && !canShowChannelGuide {
+                isShowingChannelGuide = false
+            }
         }
         .sheet(isPresented: $isShowingRecordings) {
             RecordingsView(store: viewModel.recordings, isRecordingActive: viewModel.isRecording) { recording in
@@ -281,6 +324,7 @@ struct WatchChannelView: View {
                     isScrubbing: $isScrubbing,
                     isShowingRecordings: $isShowingRecordings,
                     sidePanel: isSidePanelAvailable ? $showsSidePanel : nil,
+                    showChannelGuide: canShowChannelGuide ? { showChannelGuide(layout: layout, isSidePanelAvailable: isSidePanelAvailable) } : nil,
                     showsBottomBar: !layout.isStacked,
                     titleFocus: $isTitleFocused,
                     interacted: registerInteraction
@@ -294,6 +338,49 @@ struct WatchChannelView: View {
         // Half of a foldable's display is phone-sized: the top bar uses its phone layout there. (A value, not a
         // conditional modifier, so the video view is never recreated.)
         .environment(\.horizontalSizeClass, layout.mode == .sideBySide ? .compact : horizontalSizeClass)
+        #if DEBUG
+        .onChange(of: debugShowsChannelGuide) {
+            if canShowChannelGuide {
+                showChannelGuide(layout: layout, isSidePanelAvailable: isSidePanelAvailable)
+            }
+        }
+        #endif
+    }
+
+    // MARK: - Channel guide
+
+    /// A live channel with a TV guide: the guide control (what is on now, Channel Guide in the menu) shows.
+    private var canShowChannelGuide: Bool {
+        viewModel.currentItem?.kind == .live && epg.hasGuide
+    }
+
+    /// The guide control: the playing channel's schedule, at now, where the player has room for it. The side panel
+    /// of a wide player opens on its Guide tab; an open foldable shows it in its other pane; elsewhere it is a sheet
+    /// over the video. The video keeps playing in all of them.
+    private func showChannelGuide(layout: PlayerPaneLayout, isSidePanelAvailable: Bool) {
+        registerInteraction()
+        if isSidePanelAvailable {
+            sidePanelTab = .guide
+            showsSidePanel = true
+            // Back to the playing channel and to now, if the panel already showed something else.
+            sidePanelGuideRequest &+= 1
+        } else if layout.canSplit {
+            companionSection = .schedule
+            let control = splitControl(for: layout)
+            if !control.isShown {
+                control.toggle()
+            }
+        } else {
+            isShowingChannelGuide = true
+        }
+    }
+
+    private func openPendingFullGuide() {
+        guard let item = pendingFullGuide else {
+            return
+        }
+        pendingFullGuide = nil
+        openChannelGuide(item)
     }
 
     /// The other half of a foldable's display: the companion panel beside the video, or the controls (and the
@@ -304,7 +391,7 @@ struct WatchChannelView: View {
         case .full:
             EmptyView()
         case .sideBySide:
-            PlayerCompanionPanel(viewModel: viewModel, videoEdge: layout.videoEdge) {
+            PlayerCompanionPanel(viewModel: viewModel, section: $companionSection, videoEdge: layout.videoEdge) {
                 videoOnTrailingSide.toggle()
             }
         case .stacked:
@@ -312,7 +399,7 @@ struct WatchChannelView: View {
                 PlayerBottomBar(viewModel: viewModel, isScrubbing: $isScrubbing, interacted: registerInteraction)
                     .padding(.top, 14)
                 if layout.showsPanelList {
-                    PlayerCompanionPanel(viewModel: viewModel, showsHeader: false)
+                    PlayerCompanionPanel(viewModel: viewModel, section: $companionSection, showsHeader: false)
                 } else {
                     Spacer(minLength: 0)
                 }
@@ -376,7 +463,8 @@ struct WatchChannelView: View {
         }
         #endif
         // Not while casting: there is no video to uncover, and the controls drive the Chromecast.
-        return controlsVisible && viewModel.playbackState == .playing && !isScrubbing && !isShowingRecordings && !isAssistiveTechnologyEnabled
+        return controlsVisible && viewModel.playbackState == .playing && !isScrubbing && !isShowingRecordings && !isShowingChannelGuide
+            && !isAssistiveTechnologyEnabled
             && !viewModel.isCasting
     }
 
@@ -473,6 +561,8 @@ private struct PlayerChrome: View {
     @Binding var isShowingRecordings: Bool
     /// Shows / hides the side panel; nil when the player is too narrow for it.
     let sidePanel: Binding<Bool>?
+    /// The guide control (see `WatchChannelView.showChannelGuide`); nil when the item has no guide.
+    let showChannelGuide: (() -> Void)?
     /// False when the transport controls sit in the other pane of a foldable (see `PlayerPaneLayout`).
     var showsBottomBar = true
     var titleFocus: AccessibilityFocusState<Bool>.Binding
@@ -484,7 +574,7 @@ private struct PlayerChrome: View {
     var body: some View {
         let scrim = Theme.Player.scrim(reduceTransparency: reduceTransparency, increasedContrast: contrast == .increased)
         VStack(spacing: 0) {
-            PlayerTopBar(viewModel: viewModel, isShowingRecordings: $isShowingRecordings, sidePanel: sidePanel, titleFocus: titleFocus, interacted: interacted)
+            PlayerTopBar(viewModel: viewModel, isShowingRecordings: $isShowingRecordings, sidePanel: sidePanel, showChannelGuide: showChannelGuide, titleFocus: titleFocus, interacted: interacted)
             Spacer(minLength: 0)
             if showsBottomBar {
                 PlayerBottomBar(viewModel: viewModel, isScrubbing: $isScrubbing, interacted: interacted)
@@ -515,6 +605,7 @@ private struct PlayerTopBar: View {
     let viewModel: AVPlayerViewModel
     @Binding var isShowingRecordings: Bool
     let sidePanel: Binding<Bool>?
+    let showChannelGuide: (() -> Void)?
     var titleFocus: AccessibilityFocusState<Bool>.Binding
     let interacted: () -> Void
 
@@ -621,8 +712,8 @@ private struct PlayerTopBar: View {
                 .accessibilityElement(children: .combine)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityFocused(titleFocus)
-                // Now / next from the TV guide (live channels with a guide only).
-                PlayerProgrammeInfo(item: viewModel.currentItem)
+                // Now / next from the TV guide (live channels with a guide only); a tap shows the channel's guide.
+                PlayerProgrammeInfo(item: viewModel.currentItem, showGuide: showChannelGuide)
             }
         }
     }
@@ -721,6 +812,9 @@ private struct PlayerTopBar: View {
             Menu {
                 Button(viewModel.fillsScreen ? "Fit to Screen" : "Fill Screen", systemImage: viewModel.fillsScreen ? "rectangle.arrowtriangle.2.inward" : "rectangle.arrowtriangle.2.outward") {
                     viewModel.toggleFillsScreen()
+                }
+                if let showChannelGuide {
+                    Button("Channel Guide", systemImage: "calendar.day.timeline.left", action: showChannelGuide)
                 }
                 Button("Recordings", systemImage: "film.stack") {
                     isShowingRecordings = true

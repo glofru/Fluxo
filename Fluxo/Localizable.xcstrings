@@ -840,6 +840,9 @@
     "%@ has no episode link to copy" : {
       "comment" : "VoiceOver, after Copy Episode Link of a series whose playlist no longer lists an episode with a stream link."
     },
+    "%@ in the TV guide" : {
+      "comment" : "VoiceOver announcement when the TV guide opens at a channel (Full Guide in the player); the placeholder is the channel name."
+    },
     "%@ is %@ on %@." : {
       "comment" : "Siri and Shortcuts text (dialog or error) — Siri and Shortcuts. %1$ is a programme title; %2$ is when it airs ('on now', or a day and time); %3$ is the channel name.",
       "localizations" : {
@@ -11188,6 +11191,9 @@
         }
       }
     },
+    "Back to Now" : {
+      "comment" : "VoiceOver label of the button that scrolls a channel's schedule back to the programme on now."
+    },
     "Back to Playing Channel" : {
       "comment" : "Button — player side panel (iPad, Mac).",
       "localizations" : {
@@ -14421,6 +14427,9 @@
         }
       }
     },
+    "Channel Guide" : {
+      "comment" : "Player menu item (and voice command) that shows the playing channel's TV guide."
+    },
     "Channel Number" : {
       "comment" : "Text — Home page.",
       "localizations" : {
@@ -16851,6 +16860,9 @@
           }
         }
       }
+    },
+    "Closes the player and shows this channel in the TV guide" : {
+      "comment" : "VoiceOver hint of the Full Guide button in the player's channel guide."
     },
     "Collapsed" : {
       "comment" : "VoiceOver value of the For You section when its suggestions are hidden.",
@@ -26978,6 +26990,9 @@
           }
         }
       }
+    },
+    "Full Guide" : {
+      "comment" : "Button in the player's channel guide: closes the player and shows the channel in the whole TV guide."
     },
     "Full Screen" : {
       "comment" : "VoiceOver label — video player screen.",
@@ -55217,6 +55232,9 @@
         }
       }
     },
+    "Scrolls to the programme on now" : {
+      "comment" : "VoiceOver hint of the Now button of a channel's schedule in the player."
+    },
     "Search" : {
       "comment" : "Search (tab, screen title, button, Shortcuts parameter and App Shortcut title).",
       "localizations" : {
@@ -59262,6 +59280,9 @@
         }
       }
     },
+    "Show the channel's TV guide" : {
+      "comment" : "Tooltip of what is on now in the player's top bar."
+    },
     "Show the channels next to the video" : {
       "comment" : "Tooltip — video player screen.",
       "localizations" : {
@@ -59466,6 +59487,9 @@
     },
     "Show the schedule of ${channel}" : {
       "comment" : "Summary of a Shortcuts action, shown in the Shortcuts editor (${…} are parameters; keep them as written) — Shortcuts app."
+    },
+    "Show this channel in the full TV guide" : {
+      "comment" : "Tooltip of the Full Guide button in the player's channel guide."
     },
     "Showing the first %lld matches. Type more to narrow the search." : {
       "comment" : "Text — category and channel lists, Search screen. The placeholder is search limit.",
@@ -59920,6 +59944,9 @@
           }
         }
       }
+    },
+    "Shows the channel's TV guide" : {
+      "comment" : "VoiceOver hint of what is on now in the player's top bar: a tap shows the channel's guide."
     },
     "Shows the details" : {
       "comment" : "VoiceOver hint — TV guide.",

@@ -63,6 +63,16 @@ final class AppNavigation {
     var searchText = ""
     /// The live channel whose schedule (today's programmes from the TV guide) is shown in a sheet.
     var scheduleChannel: ChannelItem?
+    /// A channel the TV guide is to show (scrolled to now and to its row, highlighted), e.g. Full Guide in the
+    /// player; the guide clears it once it has (see `showInGuide(_:)`).
+    var guideFocus: GuideFocus?
+
+    /// A request to show a channel in the TV guide. Each request is new, so asking again for the same channel
+    /// scrolls to it again.
+    struct GuideFocus: Equatable {
+        let item: ChannelItem
+        let id = UUID()
+    }
 
     #if DEBUG
     /// Debug harness (`overscroll:<points>`): Home's content is pushed down as if pulled by this much.
@@ -129,6 +139,12 @@ final class AppNavigation {
             libraryPath = NavigationPath([ChannelRoute.history(playlistIDs: nil)])
         }
         #endif
+    }
+
+    /// Shows the TV guide at a live channel: today, scrolled to now and to the channel's row, which is highlighted.
+    func showInGuide(_ item: ChannelItem) {
+        show(.guide)
+        guideFocus = GuideFocus(item: item)
     }
 
     /// Pushes a channel screen (a group's grid, favorites, history) on Home.

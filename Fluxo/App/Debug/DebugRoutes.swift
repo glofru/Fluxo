@@ -388,6 +388,19 @@ enum DebugRoutes {
             }
             NotificationCenter.default.post(name: .fluxoDebugPlayerControls, object: show)
         },
+        DebugRoute("player-guide[:full]", "The player's guide control, like a tap on what is on now: the playing channel's schedule (side panel, foldable pane or sheet); with full, Full Guide (the TV guide at that channel).") { context, argument in
+            let option = argument.lowercased()
+            guard option.isEmpty || option == "full" else {
+                throw DebugRouteError.invalidArgument("player-guide", argument)
+            }
+            guard context.player.currentItem != nil else {
+                throw DebugRouteError.invalidArgument("player-guide", "nothing plays")
+            }
+            NotificationCenter.default.post(name: .fluxoDebugPlayerGuide, object: option.isEmpty ? nil : option)
+            if option == "full" {
+                await context.wait(timeout: 4) { !context.player.isPresented }
+            }
+        },
         DebugRoute("open-player", "Opens the player screen for what plays (from Picture in Picture too), like a tap on the mini player.") { context, _ in
             context.player.presentPlayer()
             await context.wait(timeout: 4) { context.player.isPresented }

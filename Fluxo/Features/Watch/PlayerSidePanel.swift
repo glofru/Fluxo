@@ -64,6 +64,8 @@ enum PlayerSidePanelLayout {
 struct PlayerSidePanel: View {
 
     let viewModel: AVPlayerViewModel
+    /// Bumped by the player's guide control: the Guide tab goes back to the playing channel, at now.
+    var guideRequest = 0
     let close: () -> Void
 
     @AppStorage(PlayerSidePanelLayout.tabStorageKey) private var tab: PlayerSidePanelTab = .channels
@@ -71,6 +73,8 @@ struct PlayerSidePanel: View {
     /// of a channel row). The schedule opens here, in the panel: the app's schedule sheet and inspector are under
     /// the player, or in another window.
     @State private var scheduleItem: ChannelItem?
+    /// A programme of the Guide tab whose details show.
+    @State private var detail: PlayerScheduleSelection?
     @Environment(ChannelLibrary.self) private var library
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -118,10 +122,17 @@ struct PlayerSidePanel: View {
                             self.scheduleItem = nil
                         }
                         .transition(.opacity)
+                    } else {
+                        PlayerGuideTabHeader(item: item)
                     }
                     let guideItem = scheduleItem ?? item
-                    PlayerGuideList(item: guideItem)
-                        .id(guideItem.id)
+                    PlayerChannelSchedule(item: guideItem, scrollToNowRequest: guideRequest) { selection in
+                        detail = selection
+                    }
+                    .id(guideItem.id)
+                    .sheet(item: $detail) { selection in
+                        ProgrammeDetailView(programme: selection.programme, channel: guideItem, ref: selection.ref)
+                    }
                 }
             }
         }
@@ -138,6 +149,9 @@ struct PlayerSidePanel: View {
         }
         .onChange(of: viewModel.currentItem?.id) { _, _ in
             // Zapped (possibly to the channel of the schedule, with its Watch button): back to the playing one.
+            scheduleItem = nil
+        }
+        .onChange(of: guideRequest) {
             scheduleItem = nil
         }
     }
@@ -383,6 +397,8 @@ private struct PlayerScheduleHeader: View {
                 .disabled(!canPlay)
                 .help("Watch this channel")
 
+            PlayerFullGuideButton(item: item, iconOnly: true)
+
             Button("Back to Playing Channel", systemImage: "arrow.uturn.backward", action: close)
                 .labelStyle(.iconOnly)
                 .font(.subheadline.weight(.semibold))
@@ -399,151 +415,21 @@ private struct PlayerScheduleHeader: View {
 
 // MARK: - Guide
 
-/// What the playing channel shows now and next, from the TV guide, by day. Upcoming programmes have Remind Me.
-private struct PlayerGuideList: View {
-
-    static let limit = 40
-
+/// Above the Guide tab for the playing channel: its name, and Full Guide (the app's TV guide at this channel).
+private struct PlayerGuideTabHeader: View {
     let item: ChannelItem
 
-    @Environment(EPGStore.self) private var epg
-    @State private var programmes: [GuideProgramme]?
-
     var body: some View {
-        TimelineView(.everyMinute) { context in
-            content(now: context.date)
+        HStack(spacing: 10) {
+            Text(item.displayName)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityAddTraits(.isHeader)
+            PlayerFullGuideButton(item: item)
         }
-        .task(id: epg.revision) {
-            guard let ref = await epg.guideRef(for: item) else {
-                programmes = []
-                return
-            }
-            programmes = await epg.upcoming(for: ref, from: .now, limit: Self.limit)
-        }
-    }
-
-    @ViewBuilder
-    private func content(now: Date) -> some View {
-        if let programmes {
-            if programmes.isEmpty {
-                ContentUnavailableView(
-                    "No Guide",
-                    systemImage: "calendar.badge.exclamationmark",
-                    description: Text("The TV guide has nothing scheduled for this channel.")
-                )
-            } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 2, pinnedViews: .sectionHeaders) {
-                        ForEach(days(of: programmes), id: \.day) { day in
-                            Section {
-                                ForEach(day.programmes) { programme in
-                                    PlayerGuideRow(programme: programme, item: item, now: now)
-                                }
-                            } header: {
-                                Text(GuideFormat.day(day.day))
-                                    .font(.footnote.weight(.semibold))
-                                    .foregroundStyle(Theme.secondaryText)
-                                    .textCase(.uppercase)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .accessibilityAddTraits(.isHeader)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 6)
-                    .padding(.bottom, 12)
-                }
-                .scrollIndicators(.hidden)
-            }
-        } else {
-            ProgressView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
-
-    private struct Day {
-        let day: Date
-        let programmes: [GuideProgramme]
-    }
-
-    private func days(of programmes: [GuideProgramme]) -> [Day] {
-        let calendar = Calendar.current
-        var result: [Day] = []
-        for programme in programmes {
-            let day = calendar.startOfDay(for: programme.start)
-            if let last = result.last, last.day == day {
-                result[result.count - 1] = Day(day: day, programmes: last.programmes + [programme])
-            } else {
-                result.append(Day(day: day, programmes: [programme]))
-            }
-        }
-        return result
-    }
-}
-
-private struct PlayerGuideRow: View {
-    let programme: GuideProgramme
-    let item: ChannelItem
-    let now: Date
-
-    @Environment(EPGStore.self) private var epg
-
-    var body: some View {
-        let isOnAir = programme.isOnAir(at: now)
-        let isReminded = epg.reminders.isScheduled(programme)
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            GuideTimeColumnText(date: programme.start)
-                .font(.subheadline.monospacedDigit().weight(isOnAir ? .semibold : .regular))
-                .foregroundStyle(isOnAir ? AnyShapeStyle(Theme.live) : AnyShapeStyle(.secondary))
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(programme.title)
-                    .font(.subheadline.weight(isOnAir ? .semibold : .regular))
-                    .lineLimit(2)
-                if let detail = programme.detailLine {
-                    Text(detail)
-                        .font(.caption)
-                        .foregroundStyle(Theme.secondaryText)
-                        .lineLimit(1)
-                }
-                if isOnAir {
-                    HStack(spacing: 8) {
-                        ProgrammeProgressBar(progress: programme.progress(at: now), tint: Theme.live, height: 3)
-                        Text(GuideFormat.remaining(programme, at: now))
-                            .font(.caption2.monospacedDigit())
-                            .foregroundStyle(Theme.secondaryText)
-                            .fixedSize()
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            if isReminded {
-                Image(systemName: "bell.fill")
-                    .font(.caption)
-                    .foregroundStyle(.tint)
-                    .accessibilityLabel("Reminder set")
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background {
-            if isOnAir {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(.white.opacity(0.08))
-            }
-        }
-        .accessibilityElement(children: .combine)
-        .contextMenu {
-            if !isOnAir, ReminderCenter.canRemind(programme, now: now) {
-                Button(isReminded ? "Cancel Reminder" : "Remind Me", systemImage: isReminded ? "bell.slash" : "bell") {
-                    Task {
-                        await epg.reminders.toggle(programme, on: item)
-                    }
-                }
-            }
-        }
+        .padding(.horizontal, 18)
+        .padding(.bottom, 4)
     }
 }
 

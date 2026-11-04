@@ -662,6 +662,16 @@ navigation, intelligence) with `AppDependencyManager`; intents run in the app's 
   and Go Live (see "Liquid Glass" below for how these controls morph). Controls fade out after 4 s of playback without interaction and come back on
   a tap or mouse move; they stay up while paused, buffering, failed, scrubbing or with
   VoiceOver on. Errors and the end of a stream show a card with Try Again / Play Again.
+- **Channel guide from the player** (`Features/Watch/PlayerChannelGuide.swift`): on a live channel with a guide,
+  what is on now in the top bar (with a chevron) and Channel Guide in the player's menu show the channel's
+  schedule without stopping the video: the last programmes of today (dimmed), the one on now (highlighted, with
+  its progress and time left) and what follows by day, opened scrolled to now, with a Now button once it is out of
+  view; a tap opens a programme (details, Remind Me). Where it shows: the side panel's Guide tab in a wide player
+  (iPad in landscape, the Mac), the schedule pane of an open foldable, otherwise a sheet over the video (medium and
+  large on iPhone, a form sheet on iPad and the Mac). Full Guide closes the player (playback continues, in Picture
+  in Picture when it can) and opens the TV Guide at today and now, scrolled to the channel's row, which is tinted
+  (`AppNavigation.showInGuide(_:)`, `guideFocus`; the list layout scrolls to it too). Player windows of their own
+  (iPad) have no Full Guide: their guide is in another window.
 - **Channel zapping** (`ChannelZapper`): channel up / down plays the next / previous
   channel of the group of the playing channel, in playlist order, wrapping around. Each
   step is one indexed single-row fetch. It is offered for live channels started from a
@@ -709,7 +719,7 @@ navigation, intelligence) with `AppDependencyManager`; intents run in the app's 
 - **Player side panel** (`Features/Watch/PlayerSidePanel.swift`): in a wide player (iPad in landscape, at least
   900 points), the top bar has a button for a glass panel next to the video: the channels of the playing channel's
   category with what each shows now (tap to switch, the playing one highlighted and scrolled to), or the playing
-  channel's guide by day with reminders. The video shrinks to make room. The panel and its tab are remembered;
+  channel's guide by day with reminders, at now (see "Channel guide from the player"). The video shrinks to make room. The panel and its tab are remembered;
   ⇧⌘L toggles it, also while the controls are hidden. A row's context menu (Play, Open in New Window, Favorites,
   Today's Schedule) only has actions that work over the player: the schedule opens in the panel's Guide tab, with
   Watch and back buttons; guide matching is left out (its picker would open under the player).

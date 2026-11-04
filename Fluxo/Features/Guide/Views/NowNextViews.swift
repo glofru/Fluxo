@@ -322,15 +322,35 @@ struct ChannelCardProgrammeOverlay: View {
     }
 }
 
-/// The programme on air (and the next one) for the player's top bar.
+/// The programme on air (and the next one) for the player's top bar. With `showGuide` it is a button, with a
+/// chevron, that shows the channel's guide.
 struct PlayerProgrammeInfo: View {
     let item: ChannelItem?
+    var showGuide: (() -> Void)?
 
     var body: some View {
         NowNextReader(item: item) { nowNext in
             if let nowNext, nowNext.current != nil || nowNext.next != nil {
                 TimelineView(.everyMinute) { context in
-                    content(nowNext, now: context.date)
+                    if let showGuide {
+                        Button(action: showGuide) {
+                            HStack(spacing: 8) {
+                                content(nowNext, now: context.date)
+                                Image(systemName: "chevron.forward")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(Theme.secondaryText)
+                                    .accessibilityHidden(true)
+                            }
+                            .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Shows the channel's TV guide")
+                        .accessibilityInputLabels([Text("Channel Guide"), Text("Guide")])
+                        .accessibilityIdentifier("player.programmeInfo")
+                        .help("Show the channel's TV guide")
+                    } else {
+                        content(nowNext, now: context.date)
+                    }
                 }
                 .transition(.opacity)
             }
