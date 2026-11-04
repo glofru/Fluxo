@@ -11,7 +11,12 @@ import SwiftUI
 /// and Remind Me, and what follows on the same channel.
 struct ProgrammeDetailView: View {
 
-    static let artworkSize = CGSize(width: 560, height: 315)
+    /// The tallest the artwork gets: a 16:9 banner as wide as the content, lower in a short window (iPhone
+    /// landscape) so that the title stays in view.
+    static let artworkMaxHeight: CGFloat = 300
+    static let compactArtworkMaxHeight: CGFloat = 150
+    /// The widest the content gets (readable lines on iPad and Mac).
+    static let readableWidth: CGFloat = 640
 
     let programme: GuideProgramme
     let channel: ChannelItem
@@ -23,6 +28,9 @@ struct ProgrammeDetailView: View {
     @Environment(\.playChannel) private var playChannel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
+    #if os(iOS)
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    #endif
     @State private var upNext: [GuideProgramme] = []
     @State private var reminderToggles = 0
 
@@ -50,7 +58,7 @@ struct ProgrammeDetailView: View {
                         }
                     }
                     .padding()
-                    .frame(maxWidth: 640, alignment: .leading)
+                    .frame(maxWidth: Self.readableWidth, alignment: .leading)
                     .frame(maxWidth: .infinity)
                 }
             }
@@ -102,21 +110,30 @@ struct ProgrammeDetailView: View {
 
     // MARK: - Sections
 
+    /// The programme's image, whatever its size and shape: the banner takes the width of the content and never
+    /// more (a huge or very wide image used to widen the whole sheet, pushing the text off both edges).
     @ViewBuilder
     private var artwork: some View {
         if let icon = programme.icon {
-            LogoImage(source: icon, size: Self.artworkSize, contentMode: .fill) { phase in
+            ArtworkBanner(source: icon, aspectRatio: 16 / 9, maxHeight: artworkMaxHeight) { phase in
                 if phase == .loading {
                     Color.artworkPlaceholder.opacity(0.2)
                 } else {
                     ArtworkPlaceholder(name: programme.title, kind: .live)
                 }
             }
-            .frame(maxWidth: .infinity)
-            .aspectRatio(16 / 9, contentMode: .fit)
             .clipShape(.rect(cornerRadius: 18, style: .continuous))
+            .artworkIgnoresInvertColors()
             .accessibilityHidden(true)
         }
+    }
+
+    private var artworkMaxHeight: CGFloat {
+        #if os(iOS)
+        verticalSizeClass == .compact ? Self.compactArtworkMaxHeight : Self.artworkMaxHeight
+        #else
+        Self.artworkMaxHeight
+        #endif
     }
 
     private func header(now: Date) -> some View {

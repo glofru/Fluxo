@@ -21,6 +21,9 @@ struct GuideView: View {
     @AppStorage(PlaylistSelection.storageKey) private var selectionRawValue = ""
 
     @Environment(EPGStore.self) private var epg
+    #if DEBUG
+    @Environment(AppNavigation.self) private var navigation
+    #endif
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -77,6 +80,15 @@ struct GuideView: View {
                     await openDebugScreens(channels: loaded)
                     #endif
                 }
+                #if DEBUG
+                .onChange(of: navigation.debugGuideSelection, initial: true) { _, debugSelection in
+                    // Debug harness (`programme:<channel>`).
+                    if let debugSelection {
+                        selection = debugSelection
+                        navigation.debugGuideSelection = nil
+                    }
+                }
+                #endif
                 .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged).receive(on: RunLoop.main)) { _ in
                     // Past midnight: the grid moves on to the new day.
                     let today = Calendar.current.startOfDay(for: .now)

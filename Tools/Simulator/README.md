@@ -135,6 +135,7 @@ first that contains the text.
 | `seed-guide` | Adds a sample TV guide for the live channels of every playlist (for On Now, now / next in rows, schedules). |
 | `progress:<channel>` | Marks a movie or episode as watched up to 40 % (Continue Watching, progress bars). |
 | `schedule:<channel>` | The schedule sheet of a live channel (needs a guide, e.g. `seed-guide`). |
+| `programme:<channel>[,<artwork>][,long]` | The TV Guide with the programme on now on a channel open (a sheet; the inspector on iPad; needs a guide, e.g. `seed-guide`). `<artwork>` replaces its image with a sample of a size and shape guides carry: `tiny` (32 x 32), `still` (1280 x 720), `huge` (6000 x 3375), `classic` (4:3), `wide` (10:1), `tall` (1:8), `poster` (2:3), `square`, or `none`; `long` gives it a long title, description and category list. |
 | `player:<channel>` | Plays a channel full screen. |
 | `mini-player:<channel>` | Plays a channel with the player closed, so the mini player shows. |
 | `play-url:<url>` | Plays any URL full screen. |

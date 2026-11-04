@@ -69,6 +69,8 @@ final class AppNavigation {
     var debugHomeOverscroll: CGFloat = 0
     /// Debug harness (`home-section:<name>`): the `HomeSection` Home scrolls to.
     var debugHomeSection: String?
+    /// Debug harness (`programme:<channel>`): the programme the TV Guide opens (a sheet, or the inspector on iPad).
+    var debugGuideSelection: GuideSelection?
     #endif
 
     /// iPad: the window has room for an inspector next to its content (see `AppTabView.isWide(_:)`). Narrower

@@ -91,6 +91,66 @@ enum DebugArtwork {
         return image.flatMap { encode($0, type: .jpeg, quality: 0.72) }
     }
 
+    /// Programme images of the sizes and shapes XMLTV guides carry, to check that any of them fits the
+    /// programme detail (route `programme:<channel>,<artwork>`).
+    enum ProgrammeArtwork: String, CaseIterable {
+        /// 32 x 32 px: a tiny channel badge.
+        case tiny
+        /// 1280 x 720 px: a usual 16:9 still.
+        case still
+        /// 6000 x 3375 px: a full-resolution 16:9 photo.
+        case huge
+        /// 4:3, 800 x 600 px.
+        case classic
+        /// 3000 x 300 px: a 10:1 banner.
+        case wide
+        /// 300 x 2400 px: a 1:8 strip.
+        case tall
+        /// 2:3, 600 x 900 px: a poster.
+        case poster
+        /// 1000 x 1000 px.
+        case square
+
+        var pixelSize: CGSize {
+            switch self {
+            case .tiny: CGSize(width: 32, height: 32)
+            case .still: CGSize(width: 1_280, height: 720)
+            case .huge: CGSize(width: 6_000, height: 3_375)
+            case .classic: CGSize(width: 800, height: 600)
+            case .wide: CGSize(width: 3_000, height: 300)
+            case .tall: CGSize(width: 300, height: 2_400)
+            case .poster: CGSize(width: 600, height: 900)
+            case .square: CGSize(width: 1_000, height: 1_000)
+            }
+        }
+    }
+
+    /// A JPEG of `artwork`'s size: a gradient, a frame on its edges (so cropping shows), circles in the corners
+    /// and its size in the middle.
+    static func programmeArtwork(_ artwork: ProgrammeArtwork) -> String? {
+        let size = artwork.pixelSize
+        let shortSide = min(size.width, size.height)
+        let image = draw(size: size, opaque: true) { context in
+            let bounds = CGRect(origin: .zero, size: size)
+            fillGradient(context, in: bounds, from: color(hue: 0.58, saturation: 0.7, brightness: 0.9), to: color(hue: 0.9, saturation: 0.8, brightness: 0.35))
+            // The edges: cropping removes part of the yellow frame.
+            let line = max(2, shortSide * 0.04)
+            context.setStrokeColor(color(hue: 0.14, saturation: 0.9, brightness: 1))
+            context.setLineWidth(line)
+            context.stroke(bounds.insetBy(dx: line / 2, dy: line / 2))
+            let diameter = shortSide * 0.22
+            context.setFillColor(color(hue: 0.33, saturation: 0.6, brightness: 1, alpha: 0.85))
+            for corner in [CGPoint(x: bounds.minX, y: bounds.minY), CGPoint(x: bounds.maxX, y: bounds.minY), CGPoint(x: bounds.minX, y: bounds.maxY), CGPoint(x: bounds.maxX, y: bounds.maxY)] {
+                let x = corner.x == bounds.minX ? line * 2 : bounds.maxX - line * 2 - diameter
+                let y = corner.y == bounds.minY ? line * 2 : bounds.maxY - line * 2 - diameter
+                context.fillEllipse(in: CGRect(x: x, y: y, width: diameter, height: diameter))
+            }
+            let label = "\(Int(size.width))×\(Int(size.height))"
+            drawCenteredLine(label, in: bounds.insetBy(dx: size.width * 0.15, dy: size.height * 0.38), color: CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1), context: context)
+        }
+        return image.flatMap { encode($0, type: .jpeg, quality: 0.8) }
+    }
+
     /// FNV-1a, so colors do not change between launches (unlike `Hasher`).
     static func stableHash(_ string: String) -> Int {
         var hash: UInt64 = 0xcbf2_9ce4_8422_2325

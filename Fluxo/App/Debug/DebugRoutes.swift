@@ -256,6 +256,45 @@ enum DebugRoutes {
         DebugRoute("schedule:<channel>", "The schedule sheet of a live channel (needs a guide, e.g. seed-guide).") { context, argument in
             context.navigation.scheduleChannel = try context.channel(named: argument)
         },
+        DebugRoute(
+            "programme:<channel>[,<artwork>][,long]",
+            "Opens the TV Guide and the programme on now on a channel (needs a guide, e.g. seed-guide), with a sample image (\(DebugArtwork.ProgrammeArtwork.allCases.map(\.rawValue).joined(separator: ", ")), or none) and, with long, a long title and description."
+        ) { context, argument in
+            let parts = argument.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
+            guard let name = parts.first, !name.isEmpty else {
+                throw DebugRouteError.invalidArgument("programme", argument)
+            }
+            let options = Set(parts.dropFirst().map { $0.lowercased() })
+            let artworks = DebugArtwork.ProgrammeArtwork.allCases.filter { options.contains($0.rawValue) }
+            guard options.subtracting(artworks.map(\.rawValue)).subtracting(["none", "long"]).isEmpty, artworks.count <= 1 else {
+                throw DebugRouteError.invalidArgument("programme", argument)
+            }
+            let item = try context.channel(named: name)
+            let importIDs = ((try? context.modelContext.fetch(FetchDescriptor<Playlist>())) ?? []).compactMap(\.currentImportID)
+            guard let channel = await context.epg.guideChannels(importIDs: importIDs).first(where: { $0.item.id == item.id }),
+                  let programme = await context.epg.nowNext(for: item)?.current else {
+                throw DebugRouteError.notFound("programme on now on", name)
+            }
+            let isLong = options.contains("long")
+            let icon = artworks.first.flatMap(DebugArtwork.programmeArtwork) ?? (options.contains("none") ? nil : programme.icon)
+            let shown = GuideProgramme(
+                sourceID: programme.sourceID,
+                channelID: programme.channelID,
+                start: programme.start,
+                stop: programme.stop,
+                title: isLong ? "\(programme.title): The Extraordinarily Long Special Edition With an Unusually Verbose Title" : programme.title,
+                subtitle: programme.subtitle,
+                summary: isLong
+                    ? programme.summary + " " + String(repeating: "A long description of the programme, with many details about it. ", count: 12)
+                        + "https://guide.seed.fluxo.invalid/programmes/an-unbroken-identifier-without-any-spaces-0123456789abcdefghijklmnopqrstuvwxyz"
+                    : programme.summary,
+                categories: isLong ? programme.categories + ["Documentary", "Special", "Live Event", "Highlights", "Interviews"] : programme.categories,
+                icon: icon,
+                episode: programme.episode
+            )
+            context.navigation.show(.guide)
+            context.navigation.debugGuideSelection = GuideSelection(programme: shown, channel: channel)
+        },
         DebugRoute("player:<channel>", "Plays a channel full screen.") { context, argument in
             await context.play(try context.channel(named: argument), present: true)
             await context.wait(timeout: 5) { context.player.isPresented }
