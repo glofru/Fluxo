@@ -195,12 +195,40 @@ struct CastDevicePicker: View {
 
 #if os(iOS)
 extension View {
+    /// Presents the Cast device picker when the cast buttons of the player or the mini player ask for it. With
+    /// several windows (iPad) it shows in one window only: the one the cast button was tapped in (see
+    /// `WindowCoordinator`). Apply at the root of every window that shows the player or the mini player.
+    func castDevicePickerSheet(player: AVPlayerViewModel) -> some View {
+        modifier(CastDevicePickerSheet(player: player))
+    }
+
     /// The device picker's sheet. Over the player, which is always dark, it is dark too (as the system's AirPlay
     /// picker is over video), so it never turns a light, low-contrast glass over the video; its background is
     /// opaque so the player does not show through behind the list. On iPad (`isRegularWidth`) it is a form sheet
     /// fitted to a compact height, as a short device list leaves the full height empty.
     func castPickerPresentation(overPlayer: Bool, isRegularWidth: Bool) -> some View {
         modifier(CastPickerPresentation(overPlayer: overPlayer, isRegularWidth: isRegularWidth))
+    }
+}
+
+private struct CastDevicePickerSheet: ViewModifier {
+    let player: AVPlayerViewModel
+
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(WindowCoordinator.self) private var coordinator: WindowCoordinator?
+    @Environment(\.windowID) private var windowID
+
+    func body(content: Content) -> some View {
+        let cast = player.cast
+        content
+            .windowPresentation(.castPicker, isActive: cast.isPickerPresented)
+            .sheet(isPresented: Binding(
+                get: { coordinator?.shows(.castPicker, in: windowID, isActive: cast.isPickerPresented) ?? cast.isPickerPresented },
+                set: { cast.isPickerPresented = $0 }
+            )) {
+                CastDevicePicker(cast: cast, player: player)
+                    .castPickerPresentation(overPlayer: player.isPresented, isRegularWidth: horizontalSizeClass == .regular)
+            }
     }
 }
 

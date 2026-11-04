@@ -14,10 +14,16 @@ enum PlaylistURLValidation: Equatable {
     case invalid(String)
     case valid(URL)
 
-    init(_ text: String) {
+    /// - Parameter localURL: the address of the playlist being edited when it was imported from a file (drag and
+    ///   drop, Open in Fluxo): the app's copy of the file, the only file address the form accepts.
+    init(_ text: String, localURL: URL? = nil) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             self = .empty
+            return
+        }
+        if let localURL, trimmed == localURL.absoluteString {
+            self = .valid(localURL)
             return
         }
         guard trimmed.contains("://") else {
@@ -78,6 +84,8 @@ struct AddPlaylistView: View {
     }
 
     var playlist: Playlist?
+    /// The address a new playlist starts with (a link dropped on the window).
+    var initialURL: URL?
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -93,7 +101,7 @@ struct AddPlaylistView: View {
     @FocusState private var focusedField: Field?
 
     private var validation: PlaylistURLValidation {
-        PlaylistURLValidation(urlText)
+        PlaylistURLValidation(urlText, localURL: playlist.flatMap { LocalPlaylistFiles.isLocal($0.url) ? $0.url : nil })
     }
 
     private var isImporting: Bool {
@@ -240,6 +248,12 @@ struct AddPlaylistView: View {
 
     private func prefill() {
         guard let playlist else {
+            if let initialURL, urlText.isEmpty {
+                urlText = initialURL.absoluteString
+                showsValidation = true
+                focusedField = .name
+                return
+            }
             #if DEBUG
             // Debug builds start with a small public playlist to speed up testing.
             if urlText.isEmpty {

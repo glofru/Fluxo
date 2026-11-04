@@ -262,6 +262,9 @@ struct FavoritesRow: View {
     let playlistIDs: [UUID]?
 
     @Query private var bookmarks: [ChannelBookmark]
+    @Environment(ChannelLibrary.self) private var library
+    /// A channel is dragged over the row (it becomes a favorite when dropped).
+    @State private var isDropTarget = false
 
     init(playlistIDs: [UUID]?) {
         self.playlistIDs = playlistIDs
@@ -280,6 +283,20 @@ struct FavoritesRow: View {
                     }
                 }
             }
+            .padding(.vertical, 6)
+            .background {
+                if isDropTarget {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(Theme.favorite.opacity(0.12))
+                        .strokeBorder(Theme.favorite.opacity(0.6), lineWidth: 2)
+                        .padding(.horizontal, 8)
+                        .transition(.opacity)
+                }
+            }
+            .padding(.vertical, -6)
+            .animation(.easeInOut(duration: 0.2), value: isDropTarget)
+            // Drag a channel card here to add it to the favorites (iPad, macOS).
+            .favoritesDropDestination(library: library, isTargeted: $isDropTarget)
         }
     }
 }

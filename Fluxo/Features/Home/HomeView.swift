@@ -20,6 +20,9 @@ struct HomeView: View {
     let player: AVPlayerViewModel
     /// The macOS sidebar lists the playlists itself, so it hides the switcher.
     var showsPlaylistSwitcher = true
+    /// iPad sidebar: Home of one playlist, whatever Home's own playlist selection is. It has its own navigation
+    /// path and Recordings sheet (the shared ones belong to the Home tab), and no switcher.
+    var fixedPlaylistID: UUID?
 
     @Query(sort: \Playlist.createdOn) private var playlists: [Playlist]
     @AppStorage(PlaylistSelection.storageKey) private var selectionRawValue = ""
@@ -37,15 +40,40 @@ struct HomeView: View {
     @State private var isScrolledPastHero = false
     /// The Recordings sheet zooms out of its toolbar button.
     @Namespace private var sheetNamespace
+    /// Navigation path and Recordings sheet of a playlist's Home (`fixedPlaylistID`).
+    @State private var playlistPath = NavigationPath()
+    @State private var isShowingPlaylistRecordings = false
 
     private var scope: LibraryScope {
-        LibraryScope(playlists: playlists, selection: PlaylistSelection(rawValue: selectionRawValue))
+        if let fixedPlaylistID {
+            return LibraryScope(playlists: playlists, selection: .playlist(fixedPlaylistID))
+        }
+        return LibraryScope(playlists: playlists, selection: PlaylistSelection(rawValue: selectionRawValue))
+    }
+
+    private var path: Binding<NavigationPath> {
+        if fixedPlaylistID != nil {
+            return $playlistPath
+        }
+        @Bindable var navigation = navigation
+        return $navigation.homePath
+    }
+
+    private var isShowingRecordings: Binding<Bool> {
+        if fixedPlaylistID != nil {
+            return $isShowingPlaylistRecordings
+        }
+        @Bindable var navigation = navigation
+        return $navigation.isShowingRecordings
+    }
+
+    private var showsSwitcher: Bool {
+        showsPlaylistSwitcher && fixedPlaylistID == nil
     }
 
     var body: some View {
         let scope = scope
-        @Bindable var navigation = navigation
-        NavigationStack(path: $navigation.homePath) {
+        NavigationStack(path: path) {
             Group {
                 if playlists.isEmpty {
                     HomeEmptyState {
@@ -65,9 +93,9 @@ struct HomeView: View {
             .channelDestinations()
         }
         #if !os(macOS)
-        .sheet(isPresented: $navigation.isShowingRecordings) {
+        .sheet(isPresented: isShowingRecordings) {
             RecordingsView(store: player.recordings, isRecordingActive: player.isRecording) { recording in
-                navigation.isShowingRecordings = false
+                isShowingRecordings.wrappedValue = false
                 player.playRecording(recording)
             }
             .presentationDetents([.medium, .large])
@@ -108,11 +136,11 @@ struct HomeView: View {
                     FeaturedCarousel(importIDs: scope.importIDs, style: .billboard, topInset: topInset, isShowingBillboard: $isShowingBillboard)
                         .padding(.bottom, -12)
 
-                    if showsPlaylistSwitcher {
+                    if showsSwitcher {
                         PlaylistSwitcher(playlists: playlists, selection: selectionBinding(scope: scope))
                     }
                     #else
-                    if showsPlaylistSwitcher {
+                    if showsSwitcher {
                         PlaylistSwitcher(playlists: playlists, selection: selectionBinding(scope: scope))
                     }
 
@@ -230,7 +258,7 @@ struct HomeView: View {
 
     private var recordingsButton: some View {
         Button("Recordings", systemImage: "film.stack") {
-            navigation.isShowingRecordings = true
+            isShowingRecordings.wrappedValue = true
         }
     }
 

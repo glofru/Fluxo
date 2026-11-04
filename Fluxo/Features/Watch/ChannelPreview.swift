@@ -119,6 +119,8 @@ struct ChannelPreview: View {
         .contextMenu {
             ChannelContextMenu(item: item, isFavorite: isFavorite, extraActions: extraActions)
         }
+        // Drag onto the Favorites tab or row (iPad), or into another window.
+        .channelDraggable(item)
         .accessibilityLabel(Text(accessibilityLabel(isFavorite: isFavorite)))
         .accessibilityHint(item.kind == .live ? "Plays the channel" : "Plays the video")
         .accessibilityAction(named: isFavorite ? "Remove from Favorites" : "Add to Favorites") {
@@ -170,6 +172,7 @@ struct ChannelContextMenu: View {
     @Environment(\.playChannel) private var playChannel
     @Environment(EPGStore.self) private var epg: EPGStore?
     @Environment(AppNavigation.self) private var navigation: AppNavigation?
+    @Environment(\.openChannelWindow) private var openChannelWindow
 
     var body: some View {
         Text(item.displayName)
@@ -185,6 +188,13 @@ struct ChannelContextMenu: View {
         } else {
             Button("Play", systemImage: "play.fill") {
                 playChannel(item)
+            }
+        }
+
+        if openChannelWindow.isAvailable, item.url != nil {
+            // iPad: the channel in a window of its own, e.g. next to the guide in Split View.
+            Button("Open in New Window", systemImage: "macwindow.badge.plus") {
+                openChannelWindow(item)
             }
         }
 

@@ -69,9 +69,9 @@ final class PlaybackTimeline {
 /// Drives playback for the whole app: one AVPlayer, one long-lived player view (for Picture in
 /// Picture), the remux engine for live MPEG-TS channels and the loopback HLS server.
 ///
-/// FluxoApp creates the only instance and the app has a single main scene (a `Window` on macOS,
-/// multiple scenes disabled on iOS), because the loopback port, the PiP surface and the segment
-/// directory can only have one owner.
+/// FluxoApp creates the only instance, because the loopback port, the PiP surface and the segment
+/// directory can only have one owner. macOS has a single main `Window`; iPad windows share this instance and
+/// `WindowCoordinator` shows the player screen in one of them at a time.
 ///
 /// It is `@Observable`: views re-render only for the properties they read, so e.g. the playlist
 /// browser does not re-render whenever the playback state, seekability or PiP state changes.

@@ -5,7 +5,7 @@
 //  The app's long-lived objects, for code outside the view hierarchy: App Intents (Siri, Shortcuts, Spotlight)
 //  and the Spotlight indexer. `FluxoApp` creates it once and registers it with `AppDependencyManager`, so intents
 //  get it with `@Dependency`. Intents run in the app's process, so they drive the same player, library, guide and
-//  navigation as the screens.
+//  navigation as the screens (on iPad, the navigation of the main window used last).
 //
 
 import AppIntents
@@ -19,23 +19,30 @@ final class AppServices {
     let library: ChannelLibrary
     let player: AVPlayerViewModel
     let epg: EPGStore
-    let navigation: AppNavigation
+    let windows: WindowCoordinator
     let intelligence: FluxoIntelligence
     let spotlight: ChannelSpotlightIndexer
 
-    init(container: ModelContainer, library: ChannelLibrary, player: AVPlayerViewModel, epg: EPGStore, navigation: AppNavigation, intelligence: FluxoIntelligence) {
+    init(container: ModelContainer, library: ChannelLibrary, player: AVPlayerViewModel, epg: EPGStore, windows: WindowCoordinator, intelligence: FluxoIntelligence) {
         self.container = container
         self.library = library
         self.player = player
         self.epg = epg
-        self.navigation = navigation
+        self.windows = windows
         self.intelligence = intelligence
         spotlight = ChannelSpotlightIndexer(container: container)
     }
 
-    /// Plays a channel like a tap on its card: it goes to the top of the watch history and the player opens.
+    /// The navigation of the main window used last (iPad windows each have their own).
+    var navigation: AppNavigation {
+        windows.intentNavigation
+    }
+
+    /// Plays a channel like a tap on its card: it goes to the top of the watch history and the player opens. A
+    /// player already on screen stays in its window; otherwise it opens in the main window used last.
     func play(_ item: ChannelItem) {
-        PlayChannelAction(library: library, player: player)(item)
+        let windowID = player.isPresented ? nil : windows.preferredMainWindowID
+        PlayChannelAction(library: library, player: player, coordinator: windows, windowID: windowID)(item)
     }
 
     /// The import IDs of every playlist with channels (intents search the whole library).

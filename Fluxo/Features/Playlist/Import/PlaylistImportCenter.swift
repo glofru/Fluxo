@@ -147,7 +147,8 @@ final class PlaylistImportCenter {
         progress[playlistUUID] = .connecting
 
         let task = Task { [weak self, importer] in
-            try await importer.importContent(ofPlaylist: playlistUUID, from: url) { update in
+            // A playlist imported from a file reads the app's copy in the current container.
+            try await importer.importContent(ofPlaylist: playlistUUID, from: LocalPlaylistFiles.resolve(url)) { update in
                 Task { @MainActor in
                     self?.updateProgress(update, for: playlistUUID, token: token)
                 }

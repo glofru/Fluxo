@@ -34,6 +34,8 @@ struct WatchChannelView: View {
     @State private var isScrubbing = false
     @State private var isShowingRecordings = false
     @State private var hoverThrottle = HoverThrottle()
+    /// The channel list / guide next to the video in a wide player (iPad in landscape); remembered.
+    @AppStorage(PlayerSidePanelLayout.storageKey) private var showsSidePanel = false
 
     @Environment(\.accessibilityVoiceOverEnabled) private var isVoiceOverEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -45,7 +47,7 @@ struct WatchChannelView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let layout = PlayerPaneLayout.make(
+            let paneLayout = PlayerPaneLayout.make(
                 posture: posture,
                 size: proxy.size,
                 insets: proxy.safeAreaInsets,
@@ -53,13 +55,20 @@ struct WatchChannelView: View {
                 showsPanelWhenFlat: showsPanelWhenFlat,
                 videoOnTrailingSide: videoOnTrailingSide
             )
+            // Wide players (iPad in landscape, the Mac) can show the channel list and guide next to the video. A
+            // foldable's own two-pane layout takes precedence (and is never wide enough for it anyway).
+            let isSidePanelAvailable = paneLayout.mode == .full
+                && PlayerSidePanelLayout.isAvailable(size: proxy.size, item: viewModel.currentItem)
+            let layout = isSidePanelAvailable && showsSidePanel
+                ? paneLayout.reservingTrailingSidePanel(width: PlayerSidePanelLayout.width, in: proxy.size)
+                : paneLayout
             ZStack(alignment: .topLeading) {
                 Color.black
                     .ignoresSafeArea()
 
                 // Always the first view, whatever the layout: the video view keeps its identity (and the
-                // playback its layer) when the posture changes.
-                stage(layout: layout)
+                // playback its layer) when the posture changes or the side panel opens.
+                stage(layout: layout, isSidePanelAvailable: isSidePanelAvailable)
                     .frame(width: layout.video.width, height: layout.video.height)
                     .position(x: layout.video.midX, y: layout.video.midY)
 
@@ -68,6 +77,15 @@ struct WatchChannelView: View {
                         .frame(width: panel.width, height: panel.height)
                         .position(x: panel.midX, y: panel.midY)
                         .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                }
+
+                if let sidePanel = layout.sidePanel {
+                    PlayerSidePanel(viewModel: viewModel) {
+                        showsSidePanel = false
+                    }
+                    .frame(width: sidePanel.width, height: sidePanel.height)
+                    .position(x: sidePanel.midX, y: sidePanel.midY)
+                    .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
                 }
             }
             .environment(\.playerSplitControl, splitControl(for: layout))
@@ -138,8 +156,9 @@ struct WatchChannelView: View {
         }
     }
 
-    /// The video, the tap target, the status overlay and the controls that fade.
-    private func stage(layout: PlayerPaneLayout) -> some View {
+    /// The video, the tap target, the status overlay and the controls that fade. The side panel (wide players)
+    /// and a foldable's other pane sit next to it.
+    private func stage(layout: PlayerPaneLayout, isSidePanelAvailable: Bool) -> some View {
         ZStack {
             Color.black
                 .ignoresSafeArea()
@@ -172,6 +191,18 @@ struct WatchChannelView: View {
             .allowsHitTesting(false)
             .accessibilityHidden(true)
 
+            if isSidePanelAvailable {
+                // ⇧⌘L shows and hides the side panel even while the controls are hidden.
+                Button(showsSidePanel ? "Hide Channel List" : "Show Channel List") {
+                    showsSidePanel.toggle()
+                }
+                .keyboardShortcut("l", modifiers: [.command, .shift])
+                .opacity(0)
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
+
             PlayerStatusOverlay(viewModel: viewModel)
 
             if controlsVisible {
@@ -179,6 +210,7 @@ struct WatchChannelView: View {
                     viewModel: viewModel,
                     isScrubbing: $isScrubbing,
                     isShowingRecordings: $isShowingRecordings,
+                    sidePanel: isSidePanelAvailable ? $showsSidePanel : nil,
                     showsBottomBar: !layout.isStacked,
                     interacted: registerInteraction
                 )
@@ -349,6 +381,8 @@ private struct PlayerChrome: View {
     let viewModel: AVPlayerViewModel
     @Binding var isScrubbing: Bool
     @Binding var isShowingRecordings: Bool
+    /// Shows / hides the side panel; nil when the player is too narrow for it.
+    let sidePanel: Binding<Bool>?
     /// False when the transport controls sit in the other pane of a foldable (see `PlayerPaneLayout`).
     var showsBottomBar = true
     let interacted: () -> Void
@@ -357,7 +391,7 @@ private struct PlayerChrome: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            PlayerTopBar(viewModel: viewModel, isShowingRecordings: $isShowingRecordings, interacted: interacted)
+            PlayerTopBar(viewModel: viewModel, isShowingRecordings: $isShowingRecordings, sidePanel: sidePanel, interacted: interacted)
             Spacer(minLength: 0)
             if showsBottomBar {
                 PlayerBottomBar(viewModel: viewModel, isScrubbing: $isScrubbing, interacted: interacted)
@@ -387,6 +421,7 @@ private struct PlayerTopBar: View {
 
     let viewModel: AVPlayerViewModel
     @Binding var isShowingRecordings: Bool
+    let sidePanel: Binding<Bool>?
     let interacted: () -> Void
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -540,6 +575,23 @@ private struct PlayerTopBar: View {
             .accessibilityLabel("Full Screen")
             .help("Enter or exit full screen")
             #endif
+
+            if let sidePanel {
+                // Wide players: the category's channels and the guide next to the video.
+                Button {
+                    interacted()
+                    sidePanel.wrappedValue.toggle()
+                } label: {
+                    Image(systemName: "sidebar.right")
+                        .symbolVariant(sidePanel.wrappedValue ? .fill : .none)
+                        .contentTransition(.symbolEffect(.replace))
+                        .frame(width: Self.buttonSize, height: Self.buttonSize)
+                        .contentShape(.circle)
+                }
+                .buttonStyle(PlayerIconButtonStyle())
+                .accessibilityLabel(sidePanel.wrappedValue ? "Hide Channel List" : "Show Channel List")
+                .help("Channels and guide")
+            }
 
             Menu {
                 Button(viewModel.fillsScreen ? "Fit to Screen" : "Fill Screen", systemImage: viewModel.fillsScreen ? "rectangle.arrowtriangle.2.inward" : "rectangle.arrowtriangle.2.outward") {

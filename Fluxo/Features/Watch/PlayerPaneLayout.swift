@@ -6,7 +6,7 @@
 //  posture of the display (`DisplayPosture`):
 //
 //  - Regular iPhones, iPads, the Mac, and the cover display of a foldable: the video fills the screen, as
-//    always.
+//    always. Wide iPad and Mac players can make room for the side panel (`PlayerSidePanel`) on the trailing edge.
 //  - A foldable open like a book (partially open, the fold from top to bottom): the video on one half, the
 //    companion panel on the other, nothing on the fold. Fully open (flat) the video fills the whole display by
 //    default; the top bar button splits it the same way.
@@ -34,6 +34,8 @@ struct PlayerPaneLayout: Equatable {
     /// Frames in the coordinate space of the player's safe area (its `GeometryReader`).
     var video: CGRect = .zero
     var panel: CGRect?
+    /// Wide players (iPad, Mac): the channel list and guide next to the video (see `PlayerSidePanel`).
+    var sidePanel: CGRect?
     /// Stacked: the channel list shows below the controls.
     var showsPanelList = false
     /// Side by side: the side the video is on.
@@ -92,6 +94,15 @@ struct PlayerPaneLayout: Equatable {
             layout.video = local(split.first)
             layout.panel = local(split.second)
         }
+        return layout
+    }
+
+    /// The video makes room for the side panel on the trailing edge of a player of `size` (its safe area).
+    func reservingTrailingSidePanel(width: CGFloat, in size: CGSize) -> PlayerPaneLayout {
+        var layout = self
+        let panelWidth = min(width, size.width)
+        layout.video = CGRect(x: 0, y: 0, width: size.width - panelWidth, height: size.height)
+        layout.sidePanel = CGRect(x: size.width - panelWidth, y: 0, width: panelWidth, height: size.height)
         return layout
     }
 }

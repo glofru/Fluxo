@@ -33,6 +33,9 @@ private struct DebugHarnessModifier: ViewModifier {
     @Environment(PlaylistActions.self) private var playlistActions
     @Environment(EPGStore.self) private var epg
     @Environment(\.modelContext) private var modelContext
+    @Environment(WindowCoordinator.self) private var windows: WindowCoordinator?
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.supportsMultipleWindows) private var supportsMultipleWindows
     #if os(macOS)
     @Environment(\.openSettings) private var openSettings
     #endif
@@ -69,7 +72,7 @@ private struct DebugHarnessModifier: ViewModifier {
         #else
         let openSettings: (() -> Void)? = nil
         #endif
-        return DebugRouteContext(
+        var context = DebugRouteContext(
             navigation: navigation,
             player: player,
             library: library,
@@ -79,6 +82,12 @@ private struct DebugHarnessModifier: ViewModifier {
             epg: epg,
             openSettings: openSettings
         )
+        #if os(iOS)
+        if supportsMultipleWindows, let windows {
+            context.openChannelWindow = OpenChannelWindowAction(openWindow: openWindow, coordinator: windows)
+        }
+        #endif
+        return context
     }
 }
 

@@ -14,6 +14,8 @@ struct ChannelScheduleView: View {
     static let programmeLimit = 60
 
     let item: ChannelItem
+    /// Closes the inspector (iPad); nil when shown as a sheet, which dismisses itself.
+    var onClose: (() -> Void)?
 
     @Environment(EPGStore.self) private var epg
     @Environment(\.playChannel) private var playChannel
@@ -33,12 +35,12 @@ struct ChannelScheduleView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(role: .close) {
-                        dismiss()
+                        close()
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Watch", systemImage: "play.fill") {
-                        dismiss()
+                        close()
                         playChannel(item)
                     }
                     .buttonStyle(.glassProminent)
@@ -56,6 +58,14 @@ struct ChannelScheduleView: View {
             } else {
                 programmes = []
             }
+        }
+    }
+
+    private func close() {
+        if let onClose {
+            onClose()
+        } else {
+            dismiss()
         }
     }
 
@@ -190,22 +200,87 @@ struct ChannelScheduleView: View {
 }
 
 extension View {
-    /// Presents the schedule of `AppNavigation.scheduleChannel` (set by the "Guide" actions of channel rows).
+    /// Presents the schedule of `AppNavigation.scheduleChannel` (set by the "Guide" actions of channel rows) in a
+    /// sheet. Apply once, at the root of the window. In a wide window on iPad (landscape) the screens that have a
+    /// `channelScheduleInspector()` show it in their inspector instead.
     func channelScheduleSheet(_ navigation: AppNavigation) -> some View {
         modifier(ChannelScheduleSheet(navigation: navigation))
+    }
+
+    /// iPad, wide window: shows the schedule of `AppNavigation.scheduleChannel` in an inspector column next to
+    /// this screen, which stays usable (another channel's Guide action replaces the schedule). Apply outside the
+    /// screen's navigation stack, so the inspector stays while screens are pushed.
+    func channelScheduleInspector() -> some View {
+        modifier(ChannelScheduleInspector())
     }
 }
 
 private struct ChannelScheduleSheet: ViewModifier {
     @Bindable var navigation: AppNavigation
 
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
+
     func body(content: Content) -> some View {
         content
-            .sheet(item: $navigation.scheduleChannel) { item in
+            .sheet(item: usesInspector ? .constant(nil) : $navigation.scheduleChannel) { item in
                 ChannelScheduleView(item: item)
-                    .presentationDetents([.medium, .large])
+                    // iPad (portrait, narrow windows): a centered form sheet the height of the window; a half
+                    // height sheet would sit at the bottom of the screen.
+                    .presentationDetents(DeviceIdiom.isPad ? [.large] : [.medium, .large])
+                    .if(DeviceIdiom.isPad) { sheet in
+                        sheet.presentationSizing(.form)
+                    }
             }
     }
+
+    private var usesInspector: Bool {
+        #if os(iOS)
+        return DeviceIdiom.isPad && horizontalSizeClass == .regular && navigation.isWideWindow && navigation.tabHostsScheduleInspector
+        #else
+        return false
+        #endif
+    }
+}
+
+private struct ChannelScheduleInspector: ViewModifier {
+    @Environment(AppNavigation.self) private var navigation
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
+
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        content
+            .inspector(isPresented: isPresented) {
+                Group {
+                    if let item = navigation.scheduleChannel {
+                        ChannelScheduleView(item: item) {
+                            navigation.scheduleChannel = nil
+                        }
+                        .id(item.id)
+                    }
+                }
+                .inspectorColumnWidth(min: 320, ideal: 380, max: 480)
+            }
+        #else
+        content
+        #endif
+    }
+
+    #if os(iOS)
+    private var isPresented: Binding<Bool> {
+        Binding(
+            get: { DeviceIdiom.isPad && horizontalSizeClass == .regular && navigation.isWideWindow && navigation.scheduleChannel != nil },
+            set: { isPresented in
+                if !isPresented {
+                    navigation.scheduleChannel = nil
+                }
+            }
+        )
+    }
+    #endif
 }
 
 #Preview {

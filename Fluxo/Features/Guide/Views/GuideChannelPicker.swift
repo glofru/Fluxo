@@ -143,20 +143,37 @@ extension View {
 private struct GuideManagement: ViewModifier {
     @Bindable var epg: EPGStore
 
+    /// With several windows (iPad), the picker and the alert show in one of them (see `WindowCoordinator`).
+    @Environment(WindowCoordinator.self) private var coordinator: WindowCoordinator?
+    @Environment(\.windowID) private var windowID
+
     func body(content: Content) -> some View {
         content
-            .sheet(item: $epg.matchingTarget) { item in
+            .windowPresentation(.guideMatching, isActive: epg.matchingTarget != nil)
+            .windowPresentation(.guideFailure, isActive: epg.failure != nil)
+            .sheet(item: matchingBinding) { item in
                 GuideChannelPicker(item: item)
             }
             .alert(
                 "Could Not Load the TV Guide",
-                isPresented: Binding(get: { epg.failure != nil }, set: { if !$0 { epg.failure = nil } }),
+                isPresented: Binding(get: { shows(.guideFailure, isActive: epg.failure != nil) }, set: { if !$0 { epg.failure = nil } }),
                 presenting: epg.failure
             ) { _ in
                 Button("OK", role: .cancel) {}
             } message: { failure in
                 Text("\(failure.sourceName): \(failure.message)")
             }
+    }
+
+    private func shows(_ presentation: WindowCoordinator.Presentation, isActive: Bool) -> Bool {
+        coordinator?.shows(presentation, in: windowID, isActive: isActive) ?? isActive
+    }
+
+    private var matchingBinding: Binding<ChannelItem?> {
+        Binding(
+            get: { shows(.guideMatching, isActive: epg.matchingTarget != nil) ? epg.matchingTarget : nil },
+            set: { epg.matchingTarget = $0 }
+        )
     }
 }
 

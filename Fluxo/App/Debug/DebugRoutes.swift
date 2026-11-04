@@ -42,6 +42,8 @@ struct DebugRouteContext {
     let epg: EPGStore
     /// Opens the Settings window (macOS); nil on iOS, where Settings is a tab.
     let openSettings: (() -> Void)?
+    /// Opens a channel in a player window (iPad).
+    var openChannelWindow = OpenChannelWindowAction()
 
     /// A playlist by name (case-insensitive; exact match first, then the first that contains it).
     func playlist(named name: String) throws -> Playlist {
@@ -144,14 +146,16 @@ enum DebugRoutes {
         DebugRoute("home", "Home, from its root.") { context, _ in
             context.navigation.show(.home)
         },
-        DebugRoute("tab:<home|guide|favorites|settings|search>", "Selects a tab (iOS).") { context, argument in
+        DebugRoute("tab:<home|guide|favorites|settings|search|history|recordings|playlist name>", "Selects a tab (iOS; history, recordings and playlists are iPad sidebar entries).") { context, argument in
             let tabs: [String: AppNavigation.Tab] = [
                 "home": .home, "guide": .guide, "favorites": .favorites, "settings": .settings, "search": .search,
+                "history": .history, "recordings": .recordings,
             ]
-            guard let tab = tabs[argument.lowercased()] else {
-                throw DebugRouteError.invalidArgument("tab", argument)
+            if let tab = tabs[argument.lowercased()] {
+                context.navigation.tab = tab
+            } else {
+                context.navigation.tab = .playlist(try context.playlist(named: argument).uuid)
             }
-            context.navigation.tab = tab
         },
         DebugRoute("guide", "The TV Guide (the Guide tab on iOS, the sidebar item on macOS).") { context, _ in
             context.navigation.show(.guide)
@@ -333,6 +337,43 @@ enum DebugRoutes {
                 throw DebugRouteError.invalidArgument("posture", argument)
             }
             DebugPostureSimulation.shared.mode = DebugPostureSimulation.Mode(rawValue: value)
+            #endif
+        },
+        DebugRoute("orientation:<portrait|landscape>", "Rotates the interface (iOS; the simulator has no rotation command).") { _, argument in
+            #if os(iOS)
+            let masks: [String: UIInterfaceOrientationMask] = ["portrait": .portrait, "landscape": .landscapeRight]
+            guard let mask = masks[argument.lowercased()] else {
+                throw DebugRouteError.invalidArgument("orientation", argument)
+            }
+            for scene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }) {
+                scene.requestGeometryUpdate(.iOS(interfaceOrientations: mask)) { error in
+                    DebugLaunchOptions.logger.error("Rotation failed: \(error.localizedDescription, privacy: .public)")
+                }
+            }
+            try? await Task.sleep(for: .seconds(1))
+            #endif
+        },
+        DebugRoute("side-panel:<channels|guide|off>", "Shows the player's side panel (wide players) on a tab, or hides it.") { _, argument in
+            let defaults = UserDefaults.fluxo
+            if let tab = PlayerSidePanelTab(rawValue: argument.lowercased()) {
+                defaults.set(tab.rawValue, forKey: PlayerSidePanelLayout.tabStorageKey)
+                defaults.set(true, forKey: PlayerSidePanelLayout.storageKey)
+            } else if argument.lowercased() == "off" {
+                defaults.set(false, forKey: PlayerSidePanelLayout.storageKey)
+            } else {
+                throw DebugRouteError.invalidArgument("side-panel", argument)
+            }
+        },
+        DebugRoute("new-window:<channel>", "Opens a channel in a player window of its own (iPad).") { context, argument in
+            let item = try context.channel(named: argument)
+            guard context.openChannelWindow.isAvailable else {
+                throw DebugRouteError.invalidArgument("new-window", "this device has a single window")
+            }
+            context.openChannelWindow(item)
+            await context.wait(timeout: 6) { context.player.isPresented }
+            #if os(iOS)
+            let scenes = UIApplication.shared.connectedScenes.count
+            DebugLaunchOptions.logger.notice("Connected scenes: \(scenes, privacy: .public)")
             #endif
         },
         DebugRoute("wait:<seconds>", "Waits before the next route.") { _, argument in

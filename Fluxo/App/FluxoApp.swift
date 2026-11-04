@@ -25,8 +25,9 @@ struct FluxoApp: App {
     @State private var epg: EPGStore
     /// Apple Intelligence (on device): availability, recommendations and summaries.
     @State private var intelligence: FluxoIntelligence
-    /// Tab / sidebar selection and navigation paths; App Intents move the UI through it too.
-    @State private var navigation: AppNavigation
+    /// The windows of the app (iPad): which one shows the player and the app-wide sheets, and the navigation
+    /// App Intents move.
+    @State private var windows: WindowCoordinator
     /// The objects above, for App Intents (Siri, Shortcuts, Spotlight).
     private let services: AppServices
 
@@ -49,13 +50,13 @@ struct FluxoApp: App {
         // notification that launched the app is delivered.
         epg.start()
         let intelligence = FluxoIntelligence(container: container, epg: epg)
-        let navigation = AppNavigation()
-        let services = AppServices(container: container, library: library, player: player, epg: epg, navigation: navigation, intelligence: intelligence)
+        let windows = WindowCoordinator()
+        let services = AppServices(container: container, library: library, player: player, epg: epg, windows: windows, intelligence: intelligence)
         // Before any intent runs: intents launched by Siri or Shortcuts read it with @Dependency.
         AppDependencyManager.shared.add(dependency: services)
         self.services = services
         _intelligence = State(initialValue: intelligence)
-        _navigation = State(initialValue: navigation)
+        _windows = State(initialValue: windows)
         _importCenter = State(initialValue: importCenter)
         _library = State(initialValue: library)
         _player = State(initialValue: player)
@@ -73,7 +74,7 @@ struct FluxoApp: App {
         .defaultSize(width: 1_240, height: 800)
         .windowResizability(.contentMinSize)
         .commands {
-            FluxoCommands(player: player, actions: playlistActions, importCenter: importCenter, container: container, epg: epg)
+            FluxoCommands(player: player, actions: playlistActions, importCenter: importCenter, container: container, epg: epg, windows: windows)
         }
 
         Settings {
@@ -85,13 +86,14 @@ struct FluxoApp: App {
                 .defaultAppStorage(.fluxo)
         }
         #else
-        // Multiple scenes are disabled in the build settings for the same reason.
-        WindowGroup {
+        // iPad: several windows of the app (File › New Window, or the app's windows in Stage Manager). They share
+        // the single player, which shows in one window at a time (see `WindowCoordinator`).
+        WindowGroup(id: Self.mainWindowID) {
             mainContent
         }
         .modelContainer(container)
         .commands {
-            FluxoCommands(player: player, actions: playlistActions, importCenter: importCenter, container: container, epg: epg)
+            FluxoCommands(player: player, actions: playlistActions, importCenter: importCenter, container: container, epg: epg, windows: windows)
         }
         #if os(iOS)
         .backgroundTask(.appRefresh(EPGBackgroundRefresh.taskIdentifier)) { [epg] in
@@ -100,16 +102,61 @@ struct FluxoApp: App {
             await epg.performBackgroundRefresh()
         }
         #endif
+
+        #if os(iOS)
+        // iPad: a channel in a window of its own ("Open in New Window"). A window restored at the next launch waits
+        // for a tap instead of playing on its own (see `WindowCoordinator.pendingPlayerWindows`).
+        WindowGroup("Player", id: PlayerWindowValue.windowID, for: PlayerWindowValue.self) { $value in
+            PlayerWindowView(value: value, player: player)
+                .modifier(AppEnvironment(importCenter: importCenter, library: library, actions: playlistActions, epg: epg, intelligence: intelligence, windows: windows, player: player))
+        }
+        .modelContainer(container)
+        .defaultSize(width: 960, height: 600)
+        #endif
         #endif
     }
 
+    /// The main window group (iOS).
+    static let mainWindowID = "main"
+
     private var mainContent: some View {
-        ContentView(viewModel: player, navigation: navigation)
+        // Each main window has its own navigation; the first one adopts the navigation App Intents may already
+        // have moved at launch.
+        ContentView(viewModel: player, navigation: windows.makeMainWindowNavigation())
             .appServicesLifecycle(services)
             .environment(intelligence)
             .environment(importCenter)
             .environment(library)
             .environment(playlistActions)
             .environment(epg)
+            .environment(windows)
+    }
+}
+
+/// The app's shared objects, for a window that is not a `ContentView` (the iPad player window).
+private struct AppEnvironment: ViewModifier {
+    let importCenter: PlaylistImportCenter
+    let library: ChannelLibrary
+    let actions: PlaylistActions
+    let epg: EPGStore
+    let intelligence: FluxoIntelligence
+    let windows: WindowCoordinator
+    let player: AVPlayerViewModel
+
+    @State private var navigation = AppNavigation()
+
+    func body(content: Content) -> some View {
+        content
+            // The player is already in this window: playing another channel from it keeps it here.
+            .environment(\.playChannel, PlayChannelAction(library: library, player: player))
+            .environment(importCenter)
+            .environment(library)
+            .environment(actions)
+            .environment(epg)
+            .environment(intelligence)
+            .environment(windows)
+            .environment(navigation)
+            .defaultAppStorage(.fluxo)
+            .tint(Theme.accent)
     }
 }

@@ -16,6 +16,8 @@ struct ProgrammeDetailView: View {
     let programme: GuideProgramme
     let channel: ChannelItem
     let ref: GuideChannelRef?
+    /// Closes the inspector (iPad Guide); nil when shown as a sheet, which dismisses itself.
+    var onClose: (() -> Void)?
 
     @Environment(EPGStore.self) private var epg
     @Environment(\.playChannel) private var playChannel
@@ -58,7 +60,7 @@ struct ProgrammeDetailView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(role: .close) {
-                        dismiss()
+                        close()
                     }
                 }
             }
@@ -84,6 +86,14 @@ struct ProgrammeDetailView: View {
             Text("Allow notifications for Fluxo in Settings to get a reminder before a programme starts.")
         }
         .sensoryFeedback(.success, trigger: reminderToggles)
+    }
+
+    private func close() {
+        if let onClose {
+            onClose()
+        } else {
+            dismiss()
+        }
     }
 
     private var permissionHint: Binding<Bool> {
@@ -170,7 +180,7 @@ struct ProgrammeDetailView: View {
 
     private func watchButton(now: Date) -> some View {
         Button {
-            dismiss()
+            close()
             playChannel(channel)
         } label: {
             Label(programme.isOnAir(at: now) ? "Watch Now" : "Watch \(channel.displayName)", systemImage: "play.fill")

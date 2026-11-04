@@ -10,6 +10,19 @@ import SwiftUI
 // Images (logos, posters) go through LogoImage / LogoImageLoader, which decode off the main thread
 // at the displayed size; never decode them synchronously in a view body.
 
+/// The kind of device, for the few layouts that are iPad-only (an iPhone in landscape can be regular width too).
+enum DeviceIdiom {
+    /// iPad (and an iPad app running on a Mac); false on iPhone and on macOS.
+    @MainActor
+    static var isPad: Bool {
+        #if os(iOS)
+        UIDevice.current.userInterfaceIdiom == .pad
+        #else
+        false
+        #endif
+    }
+}
+
 extension Color {
     /// Neutral background used behind channel artwork (the former UIColor.lightGray).
     static let artworkPlaceholder = Color(white: 2.0 / 3.0)
@@ -68,6 +81,16 @@ extension View {
     func cardHoverEffect() -> some View {
         #if os(iOS)
         self.hoverEffect(.lift)
+        #else
+        self
+        #endif
+    }
+
+    /// Highlight of a list row under the iPad pointer; macOS lists highlight rows themselves.
+    @ViewBuilder
+    func rowHoverEffect() -> some View {
+        #if os(iOS)
+        self.hoverEffect(.highlight)
         #else
         self
         #endif

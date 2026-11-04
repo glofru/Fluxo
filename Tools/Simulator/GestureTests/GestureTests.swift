@@ -336,4 +336,84 @@ final class GestureTests: XCTestCase {
         shot("stop-1-after")
         XCTAssertFalse(app.otherElements["miniPlayer"].exists, "nothing plays: no mini player")
     }
+
+    /// Screenshots of layouts in both orientations (`simctl` cannot rotate a simulator). Runs only when
+    /// `TEST_RUNNER_FLUXO_LAYOUT_SHOTS` lists scenes, separated by `;;`, each `name|portrait or landscape|light or
+    /// dark|route` (the route is a `-FluxoDebugRoute`, `;`-separated), e.g.
+    /// `home-landscape|landscape|dark|seed-guide;home`. Every scene launches the app again; after the route has
+    /// run the device turns and the screenshot is taken. The device turns back to portrait at the end, unless
+    /// `TEST_RUNNER_FLUXO_LAYOUT_KEEP_ORIENTATION=1`.
+    func testLayoutScreenshots() throws {
+        let scenes = (ProcessInfo.processInfo.environment["FLUXO_LAYOUT_SHOTS"] ?? "")
+            .components(separatedBy: ";;")
+            .map { $0.split(separator: "|", maxSplits: 3, omittingEmptySubsequences: false).map(String.init) }
+            .filter { $0.count == 4 }
+        try XCTSkipIf(scenes.isEmpty, "no FLUXO_LAYOUT_SHOTS")
+        for scene in scenes {
+            let (name, orientation, appearance, route) = (scene[0], scene[1], scene[2], scene[3])
+            XCUIDevice.shared.orientation = orientation == "landscape" ? .landscapeLeft : .portrait
+            let app = XCUIApplication(bundleIdentifier: "dev.watermelon.Fluxo")
+            app.launchArguments = ["-FluxoDebugStore", "memory", "-FluxoDebugSeed", "sample", "-FluxoDebugRoute", route, "-FluxoDebugAppearance", appearance]
+            app.launch()
+            // Seeding (about 2 s), then 1.2 s per route step and its animations.
+            let steps = route.split(separator: ";").count
+            sleep(UInt32(8 + steps * 2))
+            shot(name)
+            app.terminate()
+        }
+        // `TEST_RUNNER_FLUXO_LAYOUT_KEEP_ORIENTATION=1` leaves the device turned, so that `run.sh` can then
+        // cold-launch the app in that orientation (with `simctl launch`, not XCUITest).
+        if ProcessInfo.processInfo.environment["FLUXO_LAYOUT_KEEP_ORIENTATION"] != "1" {
+            XCUIDevice.shared.orientation = .portrait
+        }
+    }
+
+    /// iPad: the context menu of a row in the player's side panel has nothing that would present under the
+    /// player; its "Today's Schedule" shows the channel's schedule in the panel's Guide tab, with a way back.
+    func testSidePanelScheduleMenu() throws {
+        try XCTSkipIf(UIDevice.current.userInterfaceIdiom != .pad, "iPad only")
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = launch("seed-guide;side-panel:channels;player:Sky Sport F1;wait:2")
+        let row = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Sky Sport MotoGP'")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 30), "the channel row in the side panel")
+        sleep(2)
+        row.press(forDuration: 1.2)
+        let schedule = app.buttons["Today's Schedule"]
+        XCTAssertTrue(schedule.waitForExistence(timeout: 5), "Today's Schedule in the menu")
+        XCTAssertFalse(app.buttons["Guide Channel…"].exists, "no guide matching over the player")
+        shot("panel-1-menu")
+        schedule.tap()
+        let back = app.buttons["Back to Playing Channel"]
+        XCTAssertTrue(back.waitForExistence(timeout: 5), "the schedule shows in the panel")
+        sleep(2)
+        shot("panel-2-schedule")
+        back.tap()
+        sleep(1)
+        XCTAssertFalse(back.exists, "back to the playing channel's guide")
+        shot("panel-3-back")
+        XCUIDevice.shared.orientation = .portrait
+    }
+
+    /// iPad: a channel row dragged onto Favorites in the sidebar becomes a favorite (landscape, where the sidebar
+    /// shows next to the content).
+    func testDragChannelOntoFavoritesTab() throws {
+        try XCTSkipIf(UIDevice.current.userInterfaceIdiom != .pad, "iPad only")
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = launch("group:Sport;wait:2")
+        let row = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Sky Sport MotoGP'")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 30), "the channel row")
+        sleep(6)
+        shot("drag-1-before")
+        // Sidebar entries are cells.
+        let favorites = app.cells.matching(NSPredicate(format: "label == 'Favorites'")).firstMatch
+        XCTAssertTrue(favorites.exists, "Favorites in the sidebar")
+        row.press(forDuration: 1.2, thenDragTo: favorites, withVelocity: .slow, thenHoldForDuration: 1.0)
+        sleep(2)
+        favorites.tap()
+        sleep(3)
+        shot("drag-2-favorites")
+        let added = app.staticTexts.matching(NSPredicate(format: "label == 'Sky Sport MotoGP'")).firstMatch
+        XCTAssertTrue(added.waitForExistence(timeout: 5), "the dropped channel is a favorite")
+        XCUIDevice.shared.orientation = .portrait
+    }
 }

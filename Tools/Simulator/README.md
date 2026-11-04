@@ -119,7 +119,7 @@ first that contains the text.
 | Route | Opens |
 |---|---|
 | `home` | Home, from its root. |
-| `tab:<home\|guide\|favorites\|settings\|search>` | A tab (iOS). |
+| `tab:<home\|guide\|favorites\|settings\|search\|history\|recordings\|playlist name>` | A tab (iOS; history, recordings and playlists are iPad sidebar entries). |
 | `guide` | The TV Guide (the Guide tab on iOS, the sidebar item on macOS). |
 | `search[:<query>]` | Search, with the query typed in. |
 | `settings` | The Settings tab (iOS) or window (macOS). |
@@ -146,6 +146,9 @@ first that contains the text.
 | `cast:<device>` | Switches to the simulated Chromecast receiver (`Living Room TV`, `Bedroom`, `Kitchen Speaker`) and connects to it; what plays is cast. |
 | `cast-picker`, `stop-casting` | The Cast device picker; ends the Cast session (the channel plays on the device again). |
 | `add-playlist`, `edit-playlist:<name>`, `delete-playlist:<name>` | The Add / Edit Playlist sheet; the delete confirmation (nothing is deleted). |
+| `orientation:<portrait\|landscape>` | Asks the scene to rotate (iPhone; iPadOS refuses it in windowed modes, use `testLayoutScreenshots` below). |
+| `side-panel:<channels\|guide\|off>` | Shows the player's side panel (wide players) on a tab, or hides it. |
+| `new-window:<channel>` | Opens a channel in a player window of its own (iPad); logs the number of connected scenes. |
 | `wait:<seconds>` | Waits before the next route. |
 | `help` | Logs the list of routes (in `app.log`). |
 
@@ -243,6 +246,26 @@ Tools/Simulator/run.sh --device "iPad Pro 13-inch (M5)" --clone fluxo-mykey-2 --
 
 `GestureTests.testFoldableChannelListScrollsAndSwitchesWithoutClosing` (needs a simulator of at least
 951 x 669 pt) scrolls the channel list next to the video, switches channel from it and hides it.
+
+## Landscape screenshots
+
+`simctl` cannot rotate a simulator, and iPadOS ignores the app's own rotation requests in its windowed modes.
+`GestureTests/testLayoutScreenshots` turns the device with XCUITest instead: each scene (`name|portrait or
+landscape|light or dark|route`, separated by `;;`) launches the app with the harness, runs the route, turns the
+device and takes `<name>.png`:
+
+```sh
+Tools/Simulator/run.sh --device "iPad Pro 13-inch (M5)" --clone fluxo-mykey-2 --keep
+TEST_RUNNER_FLUXO_LAYOUT_SHOTS="home|landscape|dark|seed-guide;home;;panel|landscape|dark|seed-guide;side-panel:channels;player:Sky Sport F1" \
+    Tools/Simulator/gesture-tests.sh fluxo-mykey-2 -only-testing:GestureTests/GestureTests/testLayoutScreenshots
+```
+
+The test turns the device back to portrait at the end; with `TEST_RUNNER_FLUXO_LAYOUT_KEEP_ORIENTATION=1` it
+leaves it turned, and as a clone keeps its last orientation, later `run.sh` runs on it (cold launches with
+`simctl launch`) are in landscape too. `testDragChannelOntoFavoritesTab`
+(iPad) drags a channel row onto Favorites in the sidebar and checks that it became a favorite.
+`testSidePanelScheduleMenu` (iPad) opens the context menu of a row in the player's side panel, checks that it has
+no guide matching, and that Today's Schedule shows the schedule in the panel, with a way back.
 
 ## Driving the simulator (taps and swipes)
 

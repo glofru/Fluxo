@@ -3,7 +3,8 @@
 //  Fluxo
 //
 //  Menu bar commands (macOS, and the iPad menu bar / keyboard shortcut overlay):
-//  File > Add Playlist / Refresh / Refresh TV Guide, and a Playback menu that drives the single app-wide player.
+//  File > New Window (iPad) / Add Playlist / Refresh / Refresh TV Guide, a Go menu with the app's sections, and a
+//  Playback menu that drives the single app-wide player. Commands act on the focused window.
 //
 
 import SwiftData
@@ -15,10 +16,15 @@ struct FluxoCommands: Commands {
     let importCenter: PlaylistImportCenter
     let container: ModelContainer
     let epg: EPGStore
+    let windows: WindowCoordinator
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
-            Button("Add Playlist…") {
+            #if os(iOS)
+            NewWindowButton()
+            #endif
+
+            FocusedWindowButton("Add Playlist…", windows: windows) {
                 actions.add()
             }
             .keyboardShortcut("n")
@@ -37,10 +43,107 @@ struct FluxoCommands: Commands {
             .keyboardShortcut("r", modifiers: [.command, .option])
         }
 
+        CommandMenu("Go") {
+            GoMenuItems(windows: windows)
+        }
+
         CommandMenu("Playback") {
             // A view, so that the items observe the player and update their titles and enabled state.
-            PlaybackMenuItems(player: player, actions: actions, importCenter: importCenter)
+            PlaybackMenuItems(player: player, actions: actions, importCenter: importCenter, windows: windows)
         }
+    }
+}
+
+/// A command whose result shows in the focused window (e.g. a sheet): the window is noted first, so the
+/// `WindowCoordinator` presents it there.
+private struct FocusedWindowButton: View {
+    let title: LocalizedStringKey
+    let windows: WindowCoordinator
+    let action: () -> Void
+
+    @FocusedValue(\.windowID) private var focusedWindowID
+
+    init(_ title: LocalizedStringKey, windows: WindowCoordinator, action: @escaping () -> Void) {
+        self.title = title
+        self.windows = windows
+        self.action = action
+    }
+
+    var body: some View {
+        Button(title) {
+            windows.noteActivity(in: focusedWindowID)
+            action()
+        }
+    }
+}
+
+#if os(iOS)
+/// File › New Window (iPad): another window of the app. Replacing the New group removes the system's own item.
+private struct NewWindowButton: View {
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.supportsMultipleWindows) private var supportsMultipleWindows
+
+    var body: some View {
+        if supportsMultipleWindows {
+            Button("New Window") {
+                openWindow(id: FluxoApp.mainWindowID)
+            }
+            .keyboardShortcut("n", modifiers: [.command, .option])
+        }
+    }
+}
+#endif
+
+/// Go: the sections of the focused window (⌘1 … ⌘6), and Search (⌘F).
+private struct GoMenuItems: View {
+    let windows: WindowCoordinator
+
+    @FocusedValue(AppNavigation.self) private var navigation
+    @FocusedValue(\.windowID) private var focusedWindowID
+
+    var body: some View {
+        item("Home", destination: .home, key: "1")
+        item("TV Guide", destination: .guide, key: "2")
+        item("Favorites", destination: .favorites, key: "3")
+        item("Recently Watched", destination: .history, key: "4")
+        item("Recordings", destination: .recordings, key: "5")
+        #if os(iOS)
+        Button("Settings") {
+            go { navigation in
+                navigation.tab = .settings
+            }
+        }
+        .keyboardShortcut("6")
+        .disabled(navigation == nil)
+        #endif
+
+        Divider()
+
+        Button("Search") {
+            go { navigation in
+                navigation.show(.search)
+            }
+        }
+        .keyboardShortcut("f")
+        .disabled(navigation == nil)
+    }
+
+    private func item(_ title: LocalizedStringKey, destination: AppNavigation.Destination, key: KeyEquivalent) -> some View {
+        Button(title) {
+            go { navigation in
+                navigation.show(destination)
+            }
+        }
+        .keyboardShortcut(key)
+        .disabled(navigation == nil)
+    }
+
+    private func go(_ change: (AppNavigation) -> Void) {
+        guard let navigation else {
+            return
+        }
+        windows.noteActivity(in: focusedWindowID)
+        change(navigation)
     }
 }
 
@@ -48,6 +151,9 @@ private struct PlaybackMenuItems: View {
     let player: AVPlayerViewModel
     let actions: PlaylistActions
     let importCenter: PlaylistImportCenter
+    let windows: WindowCoordinator
+
+    @FocusedValue(\.windowID) private var focusedWindowID
 
     var body: some View {
         let hasChannel = player.currentChannel != nil
@@ -117,6 +223,10 @@ private struct PlaybackMenuItems: View {
         Divider()
 
         Button("Show Player") {
+            // In the focused window (iPad).
+            if let focusedWindowID {
+                windows.move(.player, to: focusedWindowID)
+            }
             player.presentationSourceID = nil
             player.presentPlayer()
         }

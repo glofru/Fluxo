@@ -15,13 +15,17 @@ import SwiftUI
 @Observable
 final class AppNavigation {
 
-    /// The iOS tabs.
+    /// The iOS tabs. On iPad the sidebar also lists Recently Watched, Recordings and every playlist (hidden from
+    /// the tab bar, and so never shown on iPhone).
     enum Tab: Hashable {
         case home
         case guide
         case favorites
         case settings
         case search
+        case history
+        case recordings
+        case playlist(UUID)
     }
 
     /// Places that exist on every platform; `show(_:)` maps them to a tab (iOS) or a sidebar item (macOS).
@@ -66,6 +70,21 @@ final class AppNavigation {
     /// Debug harness (`home-section:<name>`): the `HomeSection` Home scrolls to.
     var debugHomeSection: String?
     #endif
+
+    /// iPad: the window has room for an inspector next to its content (see `AppTabView.isWide(_:)`). Narrower
+    /// windows, portrait ones included, show the channel schedule in a sheet: an inspector would cover the content.
+    var isWideWindow = false
+
+    /// The selected tab shows the channel schedule in an inspector in a wide window (iPad), rather than in a sheet
+    /// (see `channelScheduleInspector()`).
+    var tabHostsScheduleInspector: Bool {
+        switch tab {
+        case .home, .favorites, .history, .search, .playlist:
+            return true
+        case .guide, .settings, .recordings:
+            return false
+        }
+    }
 
     /// Shows `destination` from its root.
     func show(_ destination: Destination) {

@@ -135,6 +135,7 @@ private struct MacSidebar: View {
 
     @Environment(PlaylistActions.self) private var actions
     @Environment(PlaylistImportCenter.self) private var importCenter
+    @Environment(ChannelLibrary.self) private var library
 
     var body: some View {
         List(selection: $selection) {
@@ -147,6 +148,8 @@ private struct MacSidebar: View {
                     .tag(SidebarItem.search)
                 Label("Favorites", systemImage: "star")
                     .tag(SidebarItem.favorites)
+                    // Channels dragged from Home or a category become favorites.
+                    .favoritesDropDestination(library: library)
                 Label("Recently Watched", systemImage: "clock")
                     .tag(SidebarItem.history)
                 Label("Recordings", systemImage: "film.stack")

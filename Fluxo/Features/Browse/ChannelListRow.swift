@@ -117,9 +117,11 @@ struct ChannelListRow: View {
             .animation(.snappy, value: isFavorite)
         }
         .buttonStyle(.plain)
+        .rowHoverEffect()
         .contextMenu {
             ChannelContextMenu(item: item, isFavorite: isFavorite, extraActions: extraActions)
         }
+        .channelDraggable(item)
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
             Button("Play", systemImage: "play.fill") {
                 playChannel(item, from: sourceID)

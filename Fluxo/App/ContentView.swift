@@ -14,12 +14,13 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(ChannelLibrary.self) private var library
     @Environment(EPGStore.self) private var epg
-    #if os(iOS)
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    #endif
+    @Environment(WindowCoordinator.self) private var coordinator
     /// Selected tab / sidebar item, navigation paths and search text, shared with code outside the screens
-    /// (App Intents, the debug routes).
+    /// (App Intents, the debug routes). One per window (iPad windows each have their own); App Intents move the
+    /// one of the window used last (see `WindowCoordinator.intentNavigation`).
     @State private var navigation: AppNavigation
+    /// Identifies this window to the `WindowCoordinator`.
+    @State private var windowID = UUID()
 
     init(viewModel: AVPlayerViewModel, navigation: AppNavigation) {
         self.viewModel = viewModel
@@ -29,8 +30,9 @@ struct ContentView: View {
     var body: some View {
         root
             // The player grows out of the card or the mini player that opened it, and follows the finger down.
+            // With several windows (iPad) it shows in one of them: the one it was opened from.
             .playerPresentation(
-                isPresented: viewModel.isPresented,
+                isPresented: coordinator.shows(.player, in: windowID, isActive: viewModel.isPresented),
                 isVisible: !viewModel.isClosingIntoPictureInPicture,
                 sourceID: viewModel.presentationSourceID,
                 onDismiss: viewModel.closePlayer
@@ -40,11 +42,15 @@ struct ContentView: View {
                     // that is playing through Siri and Apple Intelligence.
                     .appEntityIdentifier(viewModel.currentItem.flatMap(ChannelEntity.entityIdentifier(for:)))
             }
+            .windowPresentation(.player, isActive: viewModel.isPresented)
             .playlistManagement()
             .guideManagement(epg)
             .channelScheduleSheet(navigation)
+            // URLs and M3U files dropped on the window add a playlist (iPad, macOS).
+            .playlistDropDestination()
             .watchProgressRecording(player: viewModel)
-            .environment(\.playChannel, PlayChannelAction(library: library, player: viewModel))
+            .environment(\.playChannel, PlayChannelAction(library: library, player: viewModel, coordinator: coordinator, windowID: windowID))
+            .channelWindowOpening(coordinator: coordinator)
             .sensoryFeedback(.selection, trigger: library.favoriteToggleCount)
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active {
@@ -55,11 +61,12 @@ struct ContentView: View {
             }
             .task(id: epg.reminders.channelToOpen) {
                 // A reminder notification was opened: play its channel.
-                guard let channel = epg.reminders.channelToOpen else {
+                // With several windows, the one used last plays it.
+                guard let channel = epg.reminders.channelToOpen, coordinator.preferredMainWindowID ?? windowID == windowID else {
                     return
                 }
                 epg.reminders.channelToOpen = nil
-                PlayChannelAction(library: library, player: viewModel)(channel)
+                PlayChannelAction(library: library, player: viewModel, coordinator: coordinator, windowID: windowID)(channel)
             }
             #if os(macOS)
             .onDisappear {
@@ -71,10 +78,7 @@ struct ContentView: View {
             #endif
             #if os(iOS)
             // The Cast device picker, opened by the cast buttons of the player and the mini player.
-            .sheet(isPresented: Bindable(viewModel.cast).isPickerPresented) {
-                CastDevicePicker(cast: viewModel.cast, player: viewModel)
-                    .castPickerPresentation(overPlayer: viewModel.isPresented, isRegularWidth: horizontalSizeClass == .regular)
-            }
+            .castDevicePickerSheet(player: viewModel)
             #endif
             #if DEBUG
             .debugAutoplay(viewModel)
@@ -84,6 +88,8 @@ struct ContentView: View {
             // The hinge, fold and vertical bar of a foldable iPhone, for the player's two-pane layout.
             .readsDisplayPosture()
             .environment(navigation)
+            .focusedSceneValue(navigation)
+            .windowScene(windowID, kind: .main, coordinator: coordinator, navigation: navigation)
             .defaultAppStorage(.fluxo)
             .tint(Theme.accent)
     }
@@ -93,45 +99,7 @@ struct ContentView: View {
         #if os(macOS)
         MacRootView(player: viewModel)
         #else
-        TabView(selection: $navigation.tab) {
-            Tab("Home", systemImage: "play.tv", value: AppNavigation.Tab.home) {
-                HomeView(player: viewModel)
-            }
-
-            Tab("Guide", systemImage: "calendar.day.timeline.left", value: AppNavigation.Tab.guide) {
-                GuideView()
-            }
-
-            Tab("Favorites", systemImage: "star", value: AppNavigation.Tab.favorites) {
-                NavigationStack(path: $navigation.favoritesPath) {
-                    FavoritesView(playlistIDs: nil)
-                        .channelDestinations()
-                }
-            }
-
-            Tab("Settings", systemImage: "gear", value: AppNavigation.Tab.settings) {
-                NavigationStack {
-                    SettingsView(player: viewModel)
-                        .navigationTitle("Settings")
-                }
-            }
-
-            Tab("Search", systemImage: "magnifyingglass", value: AppNavigation.Tab.search, role: .search) {
-                SearchView()
-            }
-        }
-        .playerAccessory(isVisible: viewModel.currentChannel != nil) {
-            PlayerBottomAccessory(viewModel: viewModel)
-        }
-        #if DEBUG
-        .onAppear {
-            if DebugGuideDemo.opensGuide {
-                navigation.tab = .guide
-            } else if DebugGuideDemo.opensFavorites {
-                navigation.tab = .favorites
-            }
-        }
-        #endif
+        AppTabView(player: viewModel)
         #endif
     }
 }
@@ -149,6 +117,8 @@ struct PlayerBottomAccessory: View {
 
     @Environment(\.tabViewBottomAccessoryPlacement) private var placement
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(WindowCoordinator.self) private var coordinator: WindowCoordinator?
+    @Environment(\.windowID) private var windowID
     @State private var playPauseTaps = 0
 
     var body: some View {
@@ -232,6 +202,10 @@ struct PlayerBottomAccessory: View {
     }
 
     private func openPlayer() {
+        // iPad: the player may be on screen in another window; it moves to this one.
+        if let coordinator, let windowID {
+            coordinator.move(.player, to: windowID)
+        }
         viewModel.presentationSourceID = nil
         viewModel.presentPlayer()
     }

@@ -14,15 +14,22 @@ import SwiftUI
 struct PlayChannelAction: Equatable {
     private let library: ChannelLibrary?
     private let player: AVPlayerViewModel?
+    /// The window the action plays in (iPad: the player moves to the window the channel was picked in).
+    private let coordinator: WindowCoordinator?
+    private let windowID: UUID?
 
     init() {
         library = nil
         player = nil
+        coordinator = nil
+        windowID = nil
     }
 
-    init(library: ChannelLibrary, player: AVPlayerViewModel) {
+    init(library: ChannelLibrary, player: AVPlayerViewModel, coordinator: WindowCoordinator? = nil, windowID: UUID? = nil) {
         self.library = library
         self.player = player
+        self.coordinator = coordinator
+        self.windowID = windowID
     }
 
     /// - Parameter sourceID: the view the player zooms out of (`playerTransitionSource(id:)`); nil zooms
@@ -30,12 +37,15 @@ struct PlayChannelAction: Equatable {
     @MainActor
     func callAsFunction(_ item: ChannelItem, from sourceID: String? = nil) {
         library?.recordWatch(item)
+        if let coordinator, let windowID {
+            coordinator.move(.player, to: windowID)
+        }
         player?.presentationSourceID = sourceID
         player?.play(item)
     }
 
     static func == (lhs: PlayChannelAction, rhs: PlayChannelAction) -> Bool {
-        lhs.library === rhs.library && lhs.player === rhs.player
+        lhs.library === rhs.library && lhs.player === rhs.player && lhs.coordinator === rhs.coordinator && lhs.windowID == rhs.windowID
     }
 }
 

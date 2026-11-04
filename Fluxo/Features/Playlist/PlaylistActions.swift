@@ -31,6 +31,8 @@ final class PlaylistActions {
     var sheet: Sheet?
     /// Playlist waiting for the delete confirmation.
     var playlistToDelete: Playlist?
+    /// The address the Add Playlist sheet starts with (a URL dropped on the window); nil for an empty form.
+    var urlToAdd: URL?
 
     /// True while the add / rename sheet or the delete confirmation is on screen.
     var isPresenting: Bool {
@@ -38,6 +40,13 @@ final class PlaylistActions {
     }
 
     func add() {
+        urlToAdd = nil
+        sheet = .add
+    }
+
+    /// The Add Playlist sheet, filled in with `url` (e.g. a link dropped on the window).
+    func add(url: URL) {
+        urlToAdd = url
         sheet = .add
     }
 
@@ -95,16 +104,21 @@ private struct PlaylistManagementPresenter: ViewModifier {
     @Environment(PlaylistActions.self) private var actions
     @Environment(PlaylistImportCenter.self) private var importCenter
     @Environment(ChannelLibrary.self) private var library
+    /// With several windows (iPad), each sheet and alert shows in one of them (see `WindowCoordinator`).
+    @Environment(WindowCoordinator.self) private var coordinator: WindowCoordinator?
+    @Environment(\.windowID) private var windowID
     @AppStorage(PlaylistSelection.storageKey) private var selectionRawValue = ""
 
     func body(content: Content) -> some View {
-        @Bindable var actions = actions
         content
-            .sheet(item: $actions.sheet) { sheet in
+            .windowPresentation(.playlistSheet, isActive: actions.sheet != nil)
+            .windowPresentation(.playlistDelete, isActive: actions.playlistToDelete != nil)
+            .windowPresentation(.playlistFailure, isActive: importCenter.failure != nil)
+            .sheet(item: sheetBinding) { sheet in
                 NavigationStack {
                     switch sheet {
                     case .add:
-                        AddPlaylistView()
+                        AddPlaylistView(initialURL: actions.urlToAdd)
                     case .edit(let playlist):
                         AddPlaylistView(playlist: playlist)
                     }
@@ -135,14 +149,26 @@ private struct PlaylistManagementPresenter: ViewModifier {
             selectionRawValue = PlaylistSelection.all.rawValue
         }
         library.forgetPlaylist(uuid)
+        LocalPlaylistFiles.remove(playlist.url)
         importCenter.delete(playlist)
     }
 
+    private func shows(_ presentation: WindowCoordinator.Presentation, isActive: Bool) -> Bool {
+        coordinator?.shows(presentation, in: windowID, isActive: isActive) ?? isActive
+    }
+
+    private var sheetBinding: Binding<PlaylistActions.Sheet?> {
+        Binding(
+            get: { shows(.playlistSheet, isActive: actions.sheet != nil) ? actions.sheet : nil },
+            set: { actions.sheet = $0 }
+        )
+    }
+
     private var deleteAlertBinding: Binding<Bool> {
-        Binding(get: { actions.playlistToDelete != nil }, set: { if !$0 { actions.playlistToDelete = nil } })
+        Binding(get: { shows(.playlistDelete, isActive: actions.playlistToDelete != nil) }, set: { if !$0 { actions.playlistToDelete = nil } })
     }
 
     private var failureAlertBinding: Binding<Bool> {
-        Binding(get: { importCenter.failure != nil }, set: { if !$0 { importCenter.failure = nil } })
+        Binding(get: { shows(.playlistFailure, isActive: importCenter.failure != nil) }, set: { if !$0 { importCenter.failure = nil } })
     }
 }

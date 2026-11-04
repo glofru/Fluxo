@@ -138,6 +138,7 @@ extension View {
             .environment(library)
             .environment(PlaylistActions())
             .environment(AppNavigation())
+            .environment(WindowCoordinator())
             .environment(\.playChannel, PlayChannelAction(library: library, player: player))
             .modelContainer(container)
     }

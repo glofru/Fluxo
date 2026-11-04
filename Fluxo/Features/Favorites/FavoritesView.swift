@@ -119,6 +119,8 @@ struct FavoritesView: View {
             }
         }
         .navigationTitle("Favorites")
+        // Channels dragged here (from another window, or the player's channel list) become favorites.
+        .favoritesDropDestination(library: library)
         .toolbar {
             toolbarContent(isEmpty: items.isEmpty)
         }
@@ -213,7 +215,9 @@ struct FavoritesView: View {
     private func toolbarContent(isEmpty: Bool) -> some ToolbarContent {
         #if os(iOS)
         if !isEmpty {
-            ToolbarItem(placement: .topBarLeading) {
+            // iPad: on the trailing side, next to Options; on the leading side it would sit next to the sidebar's
+            // own Edit button (tab customization).
+            ToolbarItem(placement: DeviceIdiom.isPad ? .topBarTrailing : .topBarLeading) {
                 EditButton()
             }
         }

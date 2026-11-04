@@ -21,6 +21,9 @@ struct GuideView: View {
     @AppStorage(PlaylistSelection.storageKey) private var selectionRawValue = ""
 
     @Environment(EPGStore.self) private var epg
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
 
     @State private var day = Calendar.current.startOfDay(for: .now)
     @State private var channels: [GuideChannel]?
@@ -67,7 +70,20 @@ struct GuideView: View {
                     }
                 }
         }
-        .sheet(item: $selection) { selection in
+        // iPad: the programme opens in an inspector next to the grid, which stays usable; tapping another
+        // programme replaces it. Elsewhere it is a sheet.
+        .inspector(isPresented: inspectorBinding) {
+            Group {
+                if let selection {
+                    ProgrammeDetailView(programme: selection.programme, channel: selection.channel.item, ref: selection.channel.ref) {
+                        self.selection = nil
+                    }
+                    .id(selection.id)
+                }
+            }
+            .inspectorColumnWidth(min: 320, ideal: 400, max: 520)
+        }
+        .sheet(item: usesInspector ? .constant(nil) : $selection) { selection in
             ProgrammeDetailView(programme: selection.programme, channel: selection.channel.item, ref: selection.channel.ref)
         }
         .sheet(isPresented: $showsReminders) {
@@ -85,6 +101,26 @@ struct GuideView: View {
             }
             .presentationDetents([.medium, .large])
         }
+    }
+
+    /// iPad in a regular width window: programme details go to the inspector.
+    private var usesInspector: Bool {
+        #if os(iOS)
+        DeviceIdiom.isPad && horizontalSizeClass == .regular
+        #else
+        false
+        #endif
+    }
+
+    private var inspectorBinding: Binding<Bool> {
+        Binding(
+            get: { usesInspector && selection != nil },
+            set: { isPresented in
+                if !isPresented {
+                    selection = nil
+                }
+            }
+        )
     }
 
     #if DEBUG
