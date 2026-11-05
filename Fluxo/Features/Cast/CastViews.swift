@@ -6,6 +6,8 @@
 //  Chromecast plays the channel.
 //
 
+// The Cast button and device picker. Google's Cast sender SDK is iOS only (CastController.isSupported), and an Apple TV is itself the screen, so tvOS has no cast UI.
+#if !os(tvOS)
 import SwiftUI
 
 // MARK: - Device picker
@@ -423,4 +425,5 @@ private func previewPlayer(connected: Bool) -> AVPlayerViewModel {
         .background(.black)
         .environment(\.colorScheme, .dark)
 }
+#endif
 #endif

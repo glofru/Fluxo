@@ -9,6 +9,8 @@
 //  launches.
 //
 
+// The touch and pointer player screen (iPhone, iPad, Mac). Apple TV plays in the system's player, whose transport bar the Siri Remote drives (Fluxo/TV).
+#if !os(tvOS)
 import SwiftData
 import SwiftUI
 
@@ -442,3 +444,4 @@ private struct PlayerGuideTabHeader: View {
     .environment(\.colorScheme, .dark)
     .fluxoPreviewEnvironment(GuidePreviewData.container)
 }
+#endif

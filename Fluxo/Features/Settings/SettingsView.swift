@@ -175,7 +175,7 @@ struct SettingsView: View {
                 Text(recordingsLocation)
                     .lineLimit(2)
                     .truncationMode(.middle)
-                    .textSelection(.enabled)
+                    .selectableText()
             } label: {
                 SettingsLabel("Location", systemImage: "folder", tint: Theme.cyan)
             }

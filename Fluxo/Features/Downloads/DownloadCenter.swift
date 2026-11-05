@@ -155,6 +155,11 @@ final class DownloadCenter {
             return
         }
         isStarted = true
+        guard PlatformFeatures.offlineDownloads else {
+            // Apple TV: nothing downloads, so there is nothing to restore (the manifest stays empty).
+            isReady = true
+            return
+        }
         transport.onEvent = { [weak self] event in
             self?.handle(event)
         }
@@ -190,7 +195,7 @@ final class DownloadCenter {
     // MARK: - Queries
 
     func canDownload(_ item: ChannelItem) -> Bool {
-        guard item.kind != .live, let scheme = item.url?.scheme?.lowercased() else {
+        guard PlatformFeatures.offlineDownloads, item.kind != .live, let scheme = item.url?.scheme?.lowercased() else {
             return false
         }
         return scheme == "http" || scheme == "https"
@@ -875,11 +880,13 @@ final class DownloadCenter {
             fail(id, .incomplete, isNetworkError: false)
             return
         }
+        #if !os(tvOS)
         // Kept before downloads the system may purge first under storage pressure.
         let policy = AVMutableAssetDownloadStorageManagementPolicy()
         policy.priority = .important
         policy.expirationDate = .distantFuture
         AVAssetDownloadStorageManager.shared().setStorageManagementPolicy(policy, for: url)
+        #endif
         let size = Self.allocatedSize(of: url)
         update(id) {
             $0.status = .completed
@@ -1450,12 +1457,7 @@ final class DownloadCenter {
     }
 
     nonisolated static func availableCapacity(at url: URL) -> Int64? {
-        let probe = FileManager.default.fileExists(atPath: url.path) ? url : FileManager.default.temporaryDirectory
-        guard let capacity = try? probe.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage,
-              capacity > 0 else {
-            return nil
-        }
-        return capacity
+        PlatformStorage.availableCapacity(at: url)
     }
 }
 

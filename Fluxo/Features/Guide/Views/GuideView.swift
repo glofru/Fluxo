@@ -109,7 +109,7 @@ struct GuideView: View {
         }
         // iPad: the programme opens in an inspector next to the grid, which stays usable; tapping another
         // programme replaces it. Elsewhere it is a sheet.
-        .inspector(isPresented: inspectorBinding) {
+        .sideInspector(isPresented: inspectorBinding, width: (min: 320, ideal: 400, max: 520)) {
             Group {
                 if let selection {
                     ProgrammeDetailView(programme: selection.programme, channel: selection.channel.item, ref: selection.channel.ref) {
@@ -118,7 +118,6 @@ struct GuideView: View {
                     .id(selection.id)
                 }
             }
-            .inspectorColumnWidth(min: 320, ideal: 400, max: 520)
         }
         .sheet(item: usesInspector ? .constant(nil) : $selection) { selection in
             ProgrammeDetailView(programme: selection.programme, channel: selection.channel.item, ref: selection.channel.ref)

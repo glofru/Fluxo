@@ -173,7 +173,7 @@ private struct GuideSearchRow: View {
                 StreamLinkMenuItems(url: result.channel.url, name: result.channel.displayName, target: .channel)
             }
         }
-        .swipeActions(edge: .trailing) {
+        .rowSwipeActions(edge: .trailing) {
             if ReminderCenter.canRemind(programme, now: now) {
                 Button(isReminded ? "Cancel" : "Remind", systemImage: isReminded ? "bell.slash" : "bell") {
                     Task {

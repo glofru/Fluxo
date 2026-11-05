@@ -20,6 +20,7 @@ enum SidebarItem: Hashable {
     case playlist(UUID)
 }
 
+#if !os(tvOS)
 /// macOS layout: a sidebar with Home, TV Guide and Search, a Library section (Favorites, Recently Watched,
 /// Downloads, Recordings: the places of the iOS Library tab), and every playlist, and the selected screen as the detail.
 /// Selecting a playlist shows Home filtered to it.
@@ -242,3 +243,4 @@ private struct PlaylistSidebarRow: View {
     MacRootView(player: AVPlayerViewModel())
         .fluxoPreviewEnvironment()
 }
+#endif

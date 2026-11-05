@@ -54,7 +54,9 @@ private struct PlayerSourceModifier: ViewModifier {
     let id: String
     let cornerRadius: CGFloat
 
+    #if os(iOS)
     @Environment(\.playerSourceFrames) private var frames
+    #endif
 
     func body(content: Content) -> some View {
         #if os(iOS)

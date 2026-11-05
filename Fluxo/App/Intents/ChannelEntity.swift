@@ -15,7 +15,7 @@ import CoreSpotlight
 import Foundation
 import SwiftData
 
-struct ChannelEntity: AppEntity, IndexedEntity {
+struct ChannelEntity: AppEntity {
 
     static var typeDisplayRepresentation: TypeDisplayRepresentation {
         TypeDisplayRepresentation(name: "Channel", numericFormat: "\(placeholder: .int) channels")
@@ -74,6 +74,12 @@ struct ChannelEntity: AppEntity, IndexedEntity {
         )
     }
 
+}
+
+#if !os(tvOS)
+/// Spotlight (not on tvOS, `PlatformFeatures.spotlightIndexing`).
+extension ChannelEntity: IndexedEntity {
+
     /// Spotlight: the name, the kind, the group and the playlist, so "Sky Sport F1", "F1" or "Sport" find it.
     var attributeSet: CSSearchableItemAttributeSet {
         let attributes = defaultAttributeSet
@@ -85,6 +91,7 @@ struct ChannelEntity: AppEntity, IndexedEntity {
         return attributes
     }
 }
+#endif
 
 /// The content kinds, for Shortcuts filters and parameters.
 enum ChannelKindAppEnum: String, AppEnum {

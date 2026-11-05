@@ -1,6 +1,6 @@
 # Fluxo
 
-Fluxo is a SwiftUI IPTV / M3U player for iOS and macOS.
+Fluxo is a SwiftUI IPTV / M3U player for iOS, macOS and tvOS (see "Apple TV").
 
 ## Building
 
@@ -16,8 +16,8 @@ AVPlayer cannot decode, see "Formats"), and a local HTTP server bound to `127.0.
 There is nothing to install: FFmpeg ships with the repository (see "FFmpeg" below), and the
 Swift packages, [FlyingFox](https://github.com/swhitty/FlyingFox) (the loopback HTTP server) and
 Google's [Cast SDK](https://github.com/googlecast/google-cast-ios-sdk) (iOS only, see "Chromecast"
-below), are resolved by Xcode on its own. The app builds for iOS devices, the iOS Simulator and
-macOS.
+below), are resolved by Xcode on its own. The app builds for iOS devices, the iOS Simulator, macOS, Apple TV
+and the tvOS Simulator, from the one `Fluxo` target and scheme.
 
 The macOS build is signed ad hoc ("Sign to Run Locally") so that it builds without a Mac
 Development certificate. To distribute the app, set the macOS code signing style back to
@@ -38,6 +38,10 @@ xcodebuild -project Fluxo.xcodeproj -scheme Fluxo -destination 'generic/platform
 
 # macOS
 xcodebuild -project Fluxo.xcodeproj -scheme Fluxo -destination 'platform=macOS' build
+
+# Apple TV (unsigned) and the tvOS Simulator
+xcodebuild -project Fluxo.xcodeproj -scheme Fluxo -destination 'generic/platform=tvOS' build CODE_SIGNING_ALLOWED=NO
+xcodebuild -project Fluxo.xcodeproj -scheme Fluxo -configuration Debug -destination 'generic/platform=tvOS Simulator' build CODE_SIGNING_ALLOWED=NO
 ```
 
 The SwiftData schema is the list in `Fluxo/App/Database/ModelRegistry.swift`; add new `@Model`
@@ -735,6 +739,92 @@ route of `Tools/Simulator`) that shows the whole cast UI and refuses raw MPEG-TS
 Tools/Simulator/run.sh --device "iPhone 17e" --clone fluxo-mykey-1 --step-shots \
     --route "player:Sky Sport F1;cast:Living Room;wait:3;cast-picker;stop-casting"
 ```
+
+## Apple TV
+
+Fluxo runs on Apple TV (tvOS 26 and later) from the same target as the iPhone, iPad and Mac app. The shared code
+(the store, playlist import, the remux engine and its loopback server, the player view model, the TV guide,
+search, recommendations, recordings, App Intents) is compiled for tvOS as it is; the screens are the TV's own
+(`Fluxo/TV`). This first version is the foundation: the app launches, browses the library and plays; the TV
+screens are first versions that the 10-foot UI replaces.
+
+### One multiplatform target
+
+tvOS was added to the existing `Fluxo` target (`SUPPORTED_PLATFORMS`, `TVOS_DEPLOYMENT_TARGET = 26.0`, device
+family 3 for the tvOS SDKs) rather than to a target of its own:
+
+- **One app record**: the same bundle identifier (`dev.watermelon.Fluxo`) on every platform is what universal
+  purchase needs: one App Store product, bought once for iPhone, iPad, Mac and Apple TV. A second target would have
+  to repeat it anyway.
+- **The same pattern as macOS**: the target already builds two platforms, with the differences as SDK-conditional
+  settings (`[sdk=macosx*]`); tvOS adds its own: its Info.plist (`Fluxo/Info-tvOS.plist`), app icon (below) and
+  device family. Packages filter by platform (Google Cast stays iOS only; FFmpeg is linked on iOS, macOS and tvOS).
+  The entitlements file is the iOS one (empty).
+- **No second list of files**: the target uses a file-system synchronized group, so every new file builds for every
+  platform, and a change that does not compile on one fails at once instead of drifting in a target nobody builds.
+  A second target would need its own membership exceptions for every iOS-only file, kept in step by hand.
+- **One scheme**: every platform builds with `-scheme Fluxo` and a destination.
+
+The cost is that code which exists on one platform only says so in the source: files of the TV screens are wrapped in
+`#if os(tvOS)` (a platform filter on the `TV` folder is ignored by the synchronized group, checked with Xcode 27.2), and the touch and pointer
+screens that Apple TV replaces in `#if !os(tvOS)`: the iPhone / iPad / Mac player (`Features/Watch`), the root of their
+windows (`ContentView`, `MacRootView`), the iPad player windows, the menu bar commands, the Cast button and picker.
+
+### What tvOS does not have
+
+What a platform can do is answered in one place, `App/Platform/PlatformFeatures.swift`, and features ask it instead of
+testing the operating system; the APIs tvOS lacks are compiled out only in the file that calls them.
+
+| Capability | On Apple TV |
+|---|---|
+| Offline downloads (`offlineDownloads`) | Off. tvOS keeps only a small amount of an app's data for sure and may delete everything else (caches) when it needs space, so a downloaded movie could be gone when it is watched; `AVAssetDownloadURLSession` and the storage priorities that protect downloads do not exist there. `DownloadCenter` starts empty and `canDownload` is false, so no screen offers Download. |
+| Clipboard (`pasteboard`) | None: Copy Link, Share and the Paste button of Add Playlist are not shown. |
+| Notifications with text (`textNotifications`) | tvOS notifications only badge the icon. Reminders are delivered by `ReminderDelivery`: system notifications on iPhone, iPad and Mac (`SystemReminderNotifications`), an alert in the app on Apple TV (`InAppReminderAlerts`, one timer for the next reminder, armed again at launch from the stored reminders), with Watch and Not Now. |
+| On-device model (`onDeviceLanguageModel`) | Foundation Models has no language model on tvOS: `FluxoIntelligence` reports the device as not eligible, and recommendations, smart search and summaries use their built-in fallbacks. |
+| Spotlight (`spotlightIndexing`) | No app content in tvOS search: channels are not indexed; the Siri phrases with channel names still update. |
+| Files and drag and drop (`files`) | No Files app or document picker: Load Subtitle File… and dropped playlists are not offered. |
+| Chromecast | `CastController.isSupported` is false (no Google Cast SDK for tvOS, and the Apple TV is the screen). |
+| Several windows, foldable layouts, iPad sidebar | One window; the posture of the iPhone Duo and the iPad-only layouts do not apply. |
+| Storage for recordings | No Documents folder for apps: recordings go to `Caches/Recordings` (`PlatformStorage.userFilesDirectory`), which tvOS may empty when it runs out of space. |
+
+SwiftUI modifiers that tvOS marks unavailable (swipe actions, row separators, text selection, inspectors, the
+inset list styles) go through helpers in `View+Platform.swift` (`rowSwipeActions`, `rowSeparatorHidden`,
+`selectableText`, `sideInspector`, `groupedListStyle`) that apply them where they exist; the guide's background
+refresh (`BGAppRefreshTask`) runs on tvOS too.
+
+### The TV app (`Fluxo/TV`)
+
+- **Root** (`TVContentView`): the tvOS top tab bar with the tabs of the iPhone, in the same order (Home, Guide,
+  Library, Settings, Search), driven by `AppNavigation.tab`, so App Intents and the debug routes move it. It sets up
+  what `ContentView` sets up elsewhere: the playlist and guide sheets, watch progress, VoiceOver announcements, the
+  reminder alert, the play action of every card and the debug harness.
+- **Pages** (`TVPages.swift`, first versions): Home (Continue Watching, Favorites, then the first live TV groups of
+  each playlist, as shelves of cards), Guide (what is on now on the favorite and recent live channels, Refresh),
+  Search (the app's token search, as a grid), Library (Favorites, Recently Watched, Recordings), Settings (the
+  playlists: add, refresh, edit and delete through the shared playlist sheets; the version).
+- **Cards** (`TVComponents.swift`): the system's card button style (they lift and tilt under focus), 16:9 artwork,
+  shelves as focus sections; each card is one VoiceOver element with the channel and its group, and the hint "Plays".
+- **Player** (`TVPlayerView`): `AVPlayerViewController` on the app's single `AVPlayer`, so the transport bar, the
+  info panel, audio and subtitles and the Siri Remote work as in the TV app; live streams show their live edge and
+  time-shift window. HLS plays directly, raw MPEG-TS and the other formats through the remux engine on 127.0.0.1, as
+  on iPhone. Until the first frame (and after a failure) the channel and the player's state are shown. Menu closes
+  the player and stops playback (there is no mini player on Apple TV); Picture in Picture is off until the TV player
+  handles it (the app's own `PlayerSurface` drives none on tvOS).
+- **Icon**: Icon Composer has no tvOS rendition, so `Design/Icon/render_tvos_assets.swift` draws the layers of
+  `AppIcon.icon` (the brand gradient, the three stream bands, the play glyph) into the layered "App Icon & Top Shelf
+  Image" brand assets (Back, Middle and Front layers for the parallax, and the Top Shelf images):
+  `xcrun swift Design/Icon/render_tvos_assets.swift`.
+
+### Trying it
+
+```sh
+Tools/Simulator/build.sh --platform tvos
+Tools/Simulator/test-stream.sh start
+Tools/Simulator/run.sh --device "Apple TV 4K (4th generation)" --clone fluxo-mykey-tv-1 --step-shots \
+    --route "home;focus:Sky Sport F1;player:Test Pattern (MPEG-TS);wait:8;probe-playback"
+```
+
+See "Apple TV" in `Tools/Simulator/README.md` for the harness on tvOS.
 
 ## iPhone with a hinge (iPhone Duo)
 

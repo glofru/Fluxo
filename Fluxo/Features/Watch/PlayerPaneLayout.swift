@@ -17,6 +17,8 @@
 //  view keeps its identity in every layout, so changing the posture never interrupts playback.
 //
 
+// The touch and pointer player screen (iPhone, iPad, Mac). Apple TV plays in the system's player, whose transport bar the Siri Remote drives (Fluxo/TV).
+#if !os(tvOS)
 import SwiftUI
 
 struct PlayerPaneLayout: Equatable {
@@ -116,3 +118,4 @@ enum FoldablePlayerPreferences {
     /// Side by side: the video is on the trailing half.
     static let videoOnTrailingSideKey = "player.foldable.videoOnTrailingSide"
 }
+#endif

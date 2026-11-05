@@ -74,7 +74,7 @@ struct FavoritesView: View {
                             filterPicker(kinds: kinds(of: items))
                                 .listRowInsets(EdgeInsets(top: 4, leading: HomeLayout.horizontalMargin, bottom: 4, trailing: HomeLayout.horizontalMargin))
                                 .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
+                                .rowSeparatorHidden()
                         }
                     }
 
@@ -87,7 +87,7 @@ struct FavoritesView: View {
                             }
                             .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 8, trailing: 0))
                             .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
+                            .rowSeparatorHidden()
                         } header: {
                             Label("On Now", systemImage: "dot.radiowaves.left.and.right")
                                 .foregroundStyle(Theme.live)
@@ -132,11 +132,7 @@ struct FavoritesView: View {
                         }
                     }
                 }
-                #if os(iOS)
-                .listStyle(.insetGrouped)
-                #else
-                .listStyle(.inset)
-                #endif
+                .groupedListStyle()
                 .animation(.smooth, value: filter)
                 .animation(.smooth, value: grouping)
             }
@@ -387,13 +383,13 @@ private struct FavoriteRow: View {
         .contextMenu {
             actions
         }
-        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+        .rowSwipeActions(edge: .leading, allowsFullSwipe: true) {
             Button("Play", systemImage: "play.fill") {
                 playChannel(item, from: sourceID)
             }
             .tint(Theme.accentFill)
         }
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+        .rowSwipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button("Remove", systemImage: "star.slash.fill", role: .destructive) {
                 library.setFavorite(false, for: item)
             }

@@ -17,7 +17,7 @@
 import Foundation
 import Observation
 import os
-#if os(iOS)
+#if canImport(UIKit)
 import UIKit
 #elseif os(macOS)
 import AppKit
@@ -111,7 +111,7 @@ final class PowerMonitor {
         // Posted on an arbitrary thread.
         notificationTokens.append(center.addObserver(forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: nil, using: refreshState))
         notificationTokens.append(center.addObserver(forName: ProcessInfo.thermalStateDidChangeNotification, object: nil, queue: nil, using: refreshState))
-        #if os(iOS)
+        #if canImport(UIKit)
         notificationTokens.append(center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.setInBackground(true)

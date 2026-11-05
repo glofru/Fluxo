@@ -114,6 +114,10 @@ final class FluxoIntelligence {
             return forced
         }
         #endif
+        #if os(tvOS)
+        // No on-device model on Apple TV (`PlatformFeatures.onDeviceLanguageModel`): the fallbacks, always.
+        return .deviceNotEligible
+        #else
         let model = SystemLanguageModel.default
         switch model.availability {
         case .available:
@@ -126,6 +130,7 @@ final class FluxoIntelligence {
         case .unavailable:
             return .deviceNotEligible
         }
+        #endif
     }
 
     private nonisolated static func currentStatus(isEnabled: Bool) -> IntelligenceStatus {
@@ -217,6 +222,9 @@ enum OnDeviceModel {
     /// in English when the prompt is English and the names in it are not; such texts are then translated in one
     /// request (they are a few short lines). Returns the input when it is already right or the translation fails.
     static func localized(_ texts: [String]) async -> [String] {
+        #if os(tvOS)
+        return texts
+        #else
         let joined = texts.joined(separator: ". ")
         guard !texts.isEmpty, !joined.isEmpty else {
             return texts
@@ -237,8 +245,10 @@ enum OnDeviceModel {
         } catch {
             return texts
         }
+        #endif
     }
 
+    #if !os(tvOS)
     /// A new session on the on-device model. Sessions are cheap; each request uses its own, so requests never
     /// share a transcript (and its context window).
     static func session(tools: [any Tool] = [], instructions: String) -> LanguageModelSession {
@@ -249,6 +259,7 @@ enum OnDeviceModel {
     static func options(maximumTokens: Int) -> GenerationOptions {
         GenerationOptions(temperature: 0.3, maximumResponseTokens: maximumTokens)
     }
+    #endif
 
     /// Runs `operation`, giving up after `seconds` (the on-device model can be slow on a busy device; the
     /// feature then keeps its fallback result).
@@ -272,8 +283,13 @@ enum OnDeviceModel {
     }
 }
 
+/// Thrown by the features built on the on-device model where there is none (Apple TV): they keep their fallback.
+struct OnDeviceModelUnavailable: Error {}
+
+#if !os(tvOS)
 @Generable
 struct TranslatedLines {
     @Guide(description: "The translated lines, in the same order, one per input line.")
     var lines: [String]
 }
+#endif

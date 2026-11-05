@@ -162,7 +162,7 @@ private struct ReminderRow: View {
             .accessibilityLabel(reminder.channelName.map { Text("Watch \($0)", comment: "VoiceOver label of the button that plays a reminder's channel; the placeholder is the channel name.") } ?? Text("Watch the channel", comment: "VoiceOver label of the button that plays a reminder's channel when its name is unknown."))
         }
         .accessibilityElement(children: .combine)
-        .swipeActions(edge: .trailing) {
+        .rowSwipeActions(edge: .trailing) {
             Button("Delete", systemImage: "trash", role: .destructive) {
                 epg.reminders.cancel(key: reminder.key)
             }

@@ -111,7 +111,7 @@ final class PlayerSurface: NSObject {
         view.playerLayer.videoGravity = .resizeAspect
         videoView = view
 
-        if AVPictureInPictureController.isPictureInPictureSupported() {
+        if Self.drivesPictureInPicture, AVPictureInPictureController.isPictureInPictureSupported() {
             pictureInPicture = AVPictureInPictureController(playerLayer: view.playerLayer)
         } else {
             pictureInPicture = nil
@@ -119,7 +119,7 @@ final class PlayerSurface: NSObject {
         super.init()
 
         pictureInPicture?.delegate = self
-        #if !os(macOS)
+        #if os(iOS)
         pictureInPicture?.canStartPictureInPictureAutomaticallyFromInline = PlayerPreferences.autoPictureInPicture
         #endif
         possibleObservation = pictureInPicture?.observe(\.isPictureInPicturePossible, options: [.initial, .new]) { [weak self] controller, _ in
@@ -132,7 +132,17 @@ final class PlayerSurface: NSObject {
         }
     }
 
-    /// False on devices without Picture in Picture.
+    /// The app starts Picture in Picture from its own controls, with this layer, on iPhone, iPad and Mac. On Apple TV
+    /// the system's player (`TVPlayerView`) has its own controls, and its own Picture in Picture.
+    private static var drivesPictureInPicture: Bool {
+        #if os(tvOS)
+        false
+        #else
+        true
+        #endif
+    }
+
+    /// False on devices without Picture in Picture (and on Apple TV, see `drivesPictureInPicture`).
     var isPictureInPictureSupported: Bool {
         pictureInPicture != nil
     }
@@ -144,14 +154,14 @@ final class PlayerSurface: NSObject {
     /// iOS starts PiP by itself when the app goes to the background while a video plays inline.
     var startsPictureInPictureAutomatically: Bool {
         get {
-            #if os(macOS)
-            return false
-            #else
+            #if os(iOS)
             return pictureInPicture?.canStartPictureInPictureAutomaticallyFromInline ?? false
+            #else
+            return false
             #endif
         }
         set {
-            #if !os(macOS)
+            #if os(iOS)
             pictureInPicture?.canStartPictureInPictureAutomaticallyFromInline = newValue
             #endif
         }

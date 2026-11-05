@@ -83,6 +83,8 @@ final class AppNavigation {
     var debugHomeSection: String?
     /// Debug harness (`programme:<channel>`): the programme the TV Guide opens (a sheet, or the inspector on iPad).
     var debugGuideSelection: GuideSelection?
+    /// Debug harness (`focus:<channel>`, Apple TV): the name of the channel whose card takes the focus.
+    var debugFocusName: String?
     #endif
 
     /// iPad: the window has room for an inspector next to its content (see `AppTabView.isWide(_:)`). Narrower

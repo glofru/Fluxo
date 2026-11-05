@@ -173,3 +173,39 @@ private struct PlayerAnnouncer: View {
         return !Task.isCancelled
     }
 }
+
+// MARK: - Texts
+
+/// What the player says about seeks, on screen and to VoiceOver.
+enum PlayerSeekText {
+    static var failed: String {
+        String(localized: "Couldn't play from this point.", comment: "Player, over the timeline above Try Again, and VoiceOver announcement and hint: a seek (moving the timeline, skipping) went to a point of the video but playback could not continue there.")
+    }
+
+    static var failedHint: String {
+        String(localized: "Couldn't play from this point. Try Again is above the timeline.", comment: "VoiceOver hint of the player's timeline after a seek did not play.")
+    }
+
+    static var loading: String {
+        String(localized: "Loading the new position", comment: "VoiceOver: the player loads the video where the timeline was moved to (a seek in progress).")
+    }
+
+    /// Under the spinner when a seek takes a few seconds: where it goes.
+    static func loading(at target: TimeInterval) -> String {
+        String(localized: "Loading \(PlayerTime.format(target))…", comment: "Player, under the spinner in the middle of the video when a seek takes a few seconds: the time of the movie it goes to, as in Loading 6:41….")
+    }
+}
+
+/// Times on the player's timeline.
+enum PlayerTime {
+    /// "m:ss" or "h:mm:ss", with the digits and separators of the current locale.
+    static func format(_ interval: TimeInterval) -> String {
+        let seconds = Int(max(0, interval).rounded())
+        return Duration.seconds(seconds).formatted(.time(pattern: seconds >= 3600 ? .hourMinuteSecond : .minuteSecond))
+    }
+
+    /// Spoken form for VoiceOver, e.g. "2 minutes, 5 seconds".
+    static func spoken(_ interval: TimeInterval) -> String {
+        Duration.seconds(max(0, interval).rounded()).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .wide))
+    }
+}

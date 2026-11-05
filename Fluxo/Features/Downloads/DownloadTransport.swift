@@ -129,8 +129,10 @@ final class DownloadTransport: NSObject, @unchecked Sendable {
     private let eventContinuation: AsyncStream<DownloadTransferEvent>.Continuation
     private var isDeliveringEvents = false
     private var sessions: [SessionKind: URLSession] = [:]
+    #if !os(tvOS)
     /// The HLS sessions, as created (`AVAssetDownloadURLSession` may hand back an object of another class).
     private var assetSessions: [SessionKind: AVAssetDownloadURLSession] = [:]
+    #endif
     private var tasks: [UUID: (task: URLSessionTask, kind: SessionKind)] = [:]
     private var progressObservations: [UUID: NSKeyValueObservation] = [:]
     /// Throttles progress events to a few per second per download.
@@ -173,6 +175,10 @@ final class DownloadTransport: NSObject, @unchecked Sendable {
         configuration.sessionSendsLaunchEvents = true
         #endif
         let session: URLSession
+        #if os(tvOS)
+        // No downloads on Apple TV (`PlatformFeatures.offlineDownloads`), so no HLS session either.
+        session = URLSession(configuration: configuration, delegate: self, delegateQueue: delegateQueue)
+        #else
         if kind.isHLS {
             let assetSession = AVAssetDownloadURLSession(configuration: configuration, assetDownloadDelegate: self, delegateQueue: delegateQueue)
             assetSessions[kind] = assetSession
@@ -180,6 +186,7 @@ final class DownloadTransport: NSObject, @unchecked Sendable {
         } else {
             session = URLSession(configuration: configuration, delegate: self, delegateQueue: delegateQueue)
         }
+        #endif
         sessions[kind] = session
         return session
     }
@@ -273,6 +280,10 @@ final class DownloadTransport: NSObject, @unchecked Sendable {
         allowsCellular: Bool,
         availableBytes: Int64?
     ) async throws -> HLSDownloadPlan {
+        #if os(tvOS)
+        // `AVAssetDownloadURLSession` does not exist on tvOS (`PlatformFeatures.offlineDownloads`).
+        throw DownloadFailure.incomplete
+        #else
         let options: [String: Any] = [AVURLAssetAllowsCellularAccessKey: allowsCellular]
         var asset = AVURLAsset(url: url, options: options)
         if let partialLocation, FileManager.default.fileExists(atPath: partialLocation.path) {
@@ -358,6 +369,7 @@ final class DownloadTransport: NSObject, @unchecked Sendable {
         register(task, id: id, kind: kind)
         task.resume()
         return plan
+        #endif
     }
 
     /// The media selections to download, and the languages of their renditions for the list.
@@ -578,7 +590,7 @@ final class DownloadTransport: NSObject, @unchecked Sendable {
 
 // MARK: - URLSession delegate
 
-extension DownloadTransport: URLSessionDownloadDelegate, AVAssetDownloadDelegate {
+extension DownloadTransport: URLSessionDownloadDelegate {
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
         guard let id = Self.downloadID(of: downloadTask) else {
@@ -640,23 +652,18 @@ extension DownloadTransport: URLSessionDownloadDelegate, AVAssetDownloadDelegate
             send(.finished(id: id, failure: .failed(Self.failure(from: error), isNetworkError: Self.isNetworkError(error))))
             return
         }
+        #if !os(tvOS)
         // The package of a completed asset download, in case `willDownloadTo` was not delivered.
         if let assetTask = task as? AVAssetDownloadTask, assetTask.urlAsset.url.isFileURL {
             send(.hlsLocation(id: id, url: assetTask.urlAsset.url))
         }
+        #endif
         // Only file transfers have a response: an asset download task throws when it is asked for one.
         if task is URLSessionDownloadTask, let status = (task.response as? HTTPURLResponse)?.statusCode, !(200..<300).contains(status) {
             send(.finished(id: id, failure: .failed(.http(status), isNetworkError: false)))
             return
         }
         send(.finished(id: id, failure: nil))
-    }
-
-    func urlSession(_ session: URLSession, assetDownloadTask: AVAssetDownloadTask, willDownloadTo location: URL) {
-        guard let id = Self.downloadID(of: assetDownloadTask) else {
-            return
-        }
-        send(.hlsLocation(id: id, url: location))
     }
 
     func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
@@ -674,3 +681,15 @@ extension DownloadTransport: URLSessionDownloadDelegate, AVAssetDownloadDelegate
         }
     }
 }
+
+#if !os(tvOS)
+extension DownloadTransport: AVAssetDownloadDelegate {
+
+    func urlSession(_ session: URLSession, assetDownloadTask: AVAssetDownloadTask, willDownloadTo location: URL) {
+        guard let id = Self.downloadID(of: assetDownloadTask) else {
+            return
+        }
+        send(.hlsLocation(id: id, url: location))
+    }
+}
+#endif

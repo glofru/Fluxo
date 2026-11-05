@@ -309,12 +309,12 @@ struct DownloadRow: View {
                 .accessibilityLabel(Text(String(localized: "Download Actions", comment: "VoiceOver label of the menu of a download (pause, resume, delete).")))
             }
             .contentShape(.rect)
-            .swipeActions(edge: .trailing) {
+            .rowSwipeActions(edge: .trailing) {
                 Button(record.status == .completed ? DownloadText.delete : DownloadText.cancel, systemImage: "trash", role: .destructive) {
                     prompts.recordsToDelete = [record.id]
                 }
             }
-            .swipeActions(edge: .leading) {
+            .rowSwipeActions(edge: .leading) {
                 if record.status.isActive && record.status != .converting {
                     Button(DownloadText.pause, systemImage: "pause.fill") {
                         downloads.pause(record.id)
@@ -533,7 +533,7 @@ private struct DownloadSeriesRow: View {
                     }
                 }
             }
-            .swipeActions(edge: .trailing) {
+            .rowSwipeActions(edge: .trailing) {
                 Button(DownloadText.delete, systemImage: "trash", role: .destructive) {
                     prompts.recordsToDelete = records.map(\.id)
                 }

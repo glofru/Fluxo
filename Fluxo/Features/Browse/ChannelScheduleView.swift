@@ -173,7 +173,7 @@ struct ChannelScheduleView: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .swipeActions(edge: .trailing) {
+        .rowSwipeActions(edge: .trailing) {
             if !isOnAir, ReminderCenter.canRemind(programme, now: now) {
                 Button(isReminded ? "Cancel Reminder" : "Remind Me", systemImage: isReminded ? "bell.slash" : "bell") {
                     Task {

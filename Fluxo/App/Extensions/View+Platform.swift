@@ -125,11 +125,89 @@ extension View {
     }
 }
 
+// MARK: - Touch and pointer modifiers
+
+// SwiftUI marks these unavailable on tvOS: rows there have no swipe, there is no text selection, inspector column or
+// separator between rows. The helpers apply them where they exist and change nothing on Apple TV, whose screens
+// offer the same actions through focus (buttons, context menus) instead.
+extension View {
+
+    /// The swipe actions of a list row.
+    @ViewBuilder
+    func rowSwipeActions<Actions: View>(edge: HorizontalEdge = .trailing, allowsFullSwipe: Bool = true, @ViewBuilder content: () -> Actions) -> some View {
+        #if os(tvOS)
+        self
+        #else
+        self.swipeActions(edge: edge, allowsFullSwipe: allowsFullSwipe, content: content)
+        #endif
+    }
+
+    /// Hides the separator of a list row.
+    @ViewBuilder
+    func rowSeparatorHidden() -> some View {
+        #if os(tvOS)
+        self
+        #else
+        self.listRowSeparator(.hidden)
+        #endif
+    }
+
+    /// Lets the user select and copy the text.
+    @ViewBuilder
+    func selectableText() -> some View {
+        #if os(tvOS)
+        self
+        #else
+        self.textSelection(.enabled)
+        #endif
+    }
+
+    /// An inspector column next to the content (iPad, Mac), `width` wide within the user's resizing.
+    @ViewBuilder
+    func sideInspector<Inspector: View>(isPresented: Binding<Bool>, width: (min: CGFloat, ideal: CGFloat, max: CGFloat), @ViewBuilder content: () -> Inspector) -> some View {
+        #if os(tvOS)
+        self
+        #else
+        self.inspector(isPresented: isPresented) {
+            content()
+                .inspectorColumnWidth(min: width.min, ideal: width.ideal, max: width.max)
+        }
+        #endif
+    }
+
+    /// A grouped list: inset grouped on iPhone and iPad, inset on the Mac, the TV's own grouped style on Apple TV.
+    @ViewBuilder
+    func groupedListStyle() -> some View {
+        #if os(iOS)
+        self.listStyle(.insetGrouped)
+        #elseif os(macOS)
+        self.listStyle(.inset)
+        #else
+        self.listStyle(.grouped)
+        #endif
+    }
+}
+
+extension SearchScopeActivation {
+    /// The scopes show as soon as search starts (iPhone, iPad, Mac); tvOS shows them its own way.
+    static var onSearchStart: SearchScopeActivation {
+        #if os(tvOS)
+        .automatic
+        #else
+        .onSearchPresentation
+        #endif
+    }
+}
+
 extension Color {
     /// The system background of a screen (what Home's hero fades into).
     static var appBackground: Color {
         #if os(macOS)
         Color(nsColor: .windowBackgroundColor)
+        #elseif os(tvOS)
+        // tvOS draws the background behind the app itself (and has no `systemBackground`): fading into clear fades
+        // into it.
+        Color.clear
         #else
         Color(uiColor: .systemBackground)
         #endif

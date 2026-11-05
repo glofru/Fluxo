@@ -150,6 +150,8 @@ struct AddPlaylistView: View {
                         .accessibilityLabel("Clear URL")
                     }
 
+                    #if !os(tvOS)
+                    // No clipboard on Apple TV (`PlatformFeatures.pasteboard`): the URL is typed, or dictated.
                     PasteButton(payloadType: String.self) { strings in
                         guard let text = strings.first?.trimmingCharacters(in: .whitespacesAndNewlines) else {
                             return
@@ -160,6 +162,7 @@ struct AddPlaylistView: View {
                     .labelStyle(.iconOnly)
                     .buttonBorderShape(.capsule)
                     .disabled(isImporting)
+                    #endif
                 }
             } header: {
                 Text("Playlist")

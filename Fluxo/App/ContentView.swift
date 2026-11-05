@@ -5,6 +5,8 @@
 //  Created by Gianluca Lofrumento on 2025-05-31.
 //
 
+// The root of the iPhone, iPad and Mac windows (tabs or sidebar, the player layer, the mini player). Apple TV has its own (TVContentView, Fluxo/TV).
+#if !os(tvOS)
 import SwiftUI
 
 struct ContentView: View {
@@ -328,3 +330,4 @@ struct PlayerBottomAccessory: View {
     ContentView(viewModel: AVPlayerViewModel(), navigation: AppNavigation())
         .fluxoPreviewEnvironment()
 }
+#endif

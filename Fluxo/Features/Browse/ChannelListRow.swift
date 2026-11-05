@@ -116,13 +116,13 @@ struct ChannelListRow: View {
             ChannelContextMenu(item: item, isFavorite: isFavorite, extraActions: extraActions)
         }
         .channelDraggable(item)
-        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+        .rowSwipeActions(edge: .leading, allowsFullSwipe: true) {
             Button("Play", systemImage: "play.fill") {
                 playChannel(item, from: sourceID)
             }
             .tint(Theme.accentFill)
         }
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+        .rowSwipeActions(edge: .trailing, allowsFullSwipe: true) {
             if item.url != nil {
                 Button(isFavorite ? "Unfavorite" : "Favorite", systemImage: isFavorite ? "star.slash.fill" : "star.fill") {
                     library.toggleFavorite(item)

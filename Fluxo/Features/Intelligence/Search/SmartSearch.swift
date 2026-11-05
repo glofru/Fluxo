@@ -186,6 +186,10 @@ enum SmartSearch {
     /// The plan of `query`: by the on-device model when `useModel`, else (or when the model fails) by the rules.
     static func plan(for query: String, useModel: Bool) async -> SmartSearchPlan {
         let rules = SmartSearchRules.plan(for: query)
+        #if os(tvOS)
+        // No on-device model on Apple TV (`PlatformFeatures.onDeviceLanguageModel`).
+        return rules
+        #else
         guard useModel else {
             return rules
         }
@@ -223,6 +227,7 @@ enum SmartSearch {
             logger.error("Query planning failed: \(String(describing: error), privacy: .public)")
             return rules
         }
+        #endif
     }
 
     static let instructions = """
@@ -474,6 +479,7 @@ enum GuideMatch {
 
 // MARK: - Structured output
 
+#if !os(tvOS)
 @Generable
 enum GeneratedSearchKind {
     case anything
@@ -559,3 +565,4 @@ struct GeneratedSearchPlan {
         return plan
     }
 }
+#endif

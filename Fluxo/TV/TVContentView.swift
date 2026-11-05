@@ -1,0 +1,154 @@
+//
+//  TVContentView.swift
+//  Fluxo
+//
+//  The root of the Apple TV app: the top tab bar (Home, Guide, Library, Settings and Search, the order and the
+//  places of the iPhone tabs) over full-screen pages, and the system player on top of them.
+//
+//  It sets up what `ContentView` sets up on iPhone, iPad and Mac, minus what the TV has no use for (the mini player,
+//  drag and drop, Copy Link, offline downloads, several windows, the foldable posture): the playlist and guide
+//  sheets, watch progress, VoiceOver announcements, reminders, the play action every card uses, App Intents
+//  navigation and the debug harness. The pages are first versions wired to the shared features; the player is
+//  `TVPlayerView`.
+//
+//  Everything in Fluxo/TV is compiled for tvOS only (each file is wrapped in `#if os(tvOS)`): the iPhone, iPad and
+//  Mac screens are touch and pointer layouts (swipe actions, drags, hover, context menus) that the TV replaces with
+//  focus-driven ones.
+//
+
+#if os(tvOS)
+import SwiftData
+import SwiftUI
+
+struct TVContentView: View {
+
+    let viewModel: AVPlayerViewModel
+
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(ChannelLibrary.self) private var library
+    @Environment(EPGStore.self) private var epg
+    @Environment(WindowCoordinator.self) private var coordinator
+    /// The selected tab and the search text, shared with App Intents and the debug routes.
+    @State private var navigation: AppNavigation
+    /// Identifies the window to the `WindowCoordinator` (Apple TV has one).
+    @State private var windowID = UUID()
+
+    init(viewModel: AVPlayerViewModel, navigation: AppNavigation) {
+        self.viewModel = viewModel
+        _navigation = State(initialValue: navigation)
+    }
+
+    var body: some View {
+        @Bindable var navigation = navigation
+        TabView(selection: $navigation.tab) {
+            Tab("Home", systemImage: "play.tv", value: AppNavigation.Tab.home) {
+                TVHomeScreen()
+            }
+
+            Tab("Guide", systemImage: "calendar.day.timeline.left", value: AppNavigation.Tab.guide) {
+                TVGuideScreen()
+            }
+
+            Tab(value: AppNavigation.Tab.library) {
+                TVLibraryScreen(player: viewModel)
+            } label: {
+                Label {
+                    Text(LibraryText.title)
+                } icon: {
+                    Image(systemName: "rectangle.stack")
+                }
+            }
+
+            Tab("Settings", systemImage: "gear", value: AppNavigation.Tab.settings) {
+                TVSettingsScreen()
+            }
+
+            Tab("Search", systemImage: "magnifyingglass", value: AppNavigation.Tab.search, role: .search) {
+                TVSearchScreen()
+            }
+        }
+        // The system player, full screen. Menu on the Siri Remote (or the TV remote's Back) closes it: playback
+        // stops, as in the TV app (there is no mini player on Apple TV).
+        .fullScreenCover(isPresented: isPlayerPresented, onDismiss: viewModel.stop) {
+            TVPlayerView(viewModel: viewModel)
+        }
+        .reminderAlert(epg.reminders)
+        .playlistManagement()
+        .guideManagement(epg)
+        .watchProgressRecording(player: viewModel)
+        .playerAnnouncements(viewModel)
+        .environment(\.playChannel, PlayChannelAction(library: library, player: viewModel, coordinator: coordinator, windowID: windowID))
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                viewModel.sceneDidBecomeActive()
+            } else if phase == .background {
+                EPGBackgroundRefresh.schedule()
+            }
+        }
+        .task(id: epg.reminders.channelToOpen) {
+            // A reminder was opened (Watch in its alert): play its channel.
+            guard let channel = epg.reminders.channelToOpen else {
+                return
+            }
+            epg.reminders.channelToOpen = nil
+            PlayChannelAction(library: library, player: viewModel, coordinator: coordinator, windowID: windowID)(channel)
+        }
+        #if DEBUG
+        .debugAutoplay(viewModel)
+        .debugSnapshots()
+        .debugHarness(player: viewModel, navigation: navigation)
+        #endif
+        .environment(navigation)
+        .windowPresentation(.player, isActive: viewModel.isPresented)
+        .windowScene(windowID, kind: .main, coordinator: coordinator, navigation: navigation)
+        .defaultAppStorage(.fluxo)
+        .tint(Theme.accent)
+    }
+
+    private var isPlayerPresented: Binding<Bool> {
+        Binding {
+            viewModel.isPresented
+        } set: { isPresented in
+            if !isPresented {
+                viewModel.closePlayer()
+            }
+        }
+    }
+}
+
+private extension View {
+    /// The alert of a reminder that is due (Apple TV shows reminders itself, see `InAppReminderAlerts`).
+    func reminderAlert(_ reminders: ReminderCenter) -> some View {
+        modifier(ReminderAlertModifier(reminders: reminders))
+    }
+}
+
+private struct ReminderAlertModifier: ViewModifier {
+    let reminders: ReminderCenter
+
+    func body(content: Content) -> some View {
+        let reminder = reminders.dueReminder
+        content
+            .alert(
+                reminder?.title ?? "",
+                isPresented: Binding {
+                    reminders.dueReminder != nil
+                } set: { isPresented in
+                    if !isPresented {
+                        reminders.dismissDueReminder()
+                    }
+                },
+                presenting: reminder
+            ) { _ in
+                Button(String(localized: "Watch", comment: "Button of a programme reminder on Apple TV: plays the channel of the programme that is about to start.")) {
+                    reminders.openDueReminder()
+                }
+                Button(String(localized: "Not Now", comment: "Button of a programme reminder on Apple TV: closes the reminder without playing the channel."), role: .cancel) {
+                    reminders.dismissDueReminder()
+                }
+            } message: { reminder in
+                Text(TextParts.sentences([reminder.channelName, reminder.body]))
+            }
+    }
+}
+#endif

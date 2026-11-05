@@ -8,6 +8,8 @@
 //  Link, ⇧⌘C, of what plays). Commands act on the focused window.
 //
 
+// Menu bar and keyboard commands (Mac, iPad and iPhone keyboards). tvOS has no menu bar (SwiftUI Commands are unavailable there).
+#if !os(tvOS)
 import SwiftData
 import SwiftUI
 
@@ -269,3 +271,4 @@ private struct PlaybackMenuItems: View {
         }
     }
 }
+#endif

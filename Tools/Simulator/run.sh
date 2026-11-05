@@ -1,8 +1,10 @@
 #!/bin/sh
 # Clones a simulator, boots it, installs the Debug app, launches it with the debug harness and screenshots
-# every display. See README.md for examples.
+# every display. See README.md for examples. Apple TV simulators work the same way (the tvOS app comes from
+# build.sh --platform tvos; the platform follows the simulator's runtime).
 #
 #   Tools/Simulator/run.sh --device "iPhone 17e" --clone fluxo-mykey-1 [options] [-- extra app arguments]
+#   Tools/Simulator/run.sh --device "Apple TV 4K (4th generation)" --clone fluxo-mykey-tv-1 [options]
 #
 # Options:
 #   --device NAME        simulator to clone (an existing one, e.g. "iPhone 17e"); not needed to reuse --clone
@@ -60,7 +62,7 @@ while [ $# -gt 0 ]; do
     --no-install) INSTALL=0; shift ;;
     --keep) KEEP=1; shift ;;
     --) shift; break ;;
-    -h|--help) sed -n '2,27p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
     *) die "unknown option $1 (see --help)" ;;
     esac
 done
@@ -75,7 +77,6 @@ case "$CLONE" in
 esac
 OUT=${OUT:-/tmp/fluxo-shots/$CLONE}
 mkdir -p "$OUT"
-[ "$INSTALL" -eq 0 ] || [ -d "$APP_PATH" ] || die "no app at $APP_PATH; run Tools/Simulator/build.sh first"
 
 # 1. The clone.
 UDID=$(device_udid "$CLONE")
@@ -85,8 +86,13 @@ if [ -z "$UDID" ]; then
     [ -n "$SOURCE" ] || die "no simulator named \"$DEVICE\" (xcrun simctl list devices available)"
     [ "$(device_state "$SOURCE")" = "Shutdown" ] || die "\"$DEVICE\" must be shut down to be cloned"
     echo "Cloning \"$DEVICE\" as $CLONE..." >&2
+    [ "$INSTALL" -eq 0 ] || [ -d "$(app_path "$(device_platform "$SOURCE")")" ] \
+        || die "no app at $(app_path "$(device_platform "$SOURCE")"); run Tools/Simulator/build.sh first"
     UDID=$(xcrun simctl clone "$SOURCE" "$CLONE")
 fi
+PLATFORM=$(device_platform "$UDID")
+APP=$(app_path "$PLATFORM")
+[ "$INSTALL" -eq 0 ] || [ -d "$APP" ] || die "no app at $APP; run Tools/Simulator/build.sh$([ "$PLATFORM" = tvos ] && echo ' --platform tvos') first"
 
 cleanup_clone() {
     if [ "$KEEP" -eq 0 ]; then
@@ -112,13 +118,15 @@ if [ "$WAS_BOOTED" -eq 0 ]; then
 fi
 [ -z "$APPEARANCE" ] || xcrun simctl ui "$UDID" appearance "$APPEARANCE"
 [ -z "$CONTENT_SIZE" ] || xcrun simctl ui "$UDID" content_size "$CONTENT_SIZE"
-# A clean, fixed status bar, so screenshots compare well.
-xcrun simctl status_bar "$UDID" override --time 9:41 --dataNetwork wifi --wifiMode active --wifiBars 3 \
-    --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100 > /dev/null 2>&1 || true
+# A clean, fixed status bar, so screenshots compare well (Apple TV has none).
+if [ "$PLATFORM" != tvos ]; then
+    xcrun simctl status_bar "$UDID" override --time 9:41 --dataNetwork wifi --wifiMode active --wifiBars 3 \
+        --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100 > /dev/null 2>&1 || true
+fi
 
 # 3. Install and launch.
 if [ "$INSTALL" -eq 1 ]; then
-    xcrun simctl install "$UDID" "$APP_PATH"
+    xcrun simctl install "$UDID" "$APP"
 fi
 STATUS_DIR=$(status_directory "$UDID") || die "Fluxo is not installed on $CLONE"
 rm -rf "$STATUS_DIR"

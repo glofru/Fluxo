@@ -274,7 +274,7 @@ struct SeriesListRow: View {
         .contextMenu {
             SeriesContextMenu(series: series)
         }
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+        .rowSwipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button(isFavorite ? "Unfavorite" : "Favorite", systemImage: isFavorite ? "star.slash.fill" : "star.fill") {
                 library.series.toggleFavorite(series)
             }

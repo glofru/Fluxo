@@ -43,6 +43,15 @@ struct PlayerWindowValue: Codable, Hashable, Sendable {
 
 /// Opens a channel in a new player window, where the platform supports several windows (iPad).
 struct OpenChannelWindowAction {
+    #if os(tvOS)
+    // Apple TV shows one window: there is nothing to open.
+    var isAvailable: Bool {
+        false
+    }
+
+    @MainActor
+    func callAsFunction(_ item: ChannelItem) {}
+    #else
     private let openWindow: OpenWindowAction?
     private let coordinator: WindowCoordinator?
 
@@ -64,8 +73,14 @@ struct OpenChannelWindowAction {
         coordinator.pendingPlayerWindows.insert(value)
         openWindow(id: PlayerWindowValue.windowID, value: value)
     }
+    #endif
 }
 
+extension EnvironmentValues {
+    @Entry var openChannelWindow = OpenChannelWindowAction()
+}
+
+#if !os(tvOS)
 extension View {
     /// Provides `OpenChannelWindowAction` to the channel menus of this window: on iOS when the device can show
     /// several windows (iPad), never on macOS (its single main window owns the player).
@@ -88,10 +103,6 @@ private struct ChannelWindowOpening: ViewModifier {
         content
         #endif
     }
-}
-
-extension EnvironmentValues {
-    @Entry var openChannelWindow = OpenChannelWindowAction()
 }
 
 /// The content of a player window.
@@ -380,4 +391,5 @@ private struct WindowSceneReader: UIViewRepresentable {
         }
     }
 }
+#endif
 #endif

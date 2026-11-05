@@ -64,16 +64,15 @@ final class RecordingStore {
         }
     }
 
-    /// Documents/Recordings, or the isolated recordings folder of a debug run (`-FluxoDebugStore`).
+    /// Documents/Recordings (Caches/Recordings on Apple TV, see `PlatformStorage`), or the isolated recordings
+    /// folder of a debug run (`-FluxoDebugStore`).
     private static var defaultDirectory: URL {
         #if DEBUG
         if let directory = DebugEnvironment.shared?.recordingsDirectory {
             return directory
         }
         #endif
-        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
-        return documents.appendingPathComponent(folderName, isDirectory: true)
+        return PlatformStorage.userFilesDirectory.appendingPathComponent(folderName, isDirectory: true)
     }
 
     /// Returns a new, unique file URL for a recording of `channelName`. The name is language-independent

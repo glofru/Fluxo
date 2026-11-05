@@ -35,7 +35,7 @@ struct ProgrammeSummaryView: View {
                 } else {
                     Text(text)
                         .fixedSize(horizontal: false, vertical: true)
-                        .textSelection(.enabled)
+                        .selectableText()
                         .contentTransition(.opacity)
                 }
             }

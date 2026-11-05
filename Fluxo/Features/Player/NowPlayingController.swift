@@ -55,7 +55,7 @@ final class NowPlayingController {
         if !isLive && duration > 0 {
             info[MPMediaItemPropertyPlaybackDuration] = duration
         }
-        if #available(iOS 27.0, macOS 27.0, *),
+        if #available(iOS 27.0, macOS 27.0, tvOS 27.0, *),
            let identifier = item.flatMap(ChannelEntity.entityIdentifier(for:)).flatMap(MPAppEntityIdentifier.init(entityIdentifier:)) {
             info[MPNowPlayingInfoPropertyAppEntityIdentifiers] = [identifier]
         }

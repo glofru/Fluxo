@@ -11,9 +11,10 @@ import os
 import SwiftData
 import UserNotifications
 
-/// Programme reminders: a `ProgrammeReminder` row plus a local notification `leadMinutes` before the programme
-/// starts. Tapping the notification (or its Watch action) plays the channel: `channelToOpen` is set and the
-/// root view plays it.
+/// Programme reminders: a `ProgrammeReminder` row plus an alert `leadMinutes` before the programme starts, delivered
+/// by `PlatformReminderDelivery`: a local notification on iPhone, iPad and Mac, an alert in the app on Apple TV.
+/// Opening it (the notification, its Watch action, or Watch in the alert) plays the channel: `channelToOpen` is
+/// set and the root view plays it.
 ///
 /// The keys of the reminders are kept in memory (there are few), so every programme cell can show its bell
 /// without a fetch of its own.
@@ -39,11 +40,14 @@ final class ReminderCenter {
     private(set) var authorization: UNAuthorizationStatus = .notDetermined
     /// Set when scheduling failed because notifications are off, so the UI can explain it.
     var isShowingPermissionHint = false
+    /// A reminder that is due now and that the app shows itself (Apple TV, where notifications cannot show text):
+    /// the root view presents it, with Watch (`openDueReminder()`) and dismiss (`dismissDueReminder()`).
+    private(set) var dueReminder: ReminderAlert?
 
     @ObservationIgnored
     private let container: ModelContainer
     @ObservationIgnored
-    private let delegate = ReminderNotificationDelegate()
+    private let delivery = PlatformReminderDelivery()
     @ObservationIgnored
     private var didStart = false
     @ObservationIgnored
@@ -65,15 +69,21 @@ final class ReminderCenter {
             return
         }
         didStart = true
-        delegate.onOpen = { [weak self] key in
+        delivery.onOpen = { [weak self] key in
             self?.open(reminderKey: key)
         }
-        let center = UNUserNotificationCenter.current()
-        center.delegate = delegate
-        let watch = UNNotificationAction(identifier: Self.watchActionIdentifier, title: String(localized: "Watch"), options: [.foreground])
-        center.setNotificationCategories([UNNotificationCategory(identifier: Self.categoryIdentifier, actions: [watch], intentIdentifiers: [])])
+        delivery.onDue = { [weak self] alert in
+            self?.dueReminder = alert
+        }
+        delivery.install()
         pruneEndedReminders()
         reloadKeys()
+        if !delivery.persistsAcrossLaunches {
+            // In-app alerts live as long as the process: arm the stored reminders again.
+            Task {
+                await rescheduleAll()
+            }
+        }
         // The text of a notification is fixed when it is scheduled: rewrite the pending ones when the language
         // or the time format changed since (while the app was not running, or while it runs).
         localeObserver = NotificationCenter.default.addObserver(forName: NSLocale.currentLocaleDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
@@ -124,11 +134,8 @@ final class ReminderCenter {
         save()
         keys.insert(key)
 
-        let content = Self.notificationContent(key: key, title: programme.title, channel: channel, start: programme.start)
-        let interval = max(1, fireDate.timeIntervalSinceNow)
-        let request = UNNotificationRequest(identifier: key, content: content, trigger: UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false))
         do {
-            try await UNUserNotificationCenter.current().add(request)
+            try await delivery.schedule(ReminderAlert(key: key, title: programme.title, channelName: channel.displayName, start: programme.start, fireDate: fireDate))
             return true
         } catch {
             Self.logger.error("Could not schedule a reminder: \(error.localizedDescription, privacy: .public)")
@@ -138,7 +145,10 @@ final class ReminderCenter {
     }
 
     func cancel(key: String) {
-        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [key])
+        delivery.remove(keys: [key])
+        if dueReminder?.key == key {
+            dueReminder = nil
+        }
         let context = container.mainContext
         if let reminder = try? context.fetch(EPGQueries.reminder(key: key)).first {
             context.delete(reminder)
@@ -149,7 +159,8 @@ final class ReminderCenter {
 
     func cancelAll() {
         let all = Array(keys)
-        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: all)
+        delivery.remove(keys: all)
+        dueReminder = nil
         try? container.mainContext.delete(model: ProgrammeReminder.self)
         save()
         keys.removeAll()
@@ -160,11 +171,23 @@ final class ReminderCenter {
         let reminders = (try? container.mainContext.fetch(EPGQueries.reminders())) ?? []
         for reminder in reminders where reminder.start > .now {
             reminder.fireDate = Self.fireDate(for: reminder.start)
-            let content = Self.notificationContent(key: reminder.key, title: reminder.title, channel: reminder.channel, start: reminder.start)
-            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, reminder.fireDate.timeIntervalSinceNow), repeats: false)
-            try? await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: reminder.key, content: content, trigger: trigger))
+            try? await delivery.schedule(ReminderAlert(reminder))
         }
         save()
+    }
+
+    /// Plays the channel of the reminder the app shows (`dueReminder`) and closes it.
+    func openDueReminder() {
+        guard let alert = dueReminder else {
+            return
+        }
+        dueReminder = nil
+        open(reminderKey: alert.key)
+    }
+
+    /// Closes the reminder the app shows without playing it.
+    func dismissDueReminder() {
+        dueReminder = nil
     }
 
     /// Rewrites the pending notifications (same identifier, same fire date) when the language or the time
@@ -180,13 +203,10 @@ final class ReminderCenter {
             return
         }
         Task {
-            let center = UNUserNotificationCenter.current()
-            let pending = Set(await center.pendingNotificationRequests().map(\.identifier))
+            let pending = await delivery.pendingKeys()
             let reminders = (try? container.mainContext.fetch(EPGQueries.reminders())) ?? []
             for reminder in reminders where pending.contains(reminder.key) && reminder.fireDate > .now {
-                let content = Self.notificationContent(key: reminder.key, title: reminder.title, channel: reminder.channel, start: reminder.start)
-                let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, reminder.fireDate.timeIntervalSinceNow), repeats: false)
-                try? await center.add(UNNotificationRequest(identifier: reminder.key, content: content, trigger: trigger))
+                try? await delivery.schedule(ReminderAlert(reminder))
             }
         }
     }
@@ -199,17 +219,15 @@ final class ReminderCenter {
     }
 
     func refreshAuthorization() async {
-        authorization = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+        authorization = await delivery.authorizationStatus()
     }
 
     // MARK: - Private
 
     private func requestAuthorizationIfNeeded() async -> Bool {
-        let center = UNUserNotificationCenter.current()
-        var status = await center.notificationSettings().authorizationStatus
+        var status = await delivery.authorizationStatus()
         if status == .notDetermined {
-            _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge])
-            status = await center.notificationSettings().authorizationStatus
+            status = await delivery.requestAuthorization()
         }
         authorization = status
         switch status {
@@ -255,18 +273,6 @@ final class ReminderCenter {
         }
     }
 
-    private static func notificationContent(key: String, title: String, channel: ChannelItem, start: Date) -> UNMutableNotificationContent {
-        let content = UNMutableNotificationContent()
-        content.title = title
-        content.subtitle = channel.displayName
-        content.body = body(start: start, leadMinutes: leadMinutes)
-        content.sound = .default
-        content.categoryIdentifier = categoryIdentifier
-        content.threadIdentifier = "fluxo.reminders"
-        content.userInfo = ReminderNotificationDelegate.userInfo(reminderKey: key)
-        return content
-    }
-
     nonisolated static func fireDate(for start: Date, leadMinutes: Int = ReminderCenter.leadMinutes) -> Date {
         max(Date.now.addingTimeInterval(1), start.addingTimeInterval(-TimeInterval(leadMinutes * 60)))
     }
@@ -277,42 +283,5 @@ final class ReminderCenter {
             return String(localized: "Starting now (\(time)).")
         }
         return String(localized: "Starts in \(leadMinutes) minutes, at \(time).")
-    }
-}
-
-/// Receives notification taps. A separate NSObject because `UNUserNotificationCenterDelegate` needs one.
-final class ReminderNotificationDelegate: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
-
-    /// Set at launch (`ReminderCenter.start()`, from the app initializer, so a cold launch from a notification
-    /// is handled too); called on the main actor with the key of the opened reminder.
-    @MainActor var onOpen: ((String) -> Void)?
-
-    private static let reminderKeyField = "reminderKey"
-
-    /// Only the reminder key: the system keeps delivered notifications, and the channel's stream URL can embed
-    /// the account's user name and password.
-    static func userInfo(reminderKey key: String) -> [String: String] {
-        [reminderKeyField: key]
-    }
-
-    static func reminderKey(from userInfo: [AnyHashable: Any]) -> String? {
-        (userInfo[reminderKeyField] as? String).flatMap { $0.isEmpty ? nil : $0 }
-    }
-
-    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        [.banner, .list, .sound]
-    }
-
-    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
-        let content = response.notification.request.content
-        guard content.categoryIdentifier == ReminderCenter.categoryIdentifier,
-              response.actionIdentifier == UNNotificationDefaultActionIdentifier || response.actionIdentifier == ReminderCenter.watchActionIdentifier else {
-            return
-        }
-        // The request identifier is the reminder key too.
-        let key = Self.reminderKey(from: content.userInfo) ?? response.notification.request.identifier
-        await MainActor.run {
-            onOpen?(key)
-        }
     }
 }

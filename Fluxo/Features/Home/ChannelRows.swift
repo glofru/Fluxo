@@ -634,11 +634,7 @@ struct HistoryView: View {
                         }
                     }
                 }
-                #if os(iOS)
-                .listStyle(.insetGrouped)
-                #else
-                .listStyle(.inset)
-                #endif
+                .groupedListStyle()
             }
         }
         .navigationTitle("Recently Watched")

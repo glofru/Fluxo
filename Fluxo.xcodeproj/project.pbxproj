@@ -9,8 +9,8 @@
 /* Begin PBXBuildFile section */
 		99CA57022F0B000000C4A571 /* GoogleCastDynamic in Frameworks */ = {isa = PBXBuildFile; platformFilters = (ios, ); productRef = 99CA57032F0B000000C4A571 /* GoogleCastDynamic */; };
 		997F92342E1A3931008E2656 /* FlyingFox in Frameworks */ = {isa = PBXBuildFile; productRef = 997F92332E1A3931008E2656 /* FlyingFox */; };
-		99F0FF022F0A000000D3E9A1 /* FFmpeg.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 99F0FF012F0A000000D3E9A1 /* FFmpeg.xcframework */; platformFilters = (ios, macos, ); };
-		99F0FF032F0A000000D3E9A1 /* FFmpeg.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 99F0FF012F0A000000D3E9A1 /* FFmpeg.xcframework */; platformFilters = (ios, macos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		99F0FF022F0A000000D3E9A1 /* FFmpeg.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 99F0FF012F0A000000D3E9A1 /* FFmpeg.xcframework */; platformFilters = (ios, macos, tvos, ); };
+		99F0FF032F0A000000D3E9A1 /* FFmpeg.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 99F0FF012F0A000000D3E9A1 /* FFmpeg.xcframework */; platformFilters = (ios, macos, tvos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -36,6 +36,7 @@
 		994B5B652DF6CD2300055EA8 /* Exceptions for "Fluxo" folder in "Fluxo" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				"Info-tvOS.plist",
 				Info.plist,
 			);
 			target = 99B5FAC32DEAF9DC0095A78E /* Fluxo */;
@@ -331,6 +332,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				"ASSETCATALOG_COMPILER_APPICON_NAME[sdk=appletvos*]" = "App Icon & Top Shelf Image";
+				"ASSETCATALOG_COMPILER_APPICON_NAME[sdk=appletvsimulator*]" = "App Icon & Top Shelf Image";
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Fluxo/Fluxo.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "Fluxo/Fluxo-macOS.entitlements";
@@ -348,6 +351,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/Vendor/FFmpeg/include";
 				INFOPLIST_FILE = Fluxo/Info.plist;
+				"INFOPLIST_FILE[sdk=appletvos*]" = "Fluxo/Info-tvOS.plist";
+				"INFOPLIST_FILE[sdk=appletvsimulator*]" = "Fluxo/Info-tvOS.plist";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = NO;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = NO;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -368,11 +373,14 @@
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator iphoneos iphonesimulator macosx";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = Fluxo/Features/Player/FFmpegBridgingHeader.h;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+				"TARGETED_DEVICE_FAMILY[sdk=appletvos*]" = 3;
+				"TARGETED_DEVICE_FAMILY[sdk=appletvsimulator*]" = 3;
+				TVOS_DEPLOYMENT_TARGET = 26.0;
 			};
 			name = Debug;
 		};
@@ -380,6 +388,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				"ASSETCATALOG_COMPILER_APPICON_NAME[sdk=appletvos*]" = "App Icon & Top Shelf Image";
+				"ASSETCATALOG_COMPILER_APPICON_NAME[sdk=appletvsimulator*]" = "App Icon & Top Shelf Image";
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Fluxo/Fluxo.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "Fluxo/Fluxo-macOS.entitlements";
@@ -397,6 +407,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/Vendor/FFmpeg/include";
 				INFOPLIST_FILE = Fluxo/Info.plist;
+				"INFOPLIST_FILE[sdk=appletvos*]" = "Fluxo/Info-tvOS.plist";
+				"INFOPLIST_FILE[sdk=appletvsimulator*]" = "Fluxo/Info-tvOS.plist";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = NO;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = NO;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -417,11 +429,14 @@
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator iphoneos iphonesimulator macosx";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = Fluxo/Features/Player/FFmpegBridgingHeader.h;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+				"TARGETED_DEVICE_FAMILY[sdk=appletvos*]" = 3;
+				"TARGETED_DEVICE_FAMILY[sdk=appletvsimulator*]" = 3;
+				TVOS_DEPLOYMENT_TARGET = 26.0;
 			};
 			name = Release;
 		};

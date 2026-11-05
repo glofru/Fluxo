@@ -140,6 +140,8 @@ enum DebugRouteError: LocalizedError {
     case invalidArgument(String, String)
     /// A playback check failed (`skip:`, `seek:`, `probe-playback`).
     case check(String)
+    /// The route drives a screen this platform does not have (the touch player on Apple TV).
+    case unsupported(String)
 
     var errorDescription: String? {
         switch self {
@@ -149,6 +151,8 @@ enum DebugRouteError: LocalizedError {
             return "Invalid argument \"\(argument)\" for \(route)"
         case let .check(problem):
             return "Check failed: \(problem)"
+        case let .unsupported(route):
+            return "\(route) is not available on this platform"
         }
     }
 }
@@ -178,6 +182,15 @@ enum DebugRoutes {
             } else {
                 context.navigation.tab = .playlist(try context.playlist(named: argument).uuid)
             }
+        },
+        DebugRoute("focus:<channel>", "Apple TV: moves the focus to the card of a channel on the page shown (its name, exactly; the Siri Remote cannot be scripted), for screenshots of a focused card.") { context, argument in
+            #if os(tvOS)
+            context.navigation.debugFocusName = nil
+            await Task.yield()
+            context.navigation.debugFocusName = argument
+            #else
+            throw DebugRouteError.unsupported("focus")
+            #endif
         },
         DebugRoute("guide", "The TV Guide (the Guide tab on iOS, the sidebar item on macOS).") { context, _ in
             context.navigation.show(.guide)
@@ -402,14 +415,24 @@ enum DebugRoutes {
             guard let points = Double(argument) else {
                 throw DebugRouteError.invalidArgument("player-drag", argument)
             }
+            #if os(tvOS)
+            _ = points
+            throw DebugRouteError.unsupported("player-drag")
+            #else
             NotificationCenter.default.post(name: .fluxoDebugPlayerDrag, object: CGFloat(points))
+            #endif
         },
         DebugRoute("player-controls:<show|hide>", "Shows the player's controls and keeps them on screen (show), or hides them like a tap on the video (hide).") { _, argument in
             let values = ["show": true, "hide": false]
             guard let show = values[argument.lowercased()] else {
                 throw DebugRouteError.invalidArgument("player-controls", argument)
             }
+            #if os(tvOS)
+            _ = show
+            throw DebugRouteError.unsupported("player-controls")
+            #else
             NotificationCenter.default.post(name: .fluxoDebugPlayerControls, object: show)
+            #endif
         },
         DebugRoute("player-guide[:full]", "The player's guide control, like a tap on what is on now: the playing channel's schedule (side panel, foldable pane or sheet); with full, Full Guide (the TV guide at that channel).") { context, argument in
             let option = argument.lowercased()
@@ -419,10 +442,14 @@ enum DebugRoutes {
             guard context.player.currentItem != nil else {
                 throw DebugRouteError.invalidArgument("player-guide", "nothing plays")
             }
+            #if os(tvOS)
+            throw DebugRouteError.unsupported("player-guide")
+            #else
             NotificationCenter.default.post(name: .fluxoDebugPlayerGuide, object: option.isEmpty ? nil : option)
             if option == "full" {
                 await context.wait(timeout: 4) { !context.player.isPresented }
             }
+            #endif
         },
         DebugRoute("open-player", "Opens the player screen for what plays (from Picture in Picture too), like a tap on the mini player.") { context, _ in
             context.player.presentPlayer()
@@ -664,6 +691,9 @@ enum DebugRoutes {
             #endif
         },
         DebugRoute("side-panel:<channels|guide|off>", "Shows the player's side panel (wide players) on a tab, or hides it.") { _, argument in
+            #if os(tvOS)
+            throw DebugRouteError.unsupported("side-panel")
+            #else
             let defaults = UserDefaults.fluxo
             if let tab = PlayerSidePanelTab(rawValue: argument.lowercased()) {
                 defaults.set(tab.rawValue, forKey: PlayerSidePanelLayout.tabStorageKey)
@@ -673,6 +703,7 @@ enum DebugRoutes {
             } else {
                 throw DebugRouteError.invalidArgument("side-panel", argument)
             }
+            #endif
         },
         DebugRoute("new-window:<channel>", "Opens a channel in a player window of its own (iPad).") { context, argument in
             let item = try context.channel(named: argument)

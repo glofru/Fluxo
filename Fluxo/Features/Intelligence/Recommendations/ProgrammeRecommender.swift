@@ -160,6 +160,9 @@ enum ProgrammeRecommender {
         search: @escaping @Sendable (String) async -> [ProgrammeCandidate],
         now: Date = .now
     ) async throws -> [ProgrammeRecommendation] {
+        #if os(tvOS)
+        throw OnDeviceModelUnavailable()
+        #else
         let listed = Array(ranked.prefix(promptCandidates))
         let registry = CandidateRegistry(listed)
         let tool = SearchGuideTool(registry: registry, now: now, search: search)
@@ -192,6 +195,7 @@ enum ProgrammeRecommender {
             throw RecommendationError.tooFewPicks
         }
         return Array(picks.prefix(listSize))
+        #endif
     }
 
     static var instructions: String {
@@ -242,6 +246,7 @@ enum ProgrammeRecommender {
     }
 }
 
+#if !os(tvOS)
 @Generable
 struct ProgrammePicks {
     @Guide(description: "The best programmes for the viewer, best first.", .count(3...6))
@@ -286,3 +291,4 @@ struct SearchGuideTool: Tool {
         return zip(numbers, found).map { "\($0). \(ProgrammeRecommender.describe($1, now: now))" }.joined(separator: "\n")
     }
 }
+#endif

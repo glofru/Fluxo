@@ -857,7 +857,7 @@ struct MediaSelectionMenuContent: View {
             }
         }
 
-        if controller.allowsExternalSubtitles && !controller.isShowingCastTracks {
+        if controller.allowsExternalSubtitles && !controller.isShowingCastTracks && PlatformFeatures.files {
             Section {
                 Button("Load Subtitle File…", systemImage: "doc.badge.plus") {
                     controller.isImportingSubtitleFile = true
@@ -959,10 +959,8 @@ struct SubtitleFileImporter: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .fileImporter(isPresented: $controller.isImportingSubtitleFile, allowedContentTypes: SubtitleFileTypes.all) { result in
-                if case .success(let url) = result {
-                    controller.loadExternalSubtitles(from: url)
-                }
+            .subtitleFileImporter(isPresented: $controller.isImportingSubtitleFile) { url in
+                controller.loadExternalSubtitles(from: url)
             }
             .alert(
                 "Couldn't Load the Subtitles",
@@ -988,4 +986,20 @@ extension View {
         Image(systemName: "captions.bubble")
     }
     .padding()
+}
+
+private extension View {
+    /// The document picker for a subtitle file (no Files app on Apple TV: `PlatformFeatures.files`).
+    @ViewBuilder
+    func subtitleFileImporter(isPresented: Binding<Bool>, onPick: @escaping (URL) -> Void) -> some View {
+        #if os(tvOS)
+        self
+        #else
+        fileImporter(isPresented: isPresented, allowedContentTypes: SubtitleFileTypes.all) { result in
+            if case .success(let url) = result {
+                onPick(url)
+            }
+        }
+        #endif
+    }
 }

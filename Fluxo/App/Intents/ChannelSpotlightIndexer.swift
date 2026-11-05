@@ -66,7 +66,7 @@ final class ChannelSpotlightIndexer {
             lastParameterSignature = parameterSignature
         }
 
-        guard keys != lastIndexedKeys else {
+        guard PlatformFeatures.spotlightIndexing, keys != lastIndexedKeys else {
             return
         }
         do {
@@ -91,6 +91,7 @@ final class ChannelSpotlightIndexer {
     /// what earlier builds indexed. Those builds started every update with the call that does not return, so on
     /// iOS 27 they indexed nothing; and iOS 27 asks the app for a full index when it needs one (`IndexedEntityQuery`).
     nonisolated static func replaceIndex(with entities: [ChannelEntity]) async throws {
+        #if !os(tvOS)
         let index = CSSearchableIndex.default()
         let defaults = UserDefaults.fluxo
         let identifiers = entities.map(\.id)
@@ -102,9 +103,11 @@ final class ChannelSpotlightIndexer {
             try await index.indexAppEntities(entities)
         }
         defaults.set(identifiers, forKey: indexedIdentifiersKey)
+        #endif
     }
 }
 
+#if !os(tvOS)
 /// iOS 27: Spotlight can ask the app to index its channels again (after a restore, or when the index was reset).
 @available(iOS 27.0, macOS 27.0, visionOS 27.0, *)
 extension ChannelEntityQuery: IndexedEntityQuery {
@@ -121,3 +124,4 @@ extension ChannelEntityQuery: IndexedEntityQuery {
         try await ChannelSpotlightIndexer.replaceIndex(with: entities)
     }
 }
+#endif

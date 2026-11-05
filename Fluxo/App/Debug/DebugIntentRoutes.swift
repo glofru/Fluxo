@@ -409,6 +409,9 @@ enum DebugIntentRoutes {
     /// The titles of the app's Spotlight items matching `words`. In the Simulator the query sometimes never
     /// completes: after `limit` it is cancelled and what was found so far is returned (marked as partial).
     private static func spotlightTitles(matching words: String, limit: Duration = .seconds(10)) async throws -> [String] {
+        #if os(tvOS)
+        throw DebugRouteError.check("tvOS has no Spotlight index of app content (PlatformFeatures.spotlightIndexing)")
+        #else
         let escaped = words.replacingOccurrences(of: "\"", with: "")
         let context = CSSearchQueryContext()
         context.fetchAttributes = ["title"]
@@ -439,6 +442,7 @@ enum DebugIntentRoutes {
                 finish(.success(found.withLock { $0 } + ["(query did not complete within \(limit))"]))
             }
         }
+        #endif
     }
 
     /// Appends a line to Status/intents.log and logs it.

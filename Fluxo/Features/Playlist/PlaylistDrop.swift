@@ -145,10 +145,18 @@ extension PlaylistImportCenter {
 extension View {
     /// Accepts playlist links and files dropped anywhere on the window (see `PlaylistDrop`), with a highlight
     /// while something that can be dropped hovers over it. Apply once, at the root of the window.
+    @ViewBuilder
     func playlistDropDestination() -> some View {
+        #if os(tvOS)
+        // No drag and drop, and no files to open, on Apple TV (`PlatformFeatures.files`).
+        self
+        #else
         modifier(PlaylistDropModifier())
+        #endif
     }
 }
+
+#if !os(tvOS)
 
 private struct PlaylistDropModifier: ViewModifier {
 
@@ -191,6 +199,8 @@ private struct PlaylistDropModifier: ViewModifier {
             }
     }
 }
+
+#endif
 
 /// The window's outline and a label while a playlist hovers over it.
 private struct PlaylistDropHighlight: View {

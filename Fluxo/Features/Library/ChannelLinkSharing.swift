@@ -30,11 +30,11 @@
 
 import SwiftData
 import SwiftUI
-#if os(iOS)
+#if os(macOS)
+import AppKit
+#else
 import UIKit
 import UniformTypeIdentifiers
-#else
-import AppKit
 #endif
 
 // MARK: - Link
@@ -110,6 +110,9 @@ enum StreamLinkPasteboard {
             item.setData(Data(), forType: concealedType)
         }
         pasteboard.writeObjects([item])
+        #elseif os(tvOS)
+        // No pasteboard on Apple TV: the menus do not offer Copy Link there (`PlatformFeatures.pasteboard`).
+        _ = text
         #else
         UIPasteboard.general.setItems([[
             UTType.url.identifier: link.url,
@@ -331,6 +334,8 @@ struct StreamLinkMenuItems: View {
     @Environment(\.linkCopyFeedback) private var feedback
 
     var body: some View {
+        // Apple TV has neither a clipboard nor a share sheet (`PlatformFeatures.pasteboard`).
+        #if !os(tvOS)
         if let link = StreamLink(url) {
             Button(copyTitle, systemImage: "link") {
                 LinkCopyFeedback.copy(link, feedback: feedback, episode: episode)
@@ -344,6 +349,7 @@ struct StreamLinkMenuItems: View {
                 ShareLink(item: link.url, subject: Text(verbatim: name), preview: SharePreview(name))
             }
         }
+        #endif
     }
 
     private var copyTitle: String {

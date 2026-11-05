@@ -60,6 +60,8 @@ struct AlphabetIndexBar: View {
         .padding(.horizontal, 2)
         .background(.ultraThinMaterial, in: .capsule)
         .contentShape(.rect)
+        #if !os(tvOS)
+        // A finger or the pointer slides along the bar (there is no touch on Apple TV).
         .gesture(
             DragGesture(minimumDistance: 0)
                 .updating($isDragging) { _, state, _ in
@@ -69,6 +71,7 @@ struct AlphabetIndexBar: View {
                     select(atY: value.location.y, rows: rows)
                 }
         )
+        #endif
         .overlay(alignment: .leading) {
             if isDragging, let activeLetter {
                 Text(activeLetter)

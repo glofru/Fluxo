@@ -18,6 +18,8 @@
 //  player does not follow (`PlayerTopSafeArea`), and it hides only after the controls faded out.
 //
 
+// The touch and pointer player screen (iPhone, iPad, Mac). Apple TV plays in the system's player, whose transport bar the Siri Remote drives (Fluxo/TV).
+#if !os(tvOS)
 import SwiftUI
 
 /// What the full player needs from the status bar.
@@ -137,4 +139,5 @@ extension View {
     }
 }
 
+#endif
 #endif

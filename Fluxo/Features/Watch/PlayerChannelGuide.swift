@@ -9,6 +9,8 @@
 //  (playback continues) and shows the whole TV guide at that channel.
 //
 
+// The touch and pointer player screen (iPhone, iPad, Mac). Apple TV plays in the system's player, whose transport bar the Siri Remote drives (Fluxo/TV).
+#if !os(tvOS)
 import SwiftUI
 
 // MARK: - Full guide
@@ -448,3 +450,4 @@ private struct PlayerScheduleRow: View {
         }
     }
 }
+#endif

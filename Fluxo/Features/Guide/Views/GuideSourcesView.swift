@@ -122,7 +122,7 @@ private struct GuideSourceRow: View {
         .contextMenu {
             menuItems
         }
-        .swipeActions(edge: .trailing) {
+        .rowSwipeActions(edge: .trailing) {
             if source.isUserAdded {
                 // Not `role: .destructive`: a destructive swipe action makes the list remove the row at once,
                 // expecting the data to follow in the same update. Here it only asks first, so the list and its
@@ -164,8 +164,10 @@ private struct GuideSourceRow: View {
             epg.refresh(source.uuid)
         }
         .disabled(progress != nil)
-        Button("Copy Address", systemImage: "doc.on.doc") {
-            copy(source.url.absoluteString)
+        if PlatformFeatures.pasteboard {
+            Button("Copy Address", systemImage: "doc.on.doc") {
+                copy(source.url.absoluteString)
+            }
         }
         if source.isUserAdded {
             Divider()
@@ -222,7 +224,7 @@ private struct GuideSourceRow: View {
         #if os(macOS)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(string, forType: .string)
-        #else
+        #elseif os(iOS)
         UIPasteboard.general.string = string
         #endif
     }

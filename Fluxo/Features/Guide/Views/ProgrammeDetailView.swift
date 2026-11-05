@@ -50,7 +50,7 @@ struct ProgrammeDetailView: View {
                         if !programme.summary.isEmpty {
                             Text(programme.summary)
                                 .font(.body)
-                                .textSelection(.enabled)
+                                .selectableText()
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         if !upNext.isEmpty {

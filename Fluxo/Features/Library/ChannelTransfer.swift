@@ -79,20 +79,28 @@ extension View {
         } else {
             self
         }
-        #else
+        #elseif os(macOS)
         draggable(ChannelTransfer(item)) {
             ChannelDragPreview(item: item)
         }
+        #else
+        // No drag and drop on Apple TV (`PlatformFeatures.files`).
+        self
         #endif
     }
 
     /// Adds the channels dropped on this view to the favorites. `isTargeted` reports a drag hovering over it.
+    @ViewBuilder
     func favoritesDropDestination(library: ChannelLibrary, isTargeted: Binding<Bool>? = nil) -> some View {
+        #if os(tvOS)
+        self
+        #else
         dropDestination(for: ChannelTransfer.self) { channels, _ in
             ChannelTransfer.addToFavorites(channels, library: library)
         } isTargeted: { targeted in
             isTargeted?.wrappedValue = targeted
         }
+        #endif
     }
 }
 

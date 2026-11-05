@@ -44,6 +44,12 @@ final class ProgrammeSummarizer {
                 continuation.finish()
             }
         }
+        #if os(tvOS)
+        // No on-device model on Apple TV (`PlatformFeatures.onDeviceLanguageModel`): the description shows as it is.
+        return AsyncThrowingStream { continuation in
+            continuation.finish(throwing: OnDeviceModelUnavailable())
+        }
+        #else
         let prompt = Self.prompt(for: programme)
         return AsyncThrowingStream { continuation in
             let task = Task { @MainActor [weak self] in
@@ -73,6 +79,7 @@ final class ProgrammeSummarizer {
                 task.cancel()
             }
         }
+        #endif
     }
 
     private func key(for programme: GuideProgramme) -> String {

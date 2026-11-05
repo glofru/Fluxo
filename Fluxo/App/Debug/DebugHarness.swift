@@ -34,8 +34,10 @@ private struct DebugHarnessModifier: ViewModifier {
     @Environment(EPGStore.self) private var epg
     @Environment(\.modelContext) private var modelContext
     @Environment(WindowCoordinator.self) private var windows: WindowCoordinator?
+    #if os(iOS)
     @Environment(\.openWindow) private var openWindow
     @Environment(\.supportsMultipleWindows) private var supportsMultipleWindows
+    #endif
     #if os(macOS)
     @Environment(\.openSettings) private var openSettings
     #endif

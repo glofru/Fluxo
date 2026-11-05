@@ -20,6 +20,8 @@
 //  macOS: the player covers the main window, with a fade (the window's toolbar is hidden meanwhile).
 //
 
+// The touch and pointer player screen (iPhone, iPad, Mac). Apple TV plays in the system's player, whose transport bar the Siri Remote drives (Fluxo/TV).
+#if !os(tvOS)
 import SwiftUI
 
 // MARK: - Source frames
@@ -572,3 +574,4 @@ extension Notification.Name {
             }
     }
 }
+#endif

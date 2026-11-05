@@ -1601,9 +1601,7 @@ final class AVPlayerViewModel {
     /// Disk budget of a remux session: at most `maximum` and never more than a tenth of the free space.
     private static func diskBudget(for directory: URL, maximum: Int64) -> Int64 {
         let minimum: Int64 = 64 * 1024 * 1024
-        let probe = FileManager.default.fileExists(atPath: directory.path) ? directory : FileManager.default.temporaryDirectory
-        guard let available = try? probe.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage,
-              available > 0 else {
+        guard let available = PlatformStorage.availableCapacity(at: directory) else {
             return maximum
         }
         return min(maximum, max(minimum, available / 10))
@@ -1637,12 +1635,7 @@ final class AVPlayerViewModel {
     }
 
     private nonisolated static func availableSpace(in directory: URL) -> Int64? {
-        let probe = FileManager.default.fileExists(atPath: directory.path) ? directory : FileManager.default.temporaryDirectory
-        guard let available = try? probe.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage,
-              available > 0 else {
-            return nil
-        }
-        return available
+        PlatformStorage.availableCapacity(at: directory)
     }
 
     // MARK: - Picture in Picture

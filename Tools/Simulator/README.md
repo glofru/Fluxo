@@ -1,11 +1,11 @@
 # Simulator test harness
 
-Scripts and Debug-only launch arguments to check the Fluxo UI in iOS simulators quickly, with a seeded
+Scripts and Debug-only launch arguments to check the Fluxo UI in iOS and tvOS simulators quickly, with a seeded
 library that never touches a real one. Everything here runs on the Mac; nothing needs the internet.
 
 | Script | What it does |
 |---|---|
-| `build.sh` | Builds the Debug simulator app once (into `/tmp/fluxo-dd/<worktree folder>-sim`). |
+| `build.sh` | Builds the Debug simulator app once (into `/tmp/fluxo-dd/<worktree folder>-sim`); `--platform tvos` builds the Apple TV one. |
 | `run.sh` | Clones a simulator, boots it, installs the app, launches it with the harness, waits until it is ready, screenshots every display, deletes the clone (or keeps it with `--keep`). |
 | `shot.sh` | Screenshots every display of a kept clone (`--front` first brings a running Fluxo to the front). |
 | `cleanup.sh` | Deletes clones by name prefix (`fluxo-…` only). |
@@ -124,7 +124,8 @@ first that contains the text.
 | Route | Opens |
 |---|---|
 | `home` | Home, from its root. |
-| `tab:<home\|guide\|library\|settings\|search\|playlist name>` | A tab (iOS; playlists are iPad sidebar entries). |
+| `tab:<home\|guide\|library\|settings\|search\|playlist name>` | A tab (iOS, tvOS; playlists are iPad sidebar entries). |
+| `focus:<channel>` | Apple TV: moves the focus to the card of that channel (its exact name) on the page shown, for screenshots of the focused state. |
 | `guide` | The TV Guide (the Guide tab on iOS, the sidebar item on macOS). |
 | `search[:<query>]` | Search, with the query typed in. |
 | `settings` | The Settings tab (iOS) or window (macOS). |
@@ -204,6 +205,25 @@ first that contains the text.
 | `visual-ocr:<text>[\|<text>…]` | Draws the texts in an image (the first one large), reads it with the same text recognition as Visual Intelligence images, and matches. |
 | `spotlight-reindex`, `spotlight-search:<words>` | Indexes the channels in Spotlight now, timing the call; queries the app's Spotlight items (in the Simulator the query may not complete: it gives up after 10 s). |
 | `help` | Logs the list of routes (in `app.log`). |
+
+### Apple TV
+
+The same scripts drive Apple TV simulators: build the tvOS app with `build.sh --platform tvos` and clone an Apple TV
+(`run.sh` installs the app of the clone's platform, from its runtime). The library, the launch arguments and the
+routes are the same; routes of screens tvOS does not have (the touch player's `player-drag`, `player-controls`,
+`player-guide`, `side-panel`; Spotlight, Cast, downloads, foldable postures) fail with "not available on this
+platform" or change nothing. The Siri Remote cannot be scripted, so `focus:<channel>` moves the focus for screenshots.
+There is no status bar to override. `gesture-tests.sh`, `accessibility-audit.sh`, `siri-tests.sh` and
+`format-matrix.sh` are iOS only for now.
+
+```sh
+Tools/Simulator/build.sh --platform tvos
+Tools/Simulator/test-stream.sh start
+# Home with a focused card, then the live HLS and the raw MPEG-TS (remux engine) test streams in the system player.
+Tools/Simulator/run.sh --device "Apple TV 4K (4th generation)" --clone fluxo-mykey-tv-1 --step-shots \
+    --route "home;focus:Sky Sport F1;player:Test Pattern (HLS);wait:6;probe-playback;stop;player:Test Pattern (MPEG-TS);wait:8;probe-tracks;probe-playback"
+Tools/Simulator/run.sh --device "Apple TV 4K (4th generation) (at 1080p)" --clone fluxo-mykey-tv-2 --route "tab:guide"
+```
 
 ### On-demand seeking
 

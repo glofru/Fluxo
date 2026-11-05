@@ -8,6 +8,8 @@
 //  in turn while connecting.
 //
 
+// The Cast button and device picker. Google's Cast sender SDK is iOS only (CastController.isSupported), and an Apple TV is itself the screen, so tvOS has no cast UI.
+#if !os(tvOS)
 import SwiftUI
 
 /// The Cast icon in a 24 × 24 grid, scaled to the rect.
@@ -162,4 +164,5 @@ enum PlayerControlMetrics {
     }
     .padding()
 }
+#endif
 #endif

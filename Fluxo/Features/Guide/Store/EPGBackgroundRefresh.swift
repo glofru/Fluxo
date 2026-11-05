@@ -7,11 +7,11 @@
 
 import Foundation
 import os
-#if os(iOS)
+#if !os(macOS)
 import BackgroundTasks
 #endif
 
-/// Background app refresh of the TV guide (iOS). The task is registered by the app scene
+/// Background app refresh of the TV guide (iOS, tvOS). The task is registered by the app scene
 /// (`.backgroundTask(.appRefresh(taskIdentifier))`), its identifier is listed under
 /// `BGTaskSchedulerPermittedIdentifiers` in Info.plist, and the `fetch` background mode is on. The next run is
 /// requested whenever the app goes to the background and at the start of every run. macOS refreshes while the
@@ -25,7 +25,7 @@ enum EPGBackgroundRefresh {
     private static let logger = Logger(subsystem: "dev.watermelon.Fluxo", category: "EPGBackgroundRefresh")
 
     static func schedule() {
-        #if os(iOS)
+        #if !os(macOS)
         let request = BGAppRefreshTaskRequest(identifier: taskIdentifier)
         request.earliestBeginDate = Date(timeIntervalSinceNow: interval)
         do {

@@ -93,19 +93,21 @@ struct RecordingRows: View {
             .buttonStyle(.plain)
             .disabled(recording.isFinalizing)
             .accessibilityHint(hint(for: recording))
-            .swipeActions(edge: .trailing) {
+            .rowSwipeActions(edge: .trailing) {
                 Button("Delete", systemImage: "trash", role: .destructive) {
                     prompts.recordingToDelete = recording
                 }
                 .disabled(recording.isFinalizing)
             }
-            .swipeActions(edge: .leading) {
+            .rowSwipeActions(edge: .leading) {
+                #if !os(tvOS)
                 if !recording.isFinalizing {
                     ShareLink(item: recording.url) {
                         Label("Share", systemImage: "square.and.arrow.up")
                     }
                     .tint(Theme.accentFill)
                 }
+                #endif
             }
             .contextMenu {
                 RecordingMenuItems(recording: recording, play: { requestPlay(recording) }, delete: { prompts.recordingToDelete = recording })
@@ -249,11 +251,14 @@ private struct RecordingMenuItems: View {
         Button("Play", systemImage: "play.fill", action: play)
             .disabled(recording.isFinalizing)
 
+        #if !os(tvOS)
+        // No share sheet on Apple TV.
         if !recording.isFinalizing {
             ShareLink(item: recording.url) {
                 Label("Share…", systemImage: "square.and.arrow.up")
             }
         }
+        #endif
 
         #if os(macOS)
         Button("Show in Finder", systemImage: "folder") {

@@ -236,6 +236,9 @@ enum ChannelRecommender {
         container: ModelContainer,
         now: Date = .now
     ) async throws -> [ChannelRecommendation] {
+        #if os(tvOS)
+        throw OnDeviceModelUnavailable()
+        #else
         let listed = Array(ranked.prefix(promptCandidates))
         let registry = CandidateRegistry(listed)
         let playlistIDs = Set(LibraryLookup.visiblePlaylists(in: container).filter { importIDs.contains($0.importID) }.map(\.playlistID))
@@ -265,6 +268,7 @@ enum ChannelRecommender {
             throw RecommendationError.tooFewPicks
         }
         return Array(picks.prefix(listSize))
+        #endif
     }
 
     static var instructions: String {
@@ -345,6 +349,7 @@ enum RecommendationError: Error {
     case tooFewPicks
 }
 
+#if !os(tvOS)
 /// The structured answer of the model for "For You".
 @Generable
 struct ChannelPicks {
@@ -400,3 +405,4 @@ struct SearchChannelsTool: Tool {
         return zip(numbers, found).map { "\($0). \(ChannelRecommender.describe($1))" }.joined(separator: "\n")
     }
 }
+#endif

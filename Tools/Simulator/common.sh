@@ -5,6 +5,7 @@ SIM_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 # One Debug build per worktree (/tmp/fluxo-dd/<worktree folder>-sim, the same folder as the gate simulator
 # build of that worktree), shared by every run.
 DERIVED_DATA=${FLUXO_SIM_DERIVED_DATA:-/tmp/fluxo-dd/$(basename "$SIM_ROOT")-sim}
+# The iOS Simulator app (the iPhone and iPad scripts); app_path gives the one of another platform.
 APP_PATH=${FLUXO_SIM_APP:-$DERIVED_DATA/Build/Products/Debug-iphonesimulator/Fluxo.app}
 # Clones are always named with this prefix, so cleanup.sh can never delete another simulator.
 CLONE_PREFIX=fluxo-
@@ -24,6 +25,26 @@ if len(matches) > 1:
     sys.exit("several simulators are named %r: %s" % (name, ", ".join(matches)))
 print(matches[0] if matches else "")
 ' "$1"
+}
+
+# The platform of simulator $1, from its runtime: "tvos" (Apple TV) or "ios" (iPhone, iPad).
+device_platform() {
+    xcrun simctl list devices -j | /usr/bin/python3 -I -c '
+import json, sys
+udid = sys.argv[1]
+for runtime, devices in json.load(sys.stdin)["devices"].items():
+    for device in devices:
+        if device["udid"] == udid:
+            print("tvos" if ".tvOS-" in runtime else "ios")
+' "$1"
+}
+
+# The Debug simulator app of platform $1 ("ios" or "tvos", see build.sh --platform). FLUXO_SIM_APP overrides it.
+app_path() {
+    case "$1" in
+    tvos) echo "${FLUXO_SIM_APP:-$DERIVED_DATA/Build/Products/Debug-appletvsimulator/Fluxo.app}" ;;
+    *) echo "$APP_PATH" ;;
+    esac
 }
 
 # Booted, Shutdown, ...

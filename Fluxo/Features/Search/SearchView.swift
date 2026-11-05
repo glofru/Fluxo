@@ -69,7 +69,7 @@ struct SearchView: View {
             content(request: request, libraryScope: libraryScope)
                 .navigationTitle("Search")
                 .searchable(text: $navigation.searchText, prompt: "Channels, movies and series")
-                .searchScopes($scope, activation: .onSearchPresentation) {
+                .searchScopes($scope, activation: .onSearchStart) {
                     ForEach(Scope.allCases, id: \.self) { scope in
                         Text(scope.title)
                             .tag(scope)
@@ -340,7 +340,7 @@ private struct SearchResultsList: View {
                     }
                     .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
                     .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
+                    .rowSeparatorHidden()
                 }
             }
 

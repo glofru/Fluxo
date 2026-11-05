@@ -41,7 +41,7 @@ struct FluxoApp: App {
         // Low Power Mode, the thermal state and the background: the player and the guide adapt to them.
         PowerMonitor.shared.start()
         let library = ChannelLibrary(container: container)
-        // Chromecast through the Google Cast SDK on iOS; unsupported (no cast UI) on macOS.
+        // Chromecast through the Google Cast SDK on iOS; unsupported (no cast UI) on macOS and tvOS.
         let player = AVPlayerViewModel(cast: .makeDefault())
         player.zapper = ChannelZapper(container: container, library: library)
         player.resumePosition = { [weak library] item in
@@ -111,6 +111,17 @@ struct FluxoApp: App {
                 .modelContainer(container)
                 .defaultAppStorage(.fluxo)
         }
+        #elseif os(tvOS)
+        // Apple TV: one full-screen window. The player is the system's, presented over the tabs (`TVContentView`).
+        WindowGroup(id: Self.mainWindowID) {
+            mainContent
+        }
+        .modelContainer(container)
+        .backgroundTask(.appRefresh(EPGBackgroundRefresh.taskIdentifier)) { [epg] in
+            // Ask for the next run first, so a refresh that runs out of time is still followed by another.
+            EPGBackgroundRefresh.schedule()
+            await epg.performBackgroundRefresh()
+        }
         #else
         // iPad: several windows of the app (File › New Window, or the app's windows in Stage Manager). They share
         // the single player, which shows in one window at a time (see `WindowCoordinator`).
@@ -147,13 +158,11 @@ struct FluxoApp: App {
         #endif
     }
 
-    /// The main window group (iOS).
+    /// The main window group (iOS, tvOS).
     static let mainWindowID = "main"
 
     private var mainContent: some View {
-        // Each main window has its own navigation; the first one adopts the navigation App Intents may already
-        // have moved at launch.
-        ContentView(viewModel: player, navigation: windows.makeMainWindowNavigation())
+        rootView
             .appServicesLifecycle(services)
             .environment(intelligence)
             .environment(importCenter)
@@ -163,8 +172,20 @@ struct FluxoApp: App {
             .environment(windows)
             .environment(downloads)
     }
+
+    /// Each main window has its own navigation; the first one adopts the navigation App Intents may already have
+    /// moved at launch.
+    @ViewBuilder
+    private var rootView: some View {
+        #if os(tvOS)
+        TVContentView(viewModel: player, navigation: windows.makeMainWindowNavigation())
+        #else
+        ContentView(viewModel: player, navigation: windows.makeMainWindowNavigation())
+        #endif
+    }
 }
 
+#if !os(tvOS)
 /// The app's shared objects, for a window that is not a `ContentView` (the iPad player window).
 private struct AppEnvironment: ViewModifier {
     let importCenter: PlaylistImportCenter
@@ -194,3 +215,4 @@ private struct AppEnvironment: ViewModifier {
             .tint(Theme.accent)
     }
 }
+#endif

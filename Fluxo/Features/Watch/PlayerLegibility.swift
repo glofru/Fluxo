@@ -9,6 +9,8 @@
 //  Increase Contrast dims more and adds a hairline edge.
 //
 
+// The touch and pointer player screen (iPhone, iPad, Mac). Apple TV plays in the system's player, whose transport bar the Siri Remote drives (Fluxo/TV).
+#if !os(tvOS)
 import SwiftUI
 
 extension Theme.Player {
@@ -102,3 +104,4 @@ private struct PlayerSheetBackdrop: ViewModifier {
         #endif
     }
 }
+#endif
