@@ -272,7 +272,6 @@ private struct RecordingRow: View {
     let recording: Recording
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         // At the accessibility text sizes the duration and size move under the title, which may then wrap.
@@ -325,7 +324,7 @@ private struct RecordingRow: View {
         if recording.isRecording {
             Image(systemName: "record.circle")
                 .foregroundStyle(Theme.recording)
-                .symbolEffect(.pulse, options: .repeating, isActive: !reduceMotion)
+                .ambientSymbolEffect(.pulse)
         } else if recording.isFinalizing {
             Image(systemName: "hourglass")
                 .foregroundStyle(.tint)

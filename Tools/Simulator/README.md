@@ -103,6 +103,7 @@ nothing when none of these is passed.
 | `-FluxoDebugCast simulated` | Uses the simulated Chromecast receiver from launch instead of the Google Cast SDK (the `cast:` route switches to it too). Nothing goes on the network. |
 | `-FluxoDebugIntelligence available\|off\|unavailable\|notReady\|unsupported` | Forces the Apple Intelligence status (`FluxoIntelligence`), e.g. `unavailable` to see the built-in suggestions and search on a simulator that has the model. Alone, it keeps the real library. |
 | `-FluxoDebugTestStreamURL <url>` | Base URL of the test-stream server used by the seeded "Loopback Test" playlist and the large seed's artwork (default `http://127.0.0.1:18080`). |
+| `-FluxoDebugPower low-power\|normal\|fair\|serious\|critical` | Pretends Low Power Mode or a thermal state from launch (see the `power:` route). Alone, it keeps the real library (it writes nothing). |
 | `-FluxoDebugLoopbackPort <port>` | Port of the player's loopback HLS server (default 19123, always on 127.0.0.1). Every simulator shares the Mac's loopback interface: give clones that play at the same time different ports. |
 
 Other useful system arguments: `-AppleLanguages "(de)" -AppleLocale de_DE`,
@@ -191,6 +192,9 @@ first that contains the text.
 | `downloads-log` | Appends every download (state, method, sizes, quality, languages, file, failure) to `Status/downloads.log`. |
 | `offline:<on\|off\|system>` | Pretends the device is offline (Home's offline section, the player's offline error), online, or follows the system; `-FluxoDebugOffline YES` does it from launch. Loopback URLs still play offline. |
 | `settings-section:downloads` | Settings, scrolled to its Downloads section (iOS). |
+| `power:<low-power\|normal\|fair\|serious\|critical\|system>` | Pretends Low Power Mode is on, or a thermal state (`normal`: neither), or follows the system (`-FluxoDebugPower <value>` does it from launch): the player's quality limits (`PlaybackEnergyProfile`), the symbol animations and the guide refresh follow it. |
+| `energy-check` | Checks the rules of `PlaybackEnergyProfile` (position sampling, quality limits, display sleep, video decoding for the player screen, the mini player, the background, Picture in Picture, Low Power Mode and the thermal states) and writes `energy-check: ok` or the failures to `Status/power.log`. |
+| `power-log` | Appends the energy state to `Status/power.log`: Low Power Mode, the thermal state, background, whether something plays and the guide refresh waits, whether the player layer decodes video, whether the display may sleep, the quality limit of the current item and the player's energy profile. |
 | `wait:<seconds>` | Waits before the next route. |
 | `intent:<action>[:<words>]` | Runs an App Intent in the app as Siri and Shortcuts do, its channel or programme parameter resolved from the words through the entity query (`ChannelEntityQuery.entities(matching:)`). Actions: `play`, `play-name`, `continue`, `pause`, `resume`, `stop`, `whats-on`, `search-guide`, `find`, `search`, `suggestions`, `favorites`, `favorite-add`, `favorite-remove`, `schedule`, `open` (`home`, `guide`, `search`, `favorites`, `history`, `recordings`, `library`), `record-start`, `record-stop`, `reminder`. Each run appends the dialog, the returned value and the player state to `Status/intents.log`. |
 | `siri-resolve:<words>` | Resolves spoken words to a channel like "Play … in Fluxo" (`AppServices.resolveChannel`), with the reason (name, programme, number, closest). |

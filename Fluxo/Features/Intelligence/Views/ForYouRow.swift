@@ -66,12 +66,11 @@ struct ForYouRow: View {
 /// "Personalizing…" with a pulsing sparkle, while the model works.
 struct PersonalizingIndicator: View {
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: "sparkles")
-                .symbolEffect(.pulse, options: .repeating, isActive: !reduceMotion)
+                .ambientSymbolEffect(.pulse)
             Text("Personalizing…")
         }
         .font(.caption.weight(.medium))
@@ -102,12 +101,16 @@ private struct ForYouLoader: ViewModifier {
         let status: IntelligenceStatus?
         let hasGuide: Bool
         let isActive: Bool
+        /// The player screen covers Home: the on-device model does not run for suggestions nobody sees; they load
+        /// when the player closes.
+        let isBehindPlayer: Bool
     }
 
     func body(content: Content) -> some View {
+        let isBehindPlayer = PowerMonitor.shared.isPlayerScreenOpen
         content
-            .task(id: Key(scope: scope, status: intelligence?.status, hasGuide: epg?.hasGuide ?? false, isActive: scenePhase == .active)) {
-                guard let intelligence, !scope.importIDs.isEmpty, scenePhase == .active else {
+            .task(id: Key(scope: scope, status: intelligence?.status, hasGuide: epg?.hasGuide ?? false, isActive: scenePhase == .active, isBehindPlayer: isBehindPlayer)) {
+                guard let intelligence, !scope.importIDs.isEmpty, scenePhase == .active, !isBehindPlayer else {
                     return
                 }
                 await intelligence.recommendations.loadChannels(for: scope)

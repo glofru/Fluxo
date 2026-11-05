@@ -1501,7 +1501,6 @@ private struct RecordControl: View {
     let namespace: Namespace.ID
     let interacted: () -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         if viewModel.isRecording {
@@ -1512,7 +1511,7 @@ private struct RecordControl: View {
                 HStack(spacing: 8) {
                     Image(systemName: "record.circle.fill")
                         .foregroundStyle(Theme.recording)
-                        .symbolEffect(.pulse, options: .repeating, isActive: !reduceMotion)
+                        .ambientSymbolEffect(.pulse)
                     Text("REC \(PlayerTime.format(timeline.recordingDuration))")
                         .monospacedDigit()
                     Image(systemName: "stop.fill")
@@ -1575,7 +1574,7 @@ private struct LiveControl: View {
                 if isAtLive {
                     HStack(spacing: 6) {
                         Image(systemName: "dot.radiowaves.left.and.right")
-                            .symbolEffect(.variableColor.iterative, options: .repeating, isActive: !reduceMotion)
+                            .ambientSymbolEffect(.variableColor.iterative)
                         Text("LIVE")
                             .font(.callout.weight(.heavy))
                     }

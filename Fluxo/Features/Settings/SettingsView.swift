@@ -132,7 +132,15 @@ struct SettingsView: View {
         } header: {
             Text("Playback")
         } footer: {
-            Text("How far back you can go in a live channel. Applies the next time a channel starts. The buffer uses at most \(Self.bytes(PlayerPreferences.timeShiftBytes)) and never more than a tenth of the free space.")
+            VStack(alignment: .leading, spacing: 8) {
+                Text("How far back you can go in a live channel. Applies the next time a channel starts. The buffer uses at most \(Self.bytes(PlayerPreferences.timeShiftBytes)) and never more than a tenth of the free space.")
+                // What the app does differently to save energy (`PlaybackEnergyProfile`, `EPGStore`).
+                if PowerMonitor.shared.thermalState.isThrottling {
+                    Text("Your device is warm: streams that offer several qualities play at a lower one, and the TV guide waits to refresh until it cools down.", comment: "Settings, Playback footer: shown while the device is hot (serious or critical thermal state).")
+                } else if PowerMonitor.shared.isLowPowerModeEnabled {
+                    Text("Low Power Mode is on: streams that offer several qualities play in 1080p at most, and the TV guide refreshes less often.", comment: "Settings, Playback footer: shown while Low Power Mode is on.")
+                }
+            }
         }
     }
 

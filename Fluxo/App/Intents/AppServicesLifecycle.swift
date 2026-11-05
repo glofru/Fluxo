@@ -48,8 +48,10 @@ private struct AppServicesLifecycle: ViewModifier {
                     return
                 }
                 services.donatePlay(item)
-                // The watch history changed: the phrases learn the channel.
-                services.spotlight.scheduleUpdate(after: .seconds(10))
+                // The watch history changed: the phrases learn the channel. Not at every channel change while zapping
+                // (each would index again during playback): once the channel was kept a while, or when the app
+                // goes to the background (which updates at once).
+                services.spotlight.scheduleUpdate(after: .seconds(90))
             }
     }
 }

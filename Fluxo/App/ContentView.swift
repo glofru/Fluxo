@@ -287,7 +287,7 @@ struct PlayerBottomAccessory: View {
                 Text("Recording")
             } icon: {
                 Image(systemName: "record.circle.fill")
-                    .symbolEffect(.pulse, options: .repeating, isActive: !reduceMotion)
+                    .ambientSymbolEffect(.pulse)
             }
             .foregroundStyle(Theme.recording)
         } else if viewModel.isPictureInPictureActive {

@@ -293,7 +293,6 @@ private struct PlayerCompanionChannelRow: View {
     let isEnabled: Bool
     let action: () -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button {
@@ -322,7 +321,7 @@ private struct PlayerCompanionChannelRow: View {
                     Image(systemName: "waveform")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Theme.lilac)
-                        .symbolEffect(.variableColor.iterative, options: .repeating, isActive: !reduceMotion)
+                        .ambientSymbolEffect(.variableColor.iterative)
                         .accessibilityHidden(true)
                 }
             }

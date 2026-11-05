@@ -390,6 +390,9 @@ struct FluxoRemuxSession {
     int64_t vod_segments_on_disk;
     // Reading paused because the reader is far enough ahead of the player.
     int vod_paused;
+    // Counts the wake-ups of the engine thread (a segment request, a recording request, a cancellation), so a
+    // paused reader sleeps until the next one instead of polling. Guarded by vod_lock.
+    uint64_t vod_wakeups;
     // Disk budget of an on-demand input without a plan: its segments are all kept (its playlist grows), and
     // beyond this size reading pauses whenever it is read_ahead seconds ahead of the player.
     int64_t vod_budget_bytes;
@@ -2897,7 +2900,12 @@ static void fluxo_adjust_input_packet(void *opaque, AVPacket *packet, const AVSt
     fluxo_adjust_timestamps(opaque, packet, in_stream);
 }
 
-static void fluxo_vod_wait(FluxoRemuxSession *session, int64_t timeout_us);
+static void fluxo_vod_wait(FluxoRemuxSession *session, uint64_t wakeups, int64_t timeout_us);
+
+// Longest sleep of a paused on-demand reader. Every request wakes it at once (fluxo_vod_signal): this only bounds
+// the sleep should a wake-up ever be missed. While it waits, the engine thread costs nothing (it used to wake up
+// four times a second for a whole movie once it was read ahead, or read to its end).
+#define FLUXO_VOD_IDLE_WAIT_US (5 * 1000000LL)
 
 // Reads the input until it ends, fails or the session is cancelled. Returns the read error
 // (AVERROR_EOF at the end) or the output error, in which case `output_failed` is set.
@@ -2928,9 +2936,10 @@ static int fluxo_run_loop(FluxoRemuxSession *session) {
             int over_budget = session->vod_budget_bytes > 0 && session->hls.window_bytes > session->vod_budget_bytes;
             session->vod_paused = over_budget && (session->vod_paused ? ahead > read_ahead_segments / 2 : ahead > read_ahead_segments);
             int paused = session->vod_paused;
+            uint64_t wakeups = session->vod_wakeups;
             pthread_mutex_unlock(&session->vod_lock);
             if (paused) {
-                fluxo_vod_wait(session, 250000);
+                fluxo_vod_wait(session, wakeups, FLUXO_VOD_IDLE_WAIT_US);
                 continue;
             }
         }
@@ -3035,15 +3044,21 @@ static int fluxo_reconnect(FluxoRemuxSession *session, int last_error) {
 
 // MARK: - On-demand inputs
 
-// Wakes the engine thread (a segment request, a cancellation).
+// Wakes the engine thread (a segment request, a recording request, a cancellation). Call with vod_lock held.
+static void fluxo_vod_signal_locked(FluxoRemuxSession *session) {
+    session->vod_wakeups++;
+    pthread_cond_broadcast(&session->vod_cond);
+}
+
 static void fluxo_vod_signal(FluxoRemuxSession *session) {
     pthread_mutex_lock(&session->vod_lock);
-    pthread_cond_broadcast(&session->vod_cond);
+    fluxo_vod_signal_locked(session);
     pthread_mutex_unlock(&session->vod_lock);
 }
 
-// Waits at most `timeout_us` for a request (or a cancellation), while reading is paused.
-static void fluxo_vod_wait(FluxoRemuxSession *session, int64_t timeout_us) {
+// Sleeps while reading is paused: until the next wake-up after the one numbered `wakeups` (read under vod_lock
+// with the decision to pause, so a request that came in between is not missed), a cancellation, or `timeout_us`.
+static void fluxo_vod_wait(FluxoRemuxSession *session, uint64_t wakeups, int64_t timeout_us) {
     struct timespec deadline;
     clock_gettime(CLOCK_REALTIME, &deadline);
     deadline.tv_sec += (time_t)(timeout_us / 1000000);
@@ -3053,8 +3068,10 @@ static void fluxo_vod_wait(FluxoRemuxSession *session, int64_t timeout_us) {
         deadline.tv_nsec -= 1000000000L;
     }
     pthread_mutex_lock(&session->vod_lock);
-    if (session->vod_reposition < 0 && !fluxo_is_cancelled(session)) {
-        pthread_cond_timedwait(&session->vod_cond, &session->vod_lock, &deadline);
+    while (session->vod_wakeups == wakeups && session->vod_reposition < 0 && !fluxo_is_cancelled(session)) {
+        if (pthread_cond_timedwait(&session->vod_cond, &session->vod_lock, &deadline) == ETIMEDOUT) {
+            break;
+        }
     }
     pthread_mutex_unlock(&session->vod_lock);
 }
@@ -4286,6 +4303,8 @@ static int fluxo_vod_run(FluxoRemuxSession *session) {
         int64_t reposition = session->vod_reposition;
         session->vod_reposition = -1;
         int ended = session->vod_ended;
+        // Read with the state the reader decides on: a request after it ends the wait below at once.
+        uint64_t wakeups = session->vod_wakeups;
         pthread_mutex_unlock(&session->vod_lock);
 
         if (reposition >= 0) {
@@ -4299,7 +4318,7 @@ static int fluxo_vod_run(FluxoRemuxSession *session) {
             continue;
         }
         if (ended || fluxo_vod_should_pause(session)) {
-            fluxo_vod_wait(session, 250000);
+            fluxo_vod_wait(session, wakeups, FLUXO_VOD_IDLE_WAIT_US);
             continue;
         }
 
@@ -4720,7 +4739,7 @@ int32_t fluxo_remux_request_segment(FluxoRemuxSession *session, int64_t index, i
             }
         }
     }
-    pthread_cond_broadcast(&session->vod_cond);
+    fluxo_vod_signal_locked(session);
     pthread_mutex_unlock(&session->vod_lock);
     return result;
 }
@@ -4763,6 +4782,8 @@ int32_t fluxo_remux_start_recording(FluxoRemuxSession *session, const char *path
     session->pending_recording_stop = 0;
     atomic_store(&session->request_pending, true);
     pthread_mutex_unlock(&session->request_lock);
+    // A paused on-demand reader applies requests when it wakes up.
+    fluxo_vod_signal(session);
     return 0;
 }
 
@@ -4775,6 +4796,7 @@ void fluxo_remux_stop_recording(FluxoRemuxSession *session) {
     session->pending_recording_stop = 1;
     atomic_store(&session->request_pending, true);
     pthread_mutex_unlock(&session->request_lock);
+    fluxo_vod_signal(session);
 }
 
 void fluxo_remux_destroy(FluxoRemuxSession *session) {

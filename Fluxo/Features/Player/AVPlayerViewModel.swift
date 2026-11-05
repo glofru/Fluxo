@@ -135,7 +135,15 @@ final class AVPlayerViewModel {
         PlayerPreferences.skipForwardInterval
     }
 
-    var isPresented: Bool = false
+    var isPresented: Bool = false {
+        didSet {
+            if isPresented != oldValue {
+                // The video is decoded again as the screen opens, so it shows during the transition.
+                applyEnergyProfile()
+                PowerMonitor.shared.isPlayerScreenOpen = isPresented
+            }
+        }
+    }
     /// The player screen was closed and Picture in Picture is taking the video over: the screen stays mounted
     /// (off screen, the video layer must stay in a window until PiP has started), see `closePlayer()`.
     private(set) var isClosingIntoPictureInPicture = false
@@ -267,6 +275,10 @@ final class AVPlayerViewModel {
     private var cancellables = Set<AnyCancellable>()
     @ObservationIgnored
     private var timeObserver: Any?
+    /// What playback spends on what is not on screen, and the stream quality the device can afford now (see
+    /// `PlaybackEnergyProfile`). nil until the first `applyEnergyProfile()`.
+    @ObservationIgnored
+    private(set) var energyProfile: PlaybackEnergyProfile?
     @ObservationIgnored
     private var itemRecoveryAttempts = 0
     @ObservationIgnored
@@ -347,6 +359,10 @@ final class AVPlayerViewModel {
         self.cast.onEvent = { [weak self] event in
             self?.handleCast(event)
         }
+        PowerMonitor.shared.addObserver { [weak self] in
+            self?.applyEnergyProfile()
+        }
+        applyEnergyProfile()
         NetworkMonitor.shared.addObserver { [weak self] online in
             guard let self, online, self.isWaitingForNetwork, self.currentChannel != nil else {
                 return
@@ -763,6 +779,7 @@ final class AVPlayerViewModel {
     func playerViewDidAppear() {
         logger.debug("Player screen appeared")
         isPlayerUIVisible = true
+        applyEnergyProfile()
         // Give UIKit/AppKit one run loop to finish installing the view before PiP animates back.
         DispatchQueue.main.async { [weak self] in
             self?.completePendingRestore(true)
@@ -772,6 +789,7 @@ final class AVPlayerViewModel {
     func playerViewDidDisappear() {
         logger.debug("Player screen disappeared")
         isPlayerUIVisible = false
+        applyEnergyProfile()
     }
 
     /// Called when the app becomes active again. iOS may have reclaimed the loopback server socket
@@ -1022,6 +1040,7 @@ final class AVPlayerViewModel {
             }
             .store(in: &itemCancellables)
 
+        applyQualityLimit(to: item)
         player.replaceCurrentItem(with: item)
         mediaSelection.attach(item, contentKey: currentChannel?.url?.absoluteString, allowsExternalSubtitles: isOnDemandContent)
     }
@@ -1218,6 +1237,8 @@ final class AVPlayerViewModel {
             playbackState = state
             updateNowPlaying()
         }
+        // Optional work (a TV guide refresh) waits while this device plays (not while a Chromecast does).
+        PowerMonitor.shared.isPlaybackActive = !isCasting && (state == .playing || state.isBusy)
     }
 
     // MARK: - Now Playing
@@ -1313,7 +1334,16 @@ final class AVPlayerViewModel {
             }
             .store(in: &cancellables)
 
-        timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 2), queue: .main) { [weak self] _ in
+        // The periodic time observer is installed by `applyEnergyProfile()`, at the interval of what is on screen.
+    }
+
+    /// Samples the playback position (the timeline of the controls, the watch progress, the seeker's landing checks)
+    /// at `interval`, replacing the observer installed before.
+    private func installTimeObserver(interval: CMTime) {
+        if let timeObserver {
+            player.removeTimeObserver(timeObserver)
+        }
+        timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 if let self, let item = self.player.currentItem {
                     self.sampledBufferedEnd = Self.bufferedEnd(of: item)
@@ -1321,6 +1351,53 @@ final class AVPlayerViewModel {
                 }
                 self?.updateTimeline()
             }
+        }
+    }
+
+    // MARK: - Energy
+
+    /// Sizes the work of playback to what is on screen and to Low Power Mode and the thermal state (see
+    /// `PlaybackEnergyProfile`). Called when any of them changes.
+    private func applyEnergyProfile() {
+        let power = PowerMonitor.shared
+        let profile = PlaybackEnergyProfile(PlaybackEnergyProfile.Conditions(
+            isLowPowerModeEnabled: power.isLowPowerModeEnabled,
+            thermalState: power.thermalState,
+            isInBackground: power.isInBackground,
+            isPlayerScreenVisible: isPlayerUIVisible,
+            isPlayerPresented: isPresented,
+            isPictureInPictureActive: isPictureInPictureActive
+        ))
+        let previous = energyProfile
+        guard profile != previous else {
+            return
+        }
+        energyProfile = profile
+        logger.info("Energy: \(profile.summary, privacy: .public)")
+        if previous?.timeObserverInterval != profile.timeObserverInterval {
+            installTimeObserver(interval: profile.timeObserverInterval)
+            if previous != nil {
+                // The controls show the position at once, not at the first tick of the new interval.
+                updateTimeline()
+            }
+        }
+        if previous?.qualityLimit != profile.qualityLimit, let item = player.currentItem {
+            applyQualityLimit(to: item)
+        }
+        if player.preventsDisplaySleepDuringVideoPlayback != profile.preventsDisplaySleep {
+            player.preventsDisplaySleepDuringVideoPlayback = profile.preventsDisplaySleep
+        }
+        surface.rendersVideo = profile.rendersVideo
+    }
+
+    /// The highest quality of an adaptive stream the player may choose now. No effect on streams with one quality.
+    private func applyQualityLimit(to item: AVPlayerItem) {
+        let limit = energyProfile?.qualityLimit ?? .none
+        if item.preferredMaximumResolution != limit.maximumResolution {
+            item.preferredMaximumResolution = limit.maximumResolution
+        }
+        if item.preferredPeakBitRate != limit.peakBitRate {
+            item.preferredPeakBitRate = limit.peakBitRate
         }
     }
 
@@ -1577,6 +1654,7 @@ final class AVPlayerViewModel {
             }
             logger.info("Picture in Picture active: \(isActive, privacy: .public)")
             self.isPictureInPictureActive = isActive
+            self.applyEnergyProfile()
             if isActive {
                 // Let the user browse while the video plays in PiP. The surface (and with it the
                 // controller that drives PiP) stays alive in this model.

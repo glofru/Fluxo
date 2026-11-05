@@ -280,7 +280,6 @@ private struct PlayerChannelRow: View {
     @Environment(ChannelLibrary.self) private var library
     @Environment(EPGStore.self) private var epg
     @Environment(\.openChannelWindow) private var openChannelWindow
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let isFavorite = library.isFavorite(item)
@@ -310,7 +309,7 @@ private struct PlayerChannelRow: View {
                     Image(systemName: "waveform")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Theme.live)
-                        .symbolEffect(.variableColor.iterative, options: .repeating, isActive: !reduceMotion)
+                        .ambientSymbolEffect(.variableColor.iterative)
                         .accessibilityHidden(true)
                 }
             }

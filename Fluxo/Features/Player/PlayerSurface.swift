@@ -90,8 +90,22 @@ final class PlayerSurface: NSObject {
 
     private let pictureInPicture: AVPictureInPictureController?
     private var possibleObservation: NSKeyValueObservation?
+    private let player: AVPlayer
+
+    /// The layer shows the player's video. False lets go of the player: AVPlayer then decodes no video and only plays
+    /// the audio (the mini player), until it is set again (the player screen opens). Never false while Picture in
+    /// Picture runs.
+    var rendersVideo = true {
+        didSet {
+            guard rendersVideo != oldValue else {
+                return
+            }
+            videoView.playerLayer.player = rendersVideo ? player : nil
+        }
+    }
 
     init(player: AVPlayer) {
+        self.player = player
         let view = PlayerLayerView(frame: .zero)
         view.playerLayer.player = player
         view.playerLayer.videoGravity = .resizeAspect

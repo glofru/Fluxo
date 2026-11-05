@@ -38,6 +38,8 @@ struct FluxoApp: App {
         self.container = container
         // First: the player, the guide and the downloads ask whether the device is online.
         NetworkMonitor.shared.start()
+        // Low Power Mode, the thermal state and the background: the player and the guide adapt to them.
+        PowerMonitor.shared.start()
         let library = ChannelLibrary(container: container)
         // Chromecast through the Google Cast SDK on iOS; unsupported (no cast UI) on macOS.
         let player = AVPlayerViewModel(cast: .makeDefault())

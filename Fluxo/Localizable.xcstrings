@@ -33376,6 +33376,9 @@
         }
       }
     },
+    "Low Power Mode is on: streams that offer several qualities play in 1080p at most, and the TV guide refreshes less often." : {
+      "comment" : "Settings, Playback footer: shown while Low Power Mode is on."
+    },
     "M3U and M3U8 playlists over HTTP or HTTPS. Channels, groups and logos are imported on this device." : {
       "comment" : "Text — Add / Edit Playlist form.",
       "localizations" : {
@@ -77990,6 +77993,9 @@
           }
         }
       }
+    },
+    "Your device is warm: streams that offer several qualities play at a lower one, and the TV guide waits to refresh until it cools down." : {
+      "comment" : "Settings, Playback footer: shown while the device is hot (serious or critical thermal state)."
     },
     "Your favorite" : {
       "comment" : "Apple Intelligence suggestions: why a channel is suggested. A programme title follows after a separator, as in 'Your favorite · Evening News'.",

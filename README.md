@@ -1348,3 +1348,57 @@ Measurement tools (macOS):
 Tools/ImageLoaderBenchmark/run.sh   # former logo path vs LogoImageLoader, on 127.0.0.1
 Tools/EngineSmokeTest/leaks.sh      # engine sessions under `leaks --atExit`; FOOTPRINT_ONLY=1 prints the footprint per cycle
 ```
+
+## Battery
+
+Playback is where the energy goes, so the app sizes the work of playback to what is on screen and to the state of the
+device (`Fluxo/App/Power/PowerMonitor.swift`, `Fluxo/Features/Player/PlaybackEnergyProfile.swift`):
+
+- **No video decoding for the mini player.** While a channel plays with the player screen closed (and not in Picture in
+  Picture), the player layer lets go of the `AVPlayer`, which then only plays the audio; it takes it again as soon as
+  the player screen starts to open, so the video is there during the transition. In the background the system already
+  stops drawing the video of the app; the layer is kept there, because Picture in Picture starts from it.
+- **The display may sleep** while only the mini player plays (`preventsDisplaySleepDuringVideoPlayback` follows
+  whether the video is on screen: the player screen or Picture in Picture). On macOS this also keeps the display awake
+  while a video plays in the window, as other video players do.
+- **Position sampling** (the timeline of the controls, the watch progress, the seek checks) runs twice a second only
+  while the player screen can show it, once a second in Picture in Picture, every two seconds otherwise.
+- **Adaptive streams** (HLS with several qualities, which AVPlayer plays itself) are limited to their lowest quality
+  while only the audio is heard in the background, to 720p in Picture in Picture, to 1080p in Low Power Mode, to 720p
+  when the device is hot (serious thermal state) and 480p when it is critical (`preferredMaximumResolution`,
+  `preferredPeakBitRate`). Streams with one quality (the remux engine's, most IPTV channels) are not affected.
+- **Optional work waits.** The automatic TV guide refresh (at launch and hourly) waits while something plays or the
+  device is hot, and runs 30 s after playback ends; in Low Power Mode a guide is refreshed after 36 hours instead of 12.
+  The Apple Intelligence suggestions of Home and the Guide do not run while the player screen covers them, and the
+  Spotlight / Siri phrase update after a channel change waits until the channel was kept for 90 s (or the app goes to
+  the background), instead of running at every zap.
+- **Status symbols rest.** The LIVE waves, the recording dot and the "now playing" waveform animate, then rest three
+  seconds before the next run (`ambientSymbolEffect`), instead of redrawing the screen (and the glass behind them, over
+  the video) at every frame; they do not animate in Low Power Mode or when the device is hot.
+- **The remux engine sleeps** while it is read ahead of the player (a movie or episode, 60 s ahead) or has read the
+  whole input: requests and cancellation wake it (a counter of wake-ups under its lock, so none is missed), instead of
+  polling four times a second for as long as the movie plays.
+- Settings › Playback says when Low Power Mode or the heat changes what the app does.
+
+Measured in the iPhone 17e simulator (iOS 27.2) with the sample library and the loopback test streams
+(`top -l -s 5 -c d` on the app process, 30–40 s per case after the route settled; the Mac was busy with other work, so
+differences of a percent or two are noise). The simulator decodes video in software and renders Liquid Glass in the app
+process, so the absolute numbers are higher than on a device; the differences are what matters:
+
+| Case | CPU before | CPU after | Context switches/s before → after |
+|---|---|---|---|
+| Home, idle | 0.9 % | 0.8 % | 104 → 97 |
+| TV Guide, idle | 3.9 % (launch work) | 1.4 % | 202 → 113 |
+| Live HLS (AVPlayer), controls hidden | 15.1 % | 14.4 % | 1192 → 1173 |
+| Live MPEG-TS (remux engine), controls hidden | 12.6 % | 12.3 % | 1265 → 1252 |
+| Live MPEG-TS, controls shown | 22.2 % | 21.2 % | 2817 → 2493 |
+| **Live MPEG-TS, mini player** | **12.5 %** | **3.1 %** | **1322 → 363** |
+| Live MPEG-TS, background (audio) | 2.4 % | 2.4 % | 298 → 299 |
+| Movie through the engine, controls hidden | 14.7 % | 14.6 % | 1050 → 1085 |
+| Movie played by AVPlayer, controls hidden | 14.3 % | 12.5 % | 1060 → 1071 |
+| Movie through the engine, background (audio) | 2.4 % | 2.3 % | 284 → 276 |
+
+Idle screens were already idle (no timers: `TimelineView(.everyMinute)` only, no polling); the first seconds after a
+launch are the launch work. The debug harness has `power:` / `-FluxoDebugPower` (pretend Low Power Mode or a thermal
+state), `power-log` (what the app does now) and `energy-check` (the rules of the profile); see
+Tools/Simulator/README.md.

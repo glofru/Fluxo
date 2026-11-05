@@ -29,6 +29,8 @@ struct GuideForYouStrip: View {
         let status: IntelligenceStatus?
         let revision: Int
         let isActive: Bool
+        /// The player screen covers the Guide: no model run for suggestions nobody sees (they load when it closes).
+        let isBehindPlayer: Bool
     }
 
     var body: some View {
@@ -42,8 +44,8 @@ struct GuideForYouStrip: View {
                     .accessibilityHidden(true)
             }
         }
-        .task(id: LoadKey(scope: scope, status: intelligence?.status, revision: epg.revision, isActive: scenePhase == .active)) {
-            guard let intelligence, scenePhase == .active, !importIDs.isEmpty else {
+        .task(id: LoadKey(scope: scope, status: intelligence?.status, revision: epg.revision, isActive: scenePhase == .active, isBehindPlayer: PowerMonitor.shared.isPlayerScreenOpen)) {
+            guard let intelligence, scenePhase == .active, !importIDs.isEmpty, !PowerMonitor.shared.isPlayerScreenOpen else {
                 return
             }
             // Guide refreshes bump the revision in bursts: wait for them to settle.

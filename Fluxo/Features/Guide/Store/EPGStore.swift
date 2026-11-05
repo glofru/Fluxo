@@ -15,9 +15,12 @@ import SwiftData
 ///
 /// - Sources: every `url-tvg` / `x-tvg-url` of a playlist header becomes an `EPGSource` after its import; users
 ///   can add XMLTV URLs in Settings.
-/// - Refresh policy: at launch for sources older than `staleInterval`, hourly while the app runs, from a
-///   background app refresh task on iOS, after a playlist import that lists a new guide, and on demand.
-///   Refreshes run one at a time, in the background (`EPGImporter`).
+/// - Refresh policy: at launch for sources older than `staleInterval` (longer in Low Power Mode), hourly while the
+///   app runs, from a background app refresh task on iOS, after a playlist import that lists a new guide, and on
+///   demand. Refreshes run one at a time, in the background (`EPGImporter`). The automatic ones (at launch and
+///   hourly) wait while something plays or the device is hot (`PowerMonitor.defersOptionalWork`): downloading and
+///   storing a guide of tens of thousands of programmes would compete with the video for the network, the CPU and
+///   the storage, and drain the battery faster.
 /// - Queries (`nowNext(for:)`, `programmes(for:in:)`, `guideChannels(importIDs:)`, `searchProgrammes`) are
 ///   answered by `EPGReader` off the main actor and return value types.
 ///
@@ -28,6 +31,15 @@ final class EPGStore {
 
     /// A guide is downloaded again when it is older than this.
     static let staleInterval: TimeInterval = 12 * 3_600
+    /// In Low Power Mode: guides usually cover several days, so a refresh can wait longer.
+    static let lowPowerStaleInterval: TimeInterval = 36 * 3_600
+    /// How long nothing must play (and the device must not be hot) before a deferred refresh runs: a pause or the
+    /// next channel does not start a download in between.
+    static let deferredRefreshDelay: Duration = .seconds(30)
+
+    static func staleInterval(lowPowerMode: Bool) -> TimeInterval {
+        lowPowerMode ? lowPowerStaleInterval : staleInterval
+    }
 
     private static let logger = Logger(subsystem: "dev.watermelon.Fluxo", category: "EPGStore")
 
@@ -98,6 +110,12 @@ final class EPGStore {
     private var didStart = false
     @ObservationIgnored
     private var periodicTask: Task<Void, Never>?
+    /// Waits for playback to end (or the device to cool down) to refresh the stale guides (see
+    /// `refreshStaleSources()`).
+    @ObservationIgnored
+    private var powerObserver: UUID?
+    @ObservationIgnored
+    private var deferredRefreshTask: Task<Void, Never>?
 
     init(container: ModelContainer, reminders: ReminderCenter? = nil) {
         self.container = container
@@ -108,6 +126,11 @@ final class EPGStore {
 
     var isRefreshing: Bool {
         !progress.isEmpty || !refreshQueue.isEmpty
+    }
+
+    /// The automatic refresh of the stale guides waits for playback to end or the device to cool down.
+    var isStaleRefreshDeferred: Bool {
+        powerObserver != nil
     }
 
     // MARK: - Lifecycle
@@ -282,6 +305,10 @@ final class EPGStore {
     }
 
     func refreshStaleSources() {
+        guard !PowerMonitor.shared.defersOptionalWork else {
+            deferStaleRefresh()
+            return
+        }
         guard NetworkMonitor.shared.isOnline else {
             // Offline a refresh can only fail: the guide on disk stays, and the stale sources refresh once the
             // network returns.
@@ -298,6 +325,35 @@ final class EPGStore {
             return
         }
         enqueue(staleSourceIDs(), reportingFailures: false)
+    }
+
+    /// Refreshes the stale guides once nothing has played (and the device was not hot) for `deferredRefreshDelay`.
+    private func deferStaleRefresh() {
+        guard powerObserver == nil else {
+            return
+        }
+        Self.logger.info("Guide refresh deferred while something plays or the device is hot")
+        let power = PowerMonitor.shared
+        powerObserver = power.addObserver { [weak self] in
+            guard let self else {
+                return
+            }
+            self.deferredRefreshTask?.cancel()
+            self.deferredRefreshTask = nil
+            guard !power.defersOptionalWork else {
+                return
+            }
+            self.deferredRefreshTask = Task { [weak self] in
+                try? await Task.sleep(for: Self.deferredRefreshDelay)
+                guard !Task.isCancelled, let self, !power.defersOptionalWork, let token = self.powerObserver else {
+                    return
+                }
+                power.removeObserver(token)
+                self.powerObserver = nil
+                self.deferredRefreshTask = nil
+                self.refreshStaleSources()
+            }
+        }
     }
 
     func cancelRefreshes() {
@@ -401,7 +457,7 @@ final class EPGStore {
             if let attempt = source.lastAttemptOn, attempt > refreshed, now.timeIntervalSince(attempt) < 3_600 {
                 return false
             }
-            return now.timeIntervalSince(refreshed) > Self.staleInterval
+            return now.timeIntervalSince(refreshed) > Self.staleInterval(lowPowerMode: PowerMonitor.shared.isLowPowerModeEnabled)
         }
         .map(\.uuid)
     }
