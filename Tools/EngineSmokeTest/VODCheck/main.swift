@@ -160,15 +160,24 @@ final class Check {
             failures.append("start: \(item.error?.localizedDescription ?? "failed")")
             return false
         }
-        // AVPlayerViewModel.checkVideoIsDecodable: video AVPlayer cannot decode (hev1) plays through the engine.
-        if route == .direct, let fallback = PlaybackRoute.onDemandFallback(for: url),
-           let tracks = try? await item.asset.loadTracks(withMediaType: .video), !tracks.isEmpty {
-            var playable = false
-            for track in tracks where (try? await track.load(.isPlayable)) == true {
-                playable = true
+        // AVPlayerViewModel.checkTracksAreDecodable: video AVPlayer cannot decode (hev1) or audio it cannot decode or
+        // does not even list (DTS) plays through the engine, which converts it.
+        if route == .direct, let fallback = PlaybackRoute.onDemandFallback(for: url) {
+            func tracks(_ mediaType: AVMediaType) async -> [PlaybackRoute.DirectTrack] {
+                var result: [PlaybackRoute.DirectTrack] = []
+                for track in (try? await item.asset.loadTracks(withMediaType: mediaType)) ?? [] {
+                    let format = (try? await track.load(.formatDescriptions))?.first.map { CMFormatDescriptionGetMediaSubType($0) } ?? 0
+                    result.append(PlaybackRoute.DirectTrack(format: format, isPlayable: (try? await track.load(.isPlayable)) ?? false))
+                }
+                return result
             }
-            if !playable {
-                print("[check] AVPlayer cannot decode the video track: falling back to the engine")
+            let expectsAudio = ProcessInfo.processInfo.environment["EXPECT_AUDIO"] != "0"
+            let video = await tracks(.video)
+            let audio = await tracks(.audio)
+            // (A test file without sound would move to the engine like a movie whose audio AVPlayer does not list.)
+            if let reason = PlaybackRoute.engineReason(video: video, audio: audio), expectsAudio || !audio.isEmpty || !reason.hasPrefix("no audio") {
+                print("[check] AVPlayer: \(reason): falling back to the engine")
+                fellBack = true
                 close()
                 route = fallback
                 return await open(resumeAt: resumeAt)
@@ -184,8 +193,103 @@ final class Check {
         } else {
             await run(for: 3)
             report("start")
+            await checkTracks()
         }
         return true
+    }
+
+    /// The tracks AVPlayer plays (their formats tell copied from converted streams), and that the audio is real:
+    /// an enabled audio track (unless EXPECT_AUDIO=0) and, for the engine's output, sound in its latest segment.
+    func checkTracks() async {
+        guard let item else {
+            return
+        }
+        var video: [String] = []
+        var audio: [String] = []
+        for track in item.tracks where track.isEnabled {
+            guard let asset = track.assetTrack else {
+                continue
+            }
+            let formats = ((try? await asset.load(.formatDescriptions)) ?? []).map { Self.fourCC(CMFormatDescriptionGetMediaSubType($0)) }
+            if asset.mediaType == .video {
+                video += formats.isEmpty ? ["?"] : formats
+            } else if asset.mediaType == .audio {
+                audio += formats.isEmpty ? ["?"] : formats
+            }
+        }
+        let expectsAudio = ProcessInfo.processInfo.environment["EXPECT_AUDIO"] != "0"
+        let expectsVideo = ProcessInfo.processInfo.environment["EXPECT_VIDEO"] != "0"
+        var level = "-"
+        // The sound check needs ffmpeg (FFMPEG, exported by run_formats.sh).
+        if route != .direct, expectsAudio, ProcessInfo.processInfo.environment["FFMPEG"] != nil {
+            let mean = await segmentAudioLevel()
+            level = mean.map { String(format: "%.1f dB", $0) } ?? "none"
+            if (mean ?? -100) <= -60 {
+                failures.append("audio: no sound in the engine's segment (\(level))")
+            }
+        }
+        print("[check] formats video=\(video) audio=\(audio) segment-audio=\(level)")
+        if expectsAudio && audio.isEmpty {
+            failures.append("audio: no audio track")
+        }
+        if expectsVideo && video.isEmpty {
+            failures.append("video: no video track")
+        }
+    }
+
+    static func fourCC(_ value: FourCharCode) -> String {
+        String(bytes: [24, 16, 8, 0].map { UInt8((value >> $0) & 0xFF) }, encoding: .ascii)?.trimmingCharacters(in: .whitespaces) ?? "?"
+    }
+
+    /// Mean volume (dB) of the newest main segment of the engine (with its initialization segment for fMP4), with
+    /// FFMPEG's volumedetect; nil without ffmpeg, a segment or audio.
+    func segmentAudioLevel() async -> Double? {
+        guard let ffmpeg = ProcessInfo.processInfo.environment["FFMPEG"], let configuration = remuxer.configuration else {
+            return nil
+        }
+        let prefix = configuration.filePrefix
+        let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        let segments = files.filter { file in
+            let name = file.lastPathComponent
+            guard name.hasPrefix(prefix + "-"), name.hasSuffix(".ts") || name.hasSuffix(".m4s") else {
+                return false
+            }
+            return configuration.segmentFile(named: name)?.rendition == nil
+        }
+        guard let newest = segments.max(by: {
+            ((try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
+                < ((try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
+        }) else {
+            return nil
+        }
+        var input = newest
+        if newest.pathExtension == "m4s" {
+            let joined = directory.appendingPathComponent("level-check.mp4")
+            guard let initData = try? Data(contentsOf: directory.appendingPathComponent("\(prefix)-init.mp4")),
+                  let segmentData = try? Data(contentsOf: newest), (try? (initData + segmentData).write(to: joined)) != nil else {
+                return nil
+            }
+            input = joined
+        }
+        // Off the main actor: the loopback server's requests are answered there while ffmpeg runs.
+        let path = input.path
+        return await Task.detached {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: ffmpeg)
+            process.arguments = ["-hide_banner", "-nostats", "-i", path, "-map", "0:a:0", "-af", "volumedetect", "-f", "null", "-"]
+            let pipe = Pipe()
+            process.standardError = pipe
+            process.standardOutput = FileHandle.nullDevice
+            guard (try? process.run()) != nil else {
+                return nil
+            }
+            let output = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            process.waitUntilExit()
+            guard let range = output.range(of: "mean_volume: ") else {
+                return nil
+            }
+            return Double(output[range.upperBound...].prefix { $0 != " " })
+        }.value
     }
 
     /// The playlist of an on-demand input: short segments (a seek reads one), whether it is planned whole
@@ -329,7 +433,11 @@ final class Check {
         let advanced = currentTime - landed
         let brightness = frameBrightness()
         report(label)
-        let ok = player.timeControlStatus == .playing && advanced > 1.5 && (brightness ?? 0) > 20 && abs(landed - target) < 6
+        // Audio-only inputs (EXPECT_VIDEO=0) have no frames to look at.
+        // MIN_BRIGHTNESS: dark sample files (a night sky) still count as frames.
+        let minimum = Double(ProcessInfo.processInfo.environment["MIN_BRIGHTNESS"] ?? "") ?? 20
+        let framesOK = ProcessInfo.processInfo.environment["EXPECT_VIDEO"] == "0" || (brightness ?? 0) > minimum
+        let ok = player.timeControlStatus == .playing && advanced > 1.5 && framesOK && abs(landed - target) < 6
         print(String(format: "[check] %@ target=%.1f landed=%.1f advanced=%.1f latency=%.1fs brightness=%@ => %@", label, target, landed, advanced, latency,
                      brightness.map { String(format: "%.0f", $0) } ?? "none", ok ? "OK" : "FAIL"))
         if !ok {
@@ -396,6 +504,7 @@ final class Check {
             return
         }
         await step("live edge") { currentTime }
+        await checkTracks()
         await selectTracks()
         await run(for: 8)
         await step("time-shift -10") { currentTime - 10 }
@@ -403,9 +512,52 @@ final class Check {
         close()
     }
 
+    /// The format matrix (run_formats.sh): fewer steps, for short movies.
+    func quickScenario() async {
+        guard await open(resumeAt: nil) else {
+            return
+        }
+        await selectTracks()
+        await step("skip +30") { currentTime + 30 }
+        await step("scrub 75%") { duration.map { $0 * 0.75 } }
+        await step("skip -10") { currentTime - 10 }
+        let saved = (duration ?? 0) * 0.4
+        await step("scrub 40%") { saved }
+        let position = currentTime
+        checkCues()
+        close()
+        await run(for: 1)
+        print("[check] reopen at \(Int(position))s")
+        route = PlaybackRoute(url: url, kind: kind)
+        fellBack = false
+        guard await open(resumeAt: position) else {
+            return
+        }
+        await step("skip +10 after resume") { currentTime + 10 }
+        close()
+    }
+
+    /// Short sample files (run_formats.sh): the middle, then a little back.
+    func shortScenario() async {
+        guard await open(resumeAt: nil) else {
+            return
+        }
+        await step("scrub 50%") { duration.map { $0 * 0.5 } }
+        await step("skip -5") { currentTime - 5 }
+        close()
+    }
+
     func scenario() async {
+        if ProcessInfo.processInfo.environment["SCENARIO"] == "short" {
+            await shortScenario()
+            return
+        }
         if kind == .live {
             await liveScenario()
+            return
+        }
+        if ProcessInfo.processInfo.environment["SCENARIO"] == "quick" {
+            await quickScenario()
             return
         }
         guard await open(resumeAt: nil) else {
@@ -471,11 +623,21 @@ case "none": nil
 default: .movie
 }
 setvbuf(stdout, nil, _IOLBF, 0)
+// A check that hangs (AVFoundation waiting on an item that never loads) fails instead of blocking the run.
+let watchdog = Double(ProcessInfo.processInfo.environment["CHECK_TIMEOUT"] ?? "") ?? 300
+DispatchQueue.global().asyncAfter(deadline: .now() + watchdog) {
+    print("[check] result FAIL route=? failures=[\"timed out after \(Int(watchdog)) s\"]")
+    exit(1)
+}
 Task { @MainActor in
     let check = Check(url: url, kind: kind)
     await check.scenario()
     try? FileManager.default.removeItem(at: check.directory)
-    print("[check] result \(check.failures.isEmpty ? "PASS" : "FAIL") route=\(check.route) failures=\(check.failures)")
+    let routeName = switch check.route {
+    case .direct: "direct"
+    case .remux(let isLive): isLive ? "engine-live" : "engine"
+    }
+    print("[check] result \(check.failures.isEmpty ? "PASS" : "FAIL") route=\(routeName)\(check.fellBack ? "(fallback)" : "") failures=\(check.failures)")
     exit(check.failures.isEmpty ? 0 : 1)
 }
 RunLoop.main.run()

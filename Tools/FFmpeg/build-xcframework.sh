@@ -3,11 +3,12 @@
 # Fluxo remux engine (Fluxo/Features/Player/Engine), from a pinned and checksummed release tarball.
 #
 # Output (replaces the previous contents of Vendor/FFmpeg):
-#   FFmpeg.xcframework   one dynamic framework ("FFmpeg") per platform, with libavformat, libavcodec
-#                        and libavutil linked into a single dylib that exports only the public av*
-#                        symbols. Slices: iOS arm64, iOS Simulator arm64 + x86_64, macOS arm64 + x86_64.
-#   include/             the public libavformat / libavcodec / libavutil headers (identical for
-#                        every slice; the script checks it).
+#   FFmpeg.xcframework   one dynamic framework ("FFmpeg") per platform, with libavformat, libavcodec,
+#                        libswscale, libswresample and libavutil linked into a single dylib that exports
+#                        only the public av* / sw* symbols. Slices: iOS arm64, iOS Simulator arm64 +
+#                        x86_64, macOS arm64 + x86_64.
+#   include/             the public libavformat / libavcodec / libswscale / libswresample / libavutil
+#                        headers (identical for every slice; the script checks it).
 #   BUILD_INFO.txt       version, tarball checksum and the exact configure flags.
 #
 # Usage:
@@ -19,7 +20,8 @@
 #
 # Requirements: Xcode command line tools (clang, lipo, xcodebuild) and curl. No Homebrew packages
 # are used: pkg-config lookups are disabled and every external library is off except the system
-# zlib and Secure Transport (the TLS backend for https on Apple platforms).
+# zlib, Secure Transport (the TLS backend for https on Apple platforms) and VideoToolbox (the
+# system's video decoders and encoders).
 #
 # License: the configuration below never passes --enable-gpl, --enable-version3 or
 # --enable-nonfree, so the result is LGPL v2.1 or later. It is linked dynamically, so the framework
@@ -54,33 +56,55 @@ log() { printf '\n==> %s\n' "$*"; }
 
 # Only what the engine reaches: it opens arbitrary IPTV inputs (MPEG-TS over HTTP(S) above all,
 # plus HLS, FLV/RTMP, RTSP/RTP and UDP, and plain files), copies their audio / video packets into
-# MPEG-TS segments and recordings, and converts recordings to MP4. Nothing is re-encoded.
+# MPEG-TS / fragmented MP4 segments and recordings, and converts recordings to MP4. Streams AVPlayer
+# cannot decode are converted (Fluxo/Features/Player/Engine/FluxoTranscoder.c): audio to AAC with
+# FFmpeg's own decoders and AAC encoder, video to H.264 with VideoToolbox's hardware encoder.
 # webvtt: the HLS demuxer probes every rendition of a master playlist while it opens it, subtitle
 # playlists included, and fails the whole open when no demuxer recognises their WebVTT segments.
-DEMUXERS="mpegts hls webvtt mov flv live_flv matroska mpegps rtsp sdp rtp aac loas ac3 eac3 mp3 h264 hevc"
+# Containers of movies and episodes: Matroska / WebM, AVI, ASF (WMV), Ogg, MPEG-PS (VOB), MP4 / MOV / 3GP.
+# mpegvideo and m4v: the MPEG-PS demuxer identifies its video streams by probing them with the elementary stream
+# demuxers (without these, MPEG-2 video is taken for MP3 audio).
+DEMUXERS="mpegts hls webvtt mov flv live_flv matroska mpegps rtsp sdp rtp aac loas ac3 eac3 mp3 h264 hevc \
+avi asf ogg wav mpegvideo m4v"
 MUXERS="mpegts mp4 mov"
 PROTOCOLS="file http https httpproxy tcp tls udp rtp rtmp rtmps rtmpt crypto data"
-PARSERS="h264 hevc aac aac_latm ac3 mpegaudio mpegvideo mpeg4video opus"
+PARSERS="h264 hevc aac aac_latm ac3 mpegaudio mpegvideo mpeg4video opus \
+dca mlp flac vorbis vp8 vp9 av1 vc1 h263 mjpeg"
 # avformat_find_stream_info decodes the first frames to fill in the stream parameters (pixel and
 # sample formats, reorder delay); without a decoder it waits for the whole analyzeduration of a live
 # input (3 s) before it gives up on that stream. mp2 and mpeg2video are the audio and video codecs
 # of many DVB-derived IPTV channels.
-DECODERS="h264 hevc aac aac_latm ac3 eac3 mp3 mp2 mpeg2video"
+# The other decoders feed the transcoder. Video (re-encoded to H.264): MPEG-1/2, MPEG-4 Part 2
+# (Xvid, DivX, and Microsoft's MPEG-4 variants), H.263 and Sorenson Spark (old FLV), VC-1 and WMV 7/8/9,
+# VP8, VP9, Theora, Motion JPEG; H.264 itself for the profiles VideoToolbox cannot decode (High 10,
+# 4:2:2). Audio (re-encoded to AAC): DTS, Dolby TrueHD / MLP, FLAC, ALAC, Opus, Vorbis, MP2 / MP1, WMA,
+# AMR, Nellymoser, ADPCM and the PCM variants of WAV, AVI, MOV, Blu-ray and DVD.
+DECODERS="h264 hevc aac aac_latm ac3 eac3 mp3 mp2 mpeg2video \
+mpeg1video mpeg4 msmpeg4v1 msmpeg4v2 msmpeg4v3 h263 h263p flv vc1 wmv1 wmv2 wmv3 vp8 vp9 theora mjpeg \
+mp1 dca truehd mlp flac alac opus vorbis wmav1 wmav2 wmapro amrnb amrwb nellymoser adpcm_ima_wav adpcm_ms \
+pcm_s16le pcm_s16be pcm_s24le pcm_s24be pcm_s32le pcm_s32be pcm_f32le pcm_f32be pcm_u8 pcm_alaw pcm_mulaw \
+pcm_bluray pcm_dvd"
+# AAC: FFmpeg's own encoder (LGPL). H.264: VideoToolbox (the hardware encoder of the device).
+ENCODERS="aac h264_videotoolbox"
+# VP9 is decoded by VideoToolbox when the device has a VP9 decoder (FFmpeg's decoder otherwise).
+HWACCELS="vp9_videotoolbox"
 # Inserted automatically by the muxers: ADTS -> MP4 AAC, and length-prefixed -> Annex B H.264 /
 # HEVC when an MP4, FLV or Matroska input is written to MPEG-TS. extract_extradata is used by
-# avformat_find_stream_info.
-BSFS="aac_adtstoasc h264_mp4toannexb hevc_mp4toannexb extract_extradata"
+# avformat_find_stream_info. (The VP9 decoder selects vp9_superframe_split itself.) h264_metadata writes the pixel
+# aspect ratio of converted anamorphic video into its SPS (VideoToolbox does not).
+BSFS="aac_adtstoasc h264_mp4toannexb hevc_mp4toannexb extract_extradata h264_metadata"
 
 join_enable() { # kind list
     for c in $2; do printf ' --enable-%s=%s' "$1" "$c"; done
 }
 
 CONFIGURE_FLAGS="--disable-everything --disable-autodetect --disable-programs --disable-doc \
---disable-avdevice --disable-avfilter --disable-swscale --disable-swresample \
+--disable-avdevice --disable-avfilter --enable-swscale --enable-swresample \
 --enable-static --disable-shared --enable-pic --disable-debug \
---enable-pthreads --enable-zlib --enable-securetransport --enable-network \
+--enable-pthreads --enable-zlib --enable-securetransport --enable-videotoolbox --enable-network \
 $(join_enable demuxer "$DEMUXERS")$(join_enable muxer "$MUXERS")$(join_enable protocol "$PROTOCOLS")\
-$(join_enable parser "$PARSERS")$(join_enable decoder "$DECODERS")$(join_enable bsf "$BSFS")"
+$(join_enable parser "$PARSERS")$(join_enable decoder "$DECODERS")$(join_enable encoder "$ENCODERS")\
+$(join_enable hwaccel "$HWACCELS")$(join_enable bsf "$BSFS")"
 
 # MARK: - Source
 
@@ -158,10 +182,11 @@ build_slice() {
         exit 1
     }
     # https must stay available: configure silently drops Secure Transport if its check fails.
-    for required in CONFIG_SECURETRANSPORT CONFIG_ZLIB; do
+    for required in CONFIG_SECURETRANSPORT CONFIG_ZLIB CONFIG_VIDEOTOOLBOX; do
         grep -q "^#define $required 1" "$build/config.h" || { echo "error: $required is off in $1" >&2; exit 1; }
     done
-    for required in CONFIG_HTTPS_PROTOCOL CONFIG_TLS_PROTOCOL CONFIG_MPEGTS_DEMUXER CONFIG_MPEGTS_MUXER CONFIG_MP4_MUXER; do
+    for required in CONFIG_HTTPS_PROTOCOL CONFIG_TLS_PROTOCOL CONFIG_MPEGTS_DEMUXER CONFIG_MPEGTS_MUXER CONFIG_MP4_MUXER \
+        CONFIG_AAC_ENCODER CONFIG_H264_VIDEOTOOLBOX_ENCODER CONFIG_VP9_VIDEOTOOLBOX_HWACCEL CONFIG_DCA_DECODER; do
         grep -q "^#define $required 1" "$build/config_components.h" || { echo "error: $required is off in $1" >&2; exit 1; }
     done
 
@@ -169,25 +194,27 @@ build_slice() {
     make -C "$build" -j"$JOBS" > "$build/make.out" 2>&1 || { tail -n 40 "$build/make.out" >&2; exit 1; }
     make -C "$build" install > "$build/install.out" 2>&1
 
-    # One dylib for the three libraries. Only the public API is exported (the av_, avio_, avcodec_,
-    # avformat_, avutil_ and avsubtitle_ prefixes; not the internal avpriv_ and ff_ functions), so
-    # the linker strips every internal function the enabled components never reach.
+    # One dylib for the five libraries. Only the public API is exported (the av_, avio_, avcodec_,
+    # avformat_, avutil_, avsubtitle_, swr_ and sws_ prefixes; not the internal avpriv_ and ff_
+    # functions), so the linker strips every internal function the enabled components never reach.
     if [ "$PLATFORM" = macos ]; then
         install_name=@rpath/FFmpeg.framework/Versions/A/FFmpeg
     else
         install_name=@rpath/FFmpeg.framework/FFmpeg
     fi
-    printf '%s\n' '_av_*' '_avio_*' '_avcodec_*' '_avformat_*' '_avutil_*' '_avsubtitle_*' > "$build/exports.txt"
+    printf '%s\n' '_av_*' '_avio_*' '_avcodec_*' '_avformat_*' '_avutil_*' '_avsubtitle_*' '_swr_*' '_swresample_*' '_sws_*' '_swscale_*' > "$build/exports.txt"
     # System libraries the static libraries need, from their pkg-config files ("-framework X" stays
     # one word pair, duplicates are dropped).
     extra_libs=$(sed -n 's/^Libs: //p' "$prefix/lib/pkgconfig/libavformat.pc" "$prefix/lib/pkgconfig/libavcodec.pc" "$prefix/lib/pkgconfig/libavutil.pc" \
+        "$prefix/lib/pkgconfig/libswscale.pc" "$prefix/lib/pkgconfig/libswresample.pc" \
         | awk '{ for (i = 1; i <= NF; i++) { w = $i; if (w == "-framework") { w = w " " $(++i) }
-                 if (w ~ /^-L/ || w ~ /^-lav/ || seen[w]++) continue; printf "%s ", w } }')
+                 if (w ~ /^-L/ || w ~ /^-lav/ || w ~ /^-lsw/ || seen[w]++) continue; printf "%s ", w } }')
     # shellcheck disable=SC2086 # extra_libs is a list of linker words.
     "$cc" -target "$TRIPLE" -isysroot "$sysroot" -dynamiclib \
         -install_name "$install_name" \
         -compatibility_version 9.0.0 -current_version "$FFMPEG_VERSION" \
-        -Wl,-all_load "$prefix/lib/libavformat.a" "$prefix/lib/libavcodec.a" "$prefix/lib/libavutil.a" \
+        -Wl,-all_load "$prefix/lib/libavformat.a" "$prefix/lib/libavcodec.a" "$prefix/lib/libswscale.a" "$prefix/lib/libswresample.a" \
+        "$prefix/lib/libavutil.a" \
         -Wl,-exported_symbols_list,"$build/exports.txt" -Wl,-dead_strip -Wl,-dead_strip_dylibs -Wl,-x \
         $extra_libs -o "$build/FFmpeg"
 }

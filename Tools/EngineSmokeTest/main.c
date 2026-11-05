@@ -7,6 +7,7 @@
 //  MP4. See run.sh.
 //
 //  Usage: engine-smoke-test <input-url> <output-dir> <seconds> <record-start> <record-stop> <window-seconds> [vod]
+//         engine-smoke-test convert <input-file> <output.mp4>   (fluxo_remux_convert_file only)
 //  With "vod" the input is treated as on-demand: no reconnection, unlimited window, EXT-X-ENDLIST at the end.
 //  A master playlist (stream-test-master.m3u8) is written when the input has several audio tracks or text
 //  subtitles (see run_tracks.sh).
@@ -61,6 +62,13 @@ static void on_event(void *context, const FluxoRemuxEvent *event) {
 }
 
 int main(int argc, char **argv) {
+    if (argc == 4 && strcmp(argv[1], "convert") == 0) {
+        double duration = 0;
+        char error[512] = {0};
+        int ret = fluxo_remux_convert_file(argv[2], argv[3], &duration, error, sizeof(error));
+        printf("[test] convert ret=%d duration=%.2f %s\n", ret, duration, error);
+        return ret == 0 ? 0 : 1;
+    }
     if (argc < 7) {
         fprintf(stderr, "usage: %s <input-url> <output-dir> <seconds> <record-start> <record-stop> <window-seconds>\n", argv[0]);
         return 2;

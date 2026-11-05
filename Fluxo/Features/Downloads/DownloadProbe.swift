@@ -50,7 +50,7 @@ struct DownloadFailure: Error, Sendable {
     }
 
     static var unsupportedFormat: DownloadFailure {
-        DownloadFailure(message: String(localized: "This video format can't be played on this device, so it isn't downloaded.", comment: "Download error: the file is in a container the app cannot convert (such as AVI)."), isPermanent: true)
+        DownloadFailure(message: String(localized: "This video format can't be played on this device, so it isn't downloaded.", comment: "Download error: the file is in a format the app can neither play nor convert (such as an unknown video codec)."), isPermanent: true)
     }
 
     static var insufficientSpace: DownloadFailure {
@@ -104,7 +104,10 @@ struct DownloadProbe: Sendable {
     }
 
     private static let playableExtensions: Set<String> = ["mp4", "m4v", "mov", "mp3", "m4a", "aac", "wav"]
-    private static let remuxExtensions: Set<String> = ["mkv", "webm", "ts", "mts", "m2ts", "mpegts", "flv", "mpg", "mpeg", "vob"]
+    private static let remuxExtensions: Set<String> = [
+        "mkv", "mk3d", "webm", "ts", "mts", "m2ts", "m2t", "mpegts", "flv", "f4v", "mpg", "mpeg", "vob", "avi", "divx", "xvid", "wmv",
+        "asf", "ogv", "ogg", "ogm",
+    ]
 
     private static let session: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
@@ -206,9 +209,16 @@ struct DownloadProbe: Sendable {
         if starts(with: [0x00, 0x00, 0x01, 0xBA]) {
             return .remux("mpg")
         }
-        // AVI: the bundled FFmpeg has no AVI demuxer, so it can be neither converted nor played.
+        // AVI (RIFF), Windows Media (the ASF header object's GUID) and Ogg: converted into MP4 (with their audio and
+        // video converted to AAC / H.264 when the device does not decode them).
         if starts(with: Array("RIFF".utf8)), starts(with: Array("AVI ".utf8), at: 8) {
-            return nil
+            return .remux("avi")
+        }
+        if starts(with: [0x30, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11]) {
+            return .remux("wmv")
+        }
+        if starts(with: Array("OggS".utf8)) {
+            return .remux("ogv")
         }
         if starts(with: Array("ID3".utf8)) {
             return .file("mp3")

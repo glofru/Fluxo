@@ -129,7 +129,7 @@ struct DebugRouteContext {
         player.play(channel, present: present)
     }
 
-    private func prepareForPlayback() async {
+    func prepareForPlayback() async {
         player.presentationSourceID = nil
     }
 }
@@ -371,6 +371,15 @@ enum DebugRoutes {
             await context.play(PlayableChannel(id: UUID(), name: url.lastPathComponent, logo: nil, url: url), present: true)
             await context.wait(timeout: 5) { context.player.isPresented }
         },
+        DebugRoute("play-movie:<url>", "Plays a URL full screen as a playlist's movie (on demand: `.ts` and extensionless links too), like a movie entry.") { context, argument in
+            guard let url = URL(string: argument), url.scheme != nil else {
+                throw DebugRouteError.invalidArgument("play-movie", argument)
+            }
+            let item = ChannelItem(id: UUID(), playlistID: UUID(), name: url.lastPathComponent, logo: nil, url: url, groupName: "Movies", kind: .movie)
+            await context.prepareForPlayback()
+            context.player.play(item, present: true)
+            await context.wait(timeout: 5) { context.player.isPresented }
+        },
         DebugRoute("close-player", "Closes the player screen; playback continues in the mini player.") { context, _ in
             context.player.isPresented = false
         },
@@ -442,6 +451,9 @@ enum DebugRoutes {
         },
         DebugRoute("probe-playback[:<seconds>]", "Checks that playback continues with video frames (near <seconds>, when given).") { context, argument in
             try await DebugPlaybackProbe.check(context.player, near: Double(argument), route: "probe-playback")
+        },
+        DebugRoute("probe-tracks[:<a|v|av>]", "Checks that what plays has enabled audio and / or video tracks (default both) and logs their formats.") { context, argument in
+            try await DebugPlaybackProbe.checkTracks(context.player, expecting: argument.isEmpty ? "av" : argument, route: "probe-tracks")
         },
         DebugRoute("pip", "Starts Picture in Picture once the playing item allows it.") { context, _ in
             await context.wait { context.player.isPictureInPicturePossible }

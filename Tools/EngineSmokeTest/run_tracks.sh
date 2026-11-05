@@ -19,9 +19,9 @@ BIN="$WORK/engine-smoke-test"
 MEDIA="$WORK/media"
 mkdir -p "$MEDIA" "$WORK/vod" "$WORK/live"
 
-# shellcheck disable=SC2086 # FFMPEG_CFLAGS / FFMPEG_LDFLAGS are lists of words.
+# shellcheck disable=SC2086 # FFMPEG_CFLAGS / FFMPEG_LDFLAGS / FLUXO_ENGINE_SOURCES are lists of words.
 clang -O1 -g -Wall -Wextra -o "$BIN" -I "$ROOT/Fluxo/Features/Player/Engine" $FFMPEG_CFLAGS \
-    "$ROOT/Tools/EngineSmokeTest/main.c" "$ROOT/Fluxo/Features/Player/Engine/FluxoRemuxEngine.c" \
+    "$ROOT/Tools/EngineSmokeTest/main.c" $FLUXO_ENGINE_SOURCES \
     $FFMPEG_LDFLAGS
 
 cleanup() {

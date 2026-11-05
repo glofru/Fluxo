@@ -69545,7 +69545,16 @@
         }
       }
     },
+    "The video can't be converted while the app is in the background. Try again with the app open." : {
+      "comment" : "Error while saving a recording or a download whose video must be converted: the system does not allow it while the app is in the background."
+    },
     "Then say what you are looking for: a channel, a film, “football tonight”." : {},
+    "This can't be played: its audio format (%@) isn't supported." : {
+      "comment" : "Player error: an audio-only stream is in a format the app cannot decode or convert; the placeholder is the technical name of the audio codec, in English."
+    },
+    "This can't be played: its audio format isn't supported." : {
+      "comment" : "Player error: an audio-only stream is in a format (codec) the app cannot decode or convert."
+    },
     "This category is empty." : {
       "comment" : "Empty-state title — category and channel lists.",
       "localizations" : {
@@ -70454,6 +70463,12 @@
           }
         }
       }
+    },
+    "This video can't be played: its video format (%@) isn't supported." : {
+      "comment" : "Player error: the video is in a format the app cannot decode or convert; the placeholder is the technical name of the video codec, in English (for example AV1)."
+    },
+    "This video can't be played: its video format isn't supported." : {
+      "comment" : "Player error: the video is in a format (codec) the app cannot decode or convert."
     },
     "Time-shift buffer" : {
       "comment" : "Label (text with an icon) — Settings.",

@@ -11,8 +11,8 @@ Configure flags (plus per-slice toolchain flags):
   --disable-doc
   --disable-avdevice
   --disable-avfilter
-  --disable-swscale
-  --disable-swresample
+  --enable-swscale
+  --enable-swresample
   --enable-static
   --disable-shared
   --enable-pic
@@ -20,6 +20,7 @@ Configure flags (plus per-slice toolchain flags):
   --enable-pthreads
   --enable-zlib
   --enable-securetransport
+  --enable-videotoolbox
   --enable-network
   --enable-demuxer=mpegts
   --enable-demuxer=hls
@@ -39,6 +40,12 @@ Configure flags (plus per-slice toolchain flags):
   --enable-demuxer=mp3
   --enable-demuxer=h264
   --enable-demuxer=hevc
+  --enable-demuxer=avi
+  --enable-demuxer=asf
+  --enable-demuxer=ogg
+  --enable-demuxer=wav
+  --enable-demuxer=mpegvideo
+  --enable-demuxer=m4v
   --enable-muxer=mpegts
   --enable-muxer=mp4
   --enable-muxer=mov
@@ -64,6 +71,16 @@ Configure flags (plus per-slice toolchain flags):
   --enable-parser=mpegvideo
   --enable-parser=mpeg4video
   --enable-parser=opus
+  --enable-parser=dca
+  --enable-parser=mlp
+  --enable-parser=flac
+  --enable-parser=vorbis
+  --enable-parser=vp8
+  --enable-parser=vp9
+  --enable-parser=av1
+  --enable-parser=vc1
+  --enable-parser=h263
+  --enable-parser=mjpeg
   --enable-decoder=h264
   --enable-decoder=hevc
   --enable-decoder=aac
@@ -73,7 +90,56 @@ Configure flags (plus per-slice toolchain flags):
   --enable-decoder=mp3
   --enable-decoder=mp2
   --enable-decoder=mpeg2video
+  --enable-decoder=mpeg1video
+  --enable-decoder=mpeg4
+  --enable-decoder=msmpeg4v1
+  --enable-decoder=msmpeg4v2
+  --enable-decoder=msmpeg4v3
+  --enable-decoder=h263
+  --enable-decoder=h263p
+  --enable-decoder=flv
+  --enable-decoder=vc1
+  --enable-decoder=wmv1
+  --enable-decoder=wmv2
+  --enable-decoder=wmv3
+  --enable-decoder=vp8
+  --enable-decoder=vp9
+  --enable-decoder=theora
+  --enable-decoder=mjpeg
+  --enable-decoder=mp1
+  --enable-decoder=dca
+  --enable-decoder=truehd
+  --enable-decoder=mlp
+  --enable-decoder=flac
+  --enable-decoder=alac
+  --enable-decoder=opus
+  --enable-decoder=vorbis
+  --enable-decoder=wmav1
+  --enable-decoder=wmav2
+  --enable-decoder=wmapro
+  --enable-decoder=amrnb
+  --enable-decoder=amrwb
+  --enable-decoder=nellymoser
+  --enable-decoder=adpcm_ima_wav
+  --enable-decoder=adpcm_ms
+  --enable-decoder=pcm_s16le
+  --enable-decoder=pcm_s16be
+  --enable-decoder=pcm_s24le
+  --enable-decoder=pcm_s24be
+  --enable-decoder=pcm_s32le
+  --enable-decoder=pcm_s32be
+  --enable-decoder=pcm_f32le
+  --enable-decoder=pcm_f32be
+  --enable-decoder=pcm_u8
+  --enable-decoder=pcm_alaw
+  --enable-decoder=pcm_mulaw
+  --enable-decoder=pcm_bluray
+  --enable-decoder=pcm_dvd
+  --enable-encoder=aac
+  --enable-encoder=h264_videotoolbox
+  --enable-hwaccel=vp9_videotoolbox
   --enable-bsf=aac_adtstoasc
   --enable-bsf=h264_mp4toannexb
   --enable-bsf=hevc_mp4toannexb
   --enable-bsf=extract_extradata
+  --enable-bsf=h264_metadata

@@ -119,6 +119,10 @@ final class DownloadCenter {
     /// File transfers being stopped (their resume data is on its way): they start again only once it is kept.
     @ObservationIgnored private var stopping: Set<UUID> = []
     @ObservationIgnored private var convertingID: UUID?
+    /// A conversion found the video encoder unavailable (the app in the background): conversions start again once
+    /// the app is active.
+    @ObservationIgnored private var conversionsWaitForActiveApp = false
+    @ObservationIgnored private var activeObserver: NSObjectProtocol?
     @ObservationIgnored private var isStarted = false
     /// The transfers that survived a relaunch were matched with their records: the queue may start transfers.
     @ObservationIgnored private var isReady = false
@@ -159,6 +163,17 @@ final class DownloadCenter {
                 self?.networkDidReturn()
             }
         }
+        #if canImport(UIKit)
+        activeObserver = NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.conversionsWaitForActiveApp else {
+                    return
+                }
+                self.conversionsWaitForActiveApp = false
+                self.pump()
+            }
+        }
+        #endif
         verifyCompletedFiles()
         let needsTransport = records.contains { $0.status.isPending && $0.status != .failed }
         Task {
@@ -618,7 +633,7 @@ final class DownloadCenter {
         guard isReady else {
             return
         }
-        if convertingID == nil, let next = records.first(where: { $0.status == .converting }) {
+        if convertingID == nil, !conversionsWaitForActiveApp, let next = records.first(where: { $0.status == .converting }) {
             convert(next.id)
         }
         guard NetworkMonitor.shared.isOnline else {
@@ -888,6 +903,38 @@ final class DownloadCenter {
             return
         }
         try? FileManager.default.removeItem(at: folder(of: id).appendingPathComponent(Self.resumeDataFileName))
+        let status = record.status
+        // An MP4 / MOV whose tracks AVPlayer cannot all play (DTS or TrueHD audio, which AVFoundation leaves out,
+        // `hev1` HEVC, MPEG-4 Part 2 on iPhone) would play silently or without a picture offline: it is converted
+        // like a Matroska download. Streaming it does the same through the engine.
+        Task {
+            let reason = await PlaybackRoute.engineReason(for: AVURLAsset(url: url))
+            guard let current = self.record(id: id), current.status == status, current.transferFileName == name else {
+                return
+            }
+            guard let reason else {
+                self.finishFile(id, url: url, name: name)
+                return
+            }
+            Self.logger.info("The downloaded file is converted: \(reason, privacy: .public)")
+            let source = url.deletingLastPathComponent().appendingPathComponent("source.\(url.pathExtension)")
+            do {
+                try? FileManager.default.removeItem(at: source)
+                try FileManager.default.moveItem(at: url, to: source)
+            } catch {
+                self.finishFile(id, url: url, name: name)
+                return
+            }
+            self.update(id) {
+                $0.status = .converting
+                $0.fraction = 1
+                $0.transferFileName = source.lastPathComponent
+            }
+            self.pump()
+        }
+    }
+
+    private func finishFile(_ id: UUID, url: URL, name: String) {
         let size = Self.allocatedSize(of: url)
         update(id) {
             $0.status = .completed
@@ -1017,7 +1064,7 @@ final class DownloadCenter {
                 return
             }
             switch result {
-            case .success(let duration):
+            case .converted(let duration):
                 try? FileManager.default.removeItem(at: source)
                 let size = Self.allocatedSize(of: destination)
                 update(id) {
@@ -1031,11 +1078,34 @@ final class DownloadCenter {
                     $0.isMissing = false
                 }
                 didComplete(id)
-            case .failure(let failure):
+            case .failed(let failure):
                 try? FileManager.default.removeItem(at: source)
                 fail(id, failure, isNetworkError: false)
+            case .later:
+                // Still Converting, with its original: converted again once the app is active.
+                Self.logger.info("The video encoder is unavailable: the conversion waits for the app to be active")
+                conversionsWaitForActiveApp = true
+                resumeConversionsLaterIfActive()
             }
             pump()
+        }
+    }
+
+    /// The encoder was refused although the app is active (it became active during the conversion, or a passing
+    /// failure): conversions start again after a while rather than at the next activation.
+    private func resumeConversionsLaterIfActive() {
+        #if canImport(UIKit)
+        guard UIApplication.shared.applicationState == .active else {
+            return
+        }
+        #endif
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(30))
+            guard let self, self.conversionsWaitForActiveApp else {
+                return
+            }
+            self.conversionsWaitForActiveApp = false
+            self.pump()
         }
     }
 
@@ -1414,9 +1484,18 @@ final class BackgroundActivity {
 }
 #endif
 
-/// Copies a downloaded file into MP4 with the remux engine (no re-encoding).
+/// Copies a downloaded file into MP4 with the remux engine: streams AVPlayer plays are copied, the others converted
+/// (audio to AAC, video to H.264, every picture kept).
 enum DownloadConversion {
-    nonisolated static func convert(_ source: URL, to destination: URL) -> Result<TimeInterval, DownloadFailure> {
+    enum Outcome: Sendable {
+        case converted(TimeInterval)
+        case failed(DownloadFailure)
+        /// The video must be converted and the system refuses to encode it now (the app is in the background): the
+        /// original is kept, to be converted again once the app is active.
+        case later
+    }
+
+    nonisolated static func convert(_ source: URL, to destination: URL) -> Outcome {
         // Written under a hidden name and renamed when complete, so a partial MP4 is never taken for a finished one.
         let temporary = destination.deletingLastPathComponent().appendingPathComponent(".converting.mp4")
         try? FileManager.default.removeItem(at: temporary)
@@ -1431,16 +1510,19 @@ enum DownloadConversion {
         }
         guard result == 0 else {
             try? FileManager.default.removeItem(at: temporary)
+            if result == Int32(FLUXO_REMUX_ERROR_ENCODER_UNAVAILABLE) {
+                return .later
+            }
             let message = buffer.withUnsafeBufferPointer { String(cString: $0.baseAddress!) }
             let failure = DownloadFailure.unsupportedFormat
-            return .failure(message.isEmpty ? failure : DownloadFailure(message: "\(failure.message) (\(EngineMessage.localized(message)))", isPermanent: true))
+            return .failed(message.isEmpty ? failure : DownloadFailure(message: "\(failure.message) (\(EngineMessage.localized(message)))", isPermanent: true))
         }
         do {
             _ = try FileManager.default.replaceItemAt(destination, withItemAt: temporary)
         } catch {
             try? FileManager.default.removeItem(at: temporary)
-            return .failure(DownloadFailure(message: error.localizedDescription))
+            return .failed(DownloadFailure(message: error.localizedDescription))
         }
-        return .success(duration)
+        return .converted(duration)
     }
 }

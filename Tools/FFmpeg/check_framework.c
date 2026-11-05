@@ -11,6 +11,9 @@
 #include <libavcodec/bsf.h>
 #include <libavformat/avformat.h>
 #include <libavutil/avutil.h>
+#include <libavutil/hwcontext.h>
+#include <libswresample/swresample.h>
+#include <libswscale/swscale.h>
 
 static int failures = 0;
 
@@ -62,7 +65,8 @@ int main(int argc, char **argv) {
     printf("license: %s\n", avformat_license());
     expect(strstr(avformat_license(), "LGPL") != NULL, "LGPL license", avformat_license());
 
-    const char *demuxers[] = {"mpegts", "hls", "webvtt", "mov", "flv", "live_flv", "matroska", "mpeg", "rtsp", "sdp", "aac", "mp3", "h264", "hevc"};
+    const char *demuxers[] = {"mpegts", "hls", "webvtt", "mov", "flv", "live_flv", "matroska", "mpeg", "rtsp", "sdp", "aac", "mp3", "h264", "hevc",
+                              "avi", "asf", "ogg", "wav", "mpegvideo", "m4v"};
     for (size_t i = 0; i < sizeof(demuxers) / sizeof(*demuxers); i++) {
         expect(av_find_input_format(demuxers[i]) != NULL, "demuxer", demuxers[i]);
     }
@@ -75,15 +79,25 @@ int main(int argc, char **argv) {
     for (size_t i = 0; i < sizeof(protocols) / sizeof(*protocols); i++) {
         expect(has_protocol(protocols[i]), "protocol", protocols[i]);
     }
-    const char *bsfs[] = {"aac_adtstoasc", "h264_mp4toannexb", "hevc_mp4toannexb", "extract_extradata"};
+    const char *bsfs[] = {"aac_adtstoasc", "h264_mp4toannexb", "hevc_mp4toannexb", "extract_extradata", "h264_metadata"};
     for (size_t i = 0; i < sizeof(bsfs) / sizeof(*bsfs); i++) {
         expect(av_bsf_get_by_name(bsfs[i]) != NULL, "bitstream filter", bsfs[i]);
     }
+    // Probing (the first line), then what the converter decodes (FluxoTranscoder.c).
     const enum AVCodecID decoders[] = {AV_CODEC_ID_H264, AV_CODEC_ID_HEVC, AV_CODEC_ID_AAC, AV_CODEC_ID_AC3, AV_CODEC_ID_EAC3, AV_CODEC_ID_MP3,
-                                       AV_CODEC_ID_MP2, AV_CODEC_ID_MPEG2VIDEO};
+                                       AV_CODEC_ID_MP2, AV_CODEC_ID_MPEG2VIDEO,
+                                       AV_CODEC_ID_MPEG1VIDEO, AV_CODEC_ID_MPEG4, AV_CODEC_ID_MSMPEG4V3, AV_CODEC_ID_H263, AV_CODEC_ID_FLV1,
+                                       AV_CODEC_ID_VC1, AV_CODEC_ID_WMV3, AV_CODEC_ID_WMV2, AV_CODEC_ID_VP8, AV_CODEC_ID_VP9, AV_CODEC_ID_THEORA,
+                                       AV_CODEC_ID_MJPEG, AV_CODEC_ID_DTS, AV_CODEC_ID_TRUEHD, AV_CODEC_ID_MLP, AV_CODEC_ID_FLAC, AV_CODEC_ID_ALAC,
+                                       AV_CODEC_ID_OPUS, AV_CODEC_ID_VORBIS, AV_CODEC_ID_WMAV2, AV_CODEC_ID_WMAPRO, AV_CODEC_ID_AMR_NB,
+                                       AV_CODEC_ID_AAC_LATM, AV_CODEC_ID_PCM_S16LE, AV_CODEC_ID_PCM_S24LE, AV_CODEC_ID_PCM_BLURAY, AV_CODEC_ID_PCM_DVD};
     for (size_t i = 0; i < sizeof(decoders) / sizeof(*decoders); i++) {
         expect(avcodec_find_decoder(decoders[i]) != NULL, "decoder", avcodec_get_name(decoders[i]));
     }
+    expect(avcodec_find_encoder(AV_CODEC_ID_AAC) != NULL, "encoder", "aac");
+    expect(avcodec_find_encoder_by_name("h264_videotoolbox") != NULL, "encoder", "h264_videotoolbox");
+    expect(av_hwdevice_find_type_by_name("videotoolbox") == AV_HWDEVICE_TYPE_VIDEOTOOLBOX, "hardware device", "videotoolbox");
+    expect(swresample_version() > 0 && swscale_version() > 0, "library", "libswresample / libswscale");
     printf("components: %s\n", failures == 0 ? "ok" : "MISSING");
 
     for (int i = 1; i < argc; i++) {

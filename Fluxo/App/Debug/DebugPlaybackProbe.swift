@@ -40,6 +40,10 @@ enum DebugPlaybackProbe {
             attachOutput(to: item)
         }
         let deadline = ContinuousClock.now + .seconds(timeout)
+        // A short skip (5 s back) lands within 8 s of where it started: the tolerance shrinks with the distance, so the
+        // sample does not start before the seek has landed.
+        let before = player.player.currentItem?.currentTime().seconds ?? 0
+        let tolerance = target.map { max(1.5, min(8, abs($0 - before) / 2)) } ?? 8
         func isThere() -> Bool {
             guard player.playbackState == .playing else {
                 return false
@@ -47,7 +51,7 @@ enum DebugPlaybackProbe {
             guard let target, let time = player.player.currentItem?.currentTime().seconds, time.isFinite else {
                 return true
             }
-            return abs(time - target) <= 8
+            return abs(time - target) <= tolerance
         }
         while !isThere() && ContinuousClock.now < deadline {
             try? await Task.sleep(for: .milliseconds(100))
@@ -81,6 +85,44 @@ enum DebugPlaybackProbe {
         if !problems.isEmpty {
             throw DebugRouteError.check("\(route): \(problems.joined(separator: ", ")) [\(sample.description)]")
         }
+    }
+
+    /// Fails unless the playing item has enabled tracks of the expected kinds (`a`: audio, `v`: video), and logs
+    /// their formats (`avc1` and `aac` for streams the engine converted; see Tools/Simulator/format-matrix.sh).
+    static func checkTracks(_ player: AVPlayerViewModel, expecting: String, route: String) async throws {
+        let deadline = ContinuousClock.now + .seconds(30)
+        while player.playbackState != .playing && ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        var video: [String] = []
+        var audio: [String] = []
+        for track in player.player.currentItem?.tracks ?? [] where track.isEnabled {
+            guard let asset = track.assetTrack else {
+                continue
+            }
+            let formats = ((try? await asset.load(.formatDescriptions)) ?? []).map { fourCC(CMFormatDescriptionGetMediaSubType($0)) }
+            if asset.mediaType == .video {
+                video += formats.isEmpty ? ["?"] : formats
+            } else if asset.mediaType == .audio {
+                audio += formats.isEmpty ? ["?"] : formats
+            }
+        }
+        let description = "video=\(video) audio=\(audio) route=\(String(describing: player.route))"
+        DebugLaunchOptions.logger.notice("Playback tracks after \(route, privacy: .public): \(description, privacy: .public)")
+        var problems: [String] = []
+        if expecting.contains("v") && video.isEmpty {
+            problems.append("no video track")
+        }
+        if expecting.contains("a") && audio.isEmpty {
+            problems.append("no audio track")
+        }
+        if !problems.isEmpty {
+            throw DebugRouteError.check("\(route): \(problems.joined(separator: ", ")) [\(description)]")
+        }
+    }
+
+    private static func fourCC(_ value: FourCharCode) -> String {
+        String(bytes: [24, 16, 8, 0].map { UInt8((value >> $0) & 0xFF) }, encoding: .ascii)?.trimmingCharacters(in: .whitespaces) ?? "?"
     }
 
     private static func attachOutput(to item: AVPlayerItem) {

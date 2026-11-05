@@ -17,10 +17,10 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 WORK=$(mktemp -d /tmp/fluxo-engine-leaks.XXXXXX)
 BIN="$WORK/engine-churn"
 
-# shellcheck disable=SC2086 # FFMPEG_CFLAGS / FFMPEG_LDFLAGS are lists of words.
+# shellcheck disable=SC2086 # FFMPEG_CFLAGS / FFMPEG_LDFLAGS / FLUXO_ENGINE_SOURCES are lists of words.
 clang -O1 -g -Wall -Wextra -o "$BIN" \
     -I "$ROOT/Fluxo/Features/Player/Engine" $FFMPEG_CFLAGS \
-    "$ROOT/Tools/EngineSmokeTest/churn.c" "$ROOT/Fluxo/Features/Player/Engine/FluxoRemuxEngine.c" \
+    "$ROOT/Tools/EngineSmokeTest/churn.c" $FLUXO_ENGINE_SOURCES \
     $FFMPEG_LDFLAGS
 
 cleanup() {

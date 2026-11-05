@@ -204,10 +204,16 @@ int32_t fluxo_remux_request_segment(FluxoRemuxSession *session, int64_t index, i
 /// After it returns no further callback is delivered. Must not be called from the callback.
 void fluxo_remux_destroy(FluxoRemuxSession *session);
 
+/// fluxo_remux_convert_file: video that must be converted found no video encoder for a few seconds (VideoToolbox
+/// refuses to encode while the app is in the background). The input is intact: convert it again later, with the
+/// app in the foreground.
+enum { FLUXO_REMUX_ERROR_ENCODER_UNAVAILABLE = -1447385158 };
+
 /// Synchronously remuxes a local media file (for example a recording) into another container,
-/// chosen from the output file extension (e.g. ".mp4"). Video and audio are copied, timestamps
-/// start at zero. On failure the output file is removed and a negative value is returned with a
-/// description in `error_message`. `duration_seconds` may be NULL.
+/// chosen from the output file extension (e.g. ".mp4"). Video and audio are copied (what AVPlayer cannot
+/// decode is converted: audio to AAC, video to H.264, every picture kept), timestamps start at zero.
+/// On failure the output file is removed and a negative value is returned with a description in
+/// `error_message` (FLUXO_REMUX_ERROR_ENCODER_UNAVAILABLE: try again later). `duration_seconds` may be NULL.
 int32_t fluxo_remux_convert_file(const char *input_path, const char *output_path, double *duration_seconds,
                                  char *error_message, int32_t error_message_size);
 

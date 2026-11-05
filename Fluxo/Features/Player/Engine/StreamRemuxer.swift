@@ -550,6 +550,19 @@ enum EngineMessage {
             }
             return String(localized: "Unsupported stream type", comment: "Player error: the stream uses a protocol the app cannot open.")
         }
+        // FluxoRemuxEngine.c: an input whose video (or, without video, audio) the engine can neither copy nor convert.
+        // The codec name comes from FFmpeg ("Windows Media Video 9 Screen", "AV1"), in English.
+        for (prefix, isVideo) in [("Unsupported video format", true), ("Unsupported audio format", false)] where message.hasPrefix(prefix) {
+            let codec = message.dropFirst(prefix.count).drop { $0 == ":" || $0 == " " }
+            if codec.isEmpty || codec == "unknown" {
+                return isVideo
+                    ? String(localized: "This video can't be played: its video format isn't supported.", comment: "Player error: the video is in a format (codec) the app cannot decode or convert.")
+                    : String(localized: "This can't be played: its audio format isn't supported.", comment: "Player error: an audio-only stream is in a format (codec) the app cannot decode or convert.")
+            }
+            return isVideo
+                ? String(localized: "This video can't be played: its video format (\(String(codec))) isn't supported.", comment: "Player error: the video is in a format the app cannot decode or convert; the placeholder is the technical name of the video codec, in English (for example AV1).")
+                : String(localized: "This can't be played: its audio format (\(String(codec))) isn't supported.", comment: "Player error: an audio-only stream is in a format the app cannot decode or convert; the placeholder is the technical name of the audio codec, in English.")
+        }
         let parts = message.split(separator: ": ", maxSplits: 1).map(String.init)
         guard let stage = parts.first, let localizedStage = stages[stage] else {
             return message
@@ -574,6 +587,7 @@ enum EngineMessage {
             "Unable to open the recording": String(localized: "Unable to open the recording", comment: "Error while saving a recording."),
             "Unable to create the output file": String(localized: "Unable to create the output file", comment: "Error while saving a recording."),
             "Unable to convert the recording": String(localized: "Unable to convert the recording", comment: "Error while saving a recording."),
+            "Video encoder unavailable": String(localized: "The video can't be converted while the app is in the background. Try again with the app open.", comment: "Error while saving a recording or a download whose video must be converted: the system does not allow it while the app is in the background."),
         ]
     }
 }

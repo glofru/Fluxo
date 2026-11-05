@@ -10,8 +10,8 @@ the mini player shows only while something plays).
 
 Live streams go through a small C remux engine
 (`Fluxo/Features/Player/Engine`) built on FFmpeg's libavformat, libavcodec
-and libavutil. The engine copies the stream into HLS segments on disk, and a
-local HTTP server bound to `127.0.0.1` gives them to AVPlayer.
+and libavutil. The engine copies the stream into HLS segments on disk (converting the audio and video
+AVPlayer cannot decode, see "Formats"), and a local HTTP server bound to `127.0.0.1` gives them to AVPlayer.
 
 There is nothing to install: FFmpeg ships with the repository (see "FFmpeg" below), and the
 Swift packages, [FlyingFox](https://github.com/swhitty/FlyingFox) (the loopback HTTP server) and
@@ -49,34 +49,43 @@ manual runs (`swiftlint lint`); it is not part of the build.
 `Vendor/FFmpeg/FFmpeg.xcframework` is a minimal FFmpeg 9.0.2 built from the official release
 tarball by `Tools/FFmpeg/build-xcframework.sh` (pinned version and SHA-256, plus the release
 signature when `gpg` is installed). It contains one dynamic framework, `FFmpeg.framework`,
-with libavformat, libavcodec and libavutil linked into a single library that exports only the
-public API (`av_*`, `avio_*`, `avcodec_*`, `avformat_*`, `avutil_*`, `avsubtitle_*`; no internal
-`avpriv_*` / `ff_*` symbols), for iOS (arm64), the iOS Simulator (arm64, x86_64) and macOS
+with libavformat, libavcodec, libswscale, libswresample and libavutil linked into a single library that exports
+only the public API (`av_*`, `avio_*`, `avcodec_*`, `avformat_*`, `avutil_*`, `avsubtitle_*`, `swr_*`, `sws_*`; no
+internal `avpriv_*` / `ff_*` symbols), for iOS (arm64), the iOS Simulator (arm64, x86_64) and macOS
 (arm64, x86_64: macOS 26 still runs on Intel Macs, and Xcode builds universal Release apps).
 The public headers are in `Vendor/FFmpeg/include`, and `Vendor/FFmpeg/BUILD_INFO.txt` lists the
-exact configuration.
+exact configuration. The iOS slice is about 8 MB.
 
-- **Remux only**: everything is disabled except what the engine reaches: the MPEG-TS, HLS,
-  MP4/MOV, FLV, Matroska, MPEG-PS, RTSP/RTP and elementary audio/video demuxers, WebVTT (the HLS
-  demuxer probes the subtitle renditions of a master playlist and fails without it), the MPEG-TS and
-  MP4 muxers, the file, HTTP(S), TCP, TLS, UDP, RTP, RTMP(S/T) and AES (`crypto`) protocols, the
-  H.264 / HEVC / AAC / AC-3 / MPEG audio parsers, the decoders `avformat_find_stream_info` uses
-  to read stream parameters (H.264, HEVC, AAC, AC-3, E-AC-3, MP3, and the MP2 audio and MPEG-2
-  video of DVB-derived channels; without a decoder a live input waits out the whole 3 s probe),
-  and the bitstream filters the muxers insert (`aac_adtstoasc`, `h264_mp4toannexb`,
-  `hevc_mp4toannexb`, `extract_extradata`).
-  No filters, scalers, resamplers, devices or programs. `srt://` needs libsrt (and a crypto
-  library), which is not included: such channels fail at once with "Unsupported stream type".
+- **What is in it**: everything is disabled except what the engine reaches:
+  - demuxers: MPEG-TS (and M2TS), HLS, MP4 / MOV / 3GP, FLV, Matroska / WebM, AVI, ASF (WMV), Ogg, MPEG-PS (VOB),
+    WAV, RTSP/RTP and elementary audio/video, and WebVTT (the HLS demuxer probes the subtitle renditions of a master
+    playlist and fails without it);
+  - the MPEG-TS and MP4 muxers; the file, HTTP(S), TCP, TLS, UDP, RTP, RTMP(S/T) and AES (`crypto`) protocols;
+  - parsers and the bitstream filters the muxers insert (`aac_adtstoasc`, `h264_mp4toannexb`, `hevc_mp4toannexb`,
+    `extract_extradata`);
+  - decoders: the ones `avformat_find_stream_info` uses to read stream parameters (H.264, HEVC, AAC, AC-3, E-AC-3,
+    MP3, and the MP2 audio and MPEG-2 video of DVB-derived channels; without a decoder a live input waits out the
+    whole 3 s probe), and the ones the converter decodes (see "Formats" below): MPEG-1 / MPEG-2, MPEG-4 Part 2 and
+    Microsoft's MPEG-4 variants, H.263 / Sorenson Spark, VC-1 / WMV 7-9, VP8, VP9, Theora, Motion JPEG; DTS, Dolby
+    TrueHD / MLP, FLAC, ALAC, Opus, Vorbis, MP1 / MP2, WMA 1 / 2 / Pro, AMR-NB / WB, Nellymoser, IMA / MS ADPCM and
+    the PCM variants of WAV, AVI, MOV, Blu-ray and DVD;
+  - encoders: FFmpeg's own AAC encoder, and `h264_videotoolbox` (the system's hardware H.264 encoder through
+    VideoToolbox); the VideoToolbox VP9 decoder (`vp9_videotoolbox`) for devices that have one; libswscale and
+    libswresample for the pixel and sample conversions.
+  No filters, devices or programs. `srt://` needs libsrt (and a crypto library), which is not included: such channels
+  fail at once with "Unsupported stream type".
 - **HTTPS** uses Secure Transport, the TLS backend FFmpeg has for Apple platforms without an
   extra library, with the system trust store and certificate verification on (TLS 1.2). The only
-  external libraries are Secure Transport and the system zlib, so nothing is taken from Homebrew.
-- **License**: the build enables no GPL, version 3 or non-free component, so it is LGPL v2.1 or
+  external libraries are the system's (Secure Transport, zlib, VideoToolbox, CoreMedia, CoreVideo), so nothing is
+  taken from Homebrew.
+- **License**: the build enables no GPL, version 3 or non-free component (no libx264, libfdk-aac or other external
+  codec library: the AAC encoder is FFmpeg's own, H.264 is encoded by the operating system), so it is LGPL v2.1 or
   later. It is linked dynamically and embedded as `Fluxo.app/Frameworks/FFmpeg.framework`
   (`Contents/Frameworks` on macOS), so it can be replaced with another build of the same
   library; the license text is in `Vendor/FFmpeg/LICENSE` and inside the framework. Anyone
   distributing the app must also offer the FFmpeg source (the release tarball) and this build
   script.
-- **Rebuild** (about 5 minutes; Xcode only, no Homebrew packages): `Tools/FFmpeg/build-xcframework.sh`.
+- **Rebuild** (about 10 minutes; Xcode only, no Homebrew packages): `Tools/FFmpeg/build-xcframework.sh`.
   To add a component, add it to the lists at the top of the script, rebuild and run
   `Tools/FFmpeg/check.sh`, which checks the version, the license and the components, and opens
   any URLs passed to it (`Tools/FFmpeg/check.sh https://…` checks HTTPS).
@@ -173,10 +182,11 @@ Movies and episodes (never live channels) download to watch without a network (`
     player's menu lists only what was downloaded, `AVAssetCache`). The `.movpkg` stays where AVFoundation puts it,
     stored relative to the home folder (the container moves with updates), with the `important` storage priority.
   - MP4 / MOV / M4V / MP3 / AAC download as they are in a background `URLSession`.
-  - What AVPlayer cannot play (Matroska / WebM, MPEG-TS, FLV, MPEG-PS) downloads the same way, then the remux engine
-    copies it into an MP4 (`fluxo_remux_convert_file`, no re-encoding; video and audio, not the subtitles), so it plays
-    and seeks like any file. AVI is refused (the bundled FFmpeg has no AVI demuxer), as are links that return a web
-    page.
+  - What AVPlayer cannot play (Matroska / WebM, AVI, WMV, Ogg, MPEG-TS, FLV, MPEG-PS) downloads the same way, then the
+    remux engine copies it into an MP4 (`fluxo_remux_convert_file`; video and audio, not the subtitles), converting the
+    streams AVPlayer does not decode (DTS audio, Xvid video, ...: see "Formats"), so it plays and seeks like any file.
+    A file whose video the engine can neither copy nor convert (AV1 without an AV1 decoder) fails at the conversion with
+    "This video format can't be played on this device"; links that return a web page are refused.
 - **Queue**: two transfers at a time, the others wait in order; pause (file transfers keep resume data and continue
   where they stopped, HLS tasks are suspended), resume, cancel, retry, delete; Pause All / Resume All. Network failures
   are retried three times from where they stopped, and again when the network returns; a refused or vanished link
@@ -275,10 +285,12 @@ CHANNELS=100000 Tools/HomeQueriesCheck/run.sh
   AVPlayer reads from the loopback server (`127.0.0.1:19123` only).
   Live channels with `.m3u8` URLs play directly in AVPlayer, so they use the
   DVR window of the source playlist (if it has one) and cannot be recorded.
-  Movies and episodes AVPlayer cannot open go through the engine's on-demand mode: Matroska, AVI, WebM,
-  FLV, MPEG-PS, MPEG-TS files (Xtream Codes `…/movie/user/pass/123.ts`), extensionless and `.php`
-  URLs. A movie that plays directly but fails (a server without byte ranges), whose video AVPlayer cannot
-  decode (HEVC tagged `hev1`, which plays as audio over black) or that keeps waiting for data for 12 s
+  Movies and episodes AVPlayer cannot open go through the engine's on-demand mode: Matroska, WebM, AVI,
+  WMV / ASF, Ogg, FLV, MPEG-PS / VOB, MPEG-TS / M2TS files (Xtream Codes `…/movie/user/pass/123.ts`),
+  extensionless and `.php` URLs (see "Formats" below). A movie that plays directly but fails (a server without
+  byte ranges), whose video or audio AVPlayer cannot decode (HEVC tagged `hev1`, which plays as audio over black;
+  DTS or TrueHD, which AVFoundation does not even list, so the movie seems silent; on iPhone and iPad MPEG-4
+  Part 2, H.263 and MPEG-2 video: `PlaybackRoute.engineReason`) or that keeps waiting for data for 12 s
   (servers that allow one connection per account stall AVPlayer's seeks) moves to the engine, at the
   same position.
 - **On demand through the engine** (`fluxo_remux_request_segment`): the engine plans a complete VOD
@@ -385,6 +397,145 @@ CHANNELS=100000 Tools/HomeQueriesCheck/run.sh
     (`GCKMediaTextTrackStyle.createDefault()`). Subtitle files are not cast: the receiver would have to fetch them
     from this device, and the app never serves anything beyond 127.0.0.1.
 
+### Formats
+
+AVPlayer plays HLS and MP4 / M4V / MOV / 3GP itself; everything else goes through the remux engine (see "Routing"
+above). The engine copies every stream AVPlayer decodes from HLS and converts the others while it reads the input
+(`Engine/FluxoTranscoder.c`), so live channels, movies, episodes, recordings and downloads all get the same formats:
+
+| Containers | How they play |
+|---|---|
+| HLS (`.m3u8`) | AVPlayer |
+| MP4, M4V, MOV, 3GP | AVPlayer; the engine when AVPlayer fails, cannot decode a track, lists no audio track (DTS, TrueHD in MP4) or, on iPhone and iPad, the video is MPEG-4 Part 2 (beyond the Simple Profile at SD), H.263 or MPEG-2 |
+| Matroska / WebM (`.mkv`, `.mk3d`, `.mka`, `.webm`), AVI (`.avi`, `.divx`, `.xvid`), WMV / ASF (`.wmv`, `.asf`, `.wma`), Ogg (`.ogg`, `.ogv`, `.oga`, `.opus`), FLV (`.flv`, `.f4v`), MPEG-PS (`.mpg`, `.mpeg`, `.vob`) | the engine |
+| MPEG-TS, M2TS, MTS (`.ts`, `.m2ts`, `.mts`, `.m2t`, `.trp`), extensionless and `.php` links | the engine, live or on demand by the playlist entry's kind |
+
+| Video | iPhone and iPad | Mac |
+|---|---|---|
+| H.264 (8-bit 4:2:0) | copied | copied |
+| H.264 High 10, 4:2:2, 4:4:4; H.264 / HEVC with B-frames in AVI (no presentation times to copy) | converted to 8-bit H.264 | 10-bit 4:2:0 copied (the Mac decodes it), others converted |
+| HEVC (`hvc1`, `hev1`, Main 10, HDR10) | copied, in fragmented MP4 tagged `hvc1` | same |
+| AV1 | copied (fragmented MP4) on devices with an AV1 decoder (iPhone 15 Pro and later, M3 and later); elsewhere "This video can't be played: its video format (…) isn't supported." | same |
+| VP9 | converted (AVPlayer does not decode VP9 from HLS, even where VideoToolbox can; VideoToolbox decodes it on devices that have a VP9 decoder) | same |
+| MPEG-1 / MPEG-2 | converted, interlaced pictures deinterlaced | copied |
+| MPEG-4 Part 2 (Xvid, DivX), DivX 3 / MS-MPEG4, H.263, Sorenson Spark, VC-1, WMV 7 / 8 / 9, VP8, Theora, Motion JPEG | converted | same |
+| anything else (RealVideo, ProRes outside MOV, ...) | "unsupported video format" error | same |
+
+| Audio | iPhone and iPad | Mac |
+|---|---|---|
+| AAC-LC, HE-AAC, AC-3, E-AC-3 (Dolby Atmos), MP3 | copied | copied |
+| MP2 (DVB channels) | converted to AAC | copied |
+| DTS (core and DTS-HD), Dolby TrueHD / MLP, FLAC, ALAC, Opus, Vorbis, PCM (WAV, AVI, MOV, Blu-ray, DVD), WMA 1 / 2 / Pro, AMR, ADPCM, Nellymoser, AAC LATM (DVB-T2), AAC Main / LTP | converted to AAC-LC (mono, stereo or 5.1, at most 48 kHz) | same |
+
+Subtitles: SubRip, ASS / SSA, WebVTT and timed text become WebVTT renditions ("Audio tracks and subtitles");
+bitmap subtitles (PGS, DVB, VobSub) are not shown.
+
+- **Converting**: audio with FFmpeg's decoders and its AAC encoder (192 kbit/s stereo, 384 kbit/s 5.1, the fast
+  coder); video with FFmpeg's decoders (VP9 with VideoToolbox's decoder where there is one) and the system's
+  hardware H.264 encoder (`h264_videotoolbox`, power-efficient mode, no B-frames, about 0.12 bit per pixel:
+  1.5 Mbit/s for SD, about 6 Mbit/s for 1080p25), with a key frame at every segment start, so seeking a converted
+  movie works like any other (the segment of the new position is converted on request, from the key frame before
+  it). Interlaced MPEG-2 and VC-1 pictures get a vertical blend; HDR VP9 becomes SDR. At most four audio tracks of
+  one input are converted (the default first); each converted track is still an HLS rendition with its language.
+- **Battery**: copying stays the norm (nothing is decoded); audio conversion costs a few percent of one core. Video
+  conversion decodes in software (except VP9 on devices with a VP9 decoder) and encodes in hardware; on demand, the
+  engine converts its 60 s read-ahead in a burst and then rests, so the cost is a short burst per minute rather than
+  a constant load. A live MPEG-2 channel on iPhone is converted continuously. MPEG-4 Part 2 in MP4 / MOV at the
+  Simple Profile and up to 640 × 480 (what iPhone and iPad list among their video formats) plays directly;
+  Advanced Simple (Xvid, DivX) is converted.
+- **Timestamps**: the engine moves timestamps to its own timeline as the input gives the packets, before anything
+  is converted, so a live source that starts its clock again (a restart, a restreamer that switches source, a
+  spliced programme) jumps at the same moment on every stream. A converted picture whose time goes back anyway (a
+  container without that handling) starts a new encoder at the new time, keeping the key frame interval.
+- **Background and Picture in Picture**: converted video needs the hardware encoder, and the system may refuse
+  it while the app is in the background. The engine then cuts the segments on the audio, so the sound goes on
+  (the picture stops), and the picture comes back with a key frame once an encoder opens again (tried about once
+  a second). On demand, the segments read ahead meanwhile stay without a picture until the movie is opened again.
+  Copied video is not affected. Not yet checked on a device (the Simulator and the Mac never refuse the encoder;
+  `FLUXO_TEST_REFUSE_ENCODER` simulates it in `run_converted.sh`).
+- **Downloads** (`DownloadConversion`): files that are not MP4 / MOV (Matroska, AVI, WMV, Ogg, MPEG-TS, ...), and
+  MP4 / MOV files with a track AVPlayer does not play (DTS or TrueHD audio, `hev1` HEVC; on iPhone and iPad
+  MPEG-4 Part 2 beyond the Simple Profile), are converted into MP4 after the download with the same rules; MP3 and
+  MP2 audio become AAC there too (AVFoundation does not list MPEG audio stored in MP4). A conversion keeps every
+  picture: when the video encoder is refused (the app went to the background) it waits a few seconds, then stops
+  and runs again once the app is active, from the original that it keeps.
+- **Checks**: `Tools/EngineSmokeTest/run_formats.sh` (macOS; `IPHONE=1` decides like an iPhone) and
+  `Tools/Simulator/format-matrix.sh` (the app in the iOS Simulator) play one file of each combination below, served
+  on 127.0.0.1, and check frames, audio, skipping, scrubbing and resuming. Last run:
+
+| Case (container-video-audio) | macOS | iOS (Simulator) |
+|---|---|---|
+| `mp4-h264-aac` | direct: avc1 / aac | direct: avc1 / aac |
+| `m4v-h264-aac` | direct: avc1 / aac | — |
+| `mov-h264-alac` | direct: avc1 / alac | — |
+| `mov-mpeg4-aac` | engine (fallback): avc1 / aac | engine: avc1 / aac |
+| `mp4-mpeg4sp-aac` | direct: mp4v / aac | direct: mp4v / aac |
+| `mp4-h264-ac3` | direct: avc1 / ac-3 | — |
+| `mp4-hevc-eac3` | direct: hvc1 / ec-3 | direct: hvc1 / ec-3 |
+| `mp4-hev1-aac` | engine (fallback): hvc1 / aac | engine: hvc1 / aac |
+| `mp4-h264-dts` | engine (fallback): avc1 / aac | engine: avc1 / aac |
+| `mp4-h264-opus` | direct: avc1 / opus | — |
+| `mp4-h264-flac` | direct: avc1 / flac | — |
+| `3gp-h263-aac` | direct: h263 / aac | engine: avc1 / aac |
+| `mkv-h264-aac` | engine: avc1 / aac | engine: avc1 / aac |
+| `mkv-h264-ac3` | engine: avc1 / ac-3 | engine: avc1 / ac-3 |
+| `mkv-h264-eac3` | engine: avc1 / ec-3 | engine: avc1 / ec-3 |
+| `mkv-h264-dts` | engine: avc1 / aac | engine: avc1 / aac |
+| `mkv-hevc-dts` | engine: hvc1 / aac | engine: hvc1 / aac |
+| `mkv-h264-truehd` | engine: avc1 / aac | engine: avc1 / aac |
+| `mkv-h264-flac` | engine: avc1 / aac | engine: avc1 / aac |
+| `mkv-h264-opus` | engine: avc1 / aac | engine: avc1 / aac |
+| `mkv-h264-vorbis` | engine: avc1 / aac | engine: avc1 / aac |
+| `mkv-h264-pcm` | engine: avc1 / aac | engine: avc1 / aac |
+| `mkv-h264-mp2` | engine: avc1 / mp2 | engine: avc1 / aac |
+| `mkv-h264-alac` | engine: avc1 / aac | — |
+| `mkv-h26410-aac` | engine: avc1 / aac | engine: avc1 / aac |
+| `mkv-hevc10-hdr10-eac3` | engine: hvc1 / ec-3 | engine: hvc1 / ec-3 |
+| `mkv-av1-opus` | engine: av01 / aac | unsupported (no AV1 decoder) |
+| `mkv-vp9-opus` | engine: avc1 / aac | engine: avc1 / aac |
+| `mkv-mpeg2-ac3` | engine: mp2v / ac-3 | engine: avc1 / ac-3 |
+| `mkv-xvid-mp3` | engine: avc1 / mp3 | — |
+| `mkv-tracks-dts-ac3-srt-ass` | engine: avc1 / aac | engine: avc1 / aac |
+| `webm-vp9-opus` | engine: avc1 / aac | — |
+| `webm-vp8-vorbis` | engine: avc1 / aac | engine: avc1 / aac |
+| `webm-av1-opus` | engine: av01 / aac | unsupported (no AV1 decoder) ¹ |
+| `avi-xvid-mp3` | engine: avc1 / mp3 | engine: avc1 / mp3 |
+| `avi-divx3-mp3` | engine: avc1 / mp3 | engine: avc1 / mp3 |
+| `avi-h264-ac3` | engine: avc1 / ac-3 | — |
+| `avi-mjpeg-pcm` | engine: avc1 / aac | engine: avc1 / aac |
+| `ts-h264-aac` | engine: avc1 / aac | — |
+| `ts-h264-latm` | engine: avc1 / aac | engine: avc1 / aac |
+| `ts-mpeg2-mp2` | engine: mp2v / mp2 | engine: avc1 / aac ¹ |
+| `ts-mpeg2i-mp2` | engine: mp2v / mp2 | engine: avc1 / aac |
+| `ts-hevc-eac3` | engine: hvc1 / ec-3 | — |
+| `m2ts-h264-dts` | engine: avc1 / aac | engine: avc1 / aac |
+| `m2ts-h264-truehd` | engine: avc1 / aac | — |
+| `mts-h264-ac3` | engine: avc1 / ac-3 | — |
+| `flv-h264-aac` | engine: avc1 / aac | — |
+| `flv-flv1-mp3` | engine: avc1 / mp3 | engine: avc1 / mp3 |
+| `wmv-wmv2-wma2` | engine: avc1 / aac | engine: avc1 / aac |
+| `mpg-mpeg2-mp2` | engine: mp2v / mp2 | engine: avc1 / aac ¹ |
+| `vob-mpeg2-ac3` | engine: mp2v / ac-3 | engine: avc1 / ac-3 |
+| `ogg-vorbis` | engine: – / aac | engine: – / aac |
+| `opus-audio` | engine: – / aac | — |
+| `hls-h264-aac` | direct: avc1 / aac | — |
+| `xtream-extensionless-dts` | engine: avc1 / aac | engine: avc1 / aac |
+| `xtream-avi` | engine: avc1 / mp3 | — |
+| `php-xvid` | engine: avc1 / mp3 | — |
+| `sample-wmv-vc1` | engine: avc1 / – | engine: avc1 / – |
+| `sample-m2ts-vc1i-dts` | engine: avc1 / aac | engine: avc1 / aac |
+| `sample-ogv-theora-vorbis` | engine: avc1 / aac | — |
+| `live-ts-mpeg2-mp2` | engine-live: mp2v / mp2 | engine-live: avc1 / aac ¹ |
+| `live-ts-h264-latm` | engine-live: avc1 / aac | engine-live: avc1 / aac ¹ |
+| `live-ts-h264-aac` | engine-live: avc1 / aac | engine-live: avc1 / aac ¹ |
+
+Each cell: the route, then the formats AVPlayer decodes (video / audio four-character codes: `avc1` / `aac` for
+streams the engine converted; – when the file has no such track). "engine (fallback)": AVPlayer opened the file, then
+the movie moved to the engine. —: not part of the Simulator run (the same decision as on the Mac).
+¹ `run_formats.sh` with `IPHONE=1` on the Mac (the iPhone's decisions: MPEG-2 and MP2 converted), for cases the
+Simulator run does not cover. AV1 needs a hardware decoder, which the Simulator does not have; on the Mac (M4) it is
+copied. Checked on macOS 26 (M4 Pro) and the iOS 27.2 Simulator (iPhone 17e); not on a device.
+
 Engine smoke tests (macOS). They build the engine against the bundled `FFmpeg.xcframework` and
 serve a generated live stream on 127.0.0.1. Generating and checking the test streams needs the
 `ffmpeg` / `ffprobe` programs (any recent build, e.g. `brew install ffmpeg`, used by the tests
@@ -395,6 +546,8 @@ Tools/EngineSmokeTest/run.sh           # window cleanup, reconnection, recording
 Tools/EngineSmokeTest/run_avplayer.sh  # AVPlayer pause/resume/skip/go-live on the engine output
 Tools/EngineSmokeTest/run_tracks.sh    # audio tracks and subtitles: master playlist, renditions, WebVTT, AVPlayer
 Tools/EngineSmokeTest/run_vod.sh       # movies: skip, scrub, resume on MP4 / MKV / TS / HLS, H.264 and HEVC
+Tools/EngineSmokeTest/run_formats.sh   # the format matrix: every container / video / audio codec (see "Formats")
+Tools/EngineSmokeTest/run_converted.sh # converted video: live timestamp restarts, a refused encoder, file conversion
 ```
 
 `run_vod.sh` generates 10-minute test movies and serves them on 127.0.0.1 the way IPTV panels do (Xtream

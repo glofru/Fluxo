@@ -19,8 +19,8 @@ enum DownloadMethod: String, Codable, Sendable {
     case hls
     /// A file AVPlayer plays as it is (MP4, MOV, M4V, MP3, M4A…), through a background `URLSession`.
     case file
-    /// A file AVPlayer cannot play (Matroska, MPEG-TS, FLV, MPEG-PS…): downloaded like `file`, then copied into an
-    /// MP4 by the remux engine (no re-encoding), so it plays and seeks like any local file.
+    /// A file AVPlayer cannot play (Matroska, MPEG-TS, FLV, MPEG-PS, AVI…): downloaded like `file`, then copied into
+    /// an MP4 by the remux engine (what AVPlayer cannot decode is converted), so it plays and seeks like any local file.
     case remux
 }
 

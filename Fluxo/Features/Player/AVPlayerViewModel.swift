@@ -234,7 +234,7 @@ final class AVPlayerViewModel {
     private let outputDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("hls", isDirectory: true)
 
     @ObservationIgnored
-    private var route: PlaybackRoute = .direct
+    private(set) var route: PlaybackRoute = .direct
     @ObservationIgnored
     private var streamURL: URL?
     @ObservationIgnored
@@ -884,7 +884,7 @@ final class AVPlayerViewModel {
                 if status == .readyToPlay {
                     // HLS renditions are known once the playlist is read.
                     self.mediaSelection.reload()
-                    self.checkVideoIsDecodable(item)
+                    self.checkTracksAreDecodable(item)
                 }
                 if status == .failed {
                     self.handleItemFailure(item.error)
@@ -967,8 +967,9 @@ final class AVPlayerViewModel {
     }
 
     /// Whether the current movie or episode played directly by AVPlayer may move to the engine: AVPlayer
-    /// opens MP4 files only from servers with byte ranges, does not decode HEVC tagged `hev1`, and opens
-    /// several connections (some IPTV servers allow one per account, which stalls seeking).
+    /// opens MP4 files only from servers with byte ranges, does not decode HEVC tagged `hev1` (nor DTS, TrueHD and
+    /// other audio the engine converts), and opens several connections (some IPTV servers allow one per account,
+    /// which stalls seeking).
     private var canFallBackToEngine: Bool {
         guard route == .direct, !didFallBackToEngine, !isCasting, !isPlayingDownload, currentItem?.kind != .live,
               let url = currentChannel?.url else {
@@ -995,24 +996,20 @@ final class AVPlayerViewModel {
         return true
     }
 
-    /// An MP4 file whose video AVPlayer cannot decode (HEVC tagged `hev1`) plays its audio over a black
-    /// picture: the engine plays it instead (it tags HEVC `hvc1`).
-    private func checkVideoIsDecodable(_ item: AVPlayerItem) {
+    /// An MP4 / MOV file whose video AVPlayer cannot decode (HEVC tagged `hev1`) plays its audio over a black picture,
+    /// and one whose audio it cannot decode (DTS, which it does not even list) plays silently: the engine plays it
+    /// instead, copying what AVPlayer decodes and converting the rest (`PlaybackRoute.engineReason`).
+    private func checkTracksAreDecodable(_ item: AVPlayerItem) {
         guard canFallBackToEngine else {
             return
         }
         let asset = item.asset
         Task { [weak self] in
-            guard let tracks = try? await asset.loadTracks(withMediaType: .video), !tracks.isEmpty else {
+            guard let reason = await PlaybackRoute.engineReason(for: asset),
+                  let self, self.player.currentItem === item else {
                 return
             }
-            for track in tracks where (try? await track.load(.isPlayable)) == true {
-                return
-            }
-            guard let self, self.player.currentItem === item else {
-                return
-            }
-            self.fallBackToEngine(reason: "AVPlayer cannot decode the video track")
+            self.fallBackToEngine(reason: reason)
         }
     }
 

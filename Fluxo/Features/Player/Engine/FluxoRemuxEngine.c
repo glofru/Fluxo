@@ -11,6 +11,7 @@
 //
 
 #include "FluxoRemuxEngine.h"
+#include "FluxoTranscoder.h"
 
 #include <errno.h>
 #include <limits.h>
@@ -44,6 +45,10 @@
 #define FLUXO_DEFAULT_IO_TIMEOUT_US (15 * 1000000LL)
 // Timestamp jumps larger than this (in AV_TIME_BASE units) are treated as discontinuities.
 #define FLUXO_DISCONTINUITY_THRESHOLD (10 * AV_TIME_BASE)
+// A live segment may end on a video key frame this much before its target duration: the key frames of a source cut
+// every segment_duration seconds, but a timestamp discontinuity (joined without a gap) or jitter puts one a
+// little early, and the segment would otherwise run on to the next one (twice the duration).
+#define FLUXO_SEGMENT_CUT_TOLERANCE (AV_TIME_BASE / 10)
 // Default number of consecutive reconnection attempts for live inputs.
 #define FLUXO_DEFAULT_RECONNECT_ATTEMPTS 10
 // Longest pause between two reconnection attempts.
@@ -216,6 +221,9 @@ typedef struct FluxoHLS {
     int64_t segment_wallclock_ms;
     int64_t last_reference_time;
     int segment_discontinuity;
+    // The current segment was cut on the audio (converted video gave nothing): the next video key frame starts a
+    // new segment whatever its duration, so that video segments follow that key frame's interval again.
+    int segment_cut_on_audio;
     // Output stream used to decide where segments are cut (video if present).
     int reference_stream;
 
@@ -255,6 +263,11 @@ typedef struct FluxoPlan {
     int64_t *starts;
     // Size on disk of each segment, 0 while it is not on disk. Guarded by vod_lock.
     int64_t *bytes;
+    // Segments written without a picture while the encoder of converted video was refused (the app in the
+    // background, Picture in Picture); deleted once pictures come again, so that they are written again with
+    // them when the player asks. Engine thread only.
+    uint8_t *blind;
+    int blind_count;
     int count;
     // The boundaries are key frames of the input's index, so segments are exact and start with a key
     // frame; otherwise they are planned every segment_duration and cut at the next key frame.
@@ -302,6 +315,8 @@ struct FluxoRemuxSession {
     AVFormatContext *input;
     // On-demand HTTP inputs are read through the engine's own AVIOContext (see fluxo_input_io_open), or NULL.
     struct FluxoInputIO *input_io;
+    // What happens to each stream of the input (copied, converted, left out), and the converters.
+    FluxoStreams streams;
     FluxoHLS hls;
     FluxoRecording recording;
 
@@ -348,6 +363,8 @@ struct FluxoRemuxSession {
     int vod_check_seek;
     int vod_writing;
     int vod_need_key;
+    // Video packets written to the current segment.
+    int64_t vod_segment_pictures;
     int vod_recoveries;
     FluxoHeldPacket *vod_held;
     int vod_held_count;
@@ -382,8 +399,10 @@ static int fluxo_interrupt_callback(void *opaque) {
     return fluxo_is_cancelled(opaque);
 }
 
+// Audio and video the outputs take: not cover art, nor a stream the engine left out (fluxo_streams_open discards
+// streams that can neither be copied nor converted, and video after the first playable one).
 static int fluxo_is_stream_supported(const AVStream *stream) {
-    if (stream->disposition & AV_DISPOSITION_ATTACHED_PIC) {
+    if ((stream->disposition & AV_DISPOSITION_ATTACHED_PIC) || stream->discard >= AVDISCARD_ALL) {
         return 0;
     }
     enum AVMediaType type = stream->codecpar->codec_type;
@@ -506,7 +525,8 @@ static int fluxo_input_io_connect(FluxoInputIO *io, int64_t offset) {
 static int fluxo_input_io_read(void *opaque, uint8_t *buffer, int size) {
     FluxoInputIO *io = opaque;
     if (io->inner == NULL) {
-        return AVERROR(EIO);
+        // After a seek past the end (the AVI demuxer looks for another RIFF chunk there): the end, not a failure.
+        return io->size > 0 && io->position >= io->size ? AVERROR_EOF : AVERROR(EIO);
     }
     int ret = avio_read_partial(io->inner, buffer, size);
     if (ret == 0) {
@@ -686,6 +706,21 @@ static int fluxo_open_input(FluxoRemuxSession *session) {
         fluxo_close_input(session);
         return ret;
     }
+    // Streams AVPlayer cannot decode are converted as they are read (FluxoTranscoder.c).
+    FluxoStreamsOptions streams_options = {
+        .is_live = session->is_live,
+        .global_header = 0,
+        .key_interval = session->hls.segment_duration,
+    };
+    ret = fluxo_streams_open(&session->streams, input, &streams_options);
+    if (ret < 0) {
+        fluxo_close_input(session);
+        return ret;
+    }
+    if (session->plan.starts != NULL) {
+        // Reopened on demand: converted video starts its segments with key frames again.
+        fluxo_streams_set_key_times(&session->streams, session->plan.starts, session->plan.count);
+    }
     return 0;
 }
 
@@ -710,6 +745,7 @@ static int fluxo_input_reached_end_of_file(FluxoRemuxSession *session) {
 
 static void fluxo_close_input(FluxoRemuxSession *session) {
     AVIOContext *pb = session->input != NULL && session->input_io != NULL ? session->input->pb : NULL;
+    fluxo_streams_close(&session->streams);
     if (session->input != NULL) {
         avformat_close_input(&session->input);
     }
@@ -789,9 +825,10 @@ static int fluxo_output_map_input(FluxoOutput *output, AVFormatContext *input) {
         if (!selected) {
             continue;
         }
+        const AVCodecParameters *in_par = fluxo_stream_parameters(input, i);
         for (unsigned int j = 0; j < output_count; j++) {
             AVCodecParameters *out_par = output->context->streams[j]->codecpar;
-            if (!used[j] && out_par->codec_type == in_stream->codecpar->codec_type && out_par->codec_id == in_stream->codecpar->codec_id) {
+            if (!used[j] && out_par->codec_type == in_par->codec_type && out_par->codec_id == in_par->codec_id) {
                 used[j] = 1;
                 map[i] = (int)j;
                 mapped++;
@@ -830,20 +867,22 @@ static int fluxo_output_prepare(FluxoOutput *output, AVFormatContext *input, con
         if (in_stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO && output->video_index >= 0) {
             continue;
         }
+        // The parameters of what is written: a converted stream's (AAC, H.264), otherwise the input's.
+        const AVCodecParameters *in_par = fluxo_stream_parameters(input, i);
         // A codec the container cannot carry would fail the whole header: leave that stream out.
-        if (is_mp4 && avformat_query_codec(output->context->oformat, in_stream->codecpar->codec_id, FF_COMPLIANCE_NORMAL) != 1) {
+        if (is_mp4 && avformat_query_codec(output->context->oformat, in_par->codec_id, FF_COMPLIANCE_NORMAL) != 1) {
             continue;
         }
         AVStream *out_stream = avformat_new_stream(output->context, NULL);
         if (out_stream == NULL) {
             return AVERROR(ENOMEM);
         }
-        ret = avcodec_parameters_copy(out_stream->codecpar, in_stream->codecpar);
+        ret = avcodec_parameters_copy(out_stream->codecpar, in_par);
         if (ret < 0) {
             return ret;
         }
         out_stream->codecpar->codec_tag = 0;
-        if (is_mp4 && in_stream->codecpar->codec_id == AV_CODEC_ID_HEVC) {
+        if (is_mp4 && in_par->codec_id == AV_CODEC_ID_HEVC) {
             // AVFoundation only plays HEVC in MP4 with the hvc1 sample entry.
             out_stream->codecpar->codec_tag = MKTAG('h', 'v', 'c', '1');
         }
@@ -1001,12 +1040,14 @@ static void fluxo_hls_segment_path(const FluxoHLS *hls, int64_t sequence, int te
 }
 
 // AVPlayer decodes HEVC from HLS only in fragmented MP4 (from MPEG-TS segments it plays the audio
-// over a black picture), so HEVC video gets fMP4 segments; everything else stays MPEG-TS.
+// over a black picture), so HEVC video gets fMP4 segments, and so does AV1 (which MPEG-TS cannot carry);
+// everything else (converted video included: H.264) stays MPEG-TS.
 static int fluxo_hls_wants_fragmented_mp4(const AVFormatContext *input) {
     for (unsigned int i = 0; i < input->nb_streams; i++) {
         const AVStream *stream = input->streams[i];
         if (stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO && fluxo_is_stream_supported(stream)) {
-            return stream->codecpar->codec_id == AV_CODEC_ID_HEVC;
+            enum AVCodecID codec_id = fluxo_stream_parameters(input, i)->codec_id;
+            return codec_id == AV_CODEC_ID_HEVC || codec_id == AV_CODEC_ID_AV1;
         }
     }
     return 0;
@@ -1289,10 +1330,10 @@ static int fluxo_is_text_subtitle(enum AVCodecID codec_id) {
 }
 
 // Audio codecs HLS players decode (Apple's HLS authoring specification): only these become renditions.
-// MPEG-1 Layer II (DVB channels) and others stay out of the master playlist: AVPlayer on iOS fails the whole
-// item when it switches to one ("fmt?").
-static int fluxo_is_hls_audio(const AVStream *stream) {
-    switch (stream->codecpar->codec_id) {
+// MPEG-1 Layer II (DVB channels; on iOS it is converted to AAC) and others stay out of the master playlist:
+// AVPlayer on iOS fails the whole item when it switches to one ("fmt?"). Converted streams are AAC.
+static int fluxo_is_hls_audio(const AVFormatContext *input, unsigned int index) {
+    switch (fluxo_stream_parameters(input, index)->codec_id) {
     case AV_CODEC_ID_AAC:
     case AV_CODEC_ID_AC3:
     case AV_CODEC_ID_EAC3:
@@ -1822,7 +1863,7 @@ static int fluxo_hls_plan_renditions(FluxoRemuxSession *session) {
     for (unsigned int i = 0; i < input->nb_streams; i++) {
         const AVStream *stream = input->streams[i];
         if (fluxo_is_stream_supported(stream) && stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
-            if (fluxo_is_hls_audio(stream) && hls_audio_count < FLUXO_MAX_RENDITIONS) {
+            if (fluxo_is_hls_audio(input, i) && hls_audio_count < FLUXO_MAX_RENDITIONS) {
                 if (first_hls_audio < 0) {
                     first_hls_audio = audio_total;
                 }
@@ -1860,7 +1901,7 @@ static int fluxo_hls_plan_renditions(FluxoRemuxSession *session) {
         const AVStream *stream = input->streams[i];
         int is_audio = fluxo_is_stream_supported(stream) && stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO;
         int is_subtitle = fluxo_is_subtitle_source(stream);
-        int takes_audio = is_audio && audio_renditions > 0 && audio_renditions_made < audio_renditions && fluxo_is_hls_audio(stream);
+        int takes_audio = is_audio && audio_renditions > 0 && audio_renditions_made < audio_renditions && fluxo_is_hls_audio(input, i);
         if ((is_audio && !takes_audio) || (is_subtitle && subtitle_ordinal >= subtitle_count) || (!is_audio && !is_subtitle)) {
             audio_ordinal += is_audio;
             continue;
@@ -1869,10 +1910,12 @@ static int fluxo_hls_plan_renditions(FluxoRemuxSession *session) {
         rendition->type = is_audio ? FluxoRenditionAudio : FluxoRenditionSubtitles;
         rendition->ordinal = is_audio ? audio_ordinal : subtitle_ordinal;
         rendition->input_index = (int)i;
-        rendition->codec_id = stream->codecpar->codec_id;
+        rendition->codec_id = fluxo_stream_parameters(input, i)->codec_id;
         rendition->output.video_index = -1;
         int number = is_audio ? audio_ordinal + 1 : subtitle_ordinal + 1;
         fluxo_rendition_describe(hls, rendition, stream, number);
+        // Converted audio has its own channel count (at most 5.1).
+        rendition->channels = fluxo_stream_parameters(input, i)->ch_layout.nb_channels;
         if (is_audio) {
             rendition->muxed = audio_ordinal == default_audio;
             rendition->output.exclude_video = 1;
@@ -2047,7 +2090,7 @@ static int fluxo_hls_codecs(FluxoRemuxSession *session, char *buffer, size_t siz
         }
         int profile = AV_PROFILE_UNKNOWN;
         if (rendition->input_index >= 0 && (unsigned int)rendition->input_index < session->input->nb_streams) {
-            profile = session->input->streams[rendition->input_index]->codecpar->profile;
+            profile = fluxo_stream_parameters(session->input, (unsigned int)rendition->input_index)->profile;
         }
         const char *audio = fluxo_audio_codec_name(rendition->codec_id, profile);
         if (audio == NULL || !fluxo_codecs_add(buffer, size, audio)) {
@@ -2317,6 +2360,7 @@ static int fluxo_hls_open_segment(FluxoHLS *hls) {
         return ret;
     }
     hls->segment_start_time = AV_NOPTS_VALUE;
+    hls->segment_cut_on_audio = 0;
     hls->last_reference_time = AV_NOPTS_VALUE;
     hls->segment_wallclock_ms = fluxo_wallclock_ms();
     return 0;
@@ -2463,20 +2507,32 @@ static int fluxo_hls_open(FluxoRemuxSession *session) {
 
 static int fluxo_hls_write_main(FluxoRemuxSession *session, const AVPacket *packet, const AVStream *in_stream, AVPacket *scratch) {
     FluxoHLS *hls = &session->hls;
+    // Converted video whose encoder is refused (the app in the background, Picture in Picture) gives no packets:
+    // the audio cuts the segments meanwhile, so that it keeps playing.
+    int audio_cuts = hls->output.video_index >= 0 && in_stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO &&
+                     fluxo_streams_video_stalled(&session->streams);
+    if (audio_cuts) {
+        hls->output.wait_keyframe = 0;
+    }
     int ret = fluxo_output_prepare_packet(&hls->output, packet, in_stream, scratch);
     if (ret <= 0) {
         return ret;
     }
 
-    if (scratch->stream_index == hls->reference_stream) {
+    if (scratch->stream_index == hls->reference_stream || audio_cuts) {
         int64_t time = fluxo_packet_time(scratch, hls->output.context->streams[scratch->stream_index]);
         if (time != AV_NOPTS_VALUE) {
             if (hls->segment_start_time == AV_NOPTS_VALUE) {
                 hls->segment_start_time = time;
             } else {
-                int cut_point = hls->output.video_index < 0 || (scratch->flags & AV_PKT_FLAG_KEY);
+                int key = hls->output.video_index >= 0 && scratch->stream_index == hls->output.video_index && (scratch->flags & AV_PKT_FLAG_KEY);
+                int cut_point = hls->output.video_index < 0 || key || audio_cuts;
                 int64_t elapsed = time - hls->segment_start_time;
-                if (cut_point && elapsed >= (int64_t)(hls->segment_duration * AV_TIME_BASE)) {
+                // The tolerance is for key frames placed a little early; audio cuts exactly at the duration.
+                int64_t tolerance = key ? FLUXO_SEGMENT_CUT_TOLERANCE : 0;
+                int due = elapsed >= (int64_t)(hls->segment_duration * AV_TIME_BASE) - tolerance ||
+                          (key && hls->segment_cut_on_audio && elapsed > 0);
+                if (cut_point && due) {
                     ret = fluxo_hls_finish_segment(session, time, 1, 0);
                     if (ret >= 0) {
                         ret = fluxo_hls_open_segment(hls);
@@ -2486,6 +2542,7 @@ static int fluxo_hls_write_main(FluxoRemuxSession *session, const AVPacket *pack
                         return ret;
                     }
                     hls->segment_start_time = time;
+                    hls->segment_cut_on_audio = audio_cuts;
                 }
             }
             if (hls->last_reference_time == AV_NOPTS_VALUE || time > hls->last_reference_time) {
@@ -2756,6 +2813,11 @@ static void fluxo_adjust_timestamps(FluxoRemuxSession *session, AVPacket *packet
     }
 }
 
+// fluxo_adjust_timestamps for FluxoStreams.adjust: applied to the packets as the input gives them.
+static void fluxo_adjust_input_packet(void *opaque, AVPacket *packet, const AVStream *in_stream) {
+    fluxo_adjust_timestamps(opaque, packet, in_stream);
+}
+
 static void fluxo_vod_wait(FluxoRemuxSession *session, int64_t timeout_us);
 
 // Reads the input until it ends, fails or the session is cancelled. Returns the read error
@@ -2775,6 +2837,9 @@ static int fluxo_run_loop(FluxoRemuxSession *session) {
     // allows (positions are seekable only once read); over the disk budget, reading pauses once it is
     // read_ahead seconds of segments ahead of the latest one the player requested.
     int64_t read_ahead_segments = (int64_t)ceil(session->read_ahead / session->hls.segment_duration);
+    // Timestamps are moved to the session's timeline as the input gives the packets, before any is converted.
+    session->streams.adjust = fluxo_adjust_input_packet;
+    session->streams.adjust_opaque = session;
     while (!fluxo_is_cancelled(session)) {
         fluxo_process_requests(session);
 
@@ -2791,7 +2856,7 @@ static int fluxo_run_loop(FluxoRemuxSession *session) {
             }
         }
 
-        ret = av_read_frame(session->input, packet);
+        ret = fluxo_streams_read(&session->streams, packet);
         if (ret == AVERROR(EAGAIN)) {
             ret = 0;
             continue;
@@ -2805,8 +2870,6 @@ static int fluxo_run_loop(FluxoRemuxSession *session) {
         }
 
         AVStream *in_stream = session->input->streams[packet->stream_index];
-        fluxo_adjust_timestamps(session, packet, in_stream);
-
         ret = fluxo_hls_write(session, packet, in_stream, scratch);
         if (ret < 0) {
             av_packet_unref(packet);
@@ -2823,6 +2886,8 @@ static int fluxo_run_loop(FluxoRemuxSession *session) {
         av_packet_unref(packet);
     }
 
+    session->streams.adjust = NULL;
+    session->streams.adjust_opaque = NULL;
     av_packet_free(&packet);
     av_packet_free(&scratch);
     return ret;
@@ -2968,7 +3033,9 @@ static int fluxo_vod_plan(FluxoRemuxSession *session) {
     plan->has_video = video >= 0;
     plan->reference_input_stream = video >= 0 ? video : audio;
     const char *format = input->iformat->name;
-    plan->key_uses_dts = strstr(format, "mov") != NULL || strstr(format, "avi") != NULL;
+    // Converted video gets its key frames at the planned times, by presentation time.
+    plan->key_uses_dts = (strstr(format, "mov") != NULL || strstr(format, "avi") != NULL) &&
+                         !(video >= 0 && fluxo_stream_is_converted(input, (unsigned int)video));
 
     int64_t start = input->start_time != AV_NOPTS_VALUE ? input->start_time : 0;
     int64_t end = start + input->duration;
@@ -2986,6 +3053,7 @@ static int fluxo_vod_plan(FluxoRemuxSession *session) {
             // Matroska reads its index (Cues) at the first seek (until then it lists the key frames it read while
             // probing, often one); this one goes back to the start.
             av_seek_frame(input, video, stream->start_time != AV_NOPTS_VALUE ? stream->start_time : 0, AVSEEK_FLAG_BACKWARD);
+            fluxo_streams_reset(&session->streams);
         }
         int entries = avformat_index_get_entries_count(stream);
         if (entries > 0) {
@@ -3040,10 +3108,13 @@ static int fluxo_vod_plan(FluxoRemuxSession *session) {
     plan->count = count;
     plan->exact = exact;
     plan->bytes = calloc((size_t)count, sizeof(int64_t));
-    if (plan->bytes == NULL) {
+    plan->blind = calloc((size_t)count, sizeof(uint8_t));
+    plan->blind_count = 0;
+    if (plan->bytes == NULL || plan->blind == NULL) {
         return AVERROR(ENOMEM);
     }
     session->vod_end_segment = count - 1;
+    fluxo_streams_set_key_times(&session->streams, plan->starts, plan->count);
     return 1;
 }
 
@@ -3052,6 +3123,9 @@ static void fluxo_vod_plan_free(FluxoPlan *plan) {
     plan->starts = NULL;
     free(plan->bytes);
     plan->bytes = NULL;
+    free(plan->blind);
+    plan->blind = NULL;
+    plan->blind_count = 0;
     plan->count = 0;
 }
 
@@ -3247,7 +3321,42 @@ static int fluxo_vod_open_segment(FluxoRemuxSession *session, int64_t index) {
         av_opt_set(hls->output.context->priv_data, "mpegts_flags", "+resend_headers", 0);
     }
     session->vod_writing = 1;
+    session->vod_segment_pictures = 0;
     return 0;
+}
+
+// Keeps track of the segments written without a picture while converted video had no encoder; once a segment has
+// pictures again, deletes them (but the one the player asked for last and the one before, which it may be reading), so that the
+// player gets them again with pictures when it asks. Called with vod_lock held, after segment `index` is published.
+static void fluxo_vod_track_blind_locked(FluxoRemuxSession *session, int64_t index) {
+    FluxoPlan *plan = &session->plan;
+    if (plan->blind == NULL || !plan->has_video || !fluxo_stream_is_converted(session->input, (unsigned int)plan->reference_input_stream)) {
+        return;
+    }
+    if (session->vod_segment_pictures == 0) {
+        if (!plan->blind[index]) {
+            plan->blind[index] = 1;
+            plan->blind_count++;
+        }
+        return;
+    }
+    if (plan->blind[index]) {
+        plan->blind[index] = 0;
+        plan->blind_count--;
+    }
+    for (int i = 0; i < plan->count && plan->blind_count > 0; i++) {
+        if (!plan->blind[i] || (i >= session->vod_requested - 1 && i <= session->vod_requested)) {
+            continue;
+        }
+        plan->blind[i] = 0;
+        plan->blind_count--;
+        if (plan->bytes[i] > 0) {
+            fluxo_hls_delete_segment(&session->hls, i);
+            session->vod_cached_bytes -= plan->bytes[i];
+            plan->bytes[i] = 0;
+            session->vod_segments_on_disk--;
+        }
+    }
 }
 
 // Publishes the current segment: flushes it, renames it into place and reports it.
@@ -3308,6 +3417,7 @@ static int fluxo_vod_finish_segment(FluxoRemuxSession *session) {
     session->vod_cached_bytes += bytes;
     session->vod_segments_on_disk++;
     session->vod_init_ready = hls->init_written || !hls->fragmented;
+    fluxo_vod_track_blind_locked(session, index);
     pthread_mutex_unlock(&session->vod_lock);
 
     hls->segments_written++;
@@ -3390,6 +3500,9 @@ static int fluxo_vod_write(FluxoRemuxSession *session, AVPacket *packet, AVPacke
     }
     int ret = fluxo_output_prepare_packet(&hls->output, packet, in_stream, scratch);
     if (ret > 0) {
+        if (scratch->stream_index == hls->output.video_index) {
+            session->vod_segment_pictures++;
+        }
         ret = fluxo_output_commit(&hls->output, scratch);
     }
     if (ret >= 0 && hls->rendition_count > 0) {
@@ -3429,6 +3542,7 @@ static int fluxo_vod_route(FluxoRemuxSession *session, AVPacket *packet, AVPacke
                 earlier = plan->starts[0];
             }
             if (av_seek_frame(session->input, -1, earlier, AVSEEK_FLAG_BACKWARD) >= 0) {
+                fluxo_streams_reset(&session->streams);
                 return 0;
             }
         }
@@ -3475,8 +3589,12 @@ static int fluxo_vod_route(FluxoRemuxSession *session, AVPacket *packet, AVPacke
         if (!pending) {
             return fluxo_vod_write(session, packet, scratch);
         }
+        // Converted video whose encoder is refused (the app in the background, Picture in Picture) gives no
+        // packets: the audio cuts at the planned start meanwhile, so that it keeps playing.
+        int audio_cuts = !reference && in_stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO && time != AV_NOPTS_VALUE &&
+                         time >= boundary - FLUXO_VOD_TIME_EPSILON && fluxo_streams_video_stalled(&session->streams);
         int overdue = (reference && time != AV_NOPTS_VALUE && time >= following - FLUXO_VOD_TIME_EPSILON) ||
-                      session->vod_held_count >= FLUXO_VOD_MAX_HELD_PACKETS;
+                      session->vod_held_count >= FLUXO_VOD_MAX_HELD_PACKETS || audio_cuts;
         if (!overdue) {
             return fluxo_vod_hold(session, packet, time);
         }
@@ -3521,6 +3639,8 @@ static int fluxo_vod_seek(FluxoRemuxSession *session, int64_t index) {
     if (ret >= 0) {
         position = index - 1;
         session->vod_check_seek = 1;
+        // What the converters hold belongs to the old position.
+        fluxo_streams_reset(&session->streams);
     } else if (index > current) {
         // Reading on reaches it; nothing is written until then.
         position = current;
@@ -3683,7 +3803,7 @@ static int fluxo_vod_run(FluxoRemuxSession *session) {
             continue;
         }
 
-        ret = av_read_frame(session->input, packet);
+        ret = fluxo_streams_read(&session->streams, packet);
         if (ret == AVERROR(EAGAIN)) {
             ret = 0;
             continue;
@@ -3769,7 +3889,9 @@ static void *fluxo_thread_main(void *arg) {
     // otherwise: IPTV servers often refuse the very first connection of a burst. Accounts limited to one
     // connection refuse new ones (403, 429, 5xx) until they notice the previous one closed (the channel played
     // before, or AVPlayer's own connections to a movie the engine takes over): two more, 1 s and 2 s later.
-    for (int attempt = 1; ret < 0 && ret != AVERROR_PROTOCOL_NOT_FOUND && !fluxo_is_cancelled(session) && attempt <= 3; attempt++) {
+    // Nor a format that cannot be played.
+    for (int attempt = 1; ret < 0 && ret != AVERROR_PROTOCOL_NOT_FOUND && ret != FLUXO_ERROR_UNSUPPORTED_VIDEO &&
+                          ret != FLUXO_ERROR_UNSUPPORTED_AUDIO && !fluxo_is_cancelled(session) && attempt <= 3; attempt++) {
         if (attempt > 1 && !fluxo_is_busy_server_error(ret)) {
             break;
         }
@@ -3862,6 +3984,10 @@ static void *fluxo_thread_main(void *arg) {
         char message[512];
         if (ret == AVERROR_PROTOCOL_NOT_FOUND) {
             fluxo_format_unsupported_protocol(message, sizeof(message), session->input_url);
+        } else if (ret == FLUXO_ERROR_UNSUPPORTED_VIDEO || ret == FLUXO_ERROR_UNSUPPORTED_AUDIO) {
+            // StreamRemuxer.swift (EngineMessage) recognizes these.
+            snprintf(message, sizeof(message), "%s: %s", ret == FLUXO_ERROR_UNSUPPORTED_VIDEO ? "Unsupported video format" : "Unsupported audio format",
+                     session->streams.unsupported_codec[0] != '\0' ? session->streams.unsupported_codec : "unknown");
         } else {
             fluxo_format_error(message, sizeof(message), ret, stage);
         }
@@ -3916,6 +4042,7 @@ FluxoRemuxSession *fluxo_remux_create(const FluxoRemuxConfig *config, FluxoRemux
     hls->min_window_segments = config->hls.min_window_segments > 0 ? config->hls.min_window_segments : 3;
     hls->program_date_time = session->is_live;
     hls->segment_start_time = AV_NOPTS_VALUE;
+    hls->segment_cut_on_audio = 0;
     hls->last_reference_time = AV_NOPTS_VALUE;
     hls->master_path = fluxo_strdup(config->hls.master_playlist_path);
     if (hls->master_path != NULL) {
@@ -4084,6 +4211,8 @@ void fluxo_remux_destroy(FluxoRemuxSession *session) {
 
 // MARK: - File conversion
 
+_Static_assert(FLUXO_REMUX_ERROR_ENCODER_UNAVAILABLE == FLUXO_ERROR_ENCODER_UNAVAILABLE, "one error code for Swift and the converter");
+
 int32_t fluxo_remux_convert_file(const char *input_path, const char *output_path, double *duration_seconds,
                                  char *error_message, int32_t error_message_size) {
     if (input_path == NULL || output_path == NULL) {
@@ -4092,6 +4221,8 @@ int32_t fluxo_remux_convert_file(const char *input_path, const char *output_path
     pthread_once(&fluxo_init_once, fluxo_global_init);
 
     AVFormatContext *input = NULL;
+    FluxoStreams streams;
+    memset(&streams, 0, sizeof(streams));
     FluxoOutput output;
     memset(&output, 0, sizeof(output));
     output.video_index = -1;
@@ -4108,6 +4239,14 @@ int32_t fluxo_remux_convert_file(const char *input_path, const char *output_path
     }
     if (ret >= 0) {
         ret = avformat_find_stream_info(input, NULL);
+    }
+    if (ret >= 0) {
+        // What AVPlayer cannot decode (DTS audio, MPEG-4 Part 2 video of a downloaded movie, ...) is converted.
+        FluxoStreamsOptions streams_options = {.is_live = 0, .global_header = 1, .key_interval = 4, .complete = 1};
+        ret = fluxo_streams_open(&streams, input, &streams_options);
+        if (ret == FLUXO_ERROR_UNSUPPORTED_VIDEO || ret == FLUXO_ERROR_UNSUPPORTED_AUDIO) {
+            stage = ret == FLUXO_ERROR_UNSUPPORTED_VIDEO ? "Unsupported video format" : "Unsupported audio format";
+        }
     }
     if (ret >= 0) {
         stage = "Unable to create the output file";
@@ -4133,7 +4272,7 @@ int32_t fluxo_remux_convert_file(const char *input_path, const char *output_path
     int64_t start = input != NULL && input->start_time != AV_NOPTS_VALUE ? input->start_time : 0;
     if (ret >= 0) {
         stage = "Unable to convert the recording";
-        while ((ret = av_read_frame(input, packet)) >= 0) {
+        while ((ret = fluxo_streams_read(&streams, packet)) >= 0) {
             if (packet->stream_index < 0 || (unsigned int)packet->stream_index >= input->nb_streams) {
                 av_packet_unref(packet);
                 continue;
@@ -4184,13 +4323,20 @@ int32_t fluxo_remux_convert_file(const char *input_path, const char *output_path
     }
 
     if (ret < 0 && error_message != NULL && error_message_size > 0) {
-        fluxo_format_error(error_message, (size_t)error_message_size, ret, stage);
+        if (ret == FLUXO_ERROR_UNSUPPORTED_VIDEO || ret == FLUXO_ERROR_UNSUPPORTED_AUDIO) {
+            snprintf(error_message, (size_t)error_message_size, "%s: %s", stage, streams.unsupported_codec[0] != '\0' ? streams.unsupported_codec : "unknown");
+        } else if (ret == FLUXO_ERROR_ENCODER_UNAVAILABLE) {
+            snprintf(error_message, (size_t)error_message_size, "%s", "Video encoder unavailable");
+        } else {
+            fluxo_format_error(error_message, (size_t)error_message_size, ret, stage);
+        }
     }
     if (duration_seconds != NULL) {
         *duration_seconds = first_time != AV_NOPTS_VALUE && last_time > first_time ? (double)(last_time - first_time) / AV_TIME_BASE : 0;
     }
 
     fluxo_output_free(&output);
+    fluxo_streams_close(&streams);
     if (input != NULL) {
         avformat_close_input(&input);
     }
