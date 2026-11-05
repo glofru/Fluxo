@@ -209,8 +209,13 @@ final class AVPlayerViewModel {
     /// Why the current channel could not be cast, or why casting stopped. Dismissed by the user.
     private(set) var castError: String?
 
-    let player = AVPlayer()
+    let player: AVPlayer
     let timeline = PlaybackTimeline()
+    /// Every seek goes through it: coalescing, the target the controls show meanwhile, the loading state and
+    /// recovery (see `PlayerSeeker`).
+    let seeker: PlayerSeeker
+    /// Frame previews over the scrubber while it is dragged (movies AVPlayer plays itself).
+    let scrubPreview = ScrubPreviewProvider()
     /// Audio tracks and subtitles of the item that plays.
     let mediaSelection = MediaSelectionController()
     let recordings: RecordingStore
@@ -224,6 +229,18 @@ final class AVPlayerViewModel {
     /// Offline downloads: a downloaded movie or episode plays from its local file. Set by the app.
     @ObservationIgnored
     var downloads: DownloadCenter?
+
+    #if DEBUG
+    /// Debug harness: holds the scrubber at this position as a finger would (`scrub-hold:`); nil releases it there.
+    var debugScrubHold: TimeInterval?
+    /// Debug harness (`seek-past-buffer:direct`): seeks AVPlayer makes itself are handled as Picture in Picture's.
+    @ObservationIgnored var debugTreatsJumpsAsPictureInPicture = false
+    #endif
+
+    /// Where a movie or episode continues (its saved watch progress), so that the engine produces that part
+    /// first. Set by the app; `WatchProgressRecorder` still makes the resume seek.
+    @ObservationIgnored
+    var resumePosition: ((ChannelItem) -> TimeInterval?)?
 
     /// The current channel could not start because the device is offline: it starts when the network returns.
     private(set) var isWaitingForNetwork = false
@@ -290,6 +307,12 @@ final class AVPlayerViewModel {
     /// Where to continue on-demand media on this device once its item is ready (after casting ends).
     @ObservationIgnored
     private var pendingResumePosition: TimeInterval?
+    /// The pending resume is the recovery of a seek that did not play (`recoverStuckSeek`): the seeker goes on
+    /// with that recovery on the new item (one more stall fails) instead of starting it over.
+    private var pendingResumeContinuesRecovery = false
+    /// How far the current item had buffered at the latest tick of the time observer (`itemTimeJumped(_:)`); nil
+    /// until the first tick of an item.
+    private var sampledBufferedEnd: TimeInterval?
     @ObservationIgnored
     private var castTimelineTask: Task<Void, Never>?
     /// The current movie or episode already fell back from AVPlayer to the engine (see `fallBackToEngine`).
@@ -300,6 +323,9 @@ final class AVPlayerViewModel {
     private var stallTask: Task<Void, Never>?
 
     init(recordings: RecordingStore? = nil, cast: CastController? = nil) {
+        let player = AVPlayer()
+        self.player = player
+        self.seeker = PlayerSeeker(player: player)
         self.recordings = recordings ?? RecordingStore()
         self.surface = PlayerSurface(player: player)
         self.cast = cast ?? CastController(backend: nil)
@@ -315,6 +341,7 @@ final class AVPlayerViewModel {
         }
         configureSurface()
         configureRemoteCommands()
+        configureSeeker()
         observePlayer()
         observeAudioSession()
         self.cast.onEvent = { [weak self] event in
@@ -583,7 +610,7 @@ final class AVPlayerViewModel {
         }
         if didReachEnd {
             didReachEnd = false
-            player.seek(to: .zero)
+            seeker.seek(to: 0)
         } else if isTimeShiftAvailable, let range = seekableRange(of: item), item.currentTime().seconds < range.start + 1 {
             // Paused for longer than the time-shift window: continue from the oldest buffered media.
             seek(to: range.start + 2)
@@ -610,8 +637,14 @@ final class AVPlayerViewModel {
             return
         }
         let upperBound = isTimeShiftAvailable ? range.end - liveOffset(of: item) : range.end
-        let target = min(max(item.currentTime().seconds + seconds, range.start + 0.5), max(range.start + 0.5, upperBound))
-        seek(to: target)
+        // Quick taps add up: from where the previous skip goes, not from where the player still is.
+        let base = seeker.target ?? item.currentTime().seconds
+        let target = min(max(base + seconds, range.start + 0.5), max(range.start + 0.5, upperBound))
+        seeker.seek(to: target, isBurst: true)
+        if didReachEnd, seconds < 0 {
+            didReachEnd = false
+            refreshPlaybackState()
+        }
     }
 
     func skipBackward() {
@@ -637,6 +670,48 @@ final class AVPlayerViewModel {
             didReachEnd = false
             refreshPlaybackState()
         }
+    }
+
+    /// Whether the video itself follows the finger on the scrubber: a local file (a download, a recording) seeks
+    /// to key frames at once. Streams only seek when the scrubber is released (each seek reloads media from the
+    /// network); movies AVPlayer plays from the network show frame previews instead (`scrubPreview`).
+    var scrubbingMovesVideo: Bool {
+        !isCasting && route == .direct && currentChannel?.url.map { $0.isFileURL || isPlayingDownload } == true
+    }
+
+    /// The scrubber is being dragged to `seconds`: the video follows when it can (`scrubbingMovesVideo`), and the
+    /// frame preview is updated. The seek itself is made when the scrubber is released (`seek(toSeconds:)`).
+    func scrub(toSeconds seconds: TimeInterval) {
+        guard canSeek, !isCasting, let item = player.currentItem, let range = seekableRange(of: item) else {
+            return
+        }
+        let time = min(max(seconds, range.start), range.end)
+        if scrubbingMovesVideo {
+            seeker.seek(to: time, precision: .keyFrame, isFinal: false)
+        } else {
+            scrubPreview.request(time)
+        }
+    }
+
+    /// The scrubber was touched (the frame previews start) or released (they stop).
+    func setScrubbing(_ isScrubbing: Bool) {
+        // (HLS has no frames to generate: its media is in segments.)
+        if isScrubbing, !isCasting, !scrubbingMovesVideo, route == .direct, !isTimeShiftAvailable,
+           let asset = player.currentItem?.asset as? AVURLAsset, asset.url.pathExtension.lowercased() != "m3u8" {
+            scrubPreview.begin(asset: asset, isLocal: asset.url.isFileURL)
+        } else if !isScrubbing {
+            scrubPreview.end()
+        }
+    }
+
+    /// A seek that could not play (`PlayerSeeker.Phase.failed`) is tried again, from where it went.
+    func retrySeek() {
+        guard let target = seeker.target else {
+            seeker.clearFailure()
+            return
+        }
+        seeker.clearFailure()
+        seek(toSeconds: target)
     }
 
     /// Jumps back to the live edge of a time-shifted live stream.
@@ -721,7 +796,9 @@ final class AVPlayerViewModel {
 
     /// - Parameter forcedRoute: the route to use instead of the one the URL and the kind of the item call for
     ///   (the engine, after AVPlayer could not play a movie directly).
-    private func start(_ channel: PlayableChannel, url: URL, route forcedRoute: PlaybackRoute? = nil) {
+    /// - Parameter startTime: where an on-demand item through the engine starts (e.g. where the movie played
+    ///   before it moved to the engine); otherwise its saved position (`resumePosition`).
+    private func start(_ channel: PlayableChannel, url: URL, route forcedRoute: PlaybackRoute? = nil, startTime: TimeInterval? = nil) {
         tearDownPlayback()
         isLocalPlaybackSuspended = false
         if forcedRoute == nil {
@@ -745,6 +822,10 @@ final class AVPlayerViewModel {
         }
         route = forcedRoute ?? PlaybackRoute(url: url, kind: currentItem?.kind)
         logger.info("Route: \(String(describing: self.route), privacy: .public) for a \(url.pathExtension.isEmpty ? "extensionless" : url.pathExtension, privacy: .public) URL")
+        // Through the engine, a seek far into a movie waits for the engine to seek the input and read a GOP: on a slow
+        // network that takes about as long as AVPlayer's own stall detection, which would only start it over (the
+        // engine still works on that segment, and fails it itself after `StreamRemuxer.segmentRequestTimeout`).
+        seeker.stallLimit = route.isOnDemandRemux ? Self.engineSeekStallLimit : Self.seekStallLimit
         surface.startsPictureInPictureAutomatically = PlayerPreferences.autoPictureInPicture
         activateAudioSession()
 
@@ -773,6 +854,12 @@ final class AVPlayerViewModel {
                 configuration.readAheadDuration = Self.onDemandReadAhead
                 configuration.maxWindowDuration = 0
                 configuration.maxWindowBytes = Self.diskBudget(for: outputDirectory, maximum: PlayerPreferences.timeShiftBytes)
+                // A resume: the engine produces the segment there first and the playlist starts there, instead of
+                // the player waiting for the first segment of the movie before it can seek.
+                let resume = startTime ?? currentItem.flatMap { resumePosition?($0) }
+                if let resume, resume.isFinite, resume >= Self.engineStartThreshold {
+                    configuration.startTime = resume
+                }
             }
             if !isLive {
                 watchDiskSpace()
@@ -833,9 +920,12 @@ final class AVPlayerViewModel {
         didReachEnd = false
         itemRecoveryAttempts = 0
         pendingResumePosition = nil
+        pendingResumeContinuesRecovery = false
 
         player.pause()
         player.replaceCurrentItem(with: nil)
+        seeker.reset()
+        scrubPreview.reset()
         mediaSelection.attach(nil)
 
         let recordings = recordings
@@ -872,6 +962,7 @@ final class AVPlayerViewModel {
 
     private func attach(_ item: AVPlayerItem) {
         itemCancellables.removeAll()
+        sampledBufferedEnd = nil
         didReachEnd = false
         itemFailure = nil
 
@@ -890,8 +981,10 @@ final class AVPlayerViewModel {
                     self.handleItemFailure(item.error)
                 } else if status == .readyToPlay, let position = self.pendingResumePosition {
                     // Back from casting (continue where the Chromecast was), or the engine took a movie over.
+                    let continuesRecovery = self.pendingResumeContinuesRecovery
                     self.pendingResumePosition = nil
-                    self.resume(at: position, in: item)
+                    self.pendingResumeContinuesRecovery = false
+                    self.resume(at: position, in: item, continuesRecovery: continuesRecovery)
                 }
                 self.refreshPlaybackState()
             }
@@ -910,6 +1003,22 @@ final class AVPlayerViewModel {
             .sink { [weak self] notification in
                 let error = notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
                 self?.handleItemFailure(error)
+            }
+            .store(in: &itemCancellables)
+
+        // Not moved to the main queue when it is posted there: AVPlayer asks for the segment of the new time right
+        // after, and the engine must know about the seek before (see `itemTimeJumped(_:)`).
+        NotificationCenter.default.publisher(for: AVPlayerItem.timeJumpedNotification, object: item)
+            .sink { [weak self, weak item] _ in
+                if Thread.isMainThread {
+                    MainActor.assumeIsolated {
+                        self?.itemTimeJumped(item)
+                    }
+                } else {
+                    Task { @MainActor in
+                        self?.itemTimeJumped(item)
+                    }
+                }
             }
             .store(in: &itemCancellables)
 
@@ -955,6 +1064,8 @@ final class AVPlayerViewModel {
             itemRecoveryAttempts += 1
             if route.isOnDemandRemux, position.isFinite, position > 1 {
                 pendingResumePosition = position
+                // The new item starts there (not where the first one did), so the engine is not moved twice.
+                remuxer.setPlaylistStart(position)
             }
             server.start(root: outputDirectory)
             attachRemuxedStream()
@@ -980,16 +1091,17 @@ final class AVPlayerViewModel {
 
     /// Plays the current movie or episode through the engine instead of AVPlayer's own loader, from where it
     /// was. Returns false when it does not apply (see `canFallBackToEngine`).
+    /// - Parameter startPosition: where it continues; by default where the movie is.
     @discardableResult
-    private func fallBackToEngine(reason: String) -> Bool {
+    private func fallBackToEngine(reason: String, at startPosition: TimeInterval? = nil) -> Bool {
         guard canFallBackToEngine, let channel = currentChannel, let url = channel.url,
               let fallback = PlaybackRoute.onDemandFallback(for: url) else {
             return false
         }
         logger.info("Playing through the engine: \(reason, privacy: .public)")
-        let position = player.currentItem.map { $0.currentTime().seconds } ?? 0
+        let position = startPosition ?? player.currentItem.map { $0.currentTime().seconds } ?? 0
         didFallBackToEngine = true
-        start(channel, url: url, route: fallback)
+        start(channel, url: url, route: fallback, startTime: position.isFinite && position > 1 ? position : nil)
         if position.isFinite, position > 1 {
             pendingResumePosition = position
         }
@@ -1196,12 +1308,17 @@ final class AVPlayerViewModel {
                     self.itemRecoveryAttempts = 0
                 }
                 self.watchForStall()
+                self.seeker.playerChanged()
                 self.refreshPlaybackState()
             }
             .store(in: &cancellables)
 
         timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 2), queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
+                if let self, let item = self.player.currentItem {
+                    self.sampledBufferedEnd = Self.bufferedEnd(of: item)
+                    self.seeker.positionChanged()
+                }
                 self?.updateTimeline()
             }
         }
@@ -1272,38 +1389,104 @@ final class AVPlayerViewModel {
     }
 
     private func seek(to seconds: TimeInterval) {
-        let tolerance = CMTime(value: 1, timescale: 4)
-        player.seek(to: CMTime(seconds: seconds, preferredTimescale: 600), toleranceBefore: tolerance, toleranceAfter: tolerance) { [weak self] finished in
-            guard finished else {
-                return
-            }
-            // Now Playing only gets a new elapsed time on state changes, so push the new position
-            // (otherwise the Lock Screen / Control Center scrubber drifts after a skip or a scrub).
-            Task { @MainActor [weak self] in
-                self?.updateTimeline()
-                self?.updateNowPlaying()
-            }
-        }
+        seeker.seek(to: seconds)
     }
 
     /// Seeks a new item to `position`. AVPlayer can drop a seek made while it starts an item (it then reports
-    /// the seek as not finished and plays from the start), so the seek is made again until playback is there,
-    /// up to `attempt` == 3.
-    private func resume(at position: TimeInterval, in item: AVPlayerItem, attempt: Int = 1) {
-        let tolerance = CMTime(value: 1, timescale: 4)
-        player.seek(to: CMTime(seconds: position, preferredTimescale: 600), toleranceBefore: tolerance, toleranceAfter: tolerance) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .milliseconds(500))
-                guard let self, self.player.currentItem === item else {
-                    return
-                }
-                if abs(item.currentTime().seconds - position) > 5, attempt < 3 {
-                    self.resume(at: position, in: item, attempt: attempt + 1)
-                    return
-                }
-                self.updateTimeline()
-                self.updateNowPlaying()
+    /// the seek as not finished and plays from the start): the seeker makes it again (see `PlayerSeeker`).
+    /// - Parameter continuesRecovery: the item replaces one whose seek did not play (see `recoverStuckSeek`).
+    private func resume(at position: TimeInterval, in item: AVPlayerItem, continuesRecovery: Bool = false) {
+        guard player.currentItem === item else {
+            return
+        }
+        seeker.seek(to: position, continuesRecovery: continuesRecovery)
+    }
+
+    /// The item's time changed by a seek the seeker did not make: Picture in Picture's skip buttons (they seek
+    /// AVPlayer themselves). Through the engine, a skip just past what the player buffered asks for the segment after
+    /// the last one it loaded, which the engine may have written ahead from inside a GOP: served as written, playback
+    /// starts at its next key frame, seconds after the target (or the picture freezes over the audio until then).
+    /// AVPlayer asks for that segment before it posts the jump, so telling the engine now is too late for it: the
+    /// seek is made again through the seeker, which tells the engine first (`onWillSeek`) and follows it like any
+    /// other. A jump within what was buffered plays from there (the media before it is continuous) and is left alone,
+    /// and so are the jumps outside Picture in Picture: every seek of the app goes through the seeker, so those are
+    /// AVPlayer's own (e.g. a seek it clamps to the end of a playlist that still grows), not to be made again.
+    private func itemTimeJumped(_ item: AVPlayerItem?) {
+        var isPictureInPicture = isPictureInPictureActive
+        #if DEBUG
+        isPictureInPicture = isPictureInPicture || debugTreatsJumpsAsPictureInPicture
+        #endif
+        guard isPictureInPicture, let item, item === player.currentItem, !isCasting, route.isOnDemandRemux, !seeker.isMoving,
+              let bufferedEnd = sampledBufferedEnd else {
+            return
+        }
+        let time = item.currentTime().seconds
+        guard time.isFinite, time > bufferedEnd - 0.5 else {
+            return
+        }
+        logger.info("Time jumped to \(time, format: .fixed(precision: 1)) s past the buffer (\(bufferedEnd, format: .fixed(precision: 1)) s) outside the seeker: seeking there again")
+        seeker.seek(to: time)
+    }
+
+    private func configureSeeker() {
+        seeker.onLanded = { [weak self] in
+            // Now Playing only gets a new elapsed time on state changes, so push the new position
+            // (otherwise the Lock Screen / Control Center scrubber drifts after a skip or a scrub).
+            self?.updateTimeline()
+            self?.updateNowPlaying()
+        }
+        seeker.onWillSeek = { [weak self] target in
+            // The engine produces the segment of the target from a key frame (also the segment after the last one
+            // the player loaded, which it may have written ahead from inside a GOP).
+            guard let self, !self.isCasting, self.route.isOnDemandRemux else {
+                return
             }
+            self.remuxer.noteSeek(to: target)
+        }
+        seeker.onStuck = { [weak self] target in
+            self?.recoverStuckSeek(at: target) ?? false
+        }
+        seeker.onFailed = { [weak self] target in
+            logger.error("Seek to \(target, format: .fixed(precision: 1)) s failed")
+            self?.refreshPlaybackState()
+        }
+    }
+
+    /// A seek that does not play even from the key frame before it: a movie AVPlayer plays itself moves to the
+    /// engine (or gets a new item), a movie through the engine gets a new item from the local server, both at the
+    /// target. A live channel has nothing to recover to (its window moves): the seek fails.
+    private func recoverStuckSeek(at target: TimeInterval) -> Bool {
+        guard !isCasting, currentChannel != nil, player.currentItem != nil, !isTimeShiftAvailable, !route.isLiveRemux else {
+            return false
+        }
+        if fallBackToEngine(reason: "a seek did not play", at: target) {
+            pendingResumePosition = target
+            pendingResumeContinuesRecovery = true
+            return true
+        }
+        switch route {
+        case .direct:
+            guard let asset = player.currentItem?.asset as? AVURLAsset else {
+                return false
+            }
+            logger.info("Seek did not play: new item at \(target, format: .fixed(precision: 1)) s")
+            pendingResumePosition = target
+            pendingResumeContinuesRecovery = true
+            attach(Self.makeItem(url: asset.url, isLocal: asset.url.isFileURL))
+            player.play()
+            return true
+        case .remux:
+            guard remuxer.isProcessing else {
+                return false
+            }
+            logger.info("Seek did not play: new item from the engine at \(target, format: .fixed(precision: 1)) s")
+            pendingResumePosition = target
+            pendingResumeContinuesRecovery = true
+            // The new item starts at the target (its playlist says so), not where the first one did.
+            remuxer.setPlaylistStart(target)
+            server.start(root: outputDirectory)
+            attachRemuxedStream()
+            return true
         }
     }
 
@@ -1315,6 +1498,12 @@ final class AVPlayerViewModel {
     /// Media the engine reads ahead of the player in an on-demand playlist, then pauses (the network radio
     /// rests until the player has used half of it).
     static let onDemandReadAhead: TimeInterval = 60
+    /// Positions from which an on-demand item through the engine starts where it continues (see `start`): the
+    /// positions `WatchProgressRecorder` resumes (it does not resume under 30 s).
+    static let engineStartThreshold: TimeInterval = 30
+    /// How long a seek may wait for media (the buffer not growing) before `PlayerSeeker` makes it again.
+    static let seekStallLimit: Duration = .seconds(8)
+    static let engineSeekStallLimit: Duration = .seconds(20)
     /// How long a movie played directly may wait for data (its buffer not growing) before the engine takes over.
     static let stallTimeout: Duration = .seconds(12)
     /// Free space kept in reserve while the segments of an on-demand input accumulate.
@@ -1646,8 +1835,9 @@ final class AVPlayerViewModel {
             streamError = String(localized: "This channel has no valid stream URL.", comment: "Player error: the playlist entry has no usable address.")
             return
         }
-        start(channel, url: url)
-        pendingResumePosition = position.flatMap { $0 > 1 ? $0 : nil }
+        let resume = position.flatMap { $0 > 1 ? $0 : nil }
+        start(channel, url: url, startTime: resume)
+        pendingResumePosition = resume
     }
 
     /// Clears the casting state (the session itself is left as it is).

@@ -104,6 +104,8 @@ final class StreamRemuxer {
         var ioTimeout: TimeInterval = 15
         /// Consecutive reconnection attempts. 0 uses the engine default, negative is unlimited.
         var maxReconnectAttempts: Int = 0
+        /// On-demand inputs: where the player starts (a resume), so the engine produces that segment first.
+        var startTime: TimeInterval = 0
         var userAgent: String?
 
         var filePrefix: String {
@@ -318,6 +320,27 @@ final class StreamRemuxer {
         }
     }
 
+    /// The player is about to seek an on-demand session to `seconds` (item time): the segment it asks for next
+    /// is produced as a seek target, starting with a key frame (see `fluxo_remux_note_seek`). Without it, a seek
+    /// just past what the player buffered asks for the next segment as if it played on, and a segment the engine
+    /// wrote ahead inside a GOP plays from its next key frame, seconds after the target.
+    func noteSeek(to seconds: TimeInterval) {
+        guard let session, let configuration, !configuration.isLive, seconds.isFinite else {
+            return
+        }
+        fluxo_remux_note_seek(session, seconds)
+    }
+
+    /// A new player item of the running on-demand session starts at `seconds` (its playlist says so), not where
+    /// the first item started: otherwise the engine produces media there first, only for the player to seek away.
+    @discardableResult
+    func setPlaylistStart(_ seconds: TimeInterval) -> Bool {
+        guard let session, let configuration, !configuration.isLive, seconds.isFinite else {
+            return false
+        }
+        return fluxo_remux_set_start_time(session, max(0, seconds)) == 0
+    }
+
     private func resolveSegmentWaiters(for file: SegmentFile, with available: Bool) {
         guard let waiters = segmentWaiters.removeValue(forKey: file) else {
             return
@@ -442,6 +465,7 @@ final class StreamRemuxer {
                             config.is_live = configuration.isLive ? 1 : 0
                             config.max_reconnect_attempts = Int32(clamping: configuration.maxReconnectAttempts)
                             config.read_ahead_duration = configuration.readAheadDuration
+                            config.start_time = configuration.startTime
                             config.hls.playlist_path = playlistPointer
                             config.hls.segment_path_prefix = prefixPointer
                             config.hls.segment_duration = configuration.segmentDuration

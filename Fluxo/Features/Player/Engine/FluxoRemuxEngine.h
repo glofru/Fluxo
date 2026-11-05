@@ -163,6 +163,10 @@ typedef struct FluxoRemuxConfig {
     double read_ahead_duration;
     /// Consecutive reconnection attempts before giving up. 0 uses the default (10), negative is unlimited.
     int32_t max_reconnect_attempts;
+    /// On-demand inputs: seconds from the start of the input where the player starts (it resumes a movie there).
+    /// The first segment produced is the one at that time, so the player does not wait for the first segment of
+    /// the movie before it can seek. 0 starts at the beginning.
+    double start_time;
     /// HLS output description.
     FluxoRemuxHLSOptions hls;
 } FluxoRemuxConfig;
@@ -198,6 +202,17 @@ void fluxo_remux_stop_recording(FluxoRemuxSession *session);
 /// event, and a negative value when it will not be produced (no such segment, the input ended before it,
 /// or the playlist of this session is not planned on demand).
 int32_t fluxo_remux_request_segment(FluxoRemuxSession *session, int64_t index, int32_t is_rendition);
+
+/// On-demand inputs: tells the engine that the player seeks to `seconds` (playlist time), just before it asks for
+/// the segment there. That request is then handled as a seek even when it is for the segment after the one the
+/// player loaded last: a segment written ahead that does not start with a key frame is written again from the key
+/// frame before it, so that the picture shows at the target at once. Never blocks.
+void fluxo_remux_note_seek(FluxoRemuxSession *session, double seconds);
+
+/// On-demand inputs: writes the playlists again with the player's start at `seconds` (EXT-X-START; 0 removes it),
+/// for a new player item of the same session (it would otherwise start where the first item did). Returns 0 when
+/// done, -1 when the playlists are not written yet or this session has no VOD plan.
+int32_t fluxo_remux_set_start_time(FluxoRemuxSession *session, double seconds);
 
 /// Cancels the session, waits for the engine thread to exit and frees every resource.
 /// An active recording is closed and its file is complete when this returns.

@@ -1,5 +1,5 @@
 # Sourced by run_vod.sh and run_formats.sh (after they set ROOT, WORK and CHECK_PORT and source
-# Tools/FFmpeg/env.sh): builds VODCheck (VODCheck/main.swift with the app's PlaybackRoute, StreamRemuxer,
+# Tools/FFmpeg/env.sh): builds VODCheck (VODCheck/main.swift and Stress.swift with the app's PlaybackRoute, PlayerSeeker, StreamRemuxer,
 # SimpleHTTPServer and the remux engine, on loopback port CHECK_PORT) and sets CHECK to its path.
 
 build_check() {
@@ -9,7 +9,8 @@ build_check() {
     cp "$ROOT/Fluxo/Features/Player/Engine/FluxoRemuxEngine.c" "$ROOT/Fluxo/Features/Player/Engine/FluxoTranscoder.c" \
         "$ROOT/Fluxo/Features/Player/Engine/FluxoTranscoder.h" "$pkg/Sources/FluxoEngine/"
     cp "$ROOT/Fluxo/Features/Player/Engine/FluxoRemuxEngine.h" "$pkg/Sources/FluxoEngine/include/"
-    cp "$ROOT/Tools/EngineSmokeTest/VODCheck/main.swift" "$ROOT/Fluxo/Features/Player/PlaybackRoute.swift" \
+    cp "$ROOT/Tools/EngineSmokeTest/VODCheck/main.swift" "$ROOT/Tools/EngineSmokeTest/VODCheck/Stress.swift" \
+        "$ROOT/Fluxo/Features/Player/PlaybackRoute.swift" "$ROOT/Fluxo/Features/Player/PlayerSeeker.swift" \
         "$ROOT/Fluxo/Features/Playlist/ChannelContentKind.swift" "$ROOT/Fluxo/Features/Series/EpisodeParser.swift" "$pkg/Sources/VODCheck/"
     { echo "import FluxoEngine"; cat "$ROOT/Fluxo/Features/Player/Engine/StreamRemuxer.swift"; } > "$pkg/Sources/VODCheck/StreamRemuxer.swift"
     sed "s/static let port: UInt16 = debugPortOverride ?? 19123/static let port: UInt16 = $CHECK_PORT/" "$ROOT/Fluxo/Features/Player/SimpleHTTPServer.swift" > "$pkg/Sources/VODCheck/SimpleHTTPServer.swift"
@@ -23,7 +24,7 @@ let package = Package(
     platforms: [.macOS(.v15)],
     dependencies: [.package(url: "https://github.com/swhitty/FlyingFox.git", exact: "$version")],
     targets: [
-        .target(name: "FluxoEngine", cSettings: [.unsafeFlags(["-I$ROOT/Vendor/FFmpeg/include"])]),
+        .target(name: "FluxoEngine", cSettings: [.unsafeFlags(["-I$ROOT/Vendor/FFmpeg/include", "-DFLUXO_ENGINE_TRACE"])]),
         .executableTarget(
             name: "VODCheck",
             dependencies: ["FluxoEngine", .product(name: "FlyingFox", package: "FlyingFox")],
@@ -36,7 +37,14 @@ let package = Package(
     ]
 )
 SWIFT
-    (cd "$pkg" && swift build -c release --scratch-path "$WORK/build" 2>&1 | grep -E "error|warning: .*(FluxoRemux|StreamRemuxer|SimpleHTTP|PlaybackRoute)|Compiling|Build complete" | grep -v "^\[" | tail -20)
+    # (Not piped: a failed build must stop the check rather than run the binary of an earlier build.)
+    build_status=0
+    (cd "$pkg" && swift build -c release --scratch-path "$WORK/build" > "$WORK/build.log" 2>&1) || build_status=$?
+    grep -E ": (error|warning: .*(FluxoRemux|FluxoTranscoder|StreamRemuxer|SimpleHTTP|PlaybackRoute|PlayerSeeker))|^error:|Compiling|Build complete" "$WORK/build.log" | grep -v "^\[" | tail -20 || true
+    if [ "$build_status" -ne 0 ]; then
+        echo "error: VODCheck did not build (log: $WORK/build.log)" >&2
+        return 1
+    fi
     CHECK=$(cd "$pkg" && swift build -c release --scratch-path "$WORK/build" --show-bin-path)/VODCheck
     [ -x "$CHECK" ]
 }

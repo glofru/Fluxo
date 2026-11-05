@@ -10,7 +10,7 @@ library that never touches a real one. Everything here runs on the Mac; nothing 
 | `shot.sh` | Screenshots every display of a kept clone (`--front` first brings a running Fluxo to the front). |
 | `cleanup.sh` | Deletes clones by name prefix (`fluxo-…` only). |
 | `test-stream.sh` | Loopback-only test streams for the player: live HLS, live raw MPEG-TS, on-demand MP4 / TS, and an M3U playlist of them. |
-| `gesture-tests.sh` | Real touches on a kept clone (`GestureTests/`, an XCUITest bundle that drives the installed app): deleting a TV guide source by swipe and by context menu in Settings and in the Guide Sources sheet over the Guide (`testDeleteGuideSource…`; the swipe used to crash), mini player tap and swipe up, the player's drag down (follows, springs back, closes on a long drag or a flick, ignores horizontal drags), scrubbing that never closes the player, the X that stops playback, and nothing above the tab bar while nothing plays (at launch, back from the background, after stopping with the tab bar minimized, after a relaunch), the Audio and Subtitles menu (`testTracks…`: a Matroska file's tracks through the engine, a loaded subtitle file with its timing controls and the document picker, a live channel with two audio tracks, the receiver's tracks while casting; `TEST_RUNNER_FLUXO_TEST_STREAM_URL` for a test-stream server on another port), and Copy Link / Share in the menus of a channel row, a Home card, the player, its side panel (iPad), a series card ("Copy Episode Link"), a series page and a TV guide programme (`testCopyLink…`; `TEST_RUNNER_FLUXO_APPEARANCE=dark` for dark mode). Needs `test-stream.sh`; quit Fluxo on other booted clones first, since every simulator shares the Mac's loopback interface and so the player's local stream port. |
+| `gesture-tests.sh` | Real touches on a kept clone (`GestureTests/`, an XCUITest bundle that drives the installed app): deleting a TV guide source by swipe and by context menu in Settings and in the Guide Sources sheet over the Guide (`testDeleteGuideSource…`; the swipe used to crash), mini player tap and swipe up, the player's drag down (follows, springs back, closes on a long drag or a flick, ignores horizontal drags), scrubbing that never closes the player, scrubbing a movie with a real finger (`testScrubbingMovieFollowsTheFingerAndSeeks`: the time follows the finger, the bar stays at the target after the release, the seek plays; `TEST_RUNNER_FLUXO_TEST_STREAM_URL` may point at a throttled `vod_server.py`), the X that stops playback, and nothing above the tab bar while nothing plays (at launch, back from the background, after stopping with the tab bar minimized, after a relaunch), the Audio and Subtitles menu (`testTracks…`: a Matroska file's tracks through the engine, a loaded subtitle file with its timing controls and the document picker, a live channel with two audio tracks, the receiver's tracks while casting; `TEST_RUNNER_FLUXO_TEST_STREAM_URL` for a test-stream server on another port), and Copy Link / Share in the menus of a channel row, a Home card, the player, its side panel (iPad), a series card ("Copy Episode Link"), a series page and a TV guide programme (`testCopyLink…`; `TEST_RUNNER_FLUXO_APPEARANCE=dark` for dark mode). Needs `test-stream.sh`; quit Fluxo on other booted clones first, since every simulator shares the Mac's loopback interface and so the player's local stream port. |
 | `accessibility-audit.sh` | The Xcode accessibility audit (`AccessibilityAudit/`, an XCUITest bundle) of 15 screens of the installed app on a kept clone, in the variants `default`, `ax5` (the largest text size; also audits Dynamic Type and clipped text) and `contrast` (dark mode, Increase Contrast). One `report.txt` per variant with every issue, accepted ones marked with the reason (`knownIssues`), and a screenshot per screen, in `/tmp/fluxo-shots/<clone>/accessibility-audit/<variant>/`. With `FLUXO_TEST_STREAM_URL` (test-stream.sh running) it also checks the player's Audio and Subtitles menu. |
 | `siri-tests.sh` | The system side of the App Intents on a kept clone (`SiriTests/`, an XCUITest bundle): the Shortcuts app lists Fluxo's ten App Shortcuts and runs What's On in the running app, the action search is screenshotted, Spotlight finds a seeded favorite and opening it plays it in Fluxo, and Siri is asked two phrases. Screenshots and hierarchy dumps (Spotlight's results are in its own process, `com.apple.Spotlight`) in `/tmp/fluxo-shots/<clone>/siri-tests/`. On iOS 27.2 the Simulator has no Siri ("not enabled on this device"): try phrases on a device. |
 | `format-matrix.sh` | The format matrix in the app (`--device`, `--clone`, optional case words): plays a file of each common container / video / audio codec combination (the media of `Tools/EngineSmokeTest/run_formats.sh`, served on 127.0.0.1) with `play-movie:`, then `probe-tracks`, `probe-playback`, a skip, a scrub and a skip back; one clone boot for every case. Summary in `/tmp/fluxo-shots/<clone>/formats/summary.txt`. |
@@ -160,8 +160,16 @@ first that contains the text.
 | `play-movie:<url>` | Plays a URL full screen as a playlist's movie entry would (on demand, also for `.ts` and extensionless links). |
 | `probe-tracks[:<a\|v\|av>]` | Checks that what plays has enabled audio and / or video tracks (default both) and logs their formats (`Playback tracks after probe-tracks: video=[avc1] audio=[aac] …` in `app.log`; streams the engine converted show as `avc1` / `aac`). |
 | `close-player`, `stop` | Closes the player screen (playback continues); stops playback. |
-| `skip:<seconds>`, `seek:<seconds\|percent%>` | Skips (negative: back) like the skip buttons; seeks like the scrubber. Then checks that playback continues there with video frames that are not black: a failure is reported as the step's problem. |
+| `skip:<seconds>`, `seek:<seconds\|percent%>` | Skips (negative: back) like the skip buttons; seeks like the scrubber. Then checks that playback continues there with video frames that are not black and keep up with the clock (`video-lag`: a picture frozen over running audio fails), and logs how long the seek took to play (`latency`): a failure is reported as the step's problem. |
 | `probe-playback[:<seconds>]` | The same check without moving (near `<seconds>` when given), e.g. after a relaunch that resumes. |
+| `drag:<from>-<to>` | Drags the scrubber from one point to another (seconds or percentages, `drag:10%-40%`) in 20 moves over 0.8 s and releases it, then the same check. |
+| `scrub-hold:<seconds\|percent%>`, `scrub-release` | Holds the scrubber at a point as a finger would (the time and, for movies AVPlayer plays itself, the frame preview over the knob; screenshots); releases it there (it seeks; add `probe-playback`). |
+| `skip-burst:<seconds>x<count>` | Taps a skip button `<count>` times 150 ms apart (`skip-burst:30x4`): the taps add up into one seek. Then the same check. |
+| `seek-pause:<seconds\|percent%>` | Seeks, pauses at once, plays 2 s later, then the same check. |
+| `seek-loading:<seconds\|percent%>` | Seeks and returns at once, while the seek loads (screenshots of the loading state). |
+| `seek-fail:<seconds\|percent%>` | Pauses and shows a seek there that could not play, as after every recovery step (Try Again over the timeline, `player.seekRetry`; the VoiceOver announcement). |
+| `seek-drop:<count\|all>x<seconds\|percent%>` | Seeks there while AVPlayer drops that many seeks in a row (completes them as not finished, as it does while it starts an item; `PlayerSeeker.seekInterceptor`), or every seek. A count must play at the target (the probe), `all` must end with Try Again; neither may stay loading (it used to after a fourth drop). |
+| `seek-past-buffer[:direct]` | `direct` seeks AVPlayer itself, as Picture in Picture's skip buttons do. Seeks to 1 s past what the player buffered: through the engine, the segment there was usually written ahead from inside a GOP, and the player asks for it as the next one. Then the same check, with playback within 3 s of the target (it used to start at the next key frame, seconds late, with the bar stuck at the target). |
 | `dismiss-player` | Closes the player like its chevron or a swipe down (into Picture in Picture when the device supports it; the Simulator does not, so the mini player shows). |
 | `player-guide[:full]` | The player's guide control, like a tap on what is on now in its top bar: the playing channel's schedule, at now, in the side panel (wide players), the other pane (open foldable) or a sheet over the video; `player-guide:full` then chooses Full Guide (the player closes and the TV Guide shows the channel, scrolled to its row, highlighted). Needs a guide, e.g. `seed-guide`. |
 | `open-player` | Opens the player for what plays, like a tap on the mini player. |
@@ -217,6 +225,25 @@ Tools/Simulator/run.sh --device "iPhone 17e" --clone fluxo-mykey-1 --store scrat
 Tools/Simulator/run.sh --clone fluxo-mykey-1 --store scratch --no-install \
     --route "player:Test Clip (MPEG-TS);probe-playback:372" -- \
     -FluxoDebugTestStreamURL http://127.0.0.1:18931 -FluxoDebugLoopbackPort 19151
+```
+
+To see seeks the way a phone on Wi-Fi does, serve a movie with a burned-in counter through the server's latency and
+bandwidth limits (`/lat/<ms>/slow/<KB/s>/`) as the seeded test clips (a folder with `movie/clip.mp4`, `movie/clip.ts`,
+`movie/clip.mkv`, e.g. made from `testsrc` with a key frame every 10 s). The counter in the picture must match the
+timeline after every seek:
+
+```sh
+python3 -I Tools/EngineSmokeTest/vod_server.py --root /tmp/fluxo-sim-media --port 18988 &
+Tools/Simulator/run.sh --device "iPhone 17e" --clone fluxo-mykey-1 --step-shots \
+    --route "player:Test Clip (MPEG-TS);wait:6;player-controls:show;scrub-hold:50%;scrub-release;wait:1;probe-playback:300;seek-end:12;wait:6" -- \
+    -FluxoDebugTestStreamURL http://127.0.0.1:18988/lat/150/slow/900 -FluxoDebugLoopbackPort 19181
+```
+
+The sequence that used to leave the bar stuck at the target while the picture played on, seconds later (a burst of
+skips, then a drag just past what the player buffered: the engine had written that segment ahead from inside a GOP):
+
+```sh
+--route "player:Test Clip (MPEG-TS);wait:6;player-controls:show;scrub-hold:40%;scrub-release;seek-loading:45%;probe-playback:270;skip-burst:30x4;seek-past-buffer;drag:20%-70%"
 ```
 
 Routes drive the app through `AppNavigation` (`Fluxo/App/AppNavigation.swift`: the selected tab or

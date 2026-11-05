@@ -71,9 +71,10 @@
 // On-demand (VOD) inputs.
 // Media produced ahead of the latest requested segment before reading pauses (resumes at half of it).
 #define FLUXO_DEFAULT_READ_AHEAD 60.0
-// A requested segment at most this many segments after the one being read is reached by reading on;
-// one farther away (or behind) is reached by seeking the input.
-#define FLUXO_VOD_READ_ON_SEGMENTS 3
+// A requested segment that starts at most this long after the one being read is reached by reading on; one
+// farther away (or behind) is reached by seeking the input. In time rather than segments: reading on reads all the
+// media in between at the speed of the network, and segments are as long as the GOPs of the input (often 10 s).
+#define FLUXO_VOD_READ_ON_TIME (10 * AV_TIME_BASE)
 // Consecutive attempts to resume an on-demand input after a read error (reopening it at the segment).
 #define FLUXO_VOD_MAX_RECOVERIES 6
 // Packets held while waiting for the key frame that starts the next segment (see fluxo_vod_route).
@@ -86,6 +87,37 @@
 #define FLUXO_VOD_INDEX_MAX_KEY_GAP (20 * AV_TIME_BASE)
 // Timestamps this close are equal (index and packet times are rescaled from the same time base).
 #define FLUXO_VOD_TIME_EPSILON 1000
+// A segment requested after fluxo_remux_note_seek is the one the seek goes to when it starts at most this long
+// after the target (AVPlayer seeks with a tolerance of a quarter of a second, see PlayerSeeker).
+#define FLUXO_VOD_SEEK_HINT_MARGIN (AV_TIME_BASE / 2)
+// Plans without an index keep the packets read since the latest key frame of the video (references to them, at most
+// this much media): a seek into a segment of that GOP starts it with its pre-roll from memory ("replays" them through
+// fluxo_vod_route) instead of seeking the input back over the network for it. Beyond the limit (a very long GOP of a
+// high bit rate), such a seek reads the GOP again from the network.
+#define FLUXO_VOD_GOP_MEMORY_BYTES (48 * 1024 * 1024)
+// After a seek into a segment that does not start with a key frame (MPEG-TS and other inputs without an index,
+// planned at nominal times), the segment starts at the key frame before it (its "pre-roll"): otherwise its video
+// could only begin at the next key frame, a GOP later, and the picture would stay frozen over the audio until then.
+// The pre-roll holds at most this many packets; when the reader reaches the segment without having seen a key frame
+// it seeks back this far once more (twice at most).
+#define FLUXO_VOD_MAX_PREROLL_PACKETS 8192
+#define FLUXO_VOD_PREROLL_BACKOFF (10 * AV_TIME_BASE)
+#define FLUXO_VOD_MAX_PREROLL_BACKOFFS 2
+// Inputs without an index (MPEG-TS) are seeked by byte position, estimated from the size and the duration: one
+// request, where a seek by time searches the file with a dozen requests (seconds on a phone network). A landing more
+// than FLUXO_VOD_BYTE_SEEK_LATE after the aimed time or FLUXO_VOD_BYTE_SEEK_EARLY before it is corrected (at most
+// FLUXO_VOD_BYTE_SEEK_CORRECTIONS times), from the bit rate.
+#define FLUXO_VOD_BYTE_SEEK_LATE (AV_TIME_BASE / 2)
+#define FLUXO_VOD_BYTE_SEEK_EARLY (12 * AV_TIME_BASE)
+#define FLUXO_VOD_BYTE_SEEK_CORRECTIONS 3
+
+// Engine trace for the smoke tests (built with -DFLUXO_ENGINE_TRACE, printed when the FLUXO_ENGINE_TRACE
+// environment variable is set). Compiled out of the app.
+#ifdef FLUXO_ENGINE_TRACE
+#define FLUXO_TRACE(...) do { if (getenv("FLUXO_ENGINE_TRACE") != NULL) { fprintf(stderr, "[engine] " __VA_ARGS__); fputc('\n', stderr); } } while (0)
+#else
+#define FLUXO_TRACE(...) do { } while (0)
+#endif
 // Buffer of the AVIOContext of on-demand HTTP inputs, and the longest forward seek made by reading on (a longer
 // one opens a connection at the new position).
 #define FLUXO_INPUT_IO_BUFFER (64 * 1024)
@@ -268,6 +300,9 @@ typedef struct FluxoPlan {
     // them when the player asks. Engine thread only.
     uint8_t *blind;
     int blind_count;
+    // Whether each segment on disk starts with a key frame of the video (a segment cut at its planned time inside
+    // a GOP does not: it only plays after the segment before it). Guarded by vod_lock.
+    uint8_t *independent;
     int count;
     // The boundaries are key frames of the input's index, so segments are exact and start with a key
     // frame; otherwise they are planned every segment_duration and cut at the next key frame.
@@ -328,6 +363,8 @@ struct FluxoRemuxSession {
 
     // MARK: On-demand inputs (is_live == 0)
     double read_ahead;
+    // Where the player starts, from the start of the input (AV_TIME_BASE units, 0: the beginning).
+    int64_t start_time;
     // A VOD plan exists (otherwise an on-demand input is remuxed from start to end, see fluxo_run_loop).
     int on_demand;
     FluxoPlan plan;
@@ -361,6 +398,11 @@ struct FluxoRemuxSession {
     // The reader just seeked: the first packet of the reference stream shows whether it landed before the
     // target segment (MPEG-TS seeks by timestamp search, and can overshoot).
     int vod_check_seek;
+    // Byte seeks of plans without an index (see fluxo_vod_seek): the time and byte position aimed at, and the
+    // corrections made so far. vod_seek_position < 0 for a seek by time.
+    int64_t vod_seek_time;
+    int64_t vod_seek_position;
+    int vod_seek_corrections;
     int vod_writing;
     int vod_need_key;
     // Video packets written to the current segment.
@@ -369,6 +411,43 @@ struct FluxoRemuxSession {
     FluxoHeldPacket *vod_held;
     int vod_held_count;
     int vod_held_capacity;
+    // Packets from the latest key frame before the target segment of a seek (see FLUXO_VOD_MAX_PREROLL_PACKETS),
+    // and how often the reader seeked back for one.
+    FluxoHeldPacket *vod_preroll;
+    int vod_preroll_count;
+    int vod_preroll_capacity;
+    int vod_preroll_backoffs;
+    // Engine thread only (plans without an index): every packet read since the latest key frame of the reference video,
+    // in read order (FLUXO_VOD_GOP_MEMORY_BYTES; vod_kept_valid 0 until the next key frame when they do not fit), the
+    // time of the latest packet read, and the packets fed to fluxo_vod_route again before the input is read on
+    // (vod_replay_next is the next one).
+    FluxoHeldPacket *vod_kept;
+    int vod_kept_count;
+    int vod_kept_capacity;
+    int64_t vod_kept_bytes;
+    int vod_kept_valid;
+    int64_t vod_read_time;
+    FluxoHeldPacket *vod_replay;
+    int vod_replay_count;
+    int vod_replay_capacity;
+    int vod_replay_next;
+    // The segment being written starts with a key frame of the video (see FluxoPlan.independent); its first video
+    // packet is still to come.
+    int vod_segment_independent;
+    int vod_segment_awaits_video;
+    // Longest GOP read so far (AV_TIME_BASE units, 0 before two key frames), and the latest key frame time: a seek
+    // into a plan without an index starts this far before the target, so that it reads the key frame before it.
+    int64_t vod_gop;
+    int64_t vod_last_key;
+    // A segment on disk that does not start with a key frame, requested by a seek: written again (with a pre-roll),
+    // -1 when none. Guarded by vod_lock.
+    int64_t vod_regenerate;
+    // Where the player seeks to (playlist time, AV_TIME_BASE units; AV_NOPTS_VALUE: no seek), told by
+    // fluxo_remux_note_seek before the player asks for the segment there. The next request of the main playlist
+    // consumes it. Guarded by vod_lock.
+    int64_t vod_seek_hint;
+    // The VOD playlists are on disk (fluxo_remux_set_start_time may write them again). Guarded by vod_lock.
+    int vod_playlist_written;
 };
 
 static pthread_once_t fluxo_init_once = PTHREAD_ONCE_INIT;
@@ -3110,7 +3189,8 @@ static int fluxo_vod_plan(FluxoRemuxSession *session) {
     plan->bytes = calloc((size_t)count, sizeof(int64_t));
     plan->blind = calloc((size_t)count, sizeof(uint8_t));
     plan->blind_count = 0;
-    if (plan->bytes == NULL || plan->blind == NULL) {
+    plan->independent = calloc((size_t)count, sizeof(uint8_t));
+    if (plan->bytes == NULL || plan->blind == NULL || plan->independent == NULL) {
         return AVERROR(ENOMEM);
     }
     session->vod_end_segment = count - 1;
@@ -3126,6 +3206,8 @@ static void fluxo_vod_plan_free(FluxoPlan *plan) {
     free(plan->blind);
     plan->blind = NULL;
     plan->blind_count = 0;
+    free(plan->independent);
+    plan->independent = NULL;
     plan->count = 0;
 }
 
@@ -3147,10 +3229,15 @@ static int fluxo_vod_write_media_playlist(FluxoRemuxSession *session, const char
     }
     fprintf(file, "#EXTM3U\n#EXT-X-VERSION:%d\n", init_path != NULL ? 7 : 3);
     fprintf(file, "#EXT-X-TARGETDURATION:%d\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-PLAYLIST-TYPE:VOD\n", target);
-    if (!is_main || (plan->exact && plan->has_video)) {
-        // Every segment starts with a key frame of the index (audio and subtitle segments always do).
-        fprintf(file, "#EXT-X-INDEPENDENT-SEGMENTS\n");
+    if (session->start_time > 0) {
+        // A resume: the player starts there (with the segment the engine produces first, see fluxo_vod_open).
+        fprintf(file, "#EXT-X-START:TIME-OFFSET=%.3f,PRECISE=YES\n", (double)session->start_time / AV_TIME_BASE);
     }
+    // Every segment the player seeks into starts with a key frame: the boundaries of an index are key frames, and
+    // otherwise the first segment of a run starts with its pre-roll, and a segment cut inside a GOP is written again
+    // when a seek asks for it (fluxo_remux_request_segment). Audio and subtitle segments always are. Without it,
+    // AVPlayer loads the segment before the one it seeks into too, which costs a second seek of the input.
+    fprintf(file, "#EXT-X-INDEPENDENT-SEGMENTS\n");
     if (init_path != NULL) {
         const char *slash = strrchr(init_path, '/');
         fprintf(file, "#EXT-X-MAP:URI=\"%s\"\n", slash != NULL ? slash + 1 : init_path);
@@ -3196,6 +3283,158 @@ static void fluxo_vod_drop_held(FluxoRemuxSession *session) {
     session->vod_held_count = 0;
 }
 
+static void fluxo_vod_drop_preroll(FluxoRemuxSession *session) {
+    for (int i = 0; i < session->vod_preroll_count; i++) {
+        av_packet_free(&session->vod_preroll[i].packet);
+    }
+    session->vod_preroll_count = 0;
+}
+
+// Forgets the packets of the GOP in memory and those still to replay (the input moved: they no longer lead to
+// where it reads).
+static void fluxo_vod_drop_gop(FluxoRemuxSession *session) {
+    for (int i = 0; i < session->vod_kept_count; i++) {
+        av_packet_free(&session->vod_kept[i].packet);
+    }
+    session->vod_kept_count = 0;
+    session->vod_kept_bytes = 0;
+    session->vod_kept_valid = 0;
+    for (int i = session->vod_replay_next; i < session->vod_replay_count; i++) {
+        av_packet_free(&session->vod_replay[i].packet);
+    }
+    session->vod_replay_count = 0;
+    session->vod_replay_next = 0;
+    session->vod_read_time = AV_NOPTS_VALUE;
+}
+
+// Empties the GOP in memory; `valid`: whether it is kept from now on (from a key frame).
+static void fluxo_vod_clear_kept(FluxoRemuxSession *session, int valid) {
+    for (int i = 0; i < session->vod_kept_count; i++) {
+        av_packet_free(&session->vod_kept[i].packet);
+    }
+    session->vod_kept_count = 0;
+    session->vod_kept_bytes = 0;
+    session->vod_kept_valid = valid;
+}
+
+// Appends `packet` (owned: freed when it is not kept) to the GOP in memory, within its limits.
+static void fluxo_vod_keep(FluxoRemuxSession *session, AVPacket *packet, int64_t time) {
+    if (!session->vod_kept_valid) {
+        av_packet_free(&packet);
+        return;
+    }
+    if (session->vod_kept_count >= FLUXO_VOD_MAX_PREROLL_PACKETS || session->vod_kept_bytes + packet->size > FLUXO_VOD_GOP_MEMORY_BYTES) {
+        // Too long to keep: until the next key frame, a seek here reads it again from the input.
+        av_packet_free(&packet);
+        fluxo_vod_clear_kept(session, 0);
+        return;
+    }
+    if (session->vod_kept_count == session->vod_kept_capacity) {
+        int capacity = session->vod_kept_capacity > 0 ? session->vod_kept_capacity * 2 : 256;
+        FluxoHeldPacket *kept = realloc(session->vod_kept, sizeof(FluxoHeldPacket) * (size_t)capacity);
+        if (kept == NULL) {
+            av_packet_free(&packet);
+            fluxo_vod_clear_kept(session, 0);
+            return;
+        }
+        session->vod_kept = kept;
+        session->vod_kept_capacity = capacity;
+    }
+    session->vod_kept[session->vod_kept_count].packet = packet;
+    session->vod_kept[session->vod_kept_count].time = time;
+    session->vod_kept_count++;
+    session->vod_kept_bytes += packet->size;
+}
+
+// Keeps a reference to `packet`, just read (or replayed), in the GOP in memory: a key frame of the reference video
+// starts it over. Plans without an index only.
+static void fluxo_vod_remember(FluxoRemuxSession *session, const AVPacket *packet) {
+    const FluxoPlan *plan = &session->plan;
+    if (plan->exact || !plan->has_video) {
+        return;
+    }
+    AVStream *stream = session->input->streams[packet->stream_index];
+    int reference = packet->stream_index == plan->reference_input_stream;
+    int64_t time = fluxo_vod_packet_time(plan, packet, stream, 0);
+    if (reference && time != AV_NOPTS_VALUE) {
+        session->vod_read_time = time;
+    }
+    if (reference && (packet->flags & AV_PKT_FLAG_KEY)) {
+        fluxo_vod_clear_kept(session, time != AV_NOPTS_VALUE);
+    }
+    if (!session->vod_kept_valid) {
+        return;
+    }
+    AVPacket *copy = av_packet_clone(packet);
+    if (copy == NULL) {
+        fluxo_vod_clear_kept(session, 0);
+        return;
+    }
+    fluxo_vod_keep(session, copy, time);
+}
+
+// A seek to segment `index` of a plan without an index, when the GOP in memory starts at or before it and the input
+// was read to about there: the reader goes back to the GOP's key frame by replaying its packets (no network). The
+// packets that were still to replay go back into the GOP first (they lead to where the input is). Returns 1 when it
+// replays, 0 when the input must seek.
+static int fluxo_vod_replay(FluxoRemuxSession *session, int64_t index) {
+    const FluxoPlan *plan = &session->plan;
+    for (int i = session->vod_replay_next; i < session->vod_replay_count; i++) {
+        fluxo_vod_keep(session, session->vod_replay[i].packet, session->vod_replay[i].time);
+        session->vod_replay[i].packet = NULL;
+    }
+    session->vod_replay_count = 0;
+    session->vod_replay_next = 0;
+    if (plan->exact || !plan->has_video || index <= 0 || index >= plan->count || !session->vod_kept_valid || session->vod_kept_count == 0 ||
+        session->vod_read_time == AV_NOPTS_VALUE) {
+        return 0;
+    }
+    int64_t key = session->vod_kept[0].time;
+    int64_t boundary = plan->starts[index];
+    if (key == AV_NOPTS_VALUE || key > boundary + FLUXO_VOD_TIME_EPSILON || boundary > session->vod_read_time + FLUXO_VOD_READ_ON_TIME) {
+        return 0;
+    }
+    // The GOP becomes the replay queue (each packet is remembered again as it is replayed).
+    FluxoHeldPacket *replay = session->vod_replay;
+    int replay_capacity = session->vod_replay_capacity;
+    session->vod_replay = session->vod_kept;
+    session->vod_replay_capacity = session->vod_kept_capacity;
+    session->vod_replay_count = session->vod_kept_count;
+    session->vod_replay_next = 0;
+    session->vod_kept = replay;
+    session->vod_kept_capacity = replay_capacity;
+    session->vod_kept_count = 0;
+    session->vod_kept_bytes = 0;
+    session->vod_kept_valid = 0;
+    return 1;
+}
+
+// Adds `packet` to the pre-roll. Returns 0, or a negative error on allocation failure.
+static int fluxo_vod_add_preroll(FluxoRemuxSession *session, const AVPacket *packet, int64_t time) {
+    if (session->vod_preroll_count >= FLUXO_VOD_MAX_PREROLL_PACKETS) {
+        // A GOP longer than the pre-roll can hold: the segment starts as it did without one.
+        fluxo_vod_drop_preroll(session);
+        return 0;
+    }
+    if (session->vod_preroll_count == session->vod_preroll_capacity) {
+        int capacity = session->vod_preroll_capacity > 0 ? session->vod_preroll_capacity * 2 : 256;
+        FluxoHeldPacket *preroll = realloc(session->vod_preroll, sizeof(FluxoHeldPacket) * (size_t)capacity);
+        if (preroll == NULL) {
+            return AVERROR(ENOMEM);
+        }
+        session->vod_preroll = preroll;
+        session->vod_preroll_capacity = capacity;
+    }
+    AVPacket *copy = av_packet_clone(packet);
+    if (copy == NULL) {
+        return AVERROR(ENOMEM);
+    }
+    session->vod_preroll[session->vod_preroll_count].packet = copy;
+    session->vod_preroll[session->vod_preroll_count].time = time;
+    session->vod_preroll_count++;
+    return 0;
+}
+
 static int fluxo_vod_hold(FluxoRemuxSession *session, const AVPacket *packet, int64_t time) {
     if (session->vod_held_count == session->vod_held_capacity) {
         int capacity = session->vod_held_capacity > 0 ? session->vod_held_capacity * 2 : 64;
@@ -3235,6 +3474,7 @@ static void fluxo_vod_abort_run(FluxoRemuxSession *session) {
     hls->moov_flushed = 0;
     session->vod_writing = 0;
     fluxo_vod_drop_held(session);
+    fluxo_vod_drop_preroll(session);
 }
 
 // Deletes the segments farthest from the player while the cache is over its budget. Kept: the two
@@ -3301,6 +3541,8 @@ static int fluxo_vod_open_segment(FluxoRemuxSession *session, int64_t index) {
         return ret;
     }
     hls->segment_open = 1;
+    session->vod_segment_independent = !session->plan.has_video;
+    session->vod_segment_awaits_video = session->plan.has_video;
     // The audio renditions' segments of the same span, under the same number.
     ret = fluxo_hls_open_rendition_segments(hls, index, !new_run);
     if (ret < 0) {
@@ -3414,6 +3656,7 @@ static int fluxo_vod_finish_segment(FluxoRemuxSession *session) {
 
     pthread_mutex_lock(&session->vod_lock);
     session->plan.bytes[index] = bytes;
+    session->plan.independent[index] = (uint8_t)session->vod_segment_independent;
     session->vod_cached_bytes += bytes;
     session->vod_segments_on_disk++;
     session->vod_init_ready = hls->init_written || !hls->fragmented;
@@ -3422,6 +3665,7 @@ static int fluxo_vod_finish_segment(FluxoRemuxSession *session) {
 
     hls->segments_written++;
     session->vod_recoveries = 0;
+    session->vod_preroll_backoffs = 0;
     session->reconnect_attempt = 0;
     session->event_segment_index = index;
     fluxo_emit(session, FluxoRemuxEventSegmentWritten, 0, NULL);
@@ -3454,7 +3698,7 @@ static int fluxo_vod_cut(FluxoRemuxSession *session) {
             }
         }
     }
-    if (on_disk && missing > next + FLUXO_VOD_READ_ON_SEGMENTS && session->vod_reposition < 0) {
+    if (on_disk && missing > next && plan->starts[missing] - plan->starts[next] > FLUXO_VOD_READ_ON_TIME && session->vod_reposition < 0) {
         session->vod_reposition = missing;
     }
     pthread_mutex_unlock(&session->vod_lock);
@@ -3484,6 +3728,10 @@ static int fluxo_vod_write(FluxoRemuxSession *session, AVPacket *packet, AVPacke
             return 0;
         }
         session->vod_need_key = 0;
+    }
+    if (session->vod_segment_awaits_video && packet->stream_index == session->plan.reference_input_stream) {
+        session->vod_segment_awaits_video = 0;
+        session->vod_segment_independent = (packet->flags & AV_PKT_FLAG_KEY) != 0;
     }
     int64_t offset = av_rescale_q(session->timestamp_offset, AV_TIME_BASE_Q, in_stream->time_base);
     if (packet->dts != AV_NOPTS_VALUE) {
@@ -3530,7 +3778,41 @@ static int fluxo_vod_route(FluxoRemuxSession *session, AVPacket *packet, AVPacke
     int64_t time = fluxo_vod_packet_time(plan, packet, in_stream, 0);
     int64_t key_time = key ? fluxo_vod_packet_time(plan, packet, in_stream, 1) : AV_NOPTS_VALUE;
     int ret;
+    if (key && time != AV_NOPTS_VALUE) {
+        int64_t interval = time - session->vod_last_key;
+        if (session->vod_last_key != AV_NOPTS_VALUE && interval > 0 && interval <= FLUXO_VOD_INDEX_MAX_KEY_GAP && interval > session->vod_gop) {
+            session->vod_gop = interval;
+        }
+        session->vod_last_key = time;
+    }
 
+    if (session->vod_check_seek && reference && time != AV_NOPTS_VALUE && session->vod_seek_position >= 0) {
+        // A byte seek: where it landed tells how far off the estimate was.
+        int64_t error = time - session->vod_seek_time;
+        int64_t size = session->input->pb != NULL ? avio_size(session->input->pb) : -1;
+        int64_t duration = session->input->duration;
+        if ((error > FLUXO_VOD_BYTE_SEEK_LATE || error < -FLUXO_VOD_BYTE_SEEK_EARLY) && session->vod_seek_corrections < FLUXO_VOD_BYTE_SEEK_CORRECTIONS &&
+            size > 0 && duration > 0) {
+            double bytes_per_time = (double)size / (double)duration;
+            // A late landing goes back a little more than the error, so that the next one is early (reading on is cheap).
+            int64_t correction = error > 0 ? error + AV_TIME_BASE : error + AV_TIME_BASE * 2;
+            int64_t position = session->vod_seek_position - (int64_t)(correction * bytes_per_time);
+            if (position < 0) {
+                position = 0;
+            }
+            if (position != session->vod_seek_position && av_seek_frame(session->input, -1, position, AVSEEK_FLAG_BYTE) >= 0) {
+                FLUXO_TRACE("byte seek for %.2f s landed at %.2f s: again at byte %lld", session->vod_seek_time / 1e6, time / 1e6, (long long)position);
+                fluxo_streams_reset(&session->streams);
+                fluxo_vod_drop_gop(session);
+                session->vod_seek_position = position;
+                session->vod_seek_corrections++;
+                return 0;
+            }
+        }
+        FLUXO_TRACE("byte seek for %.2f s landed at %.2f s", session->vod_seek_time / 1e6, time / 1e6);
+        session->vod_check_seek = 0;
+        session->vod_seek_position = -1;
+    }
     if (session->vod_check_seek && reference && time != AV_NOPTS_VALUE) {
         session->vod_check_seek = 0;
         int64_t target = plan->starts[session->vod_target];
@@ -3543,7 +3825,145 @@ static int fluxo_vod_route(FluxoRemuxSession *session, AVPacket *packet, AVPacke
             }
             if (av_seek_frame(session->input, -1, earlier, AVSEEK_FLAG_BACKWARD) >= 0) {
                 fluxo_streams_reset(&session->streams);
+                fluxo_vod_drop_gop(session);
+                FLUXO_TRACE("seek to segment %lld landed at %.2f s, after its start %.2f s: again from %.2f s", (long long)session->vod_target,
+                            time / 1e6, target / 1e6, earlier / 1e6);
                 return 0;
+            }
+        }
+    }
+    int64_t upcoming = session->vod_segment + 1;
+    // (Only without an index: the boundaries of an index are key frames.)
+    if (!plan->exact && plan->has_video && !session->vod_writing && session->vod_segment >= 0 && upcoming >= session->vod_target &&
+        upcoming < plan->count && plan->bytes[upcoming] <= 0 && time != AV_NOPTS_VALUE) {
+        // The reader writes nothing yet and the next segment starts a run: after a seek (the reader is in the
+        // segment before the target), or after reading through segments already on disk.
+        int64_t boundary = plan->starts[upcoming];
+        if (time < boundary - FLUXO_VOD_TIME_EPSILON) {
+            if (key) {
+                // The latest key frame before the target segment so far: the pre-roll starts over from it.
+                fluxo_vod_drop_preroll(session);
+            }
+            if (key || session->vod_preroll_count > 0) {
+                ret = fluxo_vod_add_preroll(session, packet, time);
+                if (ret < 0) {
+                    return ret;
+                }
+            }
+            return 0;
+        }
+        if (reference && !(key && key_time != AV_NOPTS_VALUE && key_time >= boundary - FLUXO_VOD_TIME_EPSILON)) {
+            // The target segment starts inside a GOP.
+            if (session->vod_preroll_count == 0 && session->vod_preroll_backoffs < FLUXO_VOD_MAX_PREROLL_BACKOFFS &&
+                fluxo_vod_input_is_seekable(session->input)) {
+                // No key frame was read before it: seek back further for one.
+                session->vod_preroll_backoffs++;
+                int64_t earlier = boundary - session->vod_preroll_backoffs * FLUXO_VOD_PREROLL_BACKOFF;
+                if (earlier < plan->starts[0]) {
+                    earlier = plan->starts[0];
+                }
+                FLUXO_TRACE("segment %lld starts inside a GOP at %.2f s, no key frame read: back to %.2f s", (long long)upcoming,
+                            boundary / 1e6, earlier / 1e6);
+                int64_t size = session->input->pb != NULL ? avio_size(session->input->pb) : -1;
+                int seeked;
+                if (size > 0 && session->input->duration > 0 && (session->input->iformat->flags & AVFMT_NO_BYTE_SEEK) == 0) {
+                    // By byte position, like the seek itself (fluxo_vod_seek).
+                    int64_t position = (int64_t)((double)(earlier - plan->starts[0]) / (double)session->input->duration * (double)size);
+                    seeked = av_seek_frame(session->input, -1, position > 0 ? position : 0, AVSEEK_FLAG_BYTE) >= 0;
+                } else {
+                    seeked = av_seek_frame(session->input, -1, earlier, AVSEEK_FLAG_BACKWARD) >= 0;
+                }
+                if (seeked) {
+                    fluxo_streams_reset(&session->streams);
+                    fluxo_vod_drop_held(session);
+                    fluxo_vod_drop_gop(session);
+                    return 0;
+                }
+            }
+            if (session->vod_preroll_count > 0) {
+                // Open the target segment and start it with the pre-roll from its key frame: AVPlayer decodes from
+                // there and shows the frames from the target on.
+                FLUXO_TRACE("segment %lld starts inside a GOP at %.2f s: pre-roll of %d packets from the key frame at %.2f s",
+                            (long long)upcoming, boundary / 1e6, session->vod_preroll_count, session->vod_preroll[0].time / 1e6);
+                ret = fluxo_vod_cut(session);
+                if (ret < 0) {
+                    return ret;
+                }
+                if (session->vod_writing) {
+                    // AVPlayer places an MPEG-TS segment by its first video frame, at the start the playlist gives the
+                    // segment: frames from the key frame before it would shift the whole picture off the timeline by
+                    // the length of the pre-roll. So the pre-roll's video frames before the segment are presented
+                    // just before its start (they are decoded, then dropped by the seek, which lands at or after it)
+                    // and its audio before the segment is left out.
+                    // Squeezed into the last ticks before their segment's first own frame: decode times in decode order,
+                    // just before the decode time of the video packet that opens the segment (later frames keep theirs,
+                    // and the muxer drops a packet whose decode time goes back), presentation times in presentation order
+                    // in the last ticks before the segment's start, so a seek to that start shows at most the last of
+                    // them, the frame just before it. Decode times never go back from the end of the segment before
+                    // either (it ends a frame before that packet), which plays into this one when it is on disk.
+                    int video = 0;
+                    for (int i = 0; i < session->vod_preroll_count; i++) {
+                        const FluxoHeldPacket *held = &session->vod_preroll[i];
+                        if (held->packet->stream_index == plan->reference_input_stream && held->time != AV_NOPTS_VALUE && held->time < boundary) {
+                            video++;
+                        }
+                    }
+                    int64_t *order = video > 0 ? malloc(sizeof(int64_t) * (size_t)video) : NULL;
+                    if (video > 0 && order == NULL) {
+                        return AVERROR(ENOMEM);
+                    }
+                    int count = 0;
+                    for (int i = 0; i < session->vod_preroll_count; i++) {
+                        const FluxoHeldPacket *held = &session->vod_preroll[i];
+                        if (held->packet->stream_index == plan->reference_input_stream && held->time != AV_NOPTS_VALUE && held->time < boundary) {
+                            order[count++] = held->time;
+                        }
+                    }
+                    if (video > 0) {
+                        qsort(order, (size_t)video, sizeof(int64_t), fluxo_compare_times);
+                    }
+                    int decoded;
+                    AVStream *reference_stream = session->input->streams[plan->reference_input_stream];
+                    int64_t start_ticks = av_rescale_q(boundary, AV_TIME_BASE_Q, reference_stream->time_base);
+                    int64_t opening = packet->dts != AV_NOPTS_VALUE ? packet->dts : (packet->pts != AV_NOPTS_VALUE ? packet->pts : start_ticks);
+                    int64_t base_dts = opening - video - 1;
+                    int64_t base_pts = start_ticks - video;
+                    decoded = 0;
+                    for (int i = 0; i < session->vod_preroll_count; i++) {
+                        AVPacket *held = session->vod_preroll[i].packet;
+                        int64_t time = session->vod_preroll[i].time;
+                        if (time != AV_NOPTS_VALUE && time < boundary) {
+                            if (held->stream_index != plan->reference_input_stream) {
+                                // The pre-roll's audio before the segment is left out.
+                                continue;
+                            }
+                            int64_t *found = bsearch(&time, order, (size_t)video, sizeof(int64_t), fluxo_compare_times);
+                            int rank = found != NULL ? (int)(found - order) : decoded;
+                            held->dts = base_dts + decoded;
+                            held->pts = base_pts + rank;
+                            if (held->pts < held->dts) {
+                                held->pts = held->dts;
+                            }
+                            decoded++;
+                        }
+                        ret = fluxo_vod_write(session, held, scratch);
+                        if (ret < 0) {
+                            free(order);
+                            return ret;
+                        }
+                    }
+                    free(order);
+                    // Packets held at the start of the segment (audio read before this video packet) follow it.
+                    for (int i = 0; i < session->vod_held_count; i++) {
+                        ret = fluxo_vod_write(session, session->vod_held[i].packet, scratch);
+                        if (ret < 0) {
+                            return ret;
+                        }
+                    }
+                }
+                fluxo_vod_drop_preroll(session);
+                fluxo_vod_drop_held(session);
+                // The packet is placed against the boundaries of the target segment (below).
             }
         }
     }
@@ -3579,6 +3999,8 @@ static int fluxo_vod_route(FluxoRemuxSession *session, AVPacket *packet, AVPacke
                 }
             }
             fluxo_vod_drop_held(session);
+            // A pre-roll read for this segment is not needed: it starts with its own key frame.
+            fluxo_vod_drop_preroll(session);
             ret = fluxo_vod_cut(session);
             if (ret < 0) {
                 return ret;
@@ -3593,12 +4015,18 @@ static int fluxo_vod_route(FluxoRemuxSession *session, AVPacket *packet, AVPacke
         // packets: the audio cuts at the planned start meanwhile, so that it keeps playing.
         int audio_cuts = !reference && in_stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO && time != AV_NOPTS_VALUE &&
                          time >= boundary - FLUXO_VOD_TIME_EPSILON && fluxo_streams_video_stalled(&session->streams);
+        // Without an index the cut is made at the planned time, key frame or not: the media of every segment then
+        // starts where the playlist says, which is where AVPlayer places it (MPEG-TS media is placed by the playlist,
+        // not by its timestamps: segments that start later or earlier than planned shift the picture off the
+        // timeline). A seek into a segment that starts inside a GOP writes it again with a pre-roll.
         int overdue = (reference && time != AV_NOPTS_VALUE && time >= following - FLUXO_VOD_TIME_EPSILON) ||
-                      session->vod_held_count >= FLUXO_VOD_MAX_HELD_PACKETS || audio_cuts;
+                      session->vod_held_count >= FLUXO_VOD_MAX_HELD_PACKETS || audio_cuts ||
+                      (!plan->exact && reference && time != AV_NOPTS_VALUE);
         if (!overdue) {
             return fluxo_vod_hold(session, packet, time);
         }
         // No key frame in the next segment: cut at its planned start.
+        fluxo_vod_drop_preroll(session);
         int held = session->vod_held_count;
         for (int i = 0; i < held; i++) {
             if (session->vod_held[i].time == AV_NOPTS_VALUE || session->vod_held[i].time < boundary) {
@@ -3632,9 +4060,75 @@ static int fluxo_vod_seek(FluxoRemuxSession *session, int64_t index) {
     fluxo_vod_abort_run(session);
     int64_t current = session->vod_segment;
 
+    pthread_mutex_lock(&session->vod_lock);
+    if (session->vod_regenerate == index && plan->bytes[index] > 0) {
+        // On disk, but it does not start with a key frame: written again, with a pre-roll.
+        fluxo_hls_delete_segment(&session->hls, index);
+        session->vod_cached_bytes -= plan->bytes[index];
+        session->vod_segments_on_disk--;
+        plan->bytes[index] = 0;
+        plan->independent[index] = 0;
+    }
+    session->vod_regenerate = -1;
+    pthread_mutex_unlock(&session->vod_lock);
+
+    if (fluxo_vod_replay(session, index)) {
+        // From the key frame in memory: the segment starts with its pre-roll (fluxo_vod_route), and the reader
+        // continues with the input where it is once the replayed packets are routed.
+        fluxo_hls_clear_cues(&session->hls);
+        pthread_mutex_lock(&session->vod_lock);
+        session->vod_segment = index - 1;
+        session->vod_target = index;
+        session->vod_ended = 0;
+        session->vod_paused = 0;
+        pthread_mutex_unlock(&session->vod_lock);
+        session->vod_need_key = plan->has_video;
+        session->vod_preroll_backoffs = 0;
+        session->vod_check_seek = 0;
+        session->vod_seek_position = -1;
+        session->vod_last_key = AV_NOPTS_VALUE;
+        FLUXO_TRACE("seek to segment %lld (%.2f s) from segment %lld: replaying %d packets from the key frame at %.2f s", (long long)index,
+                    plan->starts[index] / 1e6, (long long)current, session->vod_replay_count, session->vod_replay[0].time / 1e6);
+        return 0;
+    }
+    // The input moves: the GOP in memory no longer leads to where it reads.
+    fluxo_vod_drop_gop(session);
+
+    // Without an index the segment may start inside a GOP: the seek goes back about a GOP, to read the key frame
+    // before the segment (its pre-roll, see fluxo_vod_route) without seeking again.
+    int64_t seek_time = plan->starts[index];
+    if (!plan->exact && plan->has_video && index > 0) {
+        // (A byte position is estimated from the average bit rate: a second more covers its error.)
+        int64_t back = session->vod_gop > 0 ? session->vod_gop + AV_TIME_BASE * 3 / 2 : FLUXO_VOD_PREROLL_BACKOFF;
+        seek_time = seek_time - back > plan->starts[0] ? seek_time - back : plan->starts[0];
+    }
     // Demuxers emulate seeking on an input that cannot seek by reading and skipping, which can lose their
     // place in the file: such inputs are only read on, or reopened.
-    int ret = fluxo_vod_input_is_seekable(session->input) ? av_seek_frame(session->input, -1, plan->starts[index], AVSEEK_FLAG_BACKWARD) : AVERROR(ENOSYS);
+    int ret;
+    session->vod_seek_position = -1;
+    // (The size only of an input that can seek: asking an HTTP input without byte ranges for it costs a request.)
+    int seekable = fluxo_vod_input_is_seekable(session->input);
+    int64_t size = seekable && !plan->exact && session->input->pb != NULL ? avio_size(session->input->pb) : -1;
+    if (!seekable) {
+        ret = AVERROR(ENOSYS);
+    } else if (!plan->exact && size > 0 && session->input->duration > 0 && (session->input->iformat->flags & AVFMT_NO_BYTE_SEEK) == 0) {
+        // No index: one request at the estimated byte position (corrected in fluxo_vod_route).
+        int64_t start = plan->starts[0];
+        int64_t position = (int64_t)((double)(seek_time - start) / (double)session->input->duration * (double)size);
+        if (position < 0) {
+            position = 0;
+        }
+        ret = av_seek_frame(session->input, -1, position, AVSEEK_FLAG_BYTE);
+        if (ret >= 0) {
+            session->vod_seek_time = seek_time;
+            session->vod_seek_position = position;
+            session->vod_seek_corrections = 0;
+        } else {
+            ret = av_seek_frame(session->input, -1, seek_time, AVSEEK_FLAG_BACKWARD);
+        }
+    } else {
+        ret = av_seek_frame(session->input, -1, seek_time, AVSEEK_FLAG_BACKWARD);
+    }
     int64_t position;
     if (ret >= 0) {
         position = index - 1;
@@ -3662,6 +4156,11 @@ static int fluxo_vod_seek(FluxoRemuxSession *session, int64_t index) {
     session->vod_paused = 0;
     pthread_mutex_unlock(&session->vod_lock);
     session->vod_need_key = plan->has_video;
+    session->vod_preroll_backoffs = 0;
+    // The next key frame read is not a GOP after the previous one.
+    session->vod_last_key = AV_NOPTS_VALUE;
+    FLUXO_TRACE("seek to segment %lld (%.2f s) from segment %lld: %s", (long long)index, plan->starts[index] / 1e6, (long long)current,
+                position == -1 ? "reopened" : (position == current ? "reading on" : "seeked"));
     return 0;
 }
 
@@ -3692,6 +4191,7 @@ static int fluxo_vod_recover(FluxoRemuxSession *session, int error) {
         if (fluxo_is_cancelled(session)) {
             break;
         }
+        fluxo_vod_drop_gop(session);
         fluxo_close_input(session);
         ret = fluxo_open_input(session);
         if (ret < 0) {
@@ -3803,7 +4303,19 @@ static int fluxo_vod_run(FluxoRemuxSession *session) {
             continue;
         }
 
-        ret = fluxo_streams_read(&session->streams, packet);
+        if (session->vod_replay_next < session->vod_replay_count) {
+            // Packets of the GOP in memory first (fluxo_vod_replay).
+            FluxoHeldPacket *held = &session->vod_replay[session->vod_replay_next++];
+            av_packet_move_ref(packet, held->packet);
+            av_packet_free(&held->packet);
+            if (session->vod_replay_next == session->vod_replay_count) {
+                session->vod_replay_count = 0;
+                session->vod_replay_next = 0;
+            }
+            ret = 0;
+        } else {
+            ret = fluxo_streams_read(&session->streams, packet);
+        }
         if (ret == AVERROR(EAGAIN)) {
             ret = 0;
             continue;
@@ -3836,6 +4348,7 @@ static int fluxo_vod_run(FluxoRemuxSession *session) {
             av_packet_unref(packet);
             continue;
         }
+        fluxo_vod_remember(session, packet);
         ret = fluxo_vod_route(session, packet, scratch);
         av_packet_unref(packet);
         if (ret < 0) {
@@ -3868,13 +4381,47 @@ static int fluxo_vod_open(FluxoRemuxSession *session) {
     }
     // Output timestamps: the input timeline from the first segment, plus the base.
     session->timestamp_offset = FLUXO_TIMESTAMP_BASE - session->plan.starts[0];
+    // A resume starts with the segment at the start time (found by bisection: the plan is sorted).
+    int64_t first = 0;
+    if (session->start_time > 0) {
+        int64_t time = session->plan.starts[0] + session->start_time;
+        int64_t low = 0;
+        int64_t high = session->plan.count - 1;
+        while (low < high) {
+            int64_t middle = (low + high + 1) / 2;
+            if (session->plan.starts[middle] <= time) {
+                low = middle;
+            } else {
+                high = middle - 1;
+            }
+        }
+        first = low;
+        FLUXO_TRACE("start at %.2f s: segment %lld", session->start_time / 1e6, (long long)first);
+    }
+    if (first == 0 && !session->plan.exact && fluxo_vod_input_is_seekable(session->input) && session->input->pb != NULL &&
+        (session->input->iformat->flags & AVFMT_NO_BYTE_SEEK) == 0) {
+        // From the very start of the file (probing and the index check leave the reader somewhere after it): its first
+        // video frame, a key frame, is where AVPlayer places the first segment.
+        av_seek_frame(session->input, -1, 0, AVSEEK_FLAG_BYTE);
+        fluxo_streams_reset(&session->streams);
+    }
     pthread_mutex_lock(&session->vod_lock);
     session->vod_segment = -1;
     session->vod_target = 0;
-    session->vod_requested = 0;
-    session->vod_reposition = -1;
+    session->vod_requested = first;
+    session->vod_reposition = first > 0 ? first : -1;
+    session->vod_regenerate = -1;
+    session->vod_last_key = AV_NOPTS_VALUE;
+    session->vod_seek_position = -1;
+    session->vod_gop = 0;
     pthread_mutex_unlock(&session->vod_lock);
-    return fluxo_vod_write_playlist(session);
+    ret = fluxo_vod_write_playlist(session);
+    if (ret >= 0) {
+        pthread_mutex_lock(&session->vod_lock);
+        session->vod_playlist_written = 1;
+        pthread_mutex_unlock(&session->vod_lock);
+    }
+    return ret;
 }
 
 static void *fluxo_thread_main(void *arg) {
@@ -4013,7 +4560,10 @@ FluxoRemuxSession *fluxo_remux_create(const FluxoRemuxConfig *config, FluxoRemux
     pthread_cond_init(&session->vod_cond, NULL);
     session->vod_reposition = -1;
     session->vod_segment = -1;
+    session->vod_seek_hint = AV_NOPTS_VALUE;
+    session->vod_read_time = AV_NOPTS_VALUE;
     session->read_ahead = config->read_ahead_duration > 0 ? config->read_ahead_duration : FLUXO_DEFAULT_READ_AHEAD;
+    session->start_time = config->start_time > 0 ? (int64_t)(config->start_time * AV_TIME_BASE) : 0;
     atomic_init(&session->cancel_requested, false);
     atomic_init(&session->started, false);
     atomic_init(&session->request_pending, false);
@@ -4128,19 +4678,73 @@ int32_t fluxo_remux_request_segment(FluxoRemuxSession *session, int64_t index, i
         // load the audio and subtitle segments of a rendition about where they load the video, some ahead).
         result = session->plan.bytes[index] > 0 ? 1 : 0;
     } else {
+        int64_t previous = session->vod_requested;
         session->vod_requested = index;
-        if (session->plan.bytes[index] > 0) {
+        // A request that does not follow the previous one is a seek. So is the segment a seek the player announced
+        // goes to (fluxo_remux_note_seek), even when it is the next one: a seek just past what the player buffered
+        // asks for the segment after the last one it loaded, which the reader may have written ahead without a key
+        // frame at its start; served as written, playback would start at its next key frame, seconds late.
+        int is_seek = index != previous && index != previous + 1;
+        if (session->vod_seek_hint != AV_NOPTS_VALUE) {
+            int64_t time = session->plan.starts[0] + session->vod_seek_hint;
+            if (time >= session->plan.starts[index] - FLUXO_VOD_SEEK_HINT_MARGIN && time < session->plan.starts[index + 1]) {
+                is_seek = 1;
+            }
+            session->vod_seek_hint = AV_NOPTS_VALUE;
+        }
+        if (session->plan.bytes[index] > 0 && is_seek && !session->plan.exact && session->plan.has_video && !session->plan.independent[index]) {
+            // A seek into a segment that starts inside a GOP would show a frozen picture until the next key frame:
+            // it is written again from the key frame before it.
+            result = 0;
+            session->vod_regenerate = index;
+            session->vod_reposition = index;
+        } else if (session->plan.bytes[index] > 0) {
             result = 1;
         } else {
             result = 0;
             // The segment the reader produces next: the one it is in, or the one it seeks to.
             int64_t reader = session->vod_segment > session->vod_target ? session->vod_segment : session->vod_target;
-            if (session->vod_ended || index < reader || index > reader + FLUXO_VOD_READ_ON_SEGMENTS) {
+            if (reader >= session->plan.count) {
+                reader = session->plan.count - 1;
+            }
+            if (session->vod_ended || index < reader || session->plan.starts[index] - session->plan.starts[reader] > FLUXO_VOD_READ_ON_TIME) {
+                session->vod_reposition = index;
+            } else if (is_seek && !session->plan.exact && session->plan.has_video && index > 0 &&
+                       !(session->vod_target == index && session->vod_segment <= index)) {
+                // A seek into the segment the reader writes now, or reaches by reading on: without an index it would be
+                // cut at its planned time inside a GOP, and play from its next key frame, seconds after the target. It
+                // starts a run of its own instead, with its pre-roll (from the GOP in memory, see fluxo_vod_replay: no
+                // network). Not for the first segment of the reader's run (it heads for it, or writes it): that one starts
+                // with its pre-roll already.
                 session->vod_reposition = index;
             }
         }
     }
     pthread_cond_broadcast(&session->vod_cond);
+    pthread_mutex_unlock(&session->vod_lock);
+    return result;
+}
+
+void fluxo_remux_note_seek(FluxoRemuxSession *session, double seconds) {
+    if (session == NULL || session->is_live || !isfinite(seconds)) {
+        return;
+    }
+    pthread_mutex_lock(&session->vod_lock);
+    session->vod_seek_hint = seconds > 0 ? (int64_t)(seconds * AV_TIME_BASE) : 0;
+    pthread_mutex_unlock(&session->vod_lock);
+}
+
+int32_t fluxo_remux_set_start_time(FluxoRemuxSession *session, double seconds) {
+    if (session == NULL || session->is_live || !isfinite(seconds)) {
+        return -1;
+    }
+    int32_t result = -1;
+    pthread_mutex_lock(&session->vod_lock);
+    // Only once the engine wrote the playlists: it never writes them again, and it reads start_time before.
+    if (session->on_demand && session->vod_playlist_written) {
+        session->start_time = seconds > 0 ? (int64_t)(seconds * AV_TIME_BASE) : 0;
+        result = fluxo_vod_write_playlist(session) < 0 ? -1 : 0;
+    }
     pthread_mutex_unlock(&session->vod_lock);
     return result;
 }
@@ -4200,6 +4804,11 @@ void fluxo_remux_destroy(FluxoRemuxSession *session) {
     free(session->hls.init_path);
     fluxo_vod_drop_held(session);
     free(session->vod_held);
+    fluxo_vod_drop_preroll(session);
+    free(session->vod_preroll);
+    fluxo_vod_drop_gop(session);
+    free(session->vod_kept);
+    free(session->vod_replay);
     fluxo_vod_plan_free(&session->plan);
     free(session->pending_recording_path);
     fluxo_free_discarded_recordings(session->discarded_recordings);

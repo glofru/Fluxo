@@ -4,7 +4,8 @@
 //
 //  VoiceOver announcements of what the player does on its own, wherever the user is (the player, the mini
 //  player or any other screen): the channel that starts and whether it is live, buffering that lasts,
-//  reconnecting, failures, the end of playback, recordings that start, stop or fail, back to live, and Cast.
+//  reconnecting, failures, a seek that could not play, the end of playback, recordings that start, stop or fail,
+//  back to live, and Cast.
 //
 //  Short-lived states are not spoken: a state is announced only once it has lasted a moment (buffering of a
 //  fraction of a second, or connecting before a channel plays, stay silent), and "Playing" only closes a state
@@ -96,6 +97,12 @@ private struct PlayerAnnouncer: View {
                     AccessibilityAnnouncer.announce(String(localized: "Playing on \(device.name)", comment: "VoiceOver announcement when casting starts; the placeholder is the Chromecast name."))
                 } else if !isCasting {
                     AccessibilityAnnouncer.announce(String(localized: "Playing on this device", comment: "VoiceOver announcement when casting stops and playback comes back to the phone or Mac."))
+                }
+            }
+            .onChange(of: viewModel.seeker.phase) { _, phase in
+                // A seek that could not play there: Try Again is over the timeline.
+                if isVoiceOverEnabled, phase == .failed {
+                    AccessibilityAnnouncer.announce(PlayerSeekText.failed, priority: .high)
                 }
             }
             .onChange(of: timeline.isAtLiveEdge) { _, isAtLive in

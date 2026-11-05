@@ -12,6 +12,7 @@
 //
 
 #if DEBUG
+import AVFoundation
 import SwiftData
 import SwiftUI
 
@@ -154,6 +155,15 @@ enum DebugRouteError: LocalizedError {
 
 @MainActor
 enum DebugRoutes {
+    /// A position of what plays: seconds, or a percentage of the duration ("40%").
+    @MainActor
+    static func position(_ text: String, in player: AVPlayerViewModel) -> TimeInterval? {
+        if text.hasSuffix("%"), let percent = Double(text.dropLast()), player.timeline.duration > 0 {
+            return player.timeline.duration * percent / 100
+        }
+        return Double(text)
+    }
+
 
     static let all: [DebugRoute] = [
         DebugRoute("home", "Home, from its root.") { context, _ in
@@ -448,6 +458,149 @@ enum DebugRoutes {
             }
             context.player.seek(toSeconds: target)
             try await DebugPlaybackProbe.check(context.player, near: target, route: "seek:\(argument)")
+        },
+        DebugRoute("drag:<from>-<to>", "Drags the scrubber from one point to another (seconds or percentages, e.g. drag:10%-40%) in 20 moves over 0.8 s, releases it, then checks that playback continues there with video frames.") { context, argument in
+            let parts = argument.split(separator: "-").map(String.init)
+            guard parts.count == 2, let from = DebugRoutes.position(parts[0], in: context.player), let to = DebugRoutes.position(parts[1], in: context.player) else {
+                throw DebugRouteError.invalidArgument("drag", argument)
+            }
+            for step in 1...20 {
+                context.player.debugScrubHold = from + (to - from) * Double(step) / 20
+                try? await Task.sleep(for: .milliseconds(40))
+            }
+            context.player.debugScrubHold = nil
+            try await DebugPlaybackProbe.check(context.player, near: to, route: "drag:\(argument)")
+        },
+        DebugRoute("scrub-hold:<seconds|percent%>", "Holds the scrubber at a point as a finger would (the time and the frame preview over it), until scrub-release.") { context, argument in
+            guard let time = DebugRoutes.position(argument, in: context.player) else {
+                throw DebugRouteError.invalidArgument("scrub-hold", argument)
+            }
+            context.player.debugScrubHold = time
+            // The frame preview comes from the network for a movie AVPlayer plays itself.
+            await context.wait(timeout: 6) { context.player.scrubPreview.image != nil || !context.player.scrubPreview.isActive }
+        },
+        DebugRoute("scrub-release", "Releases the scrubber held by scrub-hold (it seeks there); add probe-playback to check playback.") { context, _ in
+            context.player.debugScrubHold = nil
+        },
+        DebugRoute("skip-burst:<seconds>x<count>", "Taps a skip button <count> times 150 ms apart (e.g. skip-burst:30x4): the taps add up into one seek. Then checks that playback continues there with video frames.") { context, argument in
+            let parts = argument.split(separator: "x").map(String.init)
+            guard parts.count == 2, let seconds = Double(parts[0]), let count = Int(parts[1]), count > 0 else {
+                throw DebugRouteError.invalidArgument("skip-burst", argument)
+            }
+            let target = context.player.timeline.currentTime + seconds * Double(count)
+            for _ in 0..<count {
+                context.player.skip(by: seconds)
+                try? await Task.sleep(for: .milliseconds(150))
+            }
+            try await DebugPlaybackProbe.check(context.player, near: context.player.seeker.target ?? target, route: "skip-burst:\(argument)")
+        },
+        DebugRoute("seek-pause:<seconds|percent%>", "Seeks, pauses at once, plays 2 s later, then checks that playback continues there with video frames.") { context, argument in
+            guard let time = DebugRoutes.position(argument, in: context.player) else {
+                throw DebugRouteError.invalidArgument("seek-pause", argument)
+            }
+            context.player.seek(toSeconds: time)
+            context.player.pause()
+            try? await Task.sleep(for: .seconds(2))
+            context.player.play()
+            try await DebugPlaybackProbe.check(context.player, near: time, route: "seek-pause:\(argument)")
+        },
+        DebugRoute("seek-past-buffer[:direct]", "Seeks like the scrubber to just past what the player buffered (the segment the engine may have written ahead from inside a GOP, which the player asks for as the next one), then checks that playback continues there, at the target, with video frames. `direct` seeks AVPlayer itself, as Picture in Picture's skip buttons do (not through the seeker).") { context, argument in
+            let player = context.player
+            guard let item = player.player.currentItem else {
+                throw DebugRouteError.check("seek-past-buffer: nothing plays")
+            }
+            let now = item.currentTime().seconds
+            let ranges = item.loadedTimeRanges.map(\.timeRangeValue).filter { $0.start.isNumeric && $0.duration.isNumeric }
+            guard let range = ranges.first(where: { $0.start.seconds <= now + 0.5 && $0.start.seconds + $0.duration.seconds >= now }) else {
+                throw DebugRouteError.check("seek-past-buffer: nothing buffered at \(Int(now)) s")
+            }
+            let target = range.start.seconds + range.duration.seconds + 1
+            guard target < player.timeline.duration - 20 else {
+                throw DebugRouteError.check("seek-past-buffer: buffered to the end")
+            }
+            DebugLaunchOptions.logger.notice("seek-past-buffer: buffered to \(target - 1, format: .fixed(precision: 1)) s, seeking to \(target, format: .fixed(precision: 1)) s\(argument == "direct" ? " (AVPlayer directly)" : "", privacy: .public)")
+            // As in Picture in Picture (`AVPlayerViewModel.itemTimeJumped`), until the check is over.
+            player.debugTreatsJumpsAsPictureInPicture = argument == "direct"
+            defer {
+                player.debugTreatsJumpsAsPictureInPicture = false
+            }
+            if argument == "direct" {
+                let tolerance = CMTime(value: 1, timescale: 4)
+                player.player.seek(to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: tolerance, toleranceAfter: tolerance) { _ in }
+            } else {
+                player.seek(toSeconds: target)
+            }
+            try await DebugPlaybackProbe.check(player, near: target, route: "seek-past-buffer:\(argument)", tolerance: 3)
+        },
+        DebugRoute("seek-fail:<seconds|percent%>", "Shows a seek there that could not play, as after every recovery: Try Again over the timeline, the announcement (screenshots, accessibility checks).") { context, argument in
+            guard let time = DebugRoutes.position(argument, in: context.player) else {
+                throw DebugRouteError.invalidArgument("seek-fail", argument)
+            }
+            context.player.player.pause()
+            context.player.seeker.debugFail(at: time)
+        },
+        DebugRoute("seek-drop:<count|all>x<seconds|percent%>", "Seeks there while AVPlayer drops that many seeks in a row (as it does while it starts an item), or every seek; then checks that the seek plays at the target (a count), or ends with Try Again (`all`), and never stays loading.") { context, argument in
+            let parts = argument.split(separator: "x", maxSplits: 1).map(String.init)
+            guard parts.count == 2, let time = DebugRoutes.position(parts[1], in: context.player) else {
+                throw DebugRouteError.invalidArgument("seek-drop", argument)
+            }
+            let dropsAll = parts[0] == "all"
+            guard dropsAll || Int(parts[0]) != nil else {
+                throw DebugRouteError.invalidArgument("seek-drop", argument)
+            }
+            var remaining = dropsAll ? Int.max : Int(parts[0]) ?? 0
+            let seeker = context.player.seeker
+            seeker.seekInterceptor = { completion in
+                guard remaining > 0 else {
+                    return false
+                }
+                remaining -= 1
+                // As AVPlayer does: completed a moment later, not finished.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
+                    completion(false)
+                }
+                return true
+            }
+            // The view model's handler, and whether the seek failed (it may then play at the target after all: the
+            // last recovery's new item starts there by itself, `PlayerSeeker.positionChanged()`).
+            let onFailed = seeker.onFailed
+            var didFail = false
+            seeker.onFailed = { target in
+                didFail = true
+                onFailed?(target)
+            }
+            defer {
+                seeker.seekInterceptor = nil
+                seeker.onFailed = onFailed
+            }
+            let begin = ContinuousClock.now
+            context.player.seek(toSeconds: time)
+            if dropsAll {
+                // The recovery may move the movie to another route (or item) at the target first: its resume seek is
+                // dropped too, and only then the seek fails.
+                await context.wait(timeout: 40) { didFail }
+            } else {
+                await context.wait(timeout: 30) { !seeker.isBusy }
+            }
+            let elapsed = ContinuousClock.now - begin
+            DebugLaunchOptions.logger.notice("seek-drop:\(argument, privacy: .public): \(String(describing: seeker.phase), privacy: .public)\(didFail ? " (failed)" : "", privacy: .public) after \(elapsed.formatted(.units(allowed: [.seconds, .milliseconds], width: .narrow)), privacy: .public)")
+            if dropsAll {
+                guard didFail else {
+                    throw DebugRouteError.check("seek-drop:\(argument): \(seeker.phase), never failed")
+                }
+            } else {
+                guard seeker.phase == .idle else {
+                    throw DebugRouteError.check("seek-drop:\(argument): \(seeker.phase) after \(elapsed)")
+                }
+                try await DebugPlaybackProbe.check(context.player, near: time, route: "seek-drop:\(argument)")
+            }
+        },
+        DebugRoute("seek-loading:<seconds|percent%>", "Seeks like the scrubber and returns at once, while the seek loads (screenshots of the loading state).") { context, argument in
+            guard let time = DebugRoutes.position(argument, in: context.player) else {
+                throw DebugRouteError.invalidArgument("seek-loading", argument)
+            }
+            context.player.seek(toSeconds: time)
+            try? await Task.sleep(for: .milliseconds(300))
         },
         DebugRoute("probe-playback[:<seconds>]", "Checks that playback continues with video frames (near <seconds>, when given).") { context, argument in
             try await DebugPlaybackProbe.check(context.player, near: Double(argument), route: "probe-playback")

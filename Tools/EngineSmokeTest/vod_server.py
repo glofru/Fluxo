@@ -8,6 +8,8 @@ Serves the files of a media directory, bound to 127.0.0.1 only, the way IPTV pan
   /play.php?stream=<file>         a PHP style endpoint
   /norange/...                    any of the above without byte range support (200 with the whole body)
   /slow/<kbps>/...                any of the above throttled to <kbps> kilobytes per second
+  /lat/<ms>/...                   any of the above answered after <ms> milliseconds (the round trips and the time to
+                                  first byte of a phone on Wi-Fi far from the server; e.g. /lat/250/slow/2500/...)
   /oneconn/...                    any of the above with one connection per account, as IPTV panels limit it: a new
                                   request ends the response still being sent (the newest connection wins)
   /busy/...                       one connection per account, the other way: a request while a response is still
@@ -44,6 +46,7 @@ class Handler(BaseHTTPRequestHandler):
         parts = urlsplit(self.path)
         path = parts.path
         ranges, rate = True, None
+        self.latency = 0.0
         self.one_connection = False
         self.refuses_second = False
         while True:
@@ -55,6 +58,10 @@ class Handler(BaseHTTPRequestHandler):
                 continue
             if path.startswith("/norange/"):
                 ranges, path = False, path[len("/norange"):]
+                continue
+            m = re.match(r"^/lat/(\d+)(/.*)$", path)
+            if m:
+                self.latency, path = int(m.group(1)) / 1000.0, m.group(2)
                 continue
             m = re.match(r"^/slow/(\d+)(/.*)$", path)
             if m:
@@ -88,6 +95,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def handle_request(self, head):
         full, ranges, rate = self.resolve()
+        if self.latency > 0:
+            time.sleep(self.latency)
         if full is None:
             self.send_response(404)
             self.send_header("Content-Length", "0")

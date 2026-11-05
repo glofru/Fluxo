@@ -42,6 +42,9 @@ struct FluxoApp: App {
         // Chromecast through the Google Cast SDK on iOS; unsupported (no cast UI) on macOS.
         let player = AVPlayerViewModel(cast: .makeDefault())
         player.zapper = ChannelZapper(container: container, library: library)
+        player.resumePosition = { [weak library] item in
+            library?.watchProgress(for: item)?.position
+        }
         let downloads = DownloadCenter(container: container)
         player.downloads = downloads
         downloads.currentlyPlayingItem = { [weak player] in

@@ -40,6 +40,15 @@ final class Check {
     let cues = CueCollector()
     /// Where the seeks landed (item times), for the subtitle check.
     var seekLandings: [Double] = []
+    /// The app's seek coordinator (SCENARIO=stress, see Stress.swift).
+    lazy var seeker = PlayerSeeker(player: player)
+    let frames = FrameWatcher()
+    var jumpObserver: NSObjectProtocol?
+    var bufferObserver: Any?
+    /// AVPlayerViewModel.sampledBufferedEnd.
+    var sampledBufferedEnd: Double?
+    /// AVPlayerViewModel.isPictureInPictureActive, for itemTimeJumped.
+    var simulatesPictureInPicture = false
 
     init(url: URL, kind: ChannelContentKind?) {
         self.url = url
@@ -82,13 +91,15 @@ final class Check {
     }
 
     /// Opens the URL like AVPlayerViewModel.start(_:url:), then waits until it plays (at most 30 s).
-    func open(resumeAt: Double?) async -> Bool {
+    func open(resumeAt: Double?, quiet: Bool = false) async -> Bool {
         print("[check] route \(route)")
         let item: AVPlayerItem
         switch route {
         case .direct:
             item = AVPlayerItem(url: url)
             item.preferredForwardBufferDuration = 30
+            seeker.onWillSeek = nil
+            seeker.stallLimit = .seconds(8)
         case .remux(let isLive):
             server.start(root: directory)
             var configuration = StreamRemuxer.Configuration(inputURL: url, outputDirectory: directory, name: "check-\(UUID().uuidString.prefix(8))", isLive: isLive)
@@ -100,13 +111,20 @@ final class Check {
                 configuration.readAheadDuration = 60
                 configuration.maxWindowDuration = 0
                 configuration.maxWindowBytes = Int64(ProcessInfo.processInfo.environment["CACHE_BYTES"].flatMap(Int64.init) ?? 512 * 1024 * 1024)
+                // AVPlayerViewModel.start: a resume starts the engine there.
+                if let resumeAt, resumeAt >= 10, ProcessInfo.processInfo.environment["STARTTIME"] != "0" {
+                    configuration.startTime = resumeAt
+                }
                 let remuxer = remuxer
                 let verbose = ProcessInfo.processInfo.environment["VERBOSE"] != nil
                 server.setFileProvider { fileName in
                     let begin = Date()
+                    if verbose {
+                        print(String(format: "[serve] %@ requested at %.2f", fileName, begin.timeIntervalSince1970.truncatingRemainder(dividingBy: 1000)))
+                    }
                     let available = await remuxer.requestFile(named: fileName)
                     if verbose {
-                        print(String(format: "[serve] %@ -> %@ after %.2fs", fileName, available ? "200" : "404", Date().timeIntervalSince(begin)))
+                        print(String(format: "[serve] %@ -> %@ after %.2fs at %.2f", fileName, available ? "200" : "404", Date().timeIntervalSince(begin), Date().timeIntervalSince1970.truncatingRemainder(dividingBy: 1000)))
                     }
                     return available
                 }
@@ -117,6 +135,15 @@ final class Check {
                 failures.append("engine start: \(error)")
                 return false
             }
+            // AVPlayerViewModel.configureSeeker: every seek tells the engine where it goes (NOTE_SEEK=0 does not,
+            // as before fluxo_remux_note_seek).
+            if ProcessInfo.processInfo.environment["NOTE_SEEK"] != "0" {
+                seeker.onWillSeek = { [remuxer] time in remuxer.noteSeek(to: time) }
+            } else {
+                seeker.onWillSeek = nil
+            }
+            // AVPlayerViewModel.engineSeekStallLimit.
+            seeker.stallLimit = .seconds(20)
             await withCheckedContinuation { firstSegment = $0 }
             if let engineFailure {
                 failures.append("engine: \(engineFailure)")
@@ -141,6 +168,31 @@ final class Check {
         item.add(output)
         self.item = item
         self.output = output
+        if route == .remux(isLive: false), ProcessInfo.processInfo.environment["NOTE_JUMP"] != "0" {
+            // AVPlayerViewModel.itemTimeJumped: a seek the seeker did not make (Picture in Picture's skip buttons)
+            // past the buffer is made again through the seeker (NOTE_JUMP=0 does not). On the posting queue, like the app.
+            sampledBufferedEnd = nil
+            bufferObserver = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 2), queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, let item = self.item else {
+                        return
+                    }
+                    self.sampledBufferedEnd = item.loadedTimeRanges.map(\.timeRangeValue).map { $0.start.seconds + $0.duration.seconds }.filter(\.isFinite).max()
+                }
+            }
+            jumpObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.timeJumpedNotification, object: item, queue: nil) { [weak self] _ in
+                if Thread.isMainThread {
+                    MainActor.assumeIsolated {
+                        self?.timeJumped()
+                    }
+                } else {
+                    Task { @MainActor in
+                        self?.timeJumped()
+                    }
+                }
+            }
+        }
+        frames.start(output: output) { [weak self] _ in self?.frameBrightness() }
         player.replaceCurrentItem(with: item)
         player.play()
         let begin = Date()
@@ -155,7 +207,7 @@ final class Check {
                 fellBack = true
                 close()
                 route = fallback
-                return await open(resumeAt: resumeAt)
+                return await open(resumeAt: resumeAt, quiet: quiet)
             }
             failures.append("start: \(item.error?.localizedDescription ?? "failed")")
             return false
@@ -180,7 +232,7 @@ final class Check {
                 fellBack = true
                 close()
                 route = fallback
-                return await open(resumeAt: resumeAt)
+                return await open(resumeAt: resumeAt, quiet: quiet)
             }
         }
         if let resumeAt {
@@ -189,8 +241,24 @@ final class Check {
                 await run(for: 0.1)
             }
             seekLandings.append(resumeAt)
+            if quiet {
+                // Stress.swift measures the resume itself.
+                if usesSeeker {
+                    seeker.seek(to: resumeAt)
+                } else {
+                    let tolerance = CMTime(value: 1, timescale: 4)
+                    for _ in 1...3 {
+                        _ = await player.seek(to: CMTime(seconds: resumeAt, preferredTimescale: 600), toleranceBefore: tolerance, toleranceAfter: tolerance)
+                        await run(for: 0.5)
+                        if abs(currentTime - resumeAt) <= 5 {
+                            break
+                        }
+                    }
+                }
+                return true
+            }
             await step("resume \(Int(resumeAt))s", attempts: 3) { resumeAt }
-        } else {
+        } else if !quiet {
             await run(for: 3)
             report("start")
             await checkTracks()
@@ -310,12 +378,46 @@ final class Check {
         print(String(format: "[check] playlist %@ segments=%d total=%.1fs longest=%.1fs%@", type, durations.count, durations.reduce(0, +), longest,
                      text.contains("#EXT-X-MAP") ? " fMP4" : ""))
         // Segments are cut at the next key frame after the planned time: a GOP longer than 2.5 s lengthens them.
-        if longest > segmentDuration * 3 {
+        // (run_seek.sh's movie has key frames 10 s apart: MAX_SEGMENT raises the limit.)
+        let limit = ProcessInfo.processInfo.environment["MAX_SEGMENT"].flatMap(Double.init) ?? segmentDuration * 3
+        if longest > limit {
             failures.append(String(format: "playlist: a segment of %.1f s", longest))
         }
     }
 
+    /// AVPlayerViewModel.itemTimeJumped (JUMP_MODE=note only tells the engine, which comes too late: AVPlayer asks
+    /// for the segment before it posts the jump).
+    func timeJumped() {
+        // (The app: in Picture in Picture only; here during Stress.swift's "PiP past the buffer".)
+        guard simulatesPictureInPicture, let item, !seeker.isMoving, let bufferedEnd = sampledBufferedEnd else {
+            return
+        }
+        let time = item.currentTime().seconds
+        guard time.isFinite, time > bufferedEnd - 0.5 else {
+            return
+        }
+        if ProcessInfo.processInfo.environment["VERBOSE"] != nil {
+            print(String(format: "[jump] time jumped to %.1f past the buffer (%.1f) outside the seeker at %.2f", time, bufferedEnd,
+                         Date().timeIntervalSince1970.truncatingRemainder(dividingBy: 1000)))
+        }
+        if ProcessInfo.processInfo.environment["JUMP_MODE"] == "note" {
+            remuxer.noteSeek(to: time)
+        } else {
+            seeker.seek(to: time)
+        }
+    }
+
     func close() {
+        if let jumpObserver {
+            NotificationCenter.default.removeObserver(jumpObserver)
+            self.jumpObserver = nil
+        }
+        if let bufferObserver {
+            player.removeTimeObserver(bufferObserver)
+            self.bufferObserver = nil
+        }
+        frames.stop()
+        seeker.reset()
         player.pause()
         player.replaceCurrentItem(with: nil)
         item = nil
@@ -550,6 +652,14 @@ final class Check {
     func scenario() async {
         if ProcessInfo.processInfo.environment["SCENARIO"] == "short" {
             await shortScenario()
+            return
+        }
+        if ProcessInfo.processInfo.environment["SCENARIO"] == "stress" {
+            await stressScenario()
+            return
+        }
+        if ProcessInfo.processInfo.environment["SCENARIO"] == "dropped" {
+            await droppedScenario()
             return
         }
         if kind == .live {

@@ -952,6 +952,8 @@ private struct PlayerBottomBar: View {
 
     @Namespace private var glassNamespace
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The app's direction: the timeline runs left to right in every language, what it shows as text does not.
+    @Environment(\.layoutDirection) private var layoutDirection
 
     var body: some View {
         VStack(spacing: 14) {
@@ -999,7 +1001,8 @@ private struct PlayerBottomBar: View {
 
             // Media timelines and transport run left to right in every language (as in the system players): only
             // their placement mirrors in right-to-left layouts.
-            PlayerTimelineBar(viewModel: viewModel, timeline: viewModel.timeline, isScrubbing: $isScrubbing, interacted: interacted)
+            PlayerTimelineBar(viewModel: viewModel, timeline: viewModel.timeline, isScrubbing: $isScrubbing,
+                              textDirection: layoutDirection, interacted: interacted)
                 .environment(\.layoutDirection, .leftToRight)
 
             GlassEffectContainer(spacing: 18) {
@@ -1068,17 +1071,34 @@ private struct PlayerBottomBar: View {
 /// The scrubber is drawn here rather than with `Slider`: its drag has priority over the player's swipe-down,
 /// starts on touch (a tap seeks), has a 44 pt tall hit area around a thin track, and freezes the range while
 /// it is dragged, so the live edge moving forward never pulls the knob away from the finger.
+///
+/// The knob and the times belong to the finger while it drags (never to the player's clock), and then to where
+/// the seek goes (`PlayerSeeker.target`) until playback is there, so the bar never jumps back to the old position
+/// while the player gets to the new one. Above the knob: the time under the finger and a frame preview while
+/// dragging (movies AVPlayer plays itself; a local file moves the video itself), and Try Again when the seek could
+/// not play. (While it loads, the spinner is in the middle of the video, `PlayerStatusOverlay`.)
 private struct PlayerTimelineBar: View {
     static let hitHeight: CGFloat = 44
 
     let viewModel: AVPlayerViewModel
     let timeline: PlaybackTimeline
     @Binding var isScrubbing: Bool
+    /// The app's direction (the bar is left to right in every language), for the text over the knob.
+    let textDirection: LayoutDirection
     let interacted: () -> Void
 
     @State private var scrubPosition: Double = 0
     /// The range at the start of the drag.
     @State private var scrubRange: ClosedRange<Double>?
+    /// The finger reached an end of the bar (a haptic tick each time it does).
+    @State private var edgeHits = 0
+    @State private var isAtEdge = false
+    /// The width of the bar (where the callout over the knob goes).
+    @State private var barWidth: CGFloat = 0
+    /// The drag is in progress: false again when it ends or is cancelled (cancelled drags never call `onEnded`).
+    @GestureState private var isDragging = false
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         if viewModel.canSeek {
@@ -1088,20 +1108,23 @@ private struct PlayerTimelineBar: View {
             let end = isLive ? timeline.seekableEnd - timeline.liveLatency : timeline.seekableEnd
             let liveRange = timeline.seekableStart...max(timeline.seekableStart + 1, end)
             let range = isScrubbing ? (scrubRange ?? liveRange) : liveRange
-            let position = isScrubbing ? scrubPosition : min(max(timeline.currentTime, range.lowerBound), range.upperBound)
+            let seeker = viewModel.seeker
+            let shown = isScrubbing ? scrubPosition : (seeker.target ?? timeline.currentTime)
+            let position = min(max(shown, range.lowerBound), range.upperBound)
             let lower = range.lowerBound
             let upper = range.upperBound
             // Behind the live point, as "-m:ss Go Live" shows it (0 while the LIVE indicator shows).
-            let behindLive = isScrubbing
+            let behindLive = isScrubbing || seeker.target != nil
                 ? max(0, upper - position)
                 : (timeline.isAtLiveEdge ? 0 : timeline.timeBehindLive)
 
             HStack(spacing: 12) {
                 Text(isLive ? "-\(PlayerTime.format(behindLive))" : PlayerTime.format(position))
                     .frame(minWidth: 52, alignment: .leading)
+                    .contentTransition(.numericText())
                     .accessibilityHidden(true)
 
-                scrubber(position: position, range: range)
+                scrubber(position: position, range: range, isLive: isLive)
                     .accessibilityRepresentation {
                         Slider(
                             value: Binding(get: { position }, set: { value in
@@ -1112,19 +1135,82 @@ private struct PlayerTimelineBar: View {
                         )
                         .accessibilityLabel(isLive ? "Time-shift position" : "Playback position")
                         .accessibilityValue(isLive ? "\(PlayerTime.spoken(behindLive)) behind live" : "\(PlayerTime.spoken(position)) of \(PlayerTime.spoken(upper))")
+                        .accessibilityHint(seekHint)
                     }
                     .accessibilityIdentifier("player.scrubber")
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { barWidth = $0 }
+                    // Outside the representation above, which replaces everything inside it for assistive
+                    // technologies: Try Again must stay reachable with VoiceOver and Full Keyboard Access.
+                    .overlay(alignment: .bottomLeading) {
+                        let span = max(0.001, upper - lower)
+                        let fraction = min(1, max(0, (position - lower) / span))
+                        ScrubCallout(viewModel: viewModel, preview: viewModel.scrubPreview, isScrubbing: isScrubbing,
+                                     position: position, upper: upper, isLive: isLive, barWidth: barWidth, knobX: barWidth * fraction,
+                                     textDirection: textDirection, interacted: interacted)
+                            // Above the knob (22 pt tall while dragging, centered in the hit area).
+                            .offset(y: -(Self.hitHeight / 2 + 16))
+                    }
 
                 Text(isLive ? PlayerTime.format(upper - lower) : String(localized: "-\(PlayerTime.format(upper - position))", comment: "Time remaining in the player, as in -12:34."))
                     .frame(minWidth: 52, alignment: .trailing)
+                    .contentTransition(.numericText())
                     .accessibilityLabel(isLive ? "Time-shift buffer \(PlayerTime.spoken(upper - lower))" : "\(PlayerTime.spoken(upper - position)) remaining")
             }
             .font(Theme.Typography.timecode)
             .foregroundStyle(Theme.Player.secondaryLabel)
+            #if DEBUG
+            .onChange(of: viewModel.debugScrubHold) { _, hold in
+                // The harness's `scrub-hold:` / `scrub-release`: what the drag gesture does.
+                if let hold {
+                    beginScrub(in: range)
+                    scrubPosition = min(max(hold, range.lowerBound), range.upperBound)
+                    viewModel.scrub(toSeconds: scrubPosition)
+                    interacted()
+                } else {
+                    endScrub()
+                }
+            }
+            #endif
         }
     }
 
-    private func scrubber(position: Double, range: ClosedRange<Double>) -> some View {
+    /// What VoiceOver says after the position while a seek loads or could not play.
+    private var seekHint: Text {
+        switch viewModel.seeker.phase {
+        case .failed:
+            Text(PlayerSeekText.failedHint)
+        case .seeking, .loading:
+            Text(PlayerSeekText.loading)
+        case .idle:
+            Text(verbatim: "")
+        }
+    }
+
+    /// The finger touched the bar: the range freezes and the frame previews start.
+    private func beginScrub(in range: ClosedRange<Double>) {
+        guard !isScrubbing else {
+            return
+        }
+        scrubRange = range
+        isScrubbing = true
+        viewModel.setScrubbing(true)
+    }
+
+    /// The finger left the bar, or the drag was cancelled (by the system, another gesture): the seek goes to where
+    /// it was, then the bar shows its target (not the old position).
+    private func endScrub() {
+        guard isScrubbing else {
+            return
+        }
+        viewModel.seek(toSeconds: scrubPosition)
+        viewModel.setScrubbing(false)
+        isScrubbing = false
+        scrubRange = nil
+        isAtEdge = false
+        interacted()
+    }
+
+    private func scrubber(position: Double, range: ClosedRange<Double>, isLive: Bool) -> some View {
         GeometryReader { proxy in
             let width = max(1, proxy.size.width)
             let span = max(0.001, range.upperBound - range.lowerBound)
@@ -1154,27 +1240,152 @@ private struct PlayerTimelineBar: View {
             .contentShape(.rect)
             .highPriorityGesture(
                 DragGesture(minimumDistance: 0)
+                    .updating($isDragging) { _, dragging, _ in
+                        dragging = true
+                    }
                     .onChanged { value in
-                        if !isScrubbing {
-                            scrubRange = range
-                            isScrubbing = true
-                        }
+                        beginScrub(in: range)
                         let frozen = scrubRange ?? range
                         let location = min(max(0, value.location.x), width) / width
+                        let atEdge = location <= 0 || location >= 1
+                        if atEdge && !isAtEdge {
+                            edgeHits += 1
+                        }
+                        isAtEdge = atEdge
                         scrubPosition = frozen.lowerBound + location * (frozen.upperBound - frozen.lowerBound)
+                        viewModel.scrub(toSeconds: scrubPosition)
                         interacted()
                     }
                     .onEnded { _ in
-                        viewModel.seek(toSeconds: scrubPosition)
-                        isScrubbing = false
-                        scrubRange = nil
-                        interacted()
+                        endScrub()
                     }
             )
-            .animation(.snappy(duration: 0.2), value: isScrubbing)
+            .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: isScrubbing)
         }
         .frame(height: Self.hitHeight)
+        .onChange(of: isDragging) { _, dragging in
+            guard !dragging else {
+                return
+            }
+            // A drag that ended calls onEnded (which may come after this); a cancelled one never does. Afterwards,
+            // a scrub still going on was cancelled: it ends the same way.
+            Task { @MainActor in
+                endScrub()
+            }
+        }
         .sensoryFeedback(.selection, trigger: isScrubbing)
+        .sensoryFeedback(.impact(flexibility: .rigid, intensity: 0.7), trigger: edgeHits)
+    }
+}
+
+/// What floats over the knob of the scrubber: while dragging, the time under the finger (with a frame preview
+/// when there is one); Try Again when the seek could not play.
+private struct ScrubCallout: View {
+    let viewModel: AVPlayerViewModel
+    let preview: ScrubPreviewProvider
+    let isScrubbing: Bool
+    let position: Double
+    let upper: Double
+    let isLive: Bool
+    let barWidth: CGFloat
+    let knobX: CGFloat
+    /// The app's direction (the bar itself is left to right): Try Again's icon and text follow it.
+    let textDirection: LayoutDirection
+    let interacted: () -> Void
+
+    @State private var size: CGSize = .zero
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Wider over a wide bar (an iPad, a Mac window), within the bar.
+    private var previewWidth: CGFloat {
+        min(max(160, barWidth * 0.28), 260)
+    }
+
+    var body: some View {
+        content
+            // Its own height, not the bar's (the overlay offers it the bar's 44 pt); as wide as it needs within the
+            // bar, so that a long translation wraps instead of running past it.
+            .fixedSize(horizontal: false, vertical: true)
+            .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
+            // Centered over the knob, kept within the bar.
+            .offset(x: min(max(0, knobX - size.width / 2), max(0, barWidth - size.width)))
+            .allowsHitTesting(viewModel.seeker.phase == .failed && !isScrubbing)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if isScrubbing {
+            VStack(spacing: 6) {
+                if let image = preview.image {
+                    // Dimmed while it shows another place than the finger (the frame there is on its way).
+                    let isCurrent = preview.matches(position)
+                    Image(decorative: image, scale: 1)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: previewWidth)
+                        .clipShape(.rect(cornerRadius: 10))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 10)
+                                .strokeBorder(.white.opacity(0.6), lineWidth: 1)
+                        }
+                        .opacity(isCurrent ? 1 : 0.45)
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isCurrent)
+                        .shadow(color: .black.opacity(0.4), radius: 6, y: 2)
+                }
+                Text(isLive ? "-\(PlayerTime.format(max(0, upper - position)))" : PlayerTime.format(position))
+                    .font(Theme.Typography.timecode.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .glassEffect(.regular, in: .capsule)
+            }
+            .accessibilityHidden(true)
+        } else if viewModel.seeker.phase == .failed {
+            Button {
+                interacted()
+                viewModel.retrySeek()
+            } label: {
+                VStack(spacing: 2) {
+                    Text(PlayerSeekText.failed)
+                        .font(.caption)
+                    Label("Try Again", systemImage: "arrow.clockwise")
+                        .font(.caption.weight(.semibold))
+                }
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                .contentShape(.rect(cornerRadius: 16))
+            }
+            .buttonStyle(.plain)
+            .glassEffect(.regular.tint(Theme.error.opacity(0.5)).interactive(), in: .rect(cornerRadius: 16))
+            // "Try Again", then why (its own sentence).
+            .accessibilityLabel(Text("Try Again"))
+            .accessibilityHint(Text(PlayerSeekText.failed))
+            .accessibilityIdentifier("player.seekRetry")
+            .environment(\.layoutDirection, textDirection)
+        }
+    }
+}
+
+/// The words of a seek that loads or could not play: over the timeline, on the scrubber for VoiceOver and in the
+/// announcements (`PlayerAnnouncer`).
+enum PlayerSeekText {
+    static var failed: String {
+        String(localized: "Couldn't play from this point.", comment: "Player, over the timeline above Try Again, and VoiceOver announcement and hint: a seek (moving the timeline, skipping) went to a point of the video but playback could not continue there.")
+    }
+
+    static var failedHint: String {
+        String(localized: "Couldn't play from this point. Try Again is above the timeline.", comment: "VoiceOver hint of the player's timeline after a seek did not play.")
+    }
+
+    static var loading: String {
+        String(localized: "Loading the new position", comment: "VoiceOver: the player loads the video where the timeline was moved to (a seek in progress).")
+    }
+
+    /// Under the spinner when a seek takes a few seconds: where it goes.
+    static func loading(at target: TimeInterval) -> String {
+        String(localized: "Loading \(PlayerTime.format(target))…", comment: "Player, under the spinner in the middle of the video when a seek takes a few seconds: the time of the movie it goes to, as in Loading 6:41….")
     }
 }
 
@@ -1190,6 +1401,8 @@ private struct PlayerTransport: View {
     let interacted: () -> Void
 
     @State private var playPauseTaps = 0
+    /// Skip taps (a light tick each; quick taps add up into one seek, see `AVPlayerViewModel.skip(by:)`).
+    @State private var skipTaps = 0
 
     static func isPaused(_ state: AVPlayerViewModel.PlaybackState) -> Bool {
         switch state {
@@ -1214,6 +1427,7 @@ private struct PlayerTransport: View {
                 }
 
                 transportButton(String(localized: "Back \(back) seconds", comment: "Player button that skips back; the number is how many seconds."), systemImage: "gobackward.\(back)", help: String(localized: "Back \(back) seconds", comment: "Player button that skips back; the number is how many seconds.")) {
+                    skipTaps += 1
                     viewModel.skipBackward()
                 }
                 .disabled(!viewModel.canSeek)
@@ -1245,6 +1459,7 @@ private struct PlayerTransport: View {
 
             HStack(spacing: 0) {
                 transportButton(String(localized: "Forward \(forward) seconds", comment: "Player button that skips forward; the number is how many seconds."), systemImage: "goforward.\(forward)", help: String(localized: "Forward \(forward) seconds", comment: "Player button that skips forward; the number is how many seconds.")) {
+                    skipTaps += 1
                     viewModel.skipForward()
                 }
                 .disabled(!viewModel.canSeek || (viewModel.isTimeShiftAvailable && timeline.isAtLiveEdge))
@@ -1258,6 +1473,7 @@ private struct PlayerTransport: View {
             .glassEffect(.regular.interactive(), in: .capsule)
             .glassEffectID("transport.forward", in: namespace)
         }
+        .sensoryFeedback(.impact(weight: .light, intensity: 0.6), trigger: skipTaps)
     }
 
     private func transportButton(_ label: String, systemImage: String, help: String, action: @escaping () -> Void) -> some View {
@@ -1412,12 +1628,78 @@ private struct LiveControl: View {
 
 // MARK: - Status overlay
 
+/// The spinner in the middle of the video while a seek loads, on the player's thin glass platter so that it stays
+/// visible over a bright picture. It shows after a moment only, so that a seek that is over at once (a local file,
+/// media already buffered) does not flash it; a seek that takes long (a slow network) adds where it goes.
+private struct SeekLoadingIndicator: View {
+    let isSeeking: Bool
+    /// Where the seek goes (`PlayerSeeker.target`).
+    let target: TimeInterval?
+    /// Time-shift of a live channel: the target is no time of a movie to show.
+    let isLive: Bool
+
+    static let slowDelay: Duration = .seconds(3)
+
+    @State private var isShown = false
+    @State private var isSlow = false
+
+    var body: some View {
+        let isVisible = isShown && isSeeking
+        VStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.large)
+                .tint(.white)
+            if isSlow, !isLive, let target {
+                Text(PlayerSeekText.loading(at: target))
+                    .font(Theme.Typography.timecode)
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .padding(4)
+        .playerLegibilityPlatter()
+        .opacity(isVisible ? 1 : 0)
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(PlayerSeekText.loading))
+        .accessibilityHidden(!isVisible)
+        .task {
+            try? await Task.sleep(for: .milliseconds(300))
+            isShown = true
+        }
+        .task(id: target) {
+            // Every new target (another skip) starts the wait over.
+            isSlow = false
+            try? await Task.sleep(for: Self.slowDelay)
+            if !Task.isCancelled {
+                isSlow = true
+            }
+        }
+    }
+}
+
 /// Connection, buffering, error and end-of-stream feedback in the middle of the video.
 private struct PlayerStatusOverlay: View {
     let viewModel: AVPlayerViewModel
 
+    private static func isFailure(_ state: AVPlayerViewModel.PlaybackState) -> Bool {
+        if case .failed = state {
+            return true
+        }
+        return false
+    }
+
     var body: some View {
         switch viewModel.playbackState {
+        case let state where viewModel.seeker.phase == .failed && !viewModel.isCasting && !Self.isFailure(state) && state != .ended:
+            // A seek that could not play (the item itself still plays): its retry is over the scrubber
+            // (`ScrubCallout`), the middle stays clear.
+            EmptyView()
+        case let state where viewModel.seeker.isBusy && !viewModel.isCasting && !Self.isFailure(state) && state != .ended:
+            // A seek on its way (also while AVPlayer still says it plays, or paused): the one loading indicator.
+            SeekLoadingIndicator(isSeeking: viewModel.seeker.phase == .seeking || state != .playing, target: viewModel.seeker.target,
+                                 isLive: viewModel.isTimeShiftAvailable)
         case .connecting where viewModel.isCasting, .buffering where viewModel.isCasting:
             // The casting backdrop shows it.
             EmptyView()

@@ -312,6 +312,55 @@ CHANNELS=100000 Tools/HomeQueriesCheck/run.sh
   applies to live HEVC channels. Audio tracks and subtitles (see "Audio tracks and subtitles") are complete VOD
   playlists of the same segments, written with the main segment of the same number; only the requests of the
   main playlist move the reader, a rendition's request waits for its segment.
+- **Seeking** (`PlayerSeeker`, `ScrubPreviewProvider`): every seek (scrubber, skip buttons, keyboard, remote
+  commands, resume) goes through one coordinator. The scrubber's knob and times follow the finger and never the
+  player's clock while it is dragged (a drag the system cancels ends like a release); after the release they stay at
+  the target until playback is there (a spinner in the middle of the video after 300 ms), so the bar never jumps back
+  to the old position. A seek always ends: once it completed and playback runs (or rests, paused) away from the
+  target for a second, the bar follows playback again (logged as a landing error). Only the latest target wins: a seek in flight is
+  replaced at most every 250 ms, and quick skip taps add up into one seek 300 ms after the last tap (each seek through
+  the engine can cost a reconnection to the server). Released seeks are exact (a quarter of a second either way: with no tolerance at all AVPlayer buffers the next HLS
+  segment before it plays, twice as long through the engine);
+  local files (downloads, recordings) follow the finger with key frame seeks; movies AVPlayer plays from the network
+  show frame previews over the knob (`AVAssetImageGenerator` on the item's asset, key frames, one in flight, cached;
+  turned off for a file whose server refuses them); media through the engine shows the time only (its server often
+  allows a single connection, which the engine holds). A seek that does not play without media arriving for 8 s (20 s
+  through the engine, which still works on the segment and fails it itself after 45 s) is made again from the key
+  frame before the target; then the item is recreated at the target (a movie AVPlayer plays itself moves to the
+  engine; a new item from the engine starts at the target, `fluxo_remux_set_start_time`), and a stall on that item
+  fails: "Couldn't play from this point." with Try Again over the timeline, reachable with VoiceOver and Full Keyboard
+  Access, and announced (cleared by itself once playback runs at the target after all). A seek AVPlayer drops (it
+  completes it as not finished while it starts an item) is made again at once, then 150 / 300 ms later, each time
+  once the item is ready; after the third retry the recovery above takes over, so a seek never stays loading with
+  nothing in flight (`run_vod.sh dropped`, the harness's `seek-drop:`). A seek that takes over 3 s shows where it
+  goes under the spinner ("Loading 6:41…"); the spinner sits on the player's thin glass platter, legible over a
+  bright picture. Picture in Picture's skip buttons seek AVPlayer themselves: in Picture in Picture, a jump of the
+  item's time past what was buffered that the seeker did not make is made again through it (through the engine, AVPlayer asks for the
+  segment before it posts the jump, too late for the engine to write it from a key frame: it played from the next
+  key frame, 4.6 s late on `wifi` MPEG-TS; now within 0.3 s). Haptics: a tick when the drag starts and ends, a bump
+  at either end of the bar, a light tap per skip.
+- **Seeking through the engine**: a request that starts at most 10 s of media after what the engine reads is reached by
+  reading on, a farther one by seeking the input (segments are as long as the GOPs of the input, often 10 s, so a
+  count of segments was too coarse). A resume starts the engine at the saved position (`start_time`, written as
+  `EXT-X-START`), so the first segment produced is the one there. Inputs without an index (MPEG-TS) are planned at
+  nominal 4 s and now cut exactly at the planned times; AVPlayer places MPEG-TS segments by the playlist, so media that
+  started earlier or later than planned showed the picture seconds off the timeline, and a seek into a segment that
+  started inside a GOP showed the previous picture over the audio until the next key frame (to the end of the movie
+  near its end). They are seeked by byte position estimated from the size and duration (one request instead of a
+  timestamp search of a dozen), corrected from the bit rate when the landing is off, a GOP before the target. The
+  first segment after a seek then starts at the key frame before it (its pre-roll), with those frames timed
+  in the last ticks before the segment, so AVPlayer decodes them but shows at most the last one (the frame just before
+  it; decode times never go back across segments); a seek into a segment on disk that starts inside a GOP
+  writes it again that way. Every seek also tells the engine where it goes (`fluxo_remux_note_seek`), because a seek
+  just past what the player buffered asks for the segment after the last one it loaded, which looks like playing on:
+  that segment, written ahead or being written from inside a GOP, would play from its next key frame, seconds after
+  the target (with the bar stuck at the target). Such a seek, and any seek into the segment the reader writes or
+  reaches by reading on, starts a run of its own there. The reader keeps the packets read since the latest key frame
+  (references, at most 48 MB), so that run starts with its pre-roll from memory ("replayed" through the router)
+  instead of reading the GOP again from the network; farther seeks read it from the input as before. So every segment
+  a player seeks into starts with a key frame and the playlists say so (`EXT-X-INDEPENDENT-SEGMENTS`; without it
+  AVPlayer also loaded the segment before, a second seek of the input).
+  `Tools/EngineSmokeTest/run_seek.sh` measures all of this (see "Seek latency" below).
 - **Deterministic start**: the engine has its own HLS segmenter and reports each
   completed segment. The player item is created once, after the first segment
   exists and the server is listening. There is no polling.
@@ -557,6 +606,47 @@ and HEVC, whose audio switch and subtitle timing are checked too). Each case is
 played by `VODCheck` (the app's `PlaybackRoute`, `StreamRemuxer` and loopback server, on another port, with
 AVPlayer): skip +30 s twice, scrub to 25 / 50 / 90 %, skip back, then close and resume at the saved
 position; after each step playback must continue there with video frames that are not black.
+
+### Seek latency
+
+```sh
+Tools/EngineSmokeTest/run_seek.sh                   # every route and network, with PlayerSeeker
+SEEKER=legacy Tools/EngineSmokeTest/run_seek.sh     # the seeks the player made before PlayerSeeker
+Tools/EngineSmokeTest/run_seek.sh ts poor           # cases whose name contains one of the words
+```
+
+`run_seek.sh` plays a 1080p H.264 movie (4.5 Mbit/s, a key frame every 10 s at most, 10 minutes) through every
+on-demand route (AVPlayer directly: MP4 with the moov first and last; the engine: Matroska, MPEG-TS) from the loopback
+server with the latency and bandwidth of a phone on Wi-Fi (`wifi`: 60 ms to the first byte, 3 MB/s; `poor`: 250 ms,
+1.2 MB/s, about twice the bit rate), and seeks like people do: a drag, four quick +30 taps, a release just past what the
+player buffered (and Picture in Picture's skip button just past it again, AVPlayer seeking itself), three -10 taps,
+two releases in a row, a fine drag, 8 s before the end, back, a seek while paused, a
+resume, a skip after it. Each seek is timed from the release (or the last tap) until the seek is over and the player
+plays within 3 s of the target with frames that keep up with the clock. Median (worst) per case, before (the
+player's seeks and the engine before `PlayerSeeker`) and after:
+
+| Case | Before | After |
+|---|---|---|
+| lan, MP4 / moov last | | 0.20 s (0.52 s) / 0.15 s (0.52 s) |
+| lan, Matroska / MPEG-TS | | 0.21 s (0.41 s) / 0.26 s (0.40 s) |
+| wifi, MP4 | 0.99 s (4.39 s) | 0.95 s (4.42 s) |
+| wifi, MP4 moov last | 1.10 s (3.83 s) | 1.51 s (4.42 s) |
+| wifi, Matroska | 2.41 s (7.20 s) | 2.29 s (4.84 s) |
+| wifi, MPEG-TS | 2.74 s (5.79 s), 2 of 11 failed | 3.38 s (4.67 s) |
+| poor, MP4 | 2.41 s (6.04 s), 1 failed | 4.54 s (28.41 s: the resume, see below) |
+| poor, MP4 moov last | 2.48 s (9.75 s) | 2.74 s (12.73 s) |
+| poor, Matroska | 6.11 s (18.21 s) | 5.46 s (12.08 s) |
+| poor, MPEG-TS | 7.19 s (15.98 s), 3 failed | 10.03 s (12.45 s) |
+
+Resumes through the engine start where they continue (Matroska 18.2 s to 12.2 s on `poor`, 7.2 s to 4.7 s on
+`wifi`). Before, the MPEG-TS seeks failed: four +30 taps landed 34 s past the target, a seek near the end played the
+audio over a frozen picture to the end, and in the app the picture ran up to 14 s off the timeline. A release just
+past the buffer played from the next key frame (MPEG-TS on `poor`: 5 s after the target, with the bar stuck at the
+target); now it lands within 0.3 s of the target on every route (0.7 s on `poor` MPEG-TS, from the GOP in memory).
+The cost of a file without an index is its GOP: a far seek reads the key frame before the target and the 4 s segment,
+so MPEG-TS seeks on `poor` are correct now but slower than the wrong ones before; Matroska and MP4 are unchanged or
+faster. The direct MP4 cases are within the noise of AVPlayer's own loading; their worst case is the resume, measured
+from opening the movie again, which on `poor` takes about the 12 s after which a movie moves to the engine.
 
 Debug builds have a test harness for the simulators (`Tools/Simulator/README.md`): an isolated in-memory or
 temporary library (`-FluxoDebugStore`), seeded sample content with local artwork (`-FluxoDebugSeed sample|large`),

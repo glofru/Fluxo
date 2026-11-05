@@ -18714,6 +18714,12 @@
         }
       }
     },
+    "Couldn't play from this point." : {
+      "comment" : "Player, over the timeline above Try Again, and VoiceOver announcement and hint: a seek (moving the timeline, skipping) went to a point of the video but playback could not continue there."
+    },
+    "Couldn't play from this point. Try Again is above the timeline." : {
+      "comment" : "VoiceOver hint of the player's timeline after a seek did not play."
+    },
     "Couldn't start casting to %@." : {
       "comment" : "Text — Chromecast (Google Cast). The placeholder is of: device).",
       "localizations" : {
@@ -33061,6 +33067,9 @@
     "Load Subtitle File…" : {
       "comment" : "Player's Audio and Subtitles menu: opens Files to pick a subtitle file (.srt or .vtt)."
     },
+    "Loading %@…" : {
+      "comment" : "Player, under the spinner in the middle of the video when a seek takes a few seconds: the time of the movie it goes to, as in Loading 6:41…."
+    },
     "Loading the TV guide…" : {
       "comment" : "Text — TV guide.",
       "localizations" : {
@@ -33161,6 +33170,9 @@
           }
         }
       }
+    },
+    "Loading the new position" : {
+      "comment" : "VoiceOver: the player loads the video where the timeline was moved to (a seek in progress)."
     },
     "Location" : {
       "comment" : "Settings › Recordings: where the recordings are saved.",

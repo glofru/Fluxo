@@ -8,7 +8,9 @@
 # audio tracks and subtitles (H.264 and HEVC Matroska, as series episodes often are) play the master playlist:
 # the check switches the audio track and checks that the subtitle cues come at their time. The live cases
 # (a file served at about its bit rate, H.264 and HEVC) check that live channels still play from the live
-# edge and within the time-shift window.
+# edge and within the time-shift window. The dropped-* cases (SCENARIO=dropped, Stress.swift) make AVPlayer drop
+# seeks as it does while it starts an item: the seek must play at the target after a few drops, end with Try Again
+# when every seek is dropped, and never stay loading.
 #
 #   Tools/EngineSmokeTest/run_vod.sh                 every case
 #   Tools/EngineSmokeTest/run_vod.sh mkv-h264 ts     cases whose name contains one of the words
@@ -88,10 +90,19 @@ make_track_media() {
 . "$ROOT/Tools/EngineSmokeTest/vodcheck.sh"
 
 cleanup() {
-    kill "${SERVER_PID:-0}" 2>/dev/null || true
+    # (`kill 0` would end the whole process group.)
+    if [ -n "${SERVER_PID:-}" ]; then
+        kill "$SERVER_PID" 2>/dev/null || true
+    fi
 }
 trap cleanup EXIT INT TERM
 
+if [ "${BUILD_ONLY:-0}" = 1 ]; then
+    # run_seek.sh: only the check binary, its path on the last line.
+    build_check >&2
+    echo "$CHECK"
+    exit 0
+fi
 make_media
 make_track_media
 build_check
@@ -129,6 +140,8 @@ hls-vod|$B/hls/index.m3u8|movie
 live-ts|$B/slow/100/live/user/pass/1002.ts|live
 live-hevc|$B/slow/110/user/pass/hevc.ts|live
 live-hevc-tracks|$B/slow/130/live/user/pass/tracks-hevc.ts|live
+dropped-mp4|$B/movie/user/pass/h264.mp4|movie
+dropped-ts|$B/slow/400/movie/user/pass/1002.ts|movie
 "
 passed=0
 failed=0
@@ -146,14 +159,17 @@ for line in $CASES; do
         [ $match -eq 1 ] || continue
     fi
     echo "=== $name ($kind) $url"
-    if "$CHECK" "$url" "$kind" > "$WORK/$name.log" 2>&1; then
+    # dropped-*: AVPlayer dropping seeks (VODCheck SCENARIO=dropped, Stress.swift).
+    scenario=
+    case $name in dropped-*) scenario=dropped ;; esac
+    if SCENARIO=$scenario "$CHECK" "$url" "$kind" > "$WORK/$name.log" 2>&1; then
         passed=$((passed + 1))
         result=PASS
     else
         failed=$((failed + 1))
         result=FAIL
     fi
-    grep -E '^\[check\] (route|playlist|master|tracks|playing after|.*=> |result)' "$WORK/$name.log" | sed 's/^/    /'
+    grep -E '^\[check\] (route|playlist|master|tracks|playing after|.*=> |result)|^\[dropped\]|^\[stress\] .*=> ' "$WORK/$name.log" | sed 's/^/    /'
     summary="$summary
 $result $name"
 done

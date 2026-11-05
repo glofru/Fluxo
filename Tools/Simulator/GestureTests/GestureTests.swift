@@ -6,7 +6,8 @@
 //  on a swipe up, the player follows a drag down 1:1 (checked with its Debug drag probe and a screenshot while the
 //  finger holds), springs back from a short one, ignores horizontal drags and closes on a long drag or a flick,
 //  it covers the whole screen in portrait and landscape (also pulled up), Home's cover stretches over a real
-//  pull down, scrubbing the timeline never closes the player, its X stops playback, and nothing shows above the
+//  pull down, scrubbing the timeline never closes the player (and on a movie, the time follows the finger and the
+//  seek plays where it was released), its X stops playback, and nothing shows above the
 //  tab bar while nothing plays. On a (simulated) foldable, the channel list beside the video scrolls and switches
 //  channel without moving the player. Deleting a TV guide source (swipe, context menu, the Guide Sources sheet)
 //  leaves the app running and the row gone.
@@ -268,6 +269,75 @@ final class GestureTests: XCTestCase {
             sleep(1)
             shot("scrub-2-golive")
         }
+    }
+
+    /// Scrubbing a movie with a real finger (the `DragGesture` itself, not the harness's `scrub-hold:`): while the
+    /// finger holds, the time over the knob follows it (screenshot `scrub-movie-1-holding`); after the release the bar
+    /// stays at the target instead of jumping back, the seek ends (no Try Again) and playback continues there.
+    /// Run it against a throttled server to see the loading state: TEST_RUNNER_FLUXO_TEST_STREAM_URL pointing at
+    /// Tools/EngineSmokeTest/vod_server.py with /lat/<ms>/slow/<KB/s> (TEST_RUNNER_FLUXO_LOOPBACK_PORT for the
+    /// player's local port).
+    func testScrubbingMovieFollowsTheFingerAndSeeks() {
+        var arguments = testStreamArguments
+        if let port = ProcessInfo.processInfo.environment["FLUXO_LOOPBACK_PORT"], !port.isEmpty {
+            arguments += ["-FluxoDebugLoopbackPort", port]
+        }
+        let app = launch("player:Test Clip (MPEG-TS);wait:6", arguments: arguments)
+        waitPlayerSettled(app, timeout: 60)
+        sleep(4)
+        let slider = app.descendants(matching: .any)["player.scrubber"]
+        showControls(app, until: slider)
+        XCTAssertTrue(slider.waitForExistence(timeout: 10), "the scrubber shows")
+        let before = slider.value as? String ?? ""
+        shot("scrub-movie-0-before")
+        captureDuringGesture("scrub-movie-1-holding")
+        slider.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.5))
+            .press(forDuration: 0.1, thenDragTo: slider.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.5)), withVelocity: .slow,
+                   thenHoldForDuration: 2.5)
+        shot("scrub-movie-2-released")
+        let released = slider.value as? String ?? ""
+        XCTAssertNotEqual(released, before, "right after the release the bar shows the target, not the old position (\(before))")
+        waitPlayerOpen(app, true)
+        // The seek ends: no Try Again within the engine's stall limit, and the bar stays about the target.
+        sleep(12)
+        showControls(app, until: slider)
+        shot("scrub-movie-3-playing")
+        XCTAssertFalse(app.buttons["player.seekRetry"].exists, "the seek played (no Try Again)")
+        XCTAssertNotEqual(slider.value as? String ?? "", before, "playback continues at the target, not where it was")
+        app.terminate()
+    }
+
+    /// Shows the player's controls (a tap on the video) unless `element` of them is on screen already: a tap
+    /// while they show hides them.
+    func showControls(_ app: XCUIApplication, until element: XCUIElement) {
+        if !element.exists || !element.isHittable {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            _ = element.waitForExistence(timeout: 3)
+        }
+    }
+
+    /// A seek that could not play (`seek-fail:`): Try Again over the timeline is in the accessibility tree (VoiceOver,
+    /// Full Keyboard Access; it used to be inside the scrubber's accessibility representation, which hid it), the
+    /// scrubber says why in its hint, and a tap seeks there again.
+    func testSeekFailureOffersAccessibleRetry() {
+        var arguments = testStreamArguments
+        if let port = ProcessInfo.processInfo.environment["FLUXO_LOOPBACK_PORT"], !port.isEmpty {
+            arguments += ["-FluxoDebugLoopbackPort", port]
+        }
+        let app = launch("player:Test Clip (MP4);wait:6;player-controls:show;seek-fail:50%", arguments: arguments)
+        waitPlayerSettled(app, timeout: 60)
+        let retry = app.buttons["player.seekRetry"]
+        XCTAssertTrue(retry.waitForExistence(timeout: 30), "Try Again is an accessibility element")
+        XCTAssertEqual(retry.label, "Try Again")
+        let slider = app.descendants(matching: .any)["player.scrubber"]
+        XCTAssertTrue(slider.exists, "the scrubber is still there")
+        shot("seek-fail-1-retry")
+        retry.tap()
+        sleep(8)
+        showControls(app, until: slider)
+        shot("seek-fail-2-after-retry")
+        XCTAssertFalse(app.buttons["player.seekRetry"].exists, "the retry played")
+        app.terminate()
     }
 
     /// Bug 1 ("an empty glass on top of the tab bar when you open the app"): nothing shows above the tab bar
