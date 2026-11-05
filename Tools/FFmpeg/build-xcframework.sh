@@ -6,7 +6,7 @@
 #   FFmpeg.xcframework   one dynamic framework ("FFmpeg") per platform, with libavformat, libavcodec,
 #                        libswscale, libswresample and libavutil linked into a single dylib that exports
 #                        only the public av* / sw* symbols. Slices: iOS arm64, iOS Simulator arm64 +
-#                        x86_64, macOS arm64 + x86_64.
+#                        x86_64, macOS arm64 + x86_64, tvOS arm64, tvOS Simulator arm64 + x86_64.
 #   include/             the public libavformat / libavcodec / libswscale / libswresample / libavutil
 #                        headers (identical for every slice; the script checks it).
 #   BUILD_INFO.txt       version, tarball checksum and the exact configure flags.
@@ -16,7 +16,11 @@
 # Environment:
 #   WORK=/tmp/fluxo-ffmpeg-build   scratch directory (download, sources, objects)
 #   JOBS=<n>                        parallel make jobs (default: number of CPUs)
-#   SLICES="ios-arm64 ..."          subset of slices to build (default: all of them)
+#   SLICES="ios-arm64 ..."          subset of slices to build (default: all of them). The platforms of
+#                                   the slices not listed are taken unchanged (byte for byte) from the
+#                                   current Vendor/FFmpeg/FFmpeg.xcframework, so adding a platform does
+#                                   not rebuild the others, e.g. SLICES="tvos-arm64 tvossim-arm64 tvossim-x86_64".
+#                                   A platform is always built whole (all of its architectures).
 #
 # Requirements: Xcode command line tools (clang, lipo, xcodebuild) and curl. No Homebrew packages
 # are used: pkg-config lookups are disabled and every external library is off except the system
@@ -36,6 +40,7 @@ FFMPEG_SIGNING_KEY=FCF986EA15E6E293A5644F10B4322F04D67658D8
 
 IOS_MIN=26.0
 MACOS_MIN=26.0
+TVOS_MIN=26.0
 FRAMEWORK_VERSION=$FFMPEG_VERSION
 BUNDLE_ID=dev.watermelon.FFmpeg
 
@@ -43,7 +48,9 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 OUT=$ROOT/Vendor/FFmpeg
 WORK=${WORK:-/tmp/fluxo-ffmpeg-build}
 JOBS=${JOBS:-$(sysctl -n hw.ncpu)}
-SLICES=${SLICES:-"ios-arm64 iossim-arm64 iossim-x86_64 macos-arm64 macos-x86_64"}
+ALL_SLICES="ios-arm64 iossim-arm64 iossim-x86_64 macos-arm64 macos-x86_64 tvos-arm64 tvossim-arm64 tvossim-x86_64"
+ALL_PLATFORMS="ios iossim macos tvos tvossim"
+SLICES=${SLICES:-$ALL_SLICES}
 
 # Deterministic archives (no member timestamps) and no stray pkg-config / Homebrew lookups.
 export ZERO_AR_DATE=1
@@ -149,6 +156,9 @@ slice_info() {
         iossim-x86_64) SDK=iphonesimulator; ARCH=x86_64; TRIPLE=x86_64-apple-ios$IOS_MIN-simulator;   PLATFORM=iossim ;;
         macos-arm64)   SDK=macosx;          ARCH=arm64;  TRIPLE=arm64-apple-macos$MACOS_MIN;          PLATFORM=macos ;;
         macos-x86_64)  SDK=macosx;          ARCH=x86_64; TRIPLE=x86_64-apple-macos$MACOS_MIN;         PLATFORM=macos ;;
+        tvos-arm64)    SDK=appletvos;       ARCH=arm64;  TRIPLE=arm64-apple-tvos$TVOS_MIN;            PLATFORM=tvos ;;
+        tvossim-arm64) SDK=appletvsimulator; ARCH=arm64; TRIPLE=arm64-apple-tvos$TVOS_MIN-simulator;  PLATFORM=tvossim ;;
+        tvossim-x86_64) SDK=appletvsimulator; ARCH=x86_64; TRIPLE=x86_64-apple-tvos$TVOS_MIN-simulator; PLATFORM=tvossim ;;
         *) echo "error: unknown slice $1" >&2; exit 1 ;;
     esac
 }
@@ -278,12 +288,17 @@ make_framework() { # platform
             ln -s Versions/Current/FFmpeg "$dir/FFmpeg"
             ln -s Versions/Current/Resources "$dir/Resources"
             ;;
-        ios | iossim)
+        ios | iossim | tvos | tvossim)
             mkdir -p "$dir"
             # shellcheck disable=SC2086
             lipo -create $binaries -output "$dir/FFmpeg"
-            if [ "$1" = ios ]; then platform_name=iPhoneOS; else platform_name=iPhoneSimulator; fi
-            write_info_plist "$dir/Info.plist" "$platform_name" MinimumOSVersion "$IOS_MIN"
+            case "$1" in
+                ios) platform_name=iPhoneOS; min_os=$IOS_MIN ;;
+                iossim) platform_name=iPhoneSimulator; min_os=$IOS_MIN ;;
+                tvos) platform_name=AppleTVOS; min_os=$TVOS_MIN ;;
+                tvossim) platform_name=AppleTVSimulator; min_os=$TVOS_MIN ;;
+            esac
+            write_info_plist "$dir/Info.plist" "$platform_name" MinimumOSVersion "$min_os"
             cp "$SRC/COPYING.LGPLv2.1" "$dir/LICENSE"
             ;;
     esac
@@ -293,7 +308,62 @@ make_framework() { # platform
     FRAMEWORK_ARGS="$FRAMEWORK_ARGS -framework $dir"
 }
 
+# The library identifier (directory) of a platform's framework in an existing xcframework, or nothing.
+existing_library() { # platform
+    for library in "$OUT/FFmpeg.xcframework"/*/; do
+        library=$(basename "$library")
+        case "$library" in
+            ios-*-simulator) kind=iossim ;;
+            ios-*) kind=ios ;;
+            tvos-*-simulator) kind=tvossim ;;
+            tvos-*) kind=tvos ;;
+            macos-*) kind=macos ;;
+            *) kind="" ;;
+        esac
+        [ "$kind" = "$1" ] && { echo "$library"; return 0; }
+    done
+    return 0
+}
+
+# Uses the framework of a platform that is not rebuilt as it is in the current xcframework (a copy that keeps
+# its symlinks and signature, so the binary stays byte for byte the same).
+reuse_framework() { # platform
+    library=$(existing_library "$1")
+    if [ -z "$library" ]; then
+        echo "note: no $1 slice was built or exists in $OUT/FFmpeg.xcframework; the xcframework has none." >&2
+        return 0
+    fi
+    rm -rf "$WORK/frameworks/$1"
+    mkdir -p "$WORK/frameworks/$1"
+    cp -Rp "$OUT/FFmpeg.xcframework/$library/FFmpeg.framework" "$WORK/frameworks/$1/"
+    FRAMEWORK_ARGS="$FRAMEWORK_ARGS -framework $WORK/frameworks/$1/FFmpeg.framework"
+    REUSED="$REUSED $library"
+}
+
+# Whether this run builds a slice of a platform.
+builds_platform() { # platform (POSIX sh has no local variables: the loop variable must not be a caller's)
+    for built_slice in $SLICES; do
+        slice_info "$built_slice"
+        [ "$PLATFORM" = "$1" ] && return 0
+    done
+    return 1
+}
+
 # MARK: - Main
+
+# A platform is built whole: a framework made of only some of its architectures would silently drop the others.
+for platform in $ALL_PLATFORMS; do
+    builds_platform "$platform" || continue
+    for slice in $ALL_SLICES; do
+        slice_info "$slice"
+        if [ "$PLATFORM" = "$platform" ]; then
+            case " $SLICES " in
+                *" $slice "*) ;;
+                *) echo "error: SLICES builds $platform without $slice; list every slice of a platform" >&2; exit 1 ;;
+            esac
+        fi
+    done
+done
 
 fetch_source
 for slice in $SLICES; do
@@ -312,11 +382,40 @@ for slice in $SLICES; do
         }
     fi
 done
+# Platforms taken from the current xcframework were built with the headers in Vendor/FFmpeg/include.
+for platform in $ALL_PLATFORMS; do
+    builds_platform "$platform" && continue
+    [ -n "$(existing_library "$platform")" ] || continue
+    diff -r "$OUT/include" "$WORK/install/$first/include" > /dev/null || {
+        echo "error: the headers of the new slices differ from Vendor/FFmpeg/include, which the $platform slice was built with; rebuild every slice" >&2
+        exit 1
+    }
+done
+
+# The slices the new xcframework contains: the ones built now and those of the reused platforms.
+slices_in_xcframework() {
+    list=""
+    for listed_slice in $ALL_SLICES; do
+        slice_info "$listed_slice"
+        slice_platform=$PLATFORM # builds_platform changes PLATFORM
+        if builds_platform "$slice_platform"; then
+            case " $SLICES " in *" $listed_slice "*) list="$list $listed_slice" ;; esac
+        elif [ -n "$(existing_library "$slice_platform")" ]; then
+            list="$list $listed_slice"
+        fi
+    done
+    echo "${list# }"
+}
 
 log "Creating FFmpeg.xcframework"
 FRAMEWORK_ARGS=""
-for platform in ios iossim macos; do
-    make_framework "$platform"
+REUSED=""
+for platform in $ALL_PLATFORMS; do
+    if builds_platform "$platform"; then
+        make_framework "$platform"
+    else
+        reuse_framework "$platform"
+    fi
 done
 rm -rf "$OUT/FFmpeg.xcframework" "$OUT/include"
 mkdir -p "$OUT"
@@ -330,7 +429,8 @@ cp "$SRC/COPYING.LGPLv2.1" "$OUT/LICENSE"
     echo "SHA-256: $FFMPEG_SHA256"
     echo "License: LGPL v2.1 or later (no GPL, version3 or nonfree components)"
     echo "Built by: Tools/FFmpeg/build-xcframework.sh with $(xcodebuild -version | tr '\n' ' ')"
-    echo "Slices: $SLICES (iOS $IOS_MIN, macOS $MACOS_MIN)"
+    echo "Slices: $(slices_in_xcframework) (iOS $IOS_MIN, macOS $MACOS_MIN, tvOS $TVOS_MIN)"
+    [ -z "$REUSED" ] || echo "Kept unchanged from the previous build:$REUSED (same version and configure flags)"
     echo
     echo "Configure flags (plus per-slice toolchain flags):"
     echo "$CONFIGURE_FLAGS" | tr ' ' '\n' | grep -v '^$' | sed 's/^/  /'

@@ -51,8 +51,9 @@ tarball by `Tools/FFmpeg/build-xcframework.sh` (pinned version and SHA-256, plus
 signature when `gpg` is installed). It contains one dynamic framework, `FFmpeg.framework`,
 with libavformat, libavcodec, libswscale, libswresample and libavutil linked into a single library that exports
 only the public API (`av_*`, `avio_*`, `avcodec_*`, `avformat_*`, `avutil_*`, `avsubtitle_*`, `swr_*`, `sws_*`; no
-internal `avpriv_*` / `ff_*` symbols), for iOS (arm64), the iOS Simulator (arm64, x86_64) and macOS
-(arm64, x86_64: macOS 26 still runs on Intel Macs, and Xcode builds universal Release apps).
+internal `avpriv_*` / `ff_*` symbols), for iOS (arm64), the iOS Simulator (arm64, x86_64), macOS
+(arm64, x86_64: macOS 26 still runs on Intel Macs, and Xcode builds universal Release apps), tvOS (arm64) and the
+tvOS Simulator (arm64, x86_64), with the same components and configure flags on every platform.
 The public headers are in `Vendor/FFmpeg/include`, and `Vendor/FFmpeg/BUILD_INFO.txt` lists the
 exact configuration. The iOS slice is about 8 MB.
 
@@ -86,6 +87,9 @@ exact configuration. The iOS slice is about 8 MB.
   distributing the app must also offer the FFmpeg source (the release tarball) and this build
   script.
 - **Rebuild** (about 10 minutes; Xcode only, no Homebrew packages): `Tools/FFmpeg/build-xcframework.sh`.
+  `SLICES` builds a subset, e.g. `SLICES="tvos-arm64 tvossim-arm64 tvossim-x86_64"` (a platform is always built
+  with all its architectures): the platforms left out are copied unchanged from the current xcframework, so their
+  binaries stay byte for byte the same (`BUILD_INFO.txt` lists them). The tvOS slices were added that way.
   To add a component, add it to the lists at the top of the script, rebuild and run
   `Tools/FFmpeg/check.sh`, which checks the version, the license and the components, and opens
   any URLs passed to it (`Tools/FFmpeg/check.sh https://…` checks HTTPS).
