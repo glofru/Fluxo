@@ -12,7 +12,10 @@
 //    and delete the segments that leave the window;
 //  - report every completed segment, so the player attaches only once media exists;
 //  - reconnect to live inputs after network drops while keeping the playlist continuous;
-//  - record the stream to a second output (an MPEG-TS file) at the same time.
+//  - record the stream to a second output (an MPEG-TS file) at the same time;
+//  - make the extra audio tracks and the text subtitles of the input selectable (see
+//    FluxoRemuxHLSOptions.master_playlist_path): each becomes an HLS rendition of a master playlist,
+//    audio as audio-only MPEG-TS segments, subtitles as WebVTT segments cut with the video.
 //
 //  The header intentionally does not expose any libav* type so that Swift only
 //  sees plain C types through the bridging header.
@@ -86,6 +89,16 @@ typedef struct FluxoRemuxEvent {
     double recording_duration;
     /// Bytes written to the recording so far.
     int64_t recording_bytes;
+
+    /// Non-zero once the master playlist (FluxoRemuxHLSOptions.master_playlist_path) is written: the input has
+    /// alternative audio tracks or text subtitles, and the player should open the master playlist rather than
+    /// the media playlist. It is written with the first segment (its video tells whether the stream carries
+    /// CEA-608 closed captions, which the master playlist then declares) and never changes afterwards.
+    int32_t master_playlist_written;
+    /// Audio tracks offered by the master playlist (0 without one).
+    int32_t audio_rendition_count;
+    /// Subtitle tracks offered by the master playlist (0 without one).
+    int32_t subtitle_rendition_count;
 } FluxoRemuxEvent;
 
 /// Called from the engine thread for every event. Must return quickly and must not call fluxo_remux_destroy.
@@ -106,6 +119,19 @@ typedef struct FluxoRemuxHLSOptions {
     int64_t max_window_bytes;
     /// The window never shrinks below this number of segments (default 3).
     int32_t min_window_segments;
+    /// Optional absolute path of an HLS master playlist, in the playlist's directory. When it is set and the
+    /// input has two audio streams or more, or text subtitles (SubRip, ASS / SSA, WebVTT, timed text), the
+    /// engine writes it with one EXT-X-MEDIA rendition per track:
+    /// - the media playlist (`playlist_path`) carries the video and the default audio track, which is the
+    ///   rendition without a URI; every other audio track gets its own playlist of audio-only segments
+    ///   ("<prefix>-a<n>.m3u8", segments "<prefix>-a<n>-<sequence>.ts");
+    /// - every text subtitle stream gets a WebVTT playlist ("<prefix>-s<n>.m3u8", segments
+    ///   "<prefix>-s<n>-<sequence>.vtt"), cut at the same times as the video.
+    /// The renditions carry the language, title, default / forced flags and the accessibility
+    /// characteristics (audio description, subtitles for the deaf and hard of hearing) of the input streams.
+    /// Bitmap subtitles (DVB, PGS, DVD) and teletext cannot be converted and are not offered.
+    /// NULL (or an input with nothing to choose) writes the media playlist only.
+    const char *master_playlist_path;
 } FluxoRemuxHLSOptions;
 
 /// Configuration of a remux session. All strings are copied by fluxo_remux_create.

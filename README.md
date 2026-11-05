@@ -277,6 +277,9 @@ CHANNELS=100000 Tools/HomeQueriesCheck/run.sh
   DVR window of the source playlist (if it has one) and cannot be recorded.
   An on-demand `.ts` file served over HTTP ends normally once its last byte is
   read; any other end of a live input is treated as a dropped connection.
+  Movies and episodes in containers AVPlayer cannot open (`.mkv`, `.mk3d`, `.webm`, `.avi`, `.divx`, `.xvid`)
+  go through the engine as on-demand inputs, which also makes their audio tracks and subtitles selectable (see
+  "Audio tracks and subtitles"). The engine reads them from the start and keeps them whole while they play.
 - **Deterministic start**: the engine has its own HLS segmenter and reports each
   completed segment. The player item is created once, after the first segment
   exists and the server is listening. There is no polling.
@@ -322,6 +325,45 @@ CHANNELS=100000 Tools/HomeQueriesCheck/run.sh
   channel to the Lock Screen / Now Playing menu and handles its play, pause, skip and
   next / previous channel commands.
 
+- **Audio tracks and subtitles** (`MediaSelection.swift`, `Features/Player/Tracks`): the captions button of the
+  player (and Playback > Audio and Subtitles on the Mac) lists the audio tracks (audio descriptions marked AD) and
+  the subtitles (Automatic, Off, then each track, SDH and closed captions marked) of what plays:
+  - **Streams AVPlayer plays itself**: the renditions of an HLS playlist (EXT-X-MEDIA audio, subtitles, closed
+    captions) and the tracks of an MP4 / MOV file (AVMediaSelection).
+  - **Streams of the remux engine** (raw MPEG-TS channels, Matroska / WebM / AVI movies and episodes, which now go
+    through the engine as on-demand inputs): when the input has two audio tracks or more in a codec HLS players
+    decode (AAC, AC-3, E-AC-3, MP3), or text subtitles (SubRip, ASS / SSA, WebVTT, timed text), the engine also
+    writes a master playlist with one EXT-X-MEDIA rendition per track: the default audio stays in the main media
+    playlist, every other audio track gets audio-only MPEG-TS segments, every subtitle stream WebVTT segments cut at
+    the same times (`X-TIMESTAMP-MAP` mapped onto the segments' 1.4 s muxing delay), with the language, the title,
+    the default / forced flags and the accessibility characteristics of the streams. MP2 audio (DVB channels) is not
+    offered: it is not an HLS codec and AVPlayer on iOS fails the whole item on it. Bitmap subtitles (DVB, PGS, DVD)
+    and teletext cannot be converted and are not listed. The first segment's video tells whether the channel carries
+    CEA-608 captions (A/53 user data), which the master then declares (`CLOSED-CAPTIONS`), or not (`NONE`, so no
+    empty "CC" choice shows). Recordings keep every audio track (the MP4 then offers them too).
+  - **Subtitle files** (movies, episodes, recordings): Load Subtitle File… opens a SubRip (.srt) or WebVTT (.vtt)
+    file from Files (UTF-8, UTF-16 or Windows-1252; italic, bold and underline kept). It is copied into the app
+    (`Application Support/Subtitles`, the 200 most recent) and loads again by itself when the item plays again;
+    Subtitle Timing shifts it in half-second steps. The cues are drawn over the picture by `SubtitleOverlay` and
+    follow the playback with a boundary time observer (no polling).
+  - **Caption style**: subtitles of the stream are drawn by the video layer in the style of Settings >
+    Accessibility > Subtitles & Captioning (System Settings > Accessibility > Captions on the Mac); subtitle files
+    use the same style (font, size, colors and opacities, window, corner radius, text edge), read from
+    MediaAccessibility and updated when it changes.
+  - **Remembered languages** (`TrackPreferences`, Settings > Audio and Subtitles): a track chosen in the menu is
+    remembered, and the next channel, movie or episode with a track in that language starts with it (also as
+    AVPlayer's audio selection criteria, so it starts in that language). Subtitles: Automatic (the system decides),
+    Off (forced subtitles in the audio's language still show) or a language. If the item fails right after an
+    audio change (a codec the device cannot decode), the remembered audio language is dropped and the engine's
+    stream recovers with its default track.
+  - **Picture in Picture**: the stream's own subtitles and audio tracks stay in PiP (the player layer draws them).
+    A subtitle file is drawn by the app's view, so it does not show in the PiP window.
+  - **Chromecast**: the receiver reads the tracks of an HLS stream itself; while casting, the menu lists the
+    receiver's audio and text tracks (`CastMediaStatus.tracks`) and changes them there (`setActiveTrackIDs`), with
+    the remembered languages applied when the media loads, and subtitles use this device's caption style
+    (`GCKMediaTextTrackStyle.createDefault()`). Subtitle files are not cast: the receiver would have to fetch them
+    from this device, and the app never serves anything beyond 127.0.0.1.
+
 Engine smoke tests (macOS). They build the engine against the bundled `FFmpeg.xcframework` and
 serve a generated live stream on 127.0.0.1. Generating and checking the test streams needs the
 `ffmpeg` / `ffprobe` programs (any recent build, e.g. `brew install ffmpeg`, used by the tests
@@ -330,6 +372,7 @@ only; set `FFMPEG` / `FFPROBE` to use others):
 ```sh
 Tools/EngineSmokeTest/run.sh           # window cleanup, reconnection, recording + MP4 conversion
 Tools/EngineSmokeTest/run_avplayer.sh  # AVPlayer pause/resume/skip/go-live on the engine output
+Tools/EngineSmokeTest/run_tracks.sh    # audio tracks and subtitles: master playlist, renditions, WebVTT, AVPlayer
 ```
 
 Debug builds have a test harness for the simulators (`Tools/Simulator/README.md`): an isolated in-memory or

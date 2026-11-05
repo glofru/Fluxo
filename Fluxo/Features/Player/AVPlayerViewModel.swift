@@ -190,7 +190,14 @@ final class AVPlayerViewModel {
     /// Chromecast: discovery, the session and the receiver's media (iOS; unsupported on macOS).
     let cast: CastController
     /// A Chromecast plays the current channel and local playback is suspended (see "Chromecast" below).
-    private(set) var isCasting = false
+    private(set) var isCasting = false {
+        didSet {
+            if isCasting != oldValue {
+                // The Audio and Subtitles menu lists the receiver's tracks while casting.
+                updateCastTracks()
+            }
+        }
+    }
     /// Why the current channel could not be cast, or why casting stopped. Dismissed by the user.
     private(set) var castError: String?
 
@@ -226,6 +233,9 @@ final class AVPlayerViewModel {
     private var waitingForFirstSegment = false
     @ObservationIgnored
     private var attachTask: Task<Void, Never>?
+    /// Watches the free space while a remote on-demand file is copied whole (its size is not always known).
+    @ObservationIgnored
+    private var diskSpaceTask: Task<Void, Never>?
     @ObservationIgnored
     private var itemCancellables = Set<AnyCancellable>()
     @ObservationIgnored
@@ -279,6 +289,7 @@ final class AVPlayerViewModel {
         self.recordings = recordings ?? RecordingStore()
         self.surface = PlayerSurface(player: player)
         self.cast = cast ?? CastController(backend: nil)
+        mediaSelection.player = player
 
         Self.removeLeftoverSegmentsOnce(in: outputDirectory)
 
@@ -747,6 +758,9 @@ final class AVPlayerViewModel {
                     return
                 }
             }
+            if !isLive && !url.isFileURL {
+                watchDiskSpace(forRemuxing: url)
+            }
 
             guard let streamURL = SimpleHTTPServer.url(forFileNamed: configuration.playlistFileName) else {
                 streamError = String(localized: "Unable to create the local stream address.", comment: "Player error: the in-app streaming server could not provide an address.")
@@ -774,6 +788,8 @@ final class AVPlayerViewModel {
     private func tearDownPlayback() {
         attachTask?.cancel()
         attachTask = nil
+        diskSpaceTask?.cancel()
+        diskSpaceTask = nil
         waitingForFirstSegment = false
         streamURL = nil
         itemCancellables.removeAll()
@@ -861,12 +877,25 @@ final class AVPlayerViewModel {
             .store(in: &itemCancellables)
 
         player.replaceCurrentItem(with: item)
-        mediaSelection.attach(item)
+        mediaSelection.attach(item, contentKey: currentChannel?.url?.absoluteString, allowsExternalSubtitles: isOnDemandContent)
+    }
+
+    /// A movie, an episode or a recording (a subtitle file can be loaded for it), not a live channel.
+    private var isOnDemandContent: Bool {
+        if let currentItem {
+            return currentItem.kind != .live
+        }
+        guard let url = currentChannel?.url else {
+            return false
+        }
+        return url.isFileURL || route == .remux(isLive: false)
     }
 
     private func handleItemFailure(_ error: Error?) {
         let message = error?.localizedDescription ?? String(localized: "Playback failed.", comment: "Player error shown when the system gives no reason.")
-        if route != .direct, remuxer.isProcessing, itemRecoveryAttempts < 3 {
+        // An audio track this device cannot decode fails the whole item: the recovered item uses the default one.
+        let failedAfterAudioSwitch = mediaSelection.playbackFailed(error)
+        if route != .direct, remuxer.isProcessing, itemRecoveryAttempts < 3 || failedAfterAudioSwitch {
             // The engine still produces media: the player lost the local stream (e.g. the server
             // socket was reclaimed in the background). Restart the server and attach a fresh item.
             itemRecoveryAttempts += 1
@@ -908,6 +937,12 @@ final class AVPlayerViewModel {
             }
             if waitingForFirstSegment {
                 waitingForFirstSegment = false
+                if statistics.hasMasterPlaylist, let configuration = remuxer.configuration,
+                   let masterURL = SimpleHTTPServer.url(forFileNamed: configuration.masterPlaylistFileName) {
+                    // Extra audio tracks or text subtitles: the master playlist lists them as renditions.
+                    logger.info("Master playlist: \(statistics.audioTrackCount) audio, \(statistics.subtitleTrackCount) subtitle tracks")
+                    streamURL = masterURL
+                }
                 attachRemuxedStream()
             }
 
@@ -1149,6 +1184,59 @@ final class AVPlayerViewModel {
         return min(maximum, max(minimum, available / 10))
     }
 
+    /// A remote on-demand file (Matroska, AVI) is copied whole at network speed, so that every position stays
+    /// seekable: playback stops with an error before the copy fills the disk. The size the server announces
+    /// is checked first; the free space is then checked while the copy grows (servers do not always announce it).
+    private func watchDiskSpace(forRemuxing url: URL) {
+        let directory = outputDirectory
+        diskSpaceTask?.cancel()
+        diskSpaceTask = Task { [weak self] in
+            if let size = await Self.announcedSize(of: url), !Task.isCancelled,
+               let available = Self.availableSpace(in: directory), size + Self.onDemandFreeSpaceMargin > available {
+                self?.stopForDiskSpace()
+                return
+            }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                guard !Task.isCancelled else {
+                    return
+                }
+                if let available = Self.availableSpace(in: directory), available < Self.onDemandFreeSpaceMargin {
+                    self?.stopForDiskSpace()
+                    return
+                }
+            }
+        }
+    }
+
+    private func stopForDiskSpace() {
+        logger.error("Not enough free space for the copy of the on-demand file: playback stops")
+        tearDownPlayback()
+        streamError = String(localized: "Not enough free space to play this file.", comment: "Player error: playing a movie or an episode file needs disk space for a temporary copy, and the device is almost full.")
+        refreshPlaybackState()
+    }
+
+    /// The Content-Length of `url` (a HEAD request), when the server announces it.
+    private nonisolated static func announcedSize(of url: URL) async -> Int64? {
+        var request = URLRequest(url: url, timeoutInterval: 10)
+        request.httpMethod = "HEAD"
+        guard let (_, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+              http.expectedContentLength > 0 else {
+            return nil
+        }
+        return http.expectedContentLength
+    }
+
+    private nonisolated static func availableSpace(in directory: URL) -> Int64? {
+        let probe = FileManager.default.fileExists(atPath: directory.path) ? directory : FileManager.default.temporaryDirectory
+        guard let available = try? probe.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage,
+              available > 0 else {
+            return nil
+        }
+        return available
+    }
+
     /// Returns an error message when the remuxed copy of a local on-demand file (about the size of the
     /// input) would not fit in the free space of `directory`, keeping `onDemandFreeSpaceMargin` free.
     private static func insufficientSpaceMessage(forRemuxing input: URL, into directory: URL) -> String? {
@@ -1322,10 +1410,22 @@ final class AVPlayerViewModel {
                 adoptCastMedia()
             } else if isCasting {
                 updateCastTimeline()
+                updateCastTracks()
                 refreshPlaybackState()
             } else if adoptsResumedCastMedia {
                 adoptCastMedia()
             }
+        }
+    }
+
+    /// The receiver's audio and text tracks in the Audio and Subtitles menu while casting, the local ones otherwise.
+    private func updateCastTracks() {
+        guard isCasting else {
+            mediaSelection.hideCastTracks()
+            return
+        }
+        mediaSelection.showCastTracks(cast.mediaStatus) { [weak self] trackIDs in
+            self?.cast.setActiveTracks(trackIDs)
         }
     }
 

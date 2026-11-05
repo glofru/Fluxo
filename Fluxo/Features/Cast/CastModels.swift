@@ -73,6 +73,10 @@ struct CastMediaStatus: Equatable, Sendable {
     var playbackRate: Double = 1
     var canSeek = false
     var canPause = true
+    /// The audio and text tracks the receiver found in the media (the renditions of an HLS stream).
+    var tracks: [CastTrack] = []
+    /// The tracks it plays or shows now.
+    var activeTrackIDs: [Int] = []
 
     /// The position now, extrapolated from the last status while playing.
     func position(at date: Date) -> TimeInterval {
@@ -82,6 +86,23 @@ struct CastMediaStatus: Equatable, Sendable {
         let extrapolated = position + max(0, date.timeIntervalSince(positionDate)) * playbackRate
         return duration > 0 ? min(extrapolated, duration) : extrapolated
     }
+}
+
+/// An audio or text track of the media on the receiver.
+struct CastTrack: Identifiable, Hashable, Sendable {
+    enum Kind: Sendable {
+        case audio
+        case text
+    }
+
+    /// The receiver's track ID.
+    let id: Int
+    let kind: Kind
+    let name: String?
+    /// BCP 47 language tag, when the media gives one.
+    let language: String?
+    /// Closed captions (rather than subtitles).
+    let isCaptions: Bool
 }
 
 /// One attempt at loading a stream on the receiver.

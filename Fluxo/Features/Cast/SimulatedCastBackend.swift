@@ -94,7 +94,9 @@ final class SimulatedCastBackend: CastBackend {
                 isLive: isLive,
                 duration: isLive ? 0 : 5_400,
                 position: request.startTime ?? 0,
-                canSeek: !isLive
+                canSeek: !isLive,
+                tracks: Self.tracks(for: request.url),
+                activeTrackIDs: Self.tracks(for: request.url).first.map { [$0.id] } ?? []
             ))
             completion(.success(()))
             backend.after(backend.delay) { backend in
@@ -132,6 +134,24 @@ final class SimulatedCastBackend: CastBackend {
 
     func approximatePosition() -> TimeInterval? {
         status?.position(at: Date())
+    }
+
+    func setActiveTracks(_ trackIDs: [Int]) {
+        update { $0.activeTrackIDs = trackIDs }
+    }
+
+    /// The renditions a receiver finds in the test stream with audio and subtitle tracks (Tools/Simulator's
+    /// `/tracks/master.m3u8`); other media has none.
+    private static func tracks(for url: URL) -> [CastTrack] {
+        guard url.pathExtension.lowercased() == "m3u8", url.pathComponents.contains("tracks") else {
+            return []
+        }
+        return [
+            CastTrack(id: 1, kind: .audio, name: "English", language: "en", isCaptions: false),
+            CastTrack(id: 2, kind: .audio, name: "Italiano", language: "it", isCaptions: false),
+            CastTrack(id: 3, kind: .text, name: "English", language: "en", isCaptions: true),
+            CastTrack(id: 4, kind: .text, name: "Italiano", language: "it", isCaptions: false),
+        ]
     }
 
     // MARK: -

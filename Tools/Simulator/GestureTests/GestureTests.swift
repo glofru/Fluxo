@@ -675,4 +675,123 @@ final class GestureTests: XCTestCase {
         XCTAssertEqual(app.state, .runningForeground, "Fluxo is still running on the Guide")
         XCTAssertTrue(app.buttons["Add Guide Source"].waitForExistence(timeout: 5), "the Guide shows its screen without guides")
     }
+
+    // MARK: - Audio tracks and subtitles
+
+    /// The test-stream server of test-stream.sh (TEST_RUNNER_FLUXO_TEST_STREAM_URL), when it is not the default.
+    var testStreamArguments: [String] {
+        guard let streams = ProcessInfo.processInfo.environment["FLUXO_TEST_STREAM_URL"], !streams.isEmpty else {
+            return []
+        }
+        return ["-FluxoDebugTestStreamURL", streams]
+    }
+
+    var testStreamBase: String {
+        ProcessInfo.processInfo.environment["FLUXO_TEST_STREAM_URL"].flatMap { $0.isEmpty ? nil : $0 } ?? "http://127.0.0.1:18080"
+    }
+
+    /// Opens the player's Audio and Subtitles menu (showing the controls first).
+    func openTracksMenu(_ app: XCUIApplication, file: StaticString = #file, line: UInt = #line) {
+        let button = app.buttons["player.mediaSelection"]
+        if !button.exists || !button.isHittable {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35)).tap()
+        }
+        XCTAssertTrue(button.waitForExistence(timeout: 15), "the Audio and Subtitles button", file: file, line: line)
+        button.tap()
+        sleep(1)
+    }
+
+    /// A Matroska file through the remux engine: its two audio tracks and its SubRip / ASS subtitles are listed
+    /// (the forced ones are not a choice), Italian audio and English subtitles can be chosen, and the choice is
+    /// remembered for the next item (the HLS clip starts with Italian audio).
+    func testTracksMatroskaMenu() {
+        let app = launch("player:Test Clip (Matroska Tracks);wait:4", arguments: testStreamArguments)
+        waitPlayerSettled(app, timeout: 40)
+        openTracksMenu(app)
+        shot("tracks-mkv-1-menu")
+        let italian = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Itali'"))
+        XCTAssertGreaterThanOrEqual(italian.count, 2, "Italian audio and subtitles are listed")
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'forced'")).firstMatch.exists, "forced subtitles are not a choice")
+        italian.element(boundBy: 0).tap()
+        sleep(1)
+        openTracksMenu(app)
+        let english = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'English'"))
+        XCTAssertGreaterThanOrEqual(english.count, 2, "English audio and subtitles are listed")
+        english.element(boundBy: english.count - 1).tap()
+        sleep(3)
+        shot("tracks-mkv-2-subtitles")
+        let value = app.buttons["player.mediaSelection"].value as? String ?? ""
+        XCTAssertTrue(value.contains("Audio: Itali") && value.contains("Subtitles: English"), "the button's value says the choices (\(value))")
+        // After an explicit choice, Automatic no longer describes it.
+        openTracksMenu(app)
+        shot("tracks-mkv-3-menu-after")
+        XCTAssertTrue(app.buttons["Automatic"].exists, "Automatic without the current choice in parentheses")
+        app.terminate()
+    }
+
+    /// A subtitle file for an MP4 movie: listed under Subtitles with the timing controls and Load Subtitle File…,
+    /// which opens the document picker.
+    func testTracksExternalSubtitleFile() {
+        let app = launch("player:Test Clip (MP4);wait:3;subtitle-file:\(testStreamBase)/subtitles/clip.srt;wait:1", arguments: testStreamArguments)
+        waitPlayerSettled(app, timeout: 40)
+        sleep(4)
+        shot("tracks-file-1-overlay")
+        // Cue 2 (4.2 s to 7.6 s) ends with a blank line holding spaces and a tab: it shows alone, its entity as text.
+        sleep(2)
+        shot("tracks-file-1b-overlay")
+        openTracksMenu(app)
+        shot("tracks-file-2-menu")
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'clip'")).firstMatch.exists, "the loaded file is listed")
+        let later = app.buttons["Show Later"]
+        XCTAssertTrue(later.exists, "the subtitle timing controls")
+        later.tap()
+        sleep(1)
+        openTracksMenu(app)
+        let load = app.buttons["Load Subtitle File…"]
+        XCTAssertTrue(load.waitForExistence(timeout: 3), "Load Subtitle File… in the menu")
+        load.tap()
+        sleep(3)
+        shot("tracks-file-3-picker")
+        let cancel = app.buttons["Cancel"]
+        if cancel.waitForExistence(timeout: 5) {
+            cancel.tap()
+        }
+        sleep(1)
+        XCTAssertEqual(app.state, .runningForeground)
+        app.terminate()
+    }
+
+    /// A live raw MPEG-TS channel with two audio tracks (the remux engine's master playlist).
+    func testTracksLiveTwoAudio() {
+        let app = launch("player:Test Pattern (Two Audio Tracks);wait:6", arguments: testStreamArguments)
+        waitPlayerSettled(app, timeout: 40)
+        openTracksMenu(app)
+        shot("tracks-live-1-menu")
+        let german = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'German'")).firstMatch
+        XCTAssertTrue(german.exists, "the German audio track is listed")
+        XCTAssertFalse(app.buttons["Load Subtitle File…"].exists, "no subtitle files for live channels")
+        german.tap()
+        sleep(3)
+        let value = app.buttons["player.mediaSelection"].value as? String ?? ""
+        XCTAssertTrue(value.contains("Audio: German"), "German audio is chosen (\(value))")
+        app.terminate()
+    }
+
+    /// While a (simulated) Chromecast plays an HLS stream with renditions, the menu lists the receiver's tracks and
+    /// changes them there. (The loopback test streams cannot be cast: the simulated receiver gets a URL that does
+    /// not resolve, which it never loads anyway.)
+    func testTracksWhileCasting() {
+        let app = launch("play-url:http://seed.fluxo.invalid/tracks/master.m3u8;wait:2;cast:Living Room TV;wait:4", arguments: testStreamArguments)
+        waitPlayerSettled(app, timeout: 40)
+        sleep(3)
+        openTracksMenu(app)
+        shot("tracks-cast-1-menu")
+        let italian = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Italiano'"))
+        XCTAssertGreaterThanOrEqual(italian.count, 2, "the receiver's Italian audio and subtitles are listed")
+        italian.element(boundBy: italian.count - 1).tap()
+        sleep(2)
+        openTracksMenu(app)
+        shot("tracks-cast-2-menu-after")
+        app.terminate()
+    }
 }

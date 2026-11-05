@@ -51,6 +51,12 @@
 #define FLUXO_RETIRED_SEGMENTS 3
 // Gap inserted between the last packet before a reconnection and the first one after it.
 #define FLUXO_RECONNECT_GAP (AV_TIME_BASE / 10)
+// Most audio and subtitle renditions of a master playlist (each kind).
+#define FLUXO_MAX_RENDITIONS 16
+// Subtitle cues waiting for the segment they belong to (a bound against inputs with broken timestamps).
+#define FLUXO_MAX_PENDING_CUES 4096
+// Duration given to a subtitle cue that has none.
+#define FLUXO_DEFAULT_CUE_DURATION (4 * AV_TIME_BASE)
 
 // MARK: - Types
 
@@ -67,7 +73,58 @@ typedef struct FluxoOutput {
     // Drop packets until the next video key frame so that the output starts decodable.
     int wait_keyframe;
     int header_written;
+    // Which input streams the output copies. Zero (the default) is the first video stream and every audio
+    // stream; renditions of a master playlist copy a single audio stream.
+    int exclude_video;
+    // 0: every audio stream, -1: none, n > 0: only the n-th audio stream of the input (1-based, counting the
+    // streams fluxo_is_stream_supported accepts).
+    int audio_selection;
 } FluxoOutput;
+
+// A subtitle cue waiting to be written to the WebVTT segments it overlaps. Times are output times
+// (AV_TIME_BASE units, the timeline of the HLS segments).
+typedef struct FluxoCue {
+    int64_t start;
+    int64_t end;
+    char *text;
+} FluxoCue;
+
+typedef enum FluxoRenditionType {
+    FluxoRenditionAudio = 0,
+    FluxoRenditionSubtitles = 1,
+} FluxoRenditionType;
+
+// One EXT-X-MEDIA rendition of the master playlist.
+typedef struct FluxoRendition {
+    FluxoRenditionType type;
+    // Position (0-based) of the source among the input's audio streams or text subtitle streams; it
+    // finds the stream again after a reconnection.
+    int ordinal;
+    // Index of the source stream in the current input, -1 when the input no longer has it.
+    int input_index;
+    enum AVCodecID codec_id;
+    // The default audio track: carried by the main media playlist, so the rendition has no URI.
+    int muxed;
+    int is_default;
+    int forced;
+    int hearing_impaired;
+    int visual_impaired;
+    int channels;
+    char language[16];
+    char name[128];
+    // "<prefix>-a<n>" / "<prefix>-s<n>": the playlist is "<base>.m3u8", the segments "<base>-<sequence>.ts|vtt".
+    char *base_path;
+    // File name part of base_path.
+    const char *base_name;
+    char *playlist_path;
+    char *playlist_tmp_path;
+    // Audio: the muxer of its audio-only segments.
+    FluxoOutput output;
+    // Subtitles: cues that may still belong to the current or a later segment.
+    FluxoCue *cues;
+    int cue_count;
+    int cue_capacity;
+} FluxoRendition;
 
 typedef struct FluxoSegment {
     int64_t sequence;
@@ -113,6 +170,20 @@ typedef struct FluxoHLS {
     int segment_discontinuity;
     // Output stream used to decide where segments are cut (video if present).
     int reference_stream;
+
+    // Master playlist (optional) and its renditions.
+    char *master_path;
+    char *master_tmp_path;
+    int master_written;
+    FluxoRendition *renditions;
+    int rendition_count;
+    int audio_rendition_count;
+    int subtitle_rendition_count;
+    // MPEG-TS timestamp (90 kHz) of output time 0 in the segments, for X-TIMESTAMP-MAP: the muxer shifts
+    // every timestamp by its muxing delay.
+    int64_t mpegts_time_zero;
+    // The video of the first segment carries CEA-608/708 captions (ATSC A/53 user data).
+    int closed_captions;
 } FluxoHLS;
 
 typedef struct FluxoRecording {
@@ -223,6 +294,9 @@ static void fluxo_emit_with_path(FluxoRemuxSession *session, FluxoRemuxEventKind
     event.window_segment_count = session->hls.count;
     event.window_duration = session->hls.window_duration;
     event.window_bytes = session->hls.window_bytes;
+    event.master_playlist_written = session->hls.master_written;
+    event.audio_rendition_count = session->hls.master_written ? session->hls.audio_rendition_count : 0;
+    event.subtitle_rendition_count = session->hls.master_written ? session->hls.subtitle_rendition_count : 0;
 
     FluxoRecording *recording = &session->recording;
     if (explicit_path != NULL) {
@@ -345,6 +419,20 @@ static void fluxo_output_free(FluxoOutput *output) {
     output->wait_keyframe = 0;
 }
 
+// Whether `output` copies `stream`, the `audio_ordinal`-th supported audio stream of its input when it is audio.
+static int fluxo_output_selects(const FluxoOutput *output, const AVStream *stream, int audio_ordinal) {
+    if (!fluxo_is_stream_supported(stream)) {
+        return 0;
+    }
+    if (stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+        return !output->exclude_video;
+    }
+    if (output->audio_selection < 0) {
+        return 0;
+    }
+    return output->audio_selection == 0 || output->audio_selection == audio_ordinal + 1;
+}
+
 // Maps the streams of `input` to the existing output streams with the same media type and codec.
 // Returns the number of mapped streams or a negative error.
 static int fluxo_output_map_input(FluxoOutput *output, AVFormatContext *input) {
@@ -362,10 +450,16 @@ static int fluxo_output_map_input(FluxoOutput *output, AVFormatContext *input) {
     }
 
     int mapped = 0;
+    int audio_ordinal = 0;
     for (unsigned int i = 0; i < input->nb_streams; i++) {
         map[i] = -1;
         AVStream *in_stream = input->streams[i];
-        if (!fluxo_is_stream_supported(in_stream)) {
+        int is_audio = fluxo_is_stream_supported(in_stream) && in_stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO;
+        int selected = fluxo_output_selects(output, in_stream, audio_ordinal);
+        if (is_audio) {
+            audio_ordinal++;
+        }
+        if (!selected) {
             continue;
         }
         for (unsigned int j = 0; j < output_count; j++) {
@@ -382,8 +476,8 @@ static int fluxo_output_map_input(FluxoOutput *output, AVFormatContext *input) {
     return mapped;
 }
 
-// Allocates an output of `format_name` with a copy of the first video stream and every audio stream.
-// The file itself is not opened.
+// Allocates an output of `format_name` with a copy of the streams `output` selects (by default the first video
+// stream and every audio stream). The file itself is not opened.
 static int fluxo_output_prepare(FluxoOutput *output, AVFormatContext *input, const char *format_name, const char *path) {
     output->video_index = -1;
     int ret = avformat_alloc_output_context2(&output->context, NULL, format_name, path);
@@ -394,9 +488,15 @@ static int fluxo_output_prepare(FluxoOutput *output, AVFormatContext *input, con
     // the trailer must still be written so that segments and recordings are finalized cleanly.
 
     int is_mp4 = strcmp(output->context->oformat->name, "mp4") == 0 || strcmp(output->context->oformat->name, "mov") == 0;
+    int audio_ordinal = 0;
     for (unsigned int i = 0; i < input->nb_streams; i++) {
         AVStream *in_stream = input->streams[i];
-        if (!fluxo_is_stream_supported(in_stream)) {
+        int is_audio = fluxo_is_stream_supported(in_stream) && in_stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO;
+        int selected = fluxo_output_selects(output, in_stream, audio_ordinal);
+        if (is_audio) {
+            audio_ordinal++;
+        }
+        if (!selected) {
             continue;
         }
         // HLS players expect a single video rendition per variant.
@@ -511,10 +611,13 @@ static void fluxo_hls_segment_path(const FluxoHLS *hls, int64_t sequence, int te
     snprintf(buffer, size, "%s-%06lld.ts%s", hls->segment_prefix, (long long)sequence, temporary ? ".tmp" : "");
 }
 
+static void fluxo_hls_delete_rendition_segments(const FluxoHLS *hls, int64_t sequence);
+
 static void fluxo_hls_delete_segment(const FluxoHLS *hls, int64_t sequence) {
     char path[PATH_MAX];
     fluxo_hls_segment_path(hls, sequence, 0, path, sizeof(path));
     unlink(path);
+    fluxo_hls_delete_rendition_segments(hls, sequence);
 }
 
 static void fluxo_hls_retire(FluxoHLS *hls, int64_t sequence) {
@@ -550,8 +653,10 @@ static void fluxo_hls_prune(FluxoHLS *hls) {
     }
 }
 
-static int fluxo_hls_write_playlist(FluxoHLS *hls, int ended) {
-    FILE *file = fopen(hls->playlist_tmp_path, "w");
+// Writes one media playlist of the window: the main one, or a rendition's (same segments, other files).
+static int fluxo_hls_write_media_playlist(FluxoHLS *hls, const char *path, const char *tmp_path, const char *base_name,
+                                          const char *extension, int independent, int ended) {
+    FILE *file = fopen(tmp_path, "w");
     if (file == NULL) {
         return AVERROR(errno);
     }
@@ -568,7 +673,7 @@ static int fluxo_hls_write_playlist(FluxoHLS *hls, int ended) {
         // Nothing is ever removed: lets players seek back to the very beginning.
         fprintf(file, "#EXT-X-PLAYLIST-TYPE:EVENT\n");
     }
-    if (hls->output.video_index >= 0) {
+    if (independent) {
         fprintf(file, "#EXT-X-INDEPENDENT-SEGMENTS\n");
     }
     for (int i = 0; i < hls->count; i++) {
@@ -584,19 +689,1009 @@ static int fluxo_hls_write_playlist(FluxoHLS *hls, int ended) {
             strftime(date, sizeof(date), "%Y-%m-%dT%H:%M:%S", &utc);
             fprintf(file, "#EXT-X-PROGRAM-DATE-TIME:%s.%03dZ\n", date, (int)(segment->wallclock_ms % 1000));
         }
-        fprintf(file, "#EXTINF:%.3f,\n%s-%06lld.ts\n", segment->duration, hls->segment_base_name, (long long)segment->sequence);
+        fprintf(file, "#EXTINF:%.3f,\n%s-%06lld.%s\n", segment->duration, base_name, (long long)segment->sequence, extension);
     }
     if (ended) {
         fprintf(file, "#EXT-X-ENDLIST\n");
     }
     int failed = ferror(file);
     if (fclose(file) != 0 || failed) {
-        unlink(hls->playlist_tmp_path);
+        unlink(tmp_path);
         return AVERROR(EIO);
     }
     // Atomic replacement: the HTTP server never serves a partially written playlist.
-    if (rename(hls->playlist_tmp_path, hls->playlist_path) != 0) {
+    if (rename(tmp_path, path) != 0) {
         return AVERROR(errno);
+    }
+    return 0;
+}
+
+// Rewrites the playlists of the renditions, then the main one, so that no rendition is ever behind it.
+static int fluxo_hls_write_playlist(FluxoHLS *hls, int ended) {
+    for (int i = 0; i < hls->rendition_count; i++) {
+        FluxoRendition *rendition = &hls->renditions[i];
+        if (rendition->muxed) {
+            continue;
+        }
+        int is_audio = rendition->type == FluxoRenditionAudio;
+        int ret = fluxo_hls_write_media_playlist(hls, rendition->playlist_path, rendition->playlist_tmp_path, rendition->base_name,
+                                                 is_audio ? "ts" : "vtt", is_audio, ended);
+        if (ret < 0) {
+            return ret;
+        }
+    }
+    return fluxo_hls_write_media_playlist(hls, hls->playlist_path, hls->playlist_tmp_path, hls->segment_base_name, "ts",
+                                          hls->output.video_index >= 0, ended);
+}
+
+// MARK: - Renditions (alternative audio and subtitles)
+
+static int fluxo_is_text_subtitle(enum AVCodecID codec_id) {
+    switch (codec_id) {
+    case AV_CODEC_ID_SUBRIP:
+    case AV_CODEC_ID_TEXT:
+    case AV_CODEC_ID_ASS:
+    case AV_CODEC_ID_SSA:
+    case AV_CODEC_ID_WEBVTT:
+    case AV_CODEC_ID_MOV_TEXT:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+// Audio codecs HLS players decode (Apple's HLS authoring specification): only these become renditions.
+// MPEG-1 Layer II (DVB channels) and others stay out of the master playlist: AVPlayer on iOS fails the whole
+// item when it switches to one ("fmt?").
+static int fluxo_is_hls_audio(const AVStream *stream) {
+    switch (stream->codecpar->codec_id) {
+    case AV_CODEC_ID_AAC:
+    case AV_CODEC_ID_AC3:
+    case AV_CODEC_ID_EAC3:
+    case AV_CODEC_ID_MP3:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+static int fluxo_is_subtitle_source(const AVStream *stream) {
+    return stream->codecpar->codec_type == AVMEDIA_TYPE_SUBTITLE && fluxo_is_text_subtitle(stream->codecpar->codec_id);
+}
+
+// The input stream of `rendition` in `input`, or -1.
+static int fluxo_rendition_find_source(const FluxoRendition *rendition, const AVFormatContext *input) {
+    int ordinal = 0;
+    for (unsigned int i = 0; i < input->nb_streams; i++) {
+        const AVStream *stream = input->streams[i];
+        int matches = rendition->type == FluxoRenditionAudio
+            ? fluxo_is_stream_supported(stream) && stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO
+            : fluxo_is_subtitle_source(stream);
+        if (!matches) {
+            continue;
+        }
+        if (ordinal == rendition->ordinal) {
+            if (rendition->type == FluxoRenditionSubtitles && stream->codecpar->codec_id != rendition->codec_id) {
+                return -1;
+            }
+            return (int)i;
+        }
+        ordinal++;
+    }
+    return -1;
+}
+
+// ISO 639-2 (bibliographic or terminology) codes of the languages that have an ISO 639-1 code, which
+// BCP 47 (the HLS LANGUAGE attribute) prefers. Other three-letter codes are valid BCP 47 as they are.
+static const char *const fluxo_language_codes[][2] = {
+    {"alb", "sq"}, {"ara", "ar"}, {"arm", "hy"}, {"aze", "az"}, {"baq", "eu"}, {"bel", "be"}, {"ben", "bn"},
+    {"bos", "bs"}, {"bul", "bg"}, {"bur", "my"}, {"cat", "ca"}, {"ces", "cs"}, {"chi", "zh"}, {"cym", "cy"},
+    {"cze", "cs"}, {"dan", "da"}, {"deu", "de"}, {"dut", "nl"}, {"ell", "el"}, {"eng", "en"}, {"est", "et"},
+    {"eus", "eu"}, {"fas", "fa"}, {"fin", "fi"}, {"fra", "fr"}, {"fre", "fr"}, {"geo", "ka"}, {"ger", "de"},
+    {"gle", "ga"}, {"glg", "gl"}, {"gre", "el"}, {"guj", "gu"}, {"heb", "he"}, {"hin", "hi"}, {"hrv", "hr"},
+    {"hun", "hu"}, {"hye", "hy"}, {"ice", "is"}, {"ind", "id"}, {"isl", "is"}, {"ita", "it"}, {"jpn", "ja"},
+    {"kan", "kn"}, {"kat", "ka"}, {"kaz", "kk"}, {"khm", "km"}, {"kor", "ko"}, {"kur", "ku"}, {"lao", "lo"},
+    {"lat", "la"}, {"lav", "lv"}, {"lit", "lt"}, {"ltz", "lb"}, {"mac", "mk"}, {"mal", "ml"}, {"mar", "mr"},
+    {"may", "ms"}, {"mkd", "mk"}, {"mlt", "mt"}, {"mon", "mn"}, {"msa", "ms"}, {"mya", "my"}, {"nep", "ne"},
+    {"nld", "nl"}, {"nob", "nb"}, {"nno", "nn"}, {"nor", "no"}, {"pan", "pa"}, {"per", "fa"}, {"pol", "pl"},
+    {"por", "pt"}, {"pus", "ps"}, {"ron", "ro"}, {"rum", "ro"}, {"rus", "ru"}, {"sin", "si"}, {"slk", "sk"},
+    {"slo", "sk"}, {"slv", "sl"}, {"som", "so"}, {"spa", "es"}, {"sqi", "sq"}, {"srp", "sr"}, {"swa", "sw"},
+    {"swe", "sv"}, {"tam", "ta"}, {"tel", "te"}, {"tgl", "tl"}, {"tha", "th"}, {"tur", "tr"}, {"ukr", "uk"},
+    {"urd", "ur"}, {"uzb", "uz"}, {"vie", "vi"}, {"wel", "cy"}, {"zho", "zh"},
+};
+
+// The BCP 47 tag of a stream's "language" tag ("eng" -> "en", "pt-BR" stays), or "" when it has none.
+static void fluxo_language_tag(const char *language, char *buffer, size_t size) {
+    buffer[0] = '\0';
+    if (language == NULL) {
+        return;
+    }
+    char lower[16];
+    size_t length = 0;
+    for (const char *c = language; *c != '\0' && length + 1 < sizeof(lower); c++) {
+        char ch = *c;
+        if (ch == '_') {
+            ch = '-';
+        }
+        if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '-')) {
+            return;
+        }
+        lower[length++] = (ch >= 'A' && ch <= 'Z') ? (char)(ch - 'A' + 'a') : ch;
+    }
+    lower[length] = '\0';
+    // "und" (undetermined), "mis", "mul", "zxx" and "qaa"-"qtz" (local use) name no language.
+    if (length == 0 || strcmp(lower, "und") == 0 || strcmp(lower, "mis") == 0 || strcmp(lower, "mul") == 0
+        || strcmp(lower, "zxx") == 0 || (length == 3 && lower[0] == 'q' && lower[1] >= 'a' && lower[1] <= 't')) {
+        return;
+    }
+    if (length == 3) {
+        for (size_t i = 0; i < sizeof(fluxo_language_codes) / sizeof(fluxo_language_codes[0]); i++) {
+            if (strcmp(lower, fluxo_language_codes[i][0]) == 0) {
+                snprintf(buffer, size, "%s", fluxo_language_codes[i][1]);
+                return;
+            }
+        }
+    }
+    snprintf(buffer, size, "%s", lower);
+}
+
+// Copies a stream title into a quoted-string of a playlist attribute: no quotes, no control characters,
+// cut at a UTF-8 character boundary.
+static void fluxo_attribute_text(const char *text, char *buffer, size_t size) {
+    size_t length = 0;
+    if (text != NULL) {
+        const unsigned char *c = (const unsigned char *)text;
+        for (; *c != '\0' && length + 1 < size; c++) {
+            unsigned char ch = *c;
+            if (ch < 0x20 || ch == 0x7F) {
+                ch = ' ';
+            } else if (ch == '"') {
+                ch = '\'';
+            }
+            buffer[length++] = (char)ch;
+        }
+        // When the text was cut, do not end in the middle of a multi-byte character. A complete character at
+        // the end stays.
+        if (*c != '\0') {
+            size_t lead = length;
+            while (lead > 0 && ((unsigned char)buffer[lead - 1] & 0xC0) == 0x80) {
+                lead--;
+            }
+            if (lead > 0 && ((unsigned char)buffer[lead - 1] & 0xC0) == 0xC0) {
+                unsigned char first = (unsigned char)buffer[lead - 1];
+                size_t expected = (first & 0xE0) == 0xC0 ? 2 : (first & 0xF0) == 0xE0 ? 3 : (first & 0xF8) == 0xF0 ? 4 : 1;
+                if (length - (lead - 1) < expected) {
+                    length = lead - 1;
+                }
+            }
+        }
+        while (length > 0 && buffer[length - 1] == ' ') {
+            length--;
+        }
+    }
+    buffer[length] = '\0';
+}
+
+// Appends `text` to the growing buffer, keeping it NUL-terminated. Returns 0, or a negative error.
+static int fluxo_append(char **buffer, size_t *length, size_t *capacity, const char *text, size_t count) {
+    if (*length + count + 1 > *capacity) {
+        size_t needed = *length + count + 1;
+        size_t grown = *capacity > 0 ? *capacity * 2 : 256;
+        char *larger = realloc(*buffer, grown > needed ? grown : needed);
+        if (larger == NULL) {
+            return AVERROR(ENOMEM);
+        }
+        *buffer = larger;
+        *capacity = grown > needed ? grown : needed;
+    }
+    memcpy(*buffer + *length, text, count);
+    *length += count;
+    (*buffer)[*length] = '\0';
+    return 0;
+}
+
+// The WebVTT tags kept from SubRip and WebVTT text (others are dropped, their text kept).
+static int fluxo_vtt_tag(const char *tag, size_t length, char *normalized) {
+    // tag points at '<', length includes '<' and '>'.
+    if (length == 3 || length == 4) {
+        int closing = tag[1] == '/';
+        char name = tag[closing ? 2 : 1];
+        if (name >= 'A' && name <= 'Z') {
+            name = (char)(name - 'A' + 'a');
+        }
+        if ((size_t)(closing ? 4 : 3) == length && (name == 'i' || name == 'b' || name == 'u')) {
+            snprintf(normalized, 5, closing ? "</%c>" : "<%c>", name);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+// The WebVTT cue text of a text subtitle packet, or NULL when it has none (an empty or drawing-only event).
+// SubRip and WebVTT keep <i>, <b> and <u>; ASS / SSA override blocks are removed except italics and bold.
+static char *fluxo_subtitle_text(enum AVCodecID codec_id, const uint8_t *data, int size) {
+    if (data == NULL || size <= 0) {
+        return NULL;
+    }
+    const char *text = (const char *)data;
+    size_t length = (size_t)size;
+    if (codec_id == AV_CODEC_ID_MOV_TEXT) {
+        // 3GPP timed text: a 16-bit length, then UTF-8 text (style boxes follow and are ignored).
+        if (size < 2) {
+            return NULL;
+        }
+        size_t declared = ((size_t)data[0] << 8) | data[1];
+        text += 2;
+        length = declared < (size_t)size - 2 ? declared : (size_t)size - 2;
+    } else if (codec_id == AV_CODEC_ID_ASS || codec_id == AV_CODEC_ID_SSA) {
+        // Matroska ASS events: ReadOrder, Layer, Style, Name, MarginL, MarginR, MarginV, Effect, Text.
+        int commas = 0;
+        size_t i = 0;
+        while (i < length && commas < 8) {
+            if (text[i] == ',') {
+                commas++;
+            }
+            i++;
+        }
+        if (commas < 8) {
+            // Not the Matroska layout: take the text as it is.
+            i = 0;
+        }
+        text += i;
+        length -= i;
+    }
+
+    int is_ass = codec_id == AV_CODEC_ID_ASS || codec_id == AV_CODEC_ID_SSA;
+    int keeps_entities = codec_id == AV_CODEC_ID_WEBVTT;
+    char *out = NULL;
+    size_t out_length = 0;
+    size_t capacity = 0;
+    int italic = 0;
+    int bold = 0;
+    int drawing = 0;
+    int pending_newline = 0;
+    int ret = 0;
+
+    for (size_t i = 0; i < length && ret == 0; i++) {
+        char c = text[i];
+        if (c == '\0') {
+            break;
+        }
+        if (is_ass && c == '{') {
+            // An override block: {\i1}, {\b0}, {\p1} (drawing), {\an8}, ...
+            size_t end = i + 1;
+            while (end < length && text[end] != '}') {
+                end++;
+            }
+            for (size_t j = i + 1; j + 1 < end; j++) {
+                if (text[j] != '\\') {
+                    continue;
+                }
+                char tag = text[j + 1];
+                char value = j + 2 < end ? text[j + 2] : '\0';
+                if ((tag == 'i' || tag == 'b') && (value == '0' || value == '1')) {
+                    int *state = tag == 'i' ? &italic : &bold;
+                    if (*state != (value == '1') && !drawing) {
+                        *state = value == '1';
+                        const char *html = tag == 'i' ? (*state ? "<i>" : "</i>") : (*state ? "<b>" : "</b>");
+                        ret = fluxo_append(&out, &out_length, &capacity, html, strlen(html));
+                    }
+                } else if (tag == 'p' && value >= '0' && value <= '9') {
+                    drawing = value != '0';
+                }
+            }
+            i = end;
+            continue;
+        }
+        if (drawing) {
+            continue;
+        }
+        if (is_ass && c == '\\' && i + 1 < length && (text[i + 1] == 'N' || text[i + 1] == 'n' || text[i + 1] == 'h')) {
+            if (text[i + 1] == 'h') {
+                ret = fluxo_append(&out, &out_length, &capacity, " ", 1);
+            } else {
+                pending_newline = out_length > 0;
+            }
+            i++;
+            continue;
+        }
+        if (!is_ass && c == '{' && i + 1 < length && text[i + 1] == '\\') {
+            // SubRip position tags ({\an8}).
+            while (i < length && text[i] != '}') {
+                i++;
+            }
+            continue;
+        }
+        if (c == '\r') {
+            continue;
+        }
+        if (c == '\n') {
+            pending_newline = out_length > 0;
+            continue;
+        }
+        if (pending_newline) {
+            // One line break at most: an empty line would end the cue.
+            ret = fluxo_append(&out, &out_length, &capacity, "\n", 1);
+            pending_newline = 0;
+            if (ret < 0) {
+                break;
+            }
+        }
+        if (c == '<' && !is_ass) {
+            size_t end = i + 1;
+            while (end < length && end - i < 64 && text[end] != '>' && text[end] != '<') {
+                end++;
+            }
+            if (end < length && text[end] == '>') {
+                char normalized[5];
+                if (fluxo_vtt_tag(text + i, end - i + 1, normalized)) {
+                    ret = fluxo_append(&out, &out_length, &capacity, normalized, strlen(normalized));
+                } else if (keeps_entities) {
+                    // WebVTT input: its other tags (<c.yellow>, <v Name>, timestamps) are valid as they are.
+                    ret = fluxo_append(&out, &out_length, &capacity, text + i, end - i + 1);
+                }
+                // Other SubRip tags (<font color=...>) are dropped.
+                i = end;
+                continue;
+            }
+            ret = fluxo_append(&out, &out_length, &capacity, "&lt;", 4);
+            continue;
+        }
+        if (c == '<') {
+            ret = fluxo_append(&out, &out_length, &capacity, "&lt;", 4);
+        } else if (c == '>' && !keeps_entities) {
+            ret = fluxo_append(&out, &out_length, &capacity, "&gt;", 4);
+        } else if (c == '&' && !keeps_entities) {
+            ret = fluxo_append(&out, &out_length, &capacity, "&amp;", 5);
+        } else {
+            ret = fluxo_append(&out, &out_length, &capacity, &c, 1);
+        }
+    }
+    if (ret == 0 && italic) {
+        ret = fluxo_append(&out, &out_length, &capacity, "</i>", 4);
+    }
+    if (ret == 0 && bold) {
+        ret = fluxo_append(&out, &out_length, &capacity, "</b>", 4);
+    }
+    // Trailing spaces only.
+    while (ret == 0 && out_length > 0 && (out[out_length - 1] == ' ' || out[out_length - 1] == '\t')) {
+        out[--out_length] = '\0';
+    }
+    if (ret < 0 || out_length == 0) {
+        free(out);
+        return NULL;
+    }
+    return out;
+}
+
+static void fluxo_rendition_drop_cue(FluxoRendition *rendition, int index) {
+    free(rendition->cues[index].text);
+    memmove(rendition->cues + index, rendition->cues + index + 1, sizeof(FluxoCue) * (size_t)(rendition->cue_count - index - 1));
+    rendition->cue_count--;
+}
+
+// Queues the cue of a subtitle packet (output time base, already adjusted) for the next segments.
+static int fluxo_rendition_add_cue(FluxoRendition *rendition, const AVPacket *packet, const AVStream *in_stream) {
+    int64_t start = fluxo_packet_time(packet, in_stream);
+    if (start == AV_NOPTS_VALUE) {
+        return 0;
+    }
+    int64_t duration = packet->duration > 0 ? av_rescale_q(packet->duration, in_stream->time_base, AV_TIME_BASE_Q) : 0;
+    if (duration <= 0) {
+        duration = FLUXO_DEFAULT_CUE_DURATION;
+    }
+    char *text = fluxo_subtitle_text(rendition->codec_id, packet->data, packet->size);
+    if (text == NULL) {
+        return 0;
+    }
+    if (rendition->cue_count == FLUXO_MAX_PENDING_CUES) {
+        fluxo_rendition_drop_cue(rendition, 0);
+    }
+    if (rendition->cue_count == rendition->cue_capacity) {
+        int capacity = rendition->cue_capacity > 0 ? rendition->cue_capacity * 2 : 32;
+        FluxoCue *cues = realloc(rendition->cues, sizeof(FluxoCue) * (size_t)capacity);
+        if (cues == NULL) {
+            free(text);
+            return AVERROR(ENOMEM);
+        }
+        rendition->cues = cues;
+        rendition->cue_capacity = capacity;
+    }
+    // Kept in start order (demuxers deliver them in order, except around a reconnection).
+    int index = rendition->cue_count;
+    while (index > 0 && rendition->cues[index - 1].start > start) {
+        index--;
+    }
+    memmove(rendition->cues + index + 1, rendition->cues + index, sizeof(FluxoCue) * (size_t)(rendition->cue_count - index));
+    rendition->cues[index] = (FluxoCue){ .start = start, .end = start + duration, .text = text };
+    rendition->cue_count++;
+    return 0;
+}
+
+static void fluxo_vtt_time(int64_t time, char *buffer, size_t size) {
+    if (time < 0) {
+        time = 0;
+    }
+    int64_t milliseconds = time / 1000;
+    snprintf(buffer, size, "%02lld:%02lld:%02lld.%03lld", (long long)(milliseconds / 3600000), (long long)(milliseconds / 60000 % 60),
+             (long long)(milliseconds / 1000 % 60), (long long)(milliseconds % 1000));
+}
+
+static void fluxo_rendition_segment_path(const FluxoRendition *rendition, int64_t sequence, int temporary, char *buffer, size_t size) {
+    snprintf(buffer, size, "%s-%06lld.%s%s", rendition->base_path, (long long)sequence,
+             rendition->type == FluxoRenditionAudio ? "ts" : "vtt", temporary ? ".tmp" : "");
+}
+
+// Writes the WebVTT segment `sequence` covering [start, end) of the output timeline (the last segment also
+// takes the cues after it), then forgets the cues that end within it. Returns its size or a negative error.
+static int64_t fluxo_rendition_write_vtt(FluxoHLS *hls, FluxoRendition *rendition, int64_t sequence, int64_t start, int64_t end, int last) {
+    char temporary[PATH_MAX];
+    char final_path[PATH_MAX];
+    fluxo_rendition_segment_path(rendition, sequence, 1, temporary, sizeof(temporary));
+    fluxo_rendition_segment_path(rendition, sequence, 0, final_path, sizeof(final_path));
+    FILE *file = fopen(temporary, "w");
+    if (file == NULL) {
+        return AVERROR(errno);
+    }
+    // The cue times are output times; the MPEG-TS segments carry them shifted by the muxing delay.
+    fprintf(file, "WEBVTT\nX-TIMESTAMP-MAP=MPEGTS:%lld,LOCAL:00:00:00.000\n\n", (long long)hls->mpegts_time_zero);
+    for (int i = 0; i < rendition->cue_count; i++) {
+        const FluxoCue *cue = &rendition->cues[i];
+        if (cue->end <= start || (!last && cue->start >= end)) {
+            continue;
+        }
+        char from[32];
+        char to[32];
+        fluxo_vtt_time(cue->start, from, sizeof(from));
+        fluxo_vtt_time(cue->end, to, sizeof(to));
+        fprintf(file, "%s --> %s\n%s\n\n", from, to, cue->text);
+    }
+    int64_t bytes = ftell(file);
+    int failed = ferror(file);
+    if (fclose(file) != 0 || failed) {
+        unlink(temporary);
+        return AVERROR(EIO);
+    }
+    if (rename(temporary, final_path) != 0) {
+        return AVERROR(errno);
+    }
+    // Cues that go on into the next segment are written again there (players drop the repeated cue).
+    for (int i = rendition->cue_count - 1; i >= 0; i--) {
+        if (last || rendition->cues[i].end <= end) {
+            fluxo_rendition_drop_cue(rendition, i);
+        }
+    }
+    return bytes > 0 ? bytes : 0;
+}
+
+static void fluxo_hls_free_renditions(FluxoHLS *hls) {
+    for (int i = 0; i < hls->rendition_count; i++) {
+        FluxoRendition *rendition = &hls->renditions[i];
+        fluxo_output_free(&rendition->output);
+        for (int j = 0; j < rendition->cue_count; j++) {
+            free(rendition->cues[j].text);
+        }
+        free(rendition->cues);
+        free(rendition->base_path);
+        free(rendition->playlist_path);
+        free(rendition->playlist_tmp_path);
+    }
+    free(hls->renditions);
+    hls->renditions = NULL;
+    hls->rendition_count = 0;
+    hls->audio_rendition_count = 0;
+    hls->subtitle_rendition_count = 0;
+}
+
+static int fluxo_rendition_set_paths(FluxoHLS *hls, FluxoRendition *rendition, char kind, int number) {
+    size_t length = strlen(hls->segment_prefix) + 16;
+    rendition->base_path = malloc(length);
+    rendition->playlist_path = malloc(length + 8);
+    rendition->playlist_tmp_path = malloc(length + 12);
+    if (rendition->base_path == NULL || rendition->playlist_path == NULL || rendition->playlist_tmp_path == NULL) {
+        return AVERROR(ENOMEM);
+    }
+    snprintf(rendition->base_path, length, "%s-%c%d", hls->segment_prefix, kind, number);
+    snprintf(rendition->playlist_path, length + 8, "%s.m3u8", rendition->base_path);
+    snprintf(rendition->playlist_tmp_path, length + 12, "%s.m3u8.tmp", rendition->base_path);
+    const char *slash = strrchr(rendition->base_path, '/');
+    rendition->base_name = slash != NULL ? slash + 1 : rendition->base_path;
+    return 0;
+}
+
+// Fills the name (unique in its group), language and flags of a rendition from its source stream.
+static void fluxo_rendition_describe(FluxoHLS *hls, FluxoRendition *rendition, const AVStream *stream, int number) {
+    const AVDictionaryEntry *language = av_dict_get(stream->metadata, "language", NULL, 0);
+    const AVDictionaryEntry *title = av_dict_get(stream->metadata, "title", NULL, 0);
+    fluxo_language_tag(language != NULL ? language->value : NULL, rendition->language, sizeof(rendition->language));
+    rendition->is_default = (stream->disposition & AV_DISPOSITION_DEFAULT) != 0;
+    rendition->forced = (stream->disposition & AV_DISPOSITION_FORCED) != 0;
+    rendition->hearing_impaired = (stream->disposition & (AV_DISPOSITION_HEARING_IMPAIRED | AV_DISPOSITION_CAPTIONS)) != 0;
+    rendition->visual_impaired = (stream->disposition & (AV_DISPOSITION_VISUAL_IMPAIRED | AV_DISPOSITION_DESCRIPTIONS)) != 0;
+    rendition->channels = stream->codecpar->ch_layout.nb_channels;
+
+    // The title of the track, else its language tag, else its number: the app shows the language in the
+    // user's own language when the name is only the tag or a number.
+    char base[96];
+    fluxo_attribute_text(title != NULL ? title->value : NULL, base, sizeof(base));
+    if (base[0] == '\0') {
+        snprintf(base, sizeof(base), "%s", rendition->language[0] != '\0' ? rendition->language : "");
+    }
+    if (base[0] == '\0') {
+        snprintf(base, sizeof(base), "%d", number);
+    }
+    snprintf(rendition->name, sizeof(rendition->name), "%s", base);
+    for (int copy = 2; copy < 100; copy++) {
+        int taken = 0;
+        for (int i = 0; i < hls->rendition_count; i++) {
+            const FluxoRendition *other = &hls->renditions[i];
+            if (other != rendition && other->type == rendition->type && strcmp(other->name, rendition->name) == 0) {
+                taken = 1;
+                break;
+            }
+        }
+        if (!taken) {
+            break;
+        }
+        snprintf(rendition->name, sizeof(rendition->name), "%s %d", base, copy);
+    }
+}
+
+// Decides the renditions from the streams of the input, before the main output is prepared: with two audio
+// streams or more, the main output keeps only the default one. Returns 0 or a negative error.
+static int fluxo_hls_plan_renditions(FluxoRemuxSession *session) {
+    FluxoHLS *hls = &session->hls;
+    AVFormatContext *input = session->input;
+    if (hls->master_path == NULL) {
+        return 0;
+    }
+    // Audio streams are counted by their ordinal among every supported audio stream (what the outputs
+    // select by); only those in a codec HLS players decode can be renditions.
+    int audio_total = 0;
+    int hls_audio_count = 0;
+    int subtitle_count = 0;
+    int default_audio = -1;
+    int first_hls_audio = -1;
+    for (unsigned int i = 0; i < input->nb_streams; i++) {
+        const AVStream *stream = input->streams[i];
+        if (fluxo_is_stream_supported(stream) && stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
+            if (fluxo_is_hls_audio(stream) && hls_audio_count < FLUXO_MAX_RENDITIONS) {
+                if (first_hls_audio < 0) {
+                    first_hls_audio = audio_total;
+                }
+                if (default_audio < 0 && (stream->disposition & AV_DISPOSITION_DEFAULT)) {
+                    default_audio = audio_total;
+                }
+                hls_audio_count++;
+            }
+            audio_total++;
+        } else if (fluxo_is_subtitle_source(stream)) {
+            subtitle_count++;
+        }
+    }
+    if (subtitle_count > FLUXO_MAX_RENDITIONS) {
+        subtitle_count = FLUXO_MAX_RENDITIONS;
+    }
+    if (default_audio < 0) {
+        default_audio = first_hls_audio;
+    }
+    // Two playable audio tracks or more: a rendition each. Otherwise the audio stays as it was (every audio
+    // stream in the main playlist).
+    int audio_renditions = hls_audio_count > 1 ? hls_audio_count : 0;
+    if (audio_renditions == 0 && subtitle_count == 0) {
+        return 0;
+    }
+    hls->renditions = calloc((size_t)(audio_renditions + subtitle_count), sizeof(FluxoRendition));
+    if (hls->renditions == NULL) {
+        return AVERROR(ENOMEM);
+    }
+
+    int audio_ordinal = 0;
+    int audio_renditions_made = 0;
+    int subtitle_ordinal = 0;
+    for (unsigned int i = 0; i < input->nb_streams; i++) {
+        const AVStream *stream = input->streams[i];
+        int is_audio = fluxo_is_stream_supported(stream) && stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO;
+        int is_subtitle = fluxo_is_subtitle_source(stream);
+        int takes_audio = is_audio && audio_renditions > 0 && audio_renditions_made < audio_renditions && fluxo_is_hls_audio(stream);
+        if ((is_audio && !takes_audio) || (is_subtitle && subtitle_ordinal >= subtitle_count) || (!is_audio && !is_subtitle)) {
+            audio_ordinal += is_audio;
+            continue;
+        }
+        FluxoRendition *rendition = &hls->renditions[hls->rendition_count++];
+        rendition->type = is_audio ? FluxoRenditionAudio : FluxoRenditionSubtitles;
+        rendition->ordinal = is_audio ? audio_ordinal : subtitle_ordinal;
+        rendition->input_index = (int)i;
+        rendition->codec_id = stream->codecpar->codec_id;
+        rendition->output.video_index = -1;
+        int number = is_audio ? audio_ordinal + 1 : subtitle_ordinal + 1;
+        fluxo_rendition_describe(hls, rendition, stream, number);
+        if (is_audio) {
+            rendition->muxed = audio_ordinal == default_audio;
+            rendition->output.exclude_video = 1;
+            rendition->output.audio_selection = audio_ordinal + 1;
+            hls->audio_rendition_count++;
+            audio_renditions_made++;
+            audio_ordinal++;
+        } else {
+            hls->subtitle_rendition_count++;
+            subtitle_ordinal++;
+        }
+        if (!rendition->muxed) {
+            int ret = fluxo_rendition_set_paths(hls, rendition, is_audio ? 'a' : 's', number - 1);
+            if (ret < 0) {
+                return ret;
+            }
+        }
+    }
+    if (audio_renditions > 0) {
+        // The main media playlist carries the video and the default audio track only.
+        hls->output.audio_selection = default_audio + 1;
+    }
+    return 0;
+}
+
+// Prepares the muxers of the audio renditions (their segments are opened with the main ones).
+static int fluxo_hls_prepare_renditions(FluxoRemuxSession *session) {
+    FluxoHLS *hls = &session->hls;
+    for (int i = 0; i < hls->rendition_count; i++) {
+        FluxoRendition *rendition = &hls->renditions[i];
+        if (rendition->type != FluxoRenditionAudio || rendition->muxed) {
+            continue;
+        }
+        int ret = fluxo_output_prepare(&rendition->output, session->input, "mpegts", NULL);
+        if (ret < 0) {
+            return ret;
+        }
+    }
+    return 0;
+}
+
+static int fluxo_hls_write_rendition_headers(FluxoHLS *hls) {
+    for (int i = 0; i < hls->rendition_count; i++) {
+        FluxoRendition *rendition = &hls->renditions[i];
+        if (rendition->output.context == NULL) {
+            continue;
+        }
+        int ret = avformat_write_header(rendition->output.context, NULL);
+        if (ret < 0) {
+            return ret;
+        }
+        rendition->output.header_written = 1;
+    }
+    return 0;
+}
+
+static void fluxo_write_media_attributes(FILE *file, const FluxoRendition *rendition) {
+    if (rendition->language[0] != '\0') {
+        fprintf(file, ",LANGUAGE=\"%s\"", rendition->language);
+    }
+}
+
+// Looks for ATSC A/53 caption data ("GA94" user data, type 3: cc_data) in a video packet: an H.264 / HEVC SEI
+// (registered ITU-T T.35) or MPEG-2 user data. Compressed data almost never contains these five bytes by chance.
+static int fluxo_packet_has_closed_captions(const AVPacket *packet) {
+    static const uint8_t marker[] = {'G', 'A', '9', '4', 0x03};
+    return packet->data != NULL && packet->size >= (int)sizeof(marker)
+        && memmem(packet->data, (size_t)packet->size, marker, sizeof(marker)) != NULL;
+}
+
+// Writes the master playlist: one variant (the main media playlist), its audio renditions and subtitles.
+// Written with the first segment, once its video shows whether the stream carries closed captions.
+// The RFC 6381 name of an H.264 stream ("avc1.PPCCLL") from its SPS (avcC or Annex B extradata). Returns 0
+// when the stream does not carry one.
+static int fluxo_avc_codec_name(const AVCodecParameters *codecpar, char *buffer, size_t size) {
+    const uint8_t *data = codecpar->extradata;
+    int length = codecpar->extradata_size;
+    if (data == NULL || length < 4) {
+        return 0;
+    }
+    if (data[0] == 1) {
+        // avcC: version, profile, constraint flags, level.
+        snprintf(buffer, size, "avc1.%02X%02X%02X", data[1], data[2], data[3]);
+        return 1;
+    }
+    for (int i = 0; i + 6 < length; i++) {
+        if (data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 1 && (data[i + 3] & 0x1F) == 7) {
+            snprintf(buffer, size, "avc1.%02X%02X%02X", data[i + 4], data[i + 5], data[i + 6]);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+// The RFC 6381 name of an audio codec, or NULL when it is not one this engine names exactly.
+static const char *fluxo_audio_codec_name(enum AVCodecID codec_id, int profile) {
+    switch (codec_id) {
+    case AV_CODEC_ID_AAC:
+        if (profile == AV_PROFILE_AAC_HE) {
+            return "mp4a.40.5";
+        }
+        if (profile == AV_PROFILE_AAC_HE_V2) {
+            return "mp4a.40.29";
+        }
+        return profile == AV_PROFILE_AAC_LOW || profile == AV_PROFILE_UNKNOWN ? "mp4a.40.2" : NULL;
+    case AV_CODEC_ID_AC3:
+        return "ac-3";
+    case AV_CODEC_ID_EAC3:
+        return "ec-3";
+    case AV_CODEC_ID_MP3:
+        return "mp4a.40.34";
+    default:
+        return NULL;
+    }
+}
+
+// Adds `name` to the comma-separated list `buffer` once. Returns 0 when it does not fit.
+static int fluxo_codecs_add(char *buffer, size_t size, const char *name) {
+    size_t used = strlen(buffer);
+    size_t name_length = strlen(name);
+    for (const char *at = strstr(buffer, name); at != NULL; at = strstr(at + 1, name)) {
+        if ((at == buffer || at[-1] == ',') && (at[name_length] == ',' || at[name_length] == '\0')) {
+            return 1;
+        }
+    }
+    if (used + (used > 0 ? 1 : 0) + name_length + 1 > size) {
+        return 0;
+    }
+    if (used > 0) {
+        buffer[used++] = ',';
+    }
+    memcpy(buffer + used, name, name_length + 1);
+    return 1;
+}
+
+// The CODECS attribute of the variant: the video and every audio rendition. Returns 0 (and no attribute is
+// written) when one of them cannot be named exactly: a partial or wrong list is worse than none, since the
+// player takes it as the complete list of what it must decode.
+static int fluxo_hls_codecs(FluxoRemuxSession *session, char *buffer, size_t size) {
+    FluxoHLS *hls = &session->hls;
+    buffer[0] = '\0';
+    AVFormatContext *output = hls->output.context;
+    if (output == NULL) {
+        return 0;
+    }
+    for (unsigned int i = 0; i < output->nb_streams; i++) {
+        const AVCodecParameters *codecpar = output->streams[i]->codecpar;
+        if (codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+            char video[32];
+            if (codecpar->codec_id != AV_CODEC_ID_H264 || !fluxo_avc_codec_name(codecpar, video, sizeof(video)) ||
+                !fluxo_codecs_add(buffer, size, video)) {
+                return 0;
+            }
+        } else if (codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
+            const char *audio = fluxo_audio_codec_name(codecpar->codec_id, codecpar->profile);
+            if (audio == NULL || !fluxo_codecs_add(buffer, size, audio)) {
+                return 0;
+            }
+        }
+    }
+    for (int i = 0; i < hls->rendition_count; i++) {
+        const FluxoRendition *rendition = &hls->renditions[i];
+        if (rendition->type != FluxoRenditionAudio) {
+            continue;
+        }
+        int profile = AV_PROFILE_UNKNOWN;
+        if (rendition->input_index >= 0 && (unsigned int)rendition->input_index < session->input->nb_streams) {
+            profile = session->input->streams[rendition->input_index]->codecpar->profile;
+        }
+        const char *audio = fluxo_audio_codec_name(rendition->codec_id, profile);
+        if (audio == NULL || !fluxo_codecs_add(buffer, size, audio)) {
+            return 0;
+        }
+    }
+    return buffer[0] != '\0';
+}
+
+static int fluxo_hls_write_master(FluxoRemuxSession *session) {
+    FluxoHLS *hls = &session->hls;
+    if (hls->rendition_count == 0) {
+        return 0;
+    }
+    FILE *file = fopen(hls->master_tmp_path, "w");
+    if (file == NULL) {
+        return AVERROR(errno);
+    }
+    int has_audio_group = hls->audio_rendition_count > 0;
+    int has_subtitles = hls->subtitle_rendition_count > 0;
+    fprintf(file, "#EXTM3U\n#EXT-X-VERSION:4\n");
+    if (hls->output.video_index >= 0) {
+        fprintf(file, "#EXT-X-INDEPENDENT-SEGMENTS\n");
+    }
+    for (int i = 0; i < hls->rendition_count; i++) {
+        const FluxoRendition *rendition = &hls->renditions[i];
+        if (rendition->type != FluxoRenditionAudio) {
+            continue;
+        }
+        fprintf(file, "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"audio\",NAME=\"%s\"", rendition->name);
+        fluxo_write_media_attributes(file, rendition);
+        fprintf(file, ",DEFAULT=%s,AUTOSELECT=YES", rendition->muxed ? "YES" : "NO");
+        if (rendition->channels > 0) {
+            fprintf(file, ",CHANNELS=\"%d\"", rendition->channels);
+        }
+        if (rendition->visual_impaired) {
+            fprintf(file, ",CHARACTERISTICS=\"public.accessibility.describes-video\"");
+        }
+        if (!rendition->muxed) {
+            fprintf(file, ",URI=\"%s.m3u8\"", rendition->base_name);
+        }
+        fprintf(file, "\n");
+    }
+    for (int i = 0; i < hls->rendition_count; i++) {
+        const FluxoRendition *rendition = &hls->renditions[i];
+        if (rendition->type != FluxoRenditionSubtitles) {
+            continue;
+        }
+        fprintf(file, "#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID=\"subs\",NAME=\"%s\"", rendition->name);
+        fluxo_write_media_attributes(file, rendition);
+        // Subtitles are never on by default: the system turns them on (accessibility settings, a foreign
+        // language) and shows forced ones with their audio.
+        fprintf(file, ",DEFAULT=NO,AUTOSELECT=YES,FORCED=%s", rendition->forced ? "YES" : "NO");
+        if (rendition->hearing_impaired) {
+            fprintf(file, ",CHARACTERISTICS=\"public.accessibility.transcribes-spoken-dialog,public.accessibility.describes-music-and-sound\"");
+        }
+        fprintf(file, ",URI=\"%s.m3u8\"\n", rendition->base_name);
+    }
+    if (hls->closed_captions && hls->output.video_index >= 0) {
+        fprintf(file, "#EXT-X-MEDIA:TYPE=CLOSED-CAPTIONS,GROUP-ID=\"cc\",NAME=\"CC\",DEFAULT=NO,AUTOSELECT=YES,INSTREAM-ID=\"CC1\"\n");
+    }
+
+    int64_t bandwidth = session->input->bit_rate > 0 ? session->input->bit_rate : 4000000;
+    fprintf(file, "#EXT-X-STREAM-INF:BANDWIDTH=%lld", (long long)bandwidth);
+    if (hls->output.video_index >= 0) {
+        const AVCodecParameters *video = hls->output.context->streams[hls->output.video_index]->codecpar;
+        if (video->width > 0 && video->height > 0) {
+            fprintf(file, ",RESOLUTION=%dx%d", video->width, video->height);
+        }
+    }
+    char codecs[192];
+    if (fluxo_hls_codecs(session, codecs, sizeof(codecs))) {
+        fprintf(file, ",CODECS=\"%s\"", codecs);
+    }
+    if (has_audio_group) {
+        fprintf(file, ",AUDIO=\"audio\"");
+    }
+    if (has_subtitles) {
+        fprintf(file, ",SUBTITLES=\"subs\"");
+    }
+    if (hls->output.video_index >= 0) {
+        // Without the attribute AVPlayer offers a "CC" option even when the video has no captions.
+        fprintf(file, hls->closed_captions ? ",CLOSED-CAPTIONS=\"cc\"" : ",CLOSED-CAPTIONS=NONE");
+    }
+    fprintf(file, "\n%s.m3u8\n", hls->segment_base_name);
+
+    int failed = ferror(file);
+    if (fclose(file) != 0 || failed) {
+        unlink(hls->master_tmp_path);
+        return AVERROR(EIO);
+    }
+    if (rename(hls->master_tmp_path, hls->master_path) != 0) {
+        return AVERROR(errno);
+    }
+    hls->master_written = 1;
+    return 0;
+}
+
+// Finds the sources of the renditions in a reconnected input. A rendition whose stream is gone stays in
+// the master playlist (it cannot be removed from a playlist the player has read) and gets no new media.
+static void fluxo_hls_remap_renditions(FluxoRemuxSession *session) {
+    FluxoHLS *hls = &session->hls;
+    for (int i = 0; i < hls->rendition_count; i++) {
+        FluxoRendition *rendition = &hls->renditions[i];
+        rendition->input_index = fluxo_rendition_find_source(rendition, session->input);
+        if (rendition->output.context != NULL) {
+            fluxo_output_map_input(&rendition->output, session->input);
+        }
+    }
+}
+
+// Opens the next audio segment of every audio rendition (next to the main one).
+static int fluxo_hls_open_rendition_segments(FluxoHLS *hls) {
+    for (int i = 0; i < hls->rendition_count; i++) {
+        FluxoRendition *rendition = &hls->renditions[i];
+        if (rendition->output.context == NULL) {
+            continue;
+        }
+        char path[PATH_MAX];
+        fluxo_rendition_segment_path(rendition, hls->next_sequence, 1, path, sizeof(path));
+        int ret = avio_open(&rendition->output.context->pb, path, AVIO_FLAG_WRITE);
+        if (ret < 0) {
+            return ret;
+        }
+        if (hls->segments_written > 0 || hls->count > 0) {
+            av_opt_set(rendition->output.context->priv_data, "mpegts_flags", "+resend_headers", 0);
+        }
+    }
+    return 0;
+}
+
+// Closes the audio segments of the renditions, keeping (publish) or deleting them with the main one.
+// Returns the bytes kept, or a negative error.
+static int64_t fluxo_hls_close_rendition_segments(FluxoHLS *hls, int flush, int publish) {
+    int64_t total = 0;
+    for (int i = 0; i < hls->rendition_count; i++) {
+        FluxoRendition *rendition = &hls->renditions[i];
+        AVFormatContext *context = rendition->output.context;
+        if (context == NULL || context->pb == NULL) {
+            continue;
+        }
+        if (flush && rendition->output.header_written) {
+            av_write_frame(context, NULL);
+        }
+        avio_flush(context->pb);
+        int64_t bytes = avio_tell(context->pb);
+        avio_closep(&context->pb);
+        char temporary[PATH_MAX];
+        fluxo_rendition_segment_path(rendition, hls->next_sequence, 1, temporary, sizeof(temporary));
+        if (!publish) {
+            unlink(temporary);
+            continue;
+        }
+        char final_path[PATH_MAX];
+        fluxo_rendition_segment_path(rendition, hls->next_sequence, 0, final_path, sizeof(final_path));
+        if (rename(temporary, final_path) != 0) {
+            return AVERROR(errno);
+        }
+        total += bytes > 0 ? bytes : 0;
+    }
+    return total;
+}
+
+// Writes the WebVTT segments of the segment being finished, [start, end) of the output timeline.
+static int64_t fluxo_hls_write_subtitle_segments(FluxoHLS *hls, int64_t start, int64_t end, int last) {
+    int64_t total = 0;
+    for (int i = 0; i < hls->rendition_count; i++) {
+        FluxoRendition *rendition = &hls->renditions[i];
+        if (rendition->type != FluxoRenditionSubtitles) {
+            continue;
+        }
+        int64_t bytes = fluxo_rendition_write_vtt(hls, rendition, hls->next_sequence, start, end, last);
+        if (bytes < 0) {
+            return bytes;
+        }
+        total += bytes;
+    }
+    return total;
+}
+
+static void fluxo_hls_delete_rendition_segments(const FluxoHLS *hls, int64_t sequence) {
+    for (int i = 0; i < hls->rendition_count; i++) {
+        const FluxoRendition *rendition = &hls->renditions[i];
+        if (rendition->muxed) {
+            continue;
+        }
+        char path[PATH_MAX];
+        fluxo_rendition_segment_path(rendition, sequence, 0, path, sizeof(path));
+        unlink(path);
+    }
+}
+
+// Copies a packet (output time base, already adjusted) to the renditions that take it.
+static int fluxo_hls_write_renditions(FluxoHLS *hls, const AVPacket *packet, const AVStream *in_stream, AVPacket *scratch) {
+    for (int i = 0; i < hls->rendition_count; i++) {
+        FluxoRendition *rendition = &hls->renditions[i];
+        if (rendition->type == FluxoRenditionSubtitles) {
+            if (packet->stream_index == rendition->input_index) {
+                int ret = fluxo_rendition_add_cue(rendition, packet, in_stream);
+                if (ret < 0) {
+                    return ret;
+                }
+            }
+            continue;
+        }
+        if (rendition->output.context == NULL) {
+            continue;
+        }
+        int ret = fluxo_output_prepare_packet(&rendition->output, packet, in_stream, scratch);
+        if (ret < 0) {
+            return ret;
+        }
+        if (ret > 0) {
+            ret = fluxo_output_commit(&rendition->output, scratch);
+            if (ret < 0) {
+                return ret;
+            }
+        }
     }
     return 0;
 }
@@ -613,6 +1708,10 @@ static int fluxo_hls_open_segment(FluxoHLS *hls) {
         av_opt_set(hls->output.context->priv_data, "mpegts_flags", "+resend_headers", 0);
     }
     hls->segment_open = 1;
+    ret = fluxo_hls_open_rendition_segments(hls);
+    if (ret < 0) {
+        return ret;
+    }
     hls->segment_start_time = AV_NOPTS_VALUE;
     hls->last_reference_time = AV_NOPTS_VALUE;
     hls->segment_wallclock_ms = fluxo_wallclock_ms();
@@ -647,11 +1746,22 @@ static int fluxo_hls_finish_segment(FluxoRemuxSession *session, int64_t end_time
     if (bytes <= 0 || duration < 0.05) {
         // Nothing playable (e.g. cancelled right after a cut).
         unlink(temporary);
+        fluxo_hls_close_rendition_segments(hls, flush, 0);
         return ended ? fluxo_hls_write_playlist(hls, 1) : 0;
     }
     if (rename(temporary, final_path) != 0) {
         return AVERROR(errno);
     }
+    // The renditions' segments of the same span, under the same sequence number.
+    int64_t rendition_bytes = fluxo_hls_close_rendition_segments(hls, flush, 1);
+    if (rendition_bytes < 0) {
+        return (int)rendition_bytes;
+    }
+    int64_t subtitle_bytes = fluxo_hls_write_subtitle_segments(hls, hls->segment_start_time, end_time, ended);
+    if (subtitle_bytes < 0) {
+        return (int)subtitle_bytes;
+    }
+    bytes += rendition_bytes + subtitle_bytes;
 
     if (hls->count == hls->capacity) {
         int capacity = hls->capacity > 0 ? hls->capacity * 2 : 64;
@@ -694,20 +1804,55 @@ static int fluxo_hls_finish_segment(FluxoRemuxSession *session, int64_t end_time
     if (ret < 0) {
         return ret;
     }
+    if (!hls->master_written && hls->rendition_count > 0) {
+        // Before the first SegmentWritten event: the player opens the master playlist when it gets it.
+        ret = fluxo_hls_write_master(session);
+        if (ret < 0) {
+            return ret;
+        }
+    }
     // A segment is the proof that the (re)connection works.
     session->reconnect_attempt = 0;
     fluxo_emit(session, FluxoRemuxEventSegmentWritten, 0, NULL);
     return 0;
 }
 
+// Muxing delay of the MPEG-TS outputs of a master playlist. The main output and the audio renditions are
+// separate muxers, so they must put the same timestamps on the same media: an explicit delay, and no
+// automatic shift of negative timestamps (libavformat would shift each muxer by its own first packet).
+#define FLUXO_RENDITION_MUX_DELAY 700000
+
+static void fluxo_hls_align_muxer(AVFormatContext *context) {
+    context->max_delay = FLUXO_RENDITION_MUX_DELAY;
+    context->avoid_negative_ts = AVFMT_AVOID_NEG_TS_DISABLED;
+}
+
 static int fluxo_hls_open(FluxoRemuxSession *session) {
     FluxoHLS *hls = &session->hls;
-    int ret = fluxo_output_prepare(&hls->output, session->input, "mpegts", NULL);
+    int ret = fluxo_hls_plan_renditions(session);
+    if (ret < 0) {
+        return ret;
+    }
+    ret = fluxo_output_prepare(&hls->output, session->input, "mpegts", NULL);
+    if (ret < 0) {
+        return ret;
+    }
+    ret = fluxo_hls_prepare_renditions(session);
     if (ret < 0) {
         return ret;
     }
     hls->reference_stream = hls->output.video_index >= 0 ? hls->output.video_index : 0;
     hls->target_duration = (int)ceil(hls->segment_duration);
+    if (hls->rendition_count > 0) {
+        fluxo_hls_align_muxer(hls->output.context);
+        for (int i = 0; i < hls->rendition_count; i++) {
+            if (hls->renditions[i].output.context != NULL) {
+                fluxo_hls_align_muxer(hls->renditions[i].output.context);
+            }
+        }
+        // The MPEG-TS muxer adds twice its maximum delay to every timestamp (90 kHz clock).
+        hls->mpegts_time_zero = av_rescale(FLUXO_RENDITION_MUX_DELAY, 90000, AV_TIME_BASE) * 2;
+    }
 
     ret = fluxo_hls_open_segment(hls);
     if (ret < 0) {
@@ -718,10 +1863,11 @@ static int fluxo_hls_open(FluxoRemuxSession *session) {
         return ret;
     }
     hls->output.header_written = 1;
-    return 0;
+    // The master playlist is written with the first segment (fluxo_hls_finish_segment).
+    return fluxo_hls_write_rendition_headers(hls);
 }
 
-static int fluxo_hls_write(FluxoRemuxSession *session, const AVPacket *packet, const AVStream *in_stream, AVPacket *scratch) {
+static int fluxo_hls_write_main(FluxoRemuxSession *session, const AVPacket *packet, const AVStream *in_stream, AVPacket *scratch) {
     FluxoHLS *hls = &session->hls;
     int ret = fluxo_output_prepare_packet(&hls->output, packet, in_stream, scratch);
     if (ret <= 0) {
@@ -756,6 +1902,21 @@ static int fluxo_hls_write(FluxoRemuxSession *session, const AVPacket *packet, c
     return fluxo_output_commit(&hls->output, scratch);
 }
 
+// Writes a packet to the main media playlist (cutting its segments) and to the renditions.
+static int fluxo_hls_write(FluxoRemuxSession *session, const AVPacket *packet, const AVStream *in_stream, AVPacket *scratch) {
+    FluxoHLS *hls = &session->hls;
+    if (hls->rendition_count > 0 && !hls->master_written && !hls->closed_captions && hls->output.video_index >= 0
+        && packet->stream_index >= 0 && (unsigned int)packet->stream_index < hls->output.stream_map_size
+        && hls->output.stream_map[packet->stream_index] == hls->output.video_index) {
+        hls->closed_captions = fluxo_packet_has_closed_captions(packet);
+    }
+    int ret = fluxo_hls_write_main(session, packet, in_stream, scratch);
+    if (ret < 0 || session->hls.rendition_count == 0 || !session->hls.output.header_written) {
+        return ret;
+    }
+    return fluxo_hls_write_renditions(&session->hls, packet, in_stream, scratch);
+}
+
 // Ends the current segment early, e.g. before a reconnection, and marks the next one as discontinuous.
 static int fluxo_hls_break(FluxoRemuxSession *session) {
     FluxoHLS *hls = &session->hls;
@@ -779,6 +1940,12 @@ static void fluxo_hls_close(FluxoRemuxSession *session, int ended) {
     if (hls->output.header_written) {
         // Drains the muxer into the current segment, which is then published with EXT-X-ENDLIST.
         av_write_trailer(hls->output.context);
+        for (int i = 0; i < hls->rendition_count; i++) {
+            FluxoRendition *rendition = &hls->renditions[i];
+            if (rendition->output.header_written && rendition->output.context->pb != NULL) {
+                av_write_trailer(rendition->output.context);
+            }
+        }
         if (hls->segment_open) {
             fluxo_hls_finish_segment(session, hls->last_reference_time, 0, ended);
         } else if (ended) {
@@ -789,9 +1956,13 @@ static void fluxo_hls_close(FluxoRemuxSession *session, int ended) {
         avio_closep(&hls->output.context->pb);
         fluxo_hls_segment_path(hls, hls->next_sequence, 1, temporary, sizeof(temporary));
         unlink(temporary);
+        fluxo_hls_close_rendition_segments(hls, 0, 0);
         hls->segment_open = 0;
     }
     fluxo_output_free(&hls->output);
+    for (int i = 0; i < hls->rendition_count; i++) {
+        fluxo_output_free(&hls->renditions[i].output);
+    }
 }
 
 // MARK: - Recording
@@ -1081,6 +2252,7 @@ static int fluxo_reconnect(FluxoRemuxSession *session, int last_error) {
             session->output_failed = 1;
             return ret < 0 ? ret : AVERROR_STREAM_NOT_FOUND;
         }
+        fluxo_hls_remap_renditions(session);
         if (session->recording.path != NULL) {
             ret = fluxo_output_map_input(&session->recording.output, session->input);
             if (ret <= 0) {
@@ -1214,6 +2386,17 @@ FluxoRemuxSession *fluxo_remux_create(const FluxoRemuxConfig *config, FluxoRemux
     hls->program_date_time = session->is_live;
     hls->segment_start_time = AV_NOPTS_VALUE;
     hls->last_reference_time = AV_NOPTS_VALUE;
+    hls->master_path = fluxo_strdup(config->hls.master_playlist_path);
+    if (hls->master_path != NULL) {
+        size_t master_length = strlen(hls->master_path) + 5;
+        hls->master_tmp_path = malloc(master_length);
+        if (hls->master_tmp_path == NULL) {
+            free(hls->master_path);
+            hls->master_path = NULL;
+        } else {
+            snprintf(hls->master_tmp_path, master_length, "%s.tmp", hls->master_path);
+        }
+    }
 
     if (session->input_url == NULL || hls->playlist_path == NULL || hls->segment_prefix == NULL) {
         fluxo_remux_destroy(session);
@@ -1303,6 +2486,9 @@ void fluxo_remux_destroy(FluxoRemuxSession *session) {
     free(session->hls.playlist_tmp_path);
     free(session->hls.segment_prefix);
     free(session->hls.segments);
+    fluxo_hls_free_renditions(&session->hls);
+    free(session->hls.master_path);
+    free(session->hls.master_tmp_path);
     free(session->pending_recording_path);
     fluxo_free_discarded_recordings(session->discarded_recordings);
     pthread_mutex_destroy(&session->request_lock);

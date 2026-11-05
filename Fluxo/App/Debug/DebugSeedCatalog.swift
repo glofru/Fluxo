@@ -189,6 +189,8 @@ enum DebugSeedCatalog {
             ("Test Pattern (HLS)", "\(base)/hls/live.m3u8"),
             ("Test Pattern (MPEG-TS)", "\(base)/live/test-pattern"),
             ("Unreachable Channel", "http://127.0.0.1:9/live/offline"),
+            // Raw MPEG-TS with an English and a German audio track: the remux engine offers both.
+            ("Test Pattern (Two Audio Tracks)", "\(base)/live/two-audio"),
         ]
         for (name, url) in live {
             playlist.entries.append(.init(name: name, group: "Test Streams", url: url, tvgID: "FluxoTest.test", logo: DebugArtwork.logo(for: name, style: .filled)))
@@ -205,6 +207,8 @@ enum DebugSeedCatalog {
             ("Test Movie (HLS)", "\(base)/movie/tracks/master.m3u8"),
             // Sent slowly, so a download shows its progress.
             ("Test Clip (Slow Download)", "\(base)/movie/slow.mp4"),
+            // Matroska with two audio tracks, SubRip, ASS and forced subtitles, played through the remux engine.
+            ("Test Clip (Matroska Tracks)", "\(base)/movie/tracks.mkv"),
         ]
         for (name, url) in onDemand {
             playlist.entries.append(.init(name: name, group: "Test On Demand", url: url, logo: DebugArtwork.poster(title: name, subtitle: "Loopback")))

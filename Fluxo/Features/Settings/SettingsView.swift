@@ -8,7 +8,7 @@
 import SwiftData
 import SwiftUI
 
-/// Playback, TV guide, recordings, storage and about, under a header with the library at a glance. A tab on
+/// Playback, audio and subtitles, TV guide, recordings, storage and about, under a header with the library at a glance. A tab on
 /// iOS, the Settings window (⌘,) on macOS.
 struct SettingsView: View {
 
@@ -54,6 +54,7 @@ struct SettingsView: View {
                 SettingsHeader(recordingCount: player.recordings.recordings.count)
             }
             playbackSection
+            TrackSettingsSection()
             #if !os(macOS)
             pictureInPictureSection
             #endif

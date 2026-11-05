@@ -8,6 +8,8 @@ Serves on 127.0.0.1 only (never another interface; the simulator shares the Mac'
   /live/test-pattern   live raw MPEG-TS over HTTP, as IPTV servers send it (the remux engine path);
   /live.ts             the same; every client gets its own real-time ffmpeg encoder, at most
                        MAX_LIVE_CLIENTS at once (more get 503, so a retry loop cannot start many encoders)
+  /live/two-audio      live raw MPEG-TS with two audio tracks (English AAC, German AC-3), as DVB channels have;
+                       the remux engine offers both in the Audio and Subtitles menu
   /movie/clip.mp4      a 60 s on-demand MP4 (byte ranges supported)
   /movie/clip.ts       the same clip as an on-demand MPEG-TS file
   /movie/clip.mkv      the same clip as a Matroska file (AVPlayer cannot play it: downloads convert it to MP4)
@@ -17,6 +19,10 @@ Serves on 127.0.0.1 only (never another interface; the simulator shares the Mac'
   /tracks/master.m3u8  a 60 s on-demand HLS with two audio renditions (English, Italiano: an audio description)
                        and two WebVTT subtitle renditions (English SDH, Italiano), for the player's Audio and
                        Subtitles menu
+  /movie/tracks.mkv    a 60 s on-demand Matroska file with two audio tracks (English AAC, Italian AC-3) and
+                       SubRip English, ASS Italian and forced English subtitles (the remux engine turns them into
+                       HLS renditions)
+  /subtitles/clip.srt  a SubRip file for the 60 s clips (Load Subtitle File…, the `subtitle-file:` debug route)
   /logo/<n>.png        a 200x120 gradient logo (n = 0 to 239), used by the "large" debug seed
   /poster/<n>.png      a 240x360 gradient poster
 
@@ -50,6 +56,8 @@ CONTENT_TYPES = {
     ".ts": "video/mp2t",
     ".mp4": "video/mp4",
     ".vtt": "text/vtt",
+    ".mkv": "video/x-matroska",
+    ".srt": "application/x-subrip",
 }
 
 
@@ -87,6 +95,8 @@ class Streams:
         self.clip_ts = os.path.join(work, "clip.ts")
         self.clip_mkv = os.path.join(work, "clip.mkv")
         self.tracks_dir = os.path.join(work, "tracks")
+        self.tracks_mkv = os.path.join(work, "tracks.mkv")
+        self.clip_srt = os.path.join(work, "clip.srt")
         self.hls_process = None
         self.stopping = threading.Event()
         self.clients = set()
@@ -170,6 +180,58 @@ class Streams:
                 '#EXT-X-STREAM-INF:BANDWIDTH=2000000,CODECS="avc1.64001f,mp4a.40.2",RESOLUTION=1280x720,AUDIO="aud",SUBTITLES="subs"\n'
                 "main.m3u8\n")
 
+    def prepare_matroska(self):
+        """/movie/tracks.mkv and /subtitles/clip.srt."""
+        if os.path.exists(self.tracks_mkv) and os.path.exists(self.clip_srt):
+            return
+        log("generating the Matroska clip with audio tracks and subtitles")
+        english, italian, forced = (os.path.join(self.work, name) for name in ("mkv-en.srt", "mkv-it.ass", "mkv-forced.srt"))
+        with open(english, "w") as file:
+            for index in range(12):
+                start = index * 5
+                file.write(f"{index + 1}\n00:00:{start:02d},500 --> 00:00:{start + 4:02d},000\n"
+                           f"<i>Matroska</i> English subtitle {index + 1}\nsecond line\n\n")
+        with open(italian, "w") as file:
+            file.write("[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\n"
+                       "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, "
+                       "Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
+                       "Alignment, MarginL, MarginR, MarginV, Encoding\n"
+                       "Style: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1,0,2,10,10,10,1\n\n"
+                       "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
+            for index in range(12):
+                start = index * 5
+                file.write(f"Dialogue: 0,0:00:{start:02d}.50,0:00:{start + 4:02d}.00,Default,,0,0,0,,"
+                           f"Sottotitolo {{\\i1}}Matroska{{\\i0}} {index + 1}\\Nin italiano\n")
+        with open(forced, "w") as file:
+            file.write("1\n00:00:02,000 --> 00:00:04,000\n[SIGN: forced]\n")
+        subprocess.run(
+            [self.ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
+             "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=30:duration=60",
+             "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=60",
+             "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=48000:duration=60",
+             "-i", english, "-i", italian, "-i", forced,
+             "-map", "0:v", "-map", "1:a", "-map", "2:a", "-map", "3", "-map", "4", "-map", "5",
+             "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-g", "60",
+             "-c:a:0", "aac", "-b:a:0", "128k", "-c:a:1", "ac3", "-b:a:1", "192k",
+             "-c:s:0", "srt", "-c:s:1", "ass", "-c:s:2", "srt",
+             "-metadata:s:a:0", "language=eng", "-metadata:s:a:1", "language=ita",
+             "-metadata:s:s:0", "language=eng", "-metadata:s:s:1", "language=ita", "-metadata:s:s:2", "language=eng",
+             # A title that ends in a multi-byte character: the master playlist keeps it whole (NAME, and so the
+             # names a Chromecast receiver shows; the player's menu shows the language's own name).
+             "-metadata:s:s:1", "title=Italiano – Novità",
+             "-disposition:a:0", "default", "-disposition:a:1", "0", "-disposition:s:0", "0", "-disposition:s:1", "0",
+             "-disposition:s:2", "forced", self.tracks_mkv],
+            check=True)
+        with open(self.clip_srt, "w", encoding="utf-8") as file:
+            for index in range(15):
+                start = index * 4
+                # Even cues: an entity that stays text ("&amp;lt;" is "&lt;"), then a blank line holding
+                # spaces and a tab, as files from the wild have: each cue stays on its own.
+                text = "Fish &amp; chips, &amp;lt;b&amp;gt; is text" if index % 2 else "<i>Fluxo test clip</i>"
+                separator = " \t\n" if index % 2 else "\n"
+                file.write(f"{index + 1}\n00:00:{start:02d},200 --> 00:00:{start + 3:02d},600\n"
+                           f"External subtitle {index + 1}, from a <b>.srt</b> file\n{text}\n{separator}")
+
     def live_input_arguments(self, pattern):
         return ["-re", "-f", "lavfi", "-i", f"{pattern}=size=1280x720:rate=30",
                 "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
@@ -203,6 +265,8 @@ class Streams:
             ("Test Clip (MP4)", "Test On Demand", f"{base}/movie/clip.mp4"),
             ("Test Clip (MPEG-TS)", "Test On Demand", f"{base}/movie/clip.ts"),
             ("Test Clip (Audio and Subtitles)", "Test On Demand", f"{base}/tracks/master.m3u8"),
+            ("Test Clip (Matroska Tracks)", "Test On Demand", f"{base}/movie/tracks.mkv"),
+            ("Test Pattern (Two Audio Tracks)", "Test Streams", f"{base}/live/two-audio"),
         ]
         lines = ["#EXTM3U"]
         for name, group, url in entries:
@@ -210,10 +274,21 @@ class Streams:
             lines.append(url)
         return ("\n".join(lines) + "\n").encode()
 
-    def open_live_encoder(self):
+    def open_live_encoder(self, two_audio=False):
         """A new real-time encoder, or None when MAX_LIVE_CLIENTS are already running."""
-        command = [self.ffmpeg, "-hide_banner", "-loglevel", "error"] + self.live_input_arguments("testsrc") + [
-            "-f", "mpegts", "pipe:1"]
+        if two_audio:
+            command = [self.ffmpeg, "-hide_banner", "-loglevel", "error", "-re",
+                       "-f", "lavfi", "-i", "testsrc=size=1280x720:rate=30",
+                       "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
+                       "-f", "lavfi", "-i", "sine=frequency=660:sample_rate=48000",
+                       "-map", "0:v", "-map", "1:a", "-map", "2:a",
+                       "-c:v", "libx264", "-preset", "veryfast", "-tune", "zerolatency", "-pix_fmt", "yuv420p",
+                       "-g", "60", "-b:v", "2500k", "-c:a:0", "aac", "-b:a:0", "128k", "-c:a:1", "ac3", "-b:a:1", "192k",
+                       "-metadata:s:a:0", "language=eng", "-metadata:s:a:1", "language=deu",
+                       "-f", "mpegts", "pipe:1"]
+        else:
+            command = [self.ffmpeg, "-hide_banner", "-loglevel", "error"] + self.live_input_arguments("testsrc") + [
+                "-f", "mpegts", "pipe:1"]
         with self.clients_lock:
             if len(self.clients) >= MAX_LIVE_CLIENTS:
                 return None
@@ -262,6 +337,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_bytes(self.streams.playlist(), CONTENT_TYPES[".m3u"], send_body)
         elif path in ("/live/test-pattern", "/live.ts"):
             self.send_live_ts(send_body)
+        elif path == "/live/two-audio":
+            self.send_live_ts(send_body, two_audio=True)
         elif path.startswith("/hls/"):
             name = path[len("/hls/"):]
             # Only plain file names of the HLS directory.
@@ -290,6 +367,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_file(self.streams.clip_mkv, send_body, cacheable=True)
         elif path == "/movie/slow.mp4":
             self.send_file(self.streams.clip_mp4, send_body, cacheable=False, bytes_per_second=300 * 1024)
+        elif path == "/movie/tracks.mkv":
+            self.send_file(self.streams.tracks_mkv, send_body, cacheable=True)
+        elif path == "/subtitles/clip.srt":
+            self.send_file(self.streams.clip_srt, send_body, cacheable=True)
         else:
             self.send_error(404)
 
@@ -302,10 +383,10 @@ class Handler(BaseHTTPRequestHandler):
         if send_body:
             self.wfile.write(body)
 
-    def send_live_ts(self, send_body):
+    def send_live_ts(self, send_body, two_audio=False):
         process = None
         if send_body:
-            process = self.streams.open_live_encoder()
+            process = self.streams.open_live_encoder(two_audio=two_audio)
             if process is None:
                 log(f"refused a live MPEG-TS client: {MAX_LIVE_CLIENTS} encoders are already running")
                 self.send_response(503)
@@ -408,6 +489,7 @@ def main():
     streams = Streams(arguments.ffmpeg, arguments.work, arguments.port)
     streams.prepare_clips()
     streams.prepare_tracks()
+    streams.prepare_matroska()
     streams.start_hls()
 
     Handler.streams = streams

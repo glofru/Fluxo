@@ -8,6 +8,8 @@
 //
 //  Usage: engine-smoke-test <input-url> <output-dir> <seconds> <record-start> <record-stop> <window-seconds> [vod]
 //  With "vod" the input is treated as on-demand: no reconnection, unlimited window, EXT-X-ENDLIST at the end.
+//  A master playlist (stream-test-master.m3u8) is written when the input has several audio tracks or text
+//  subtitles (see run_tracks.sh).
 //
 
 #include "FluxoRemuxEngine.h"
@@ -40,6 +42,10 @@ static void on_event(void *context, const FluxoRemuxEvent *event) {
         printf("[event] segment written=%lld window=%d segments %.1fs %lld bytes%s%s\n", (long long)event->segments_written,
                event->window_segment_count, event->window_duration, (long long)event->window_bytes,
                event->recording_path ? " recording=" : "", event->recording_path ? event->recording_path : "");
+        if (event->segments_written == 1) {
+            printf("[event] master playlist=%d audio renditions=%d subtitle renditions=%d\n", event->master_playlist_written,
+                   event->audio_rendition_count, event->subtitle_rendition_count);
+        }
         break;
     case FluxoRemuxEventRecordingStarted:
         printf("[event] recording started %s\n", event->recording_path);
@@ -67,8 +73,9 @@ int main(int argc, char **argv) {
     double window = atof(argv[6]);
     int is_vod = argc > 7 && strcmp(argv[7], "vod") == 0;
 
-    char playlist[1024], prefix[1024], recording[1024], mp4[1024];
+    char playlist[1024], prefix[1024], recording[1024], mp4[1024], master[1024];
     snprintf(playlist, sizeof(playlist), "%s/stream-test.m3u8", directory);
+    snprintf(master, sizeof(master), "%s/stream-test-master.m3u8", directory);
     snprintf(prefix, sizeof(prefix), "%s/stream-test", directory);
     snprintf(recording, sizeof(recording), "%s/recording.ts", directory);
     snprintf(mp4, sizeof(mp4), "%s/recording.mp4", directory);
@@ -85,6 +92,7 @@ int main(int argc, char **argv) {
     config.hls.max_window_duration = window;
     config.hls.max_window_bytes = 0;
     config.hls.min_window_segments = 3;
+    config.hls.master_playlist_path = master;
 
     FluxoRemuxSession *session = fluxo_remux_create(&config, on_event, NULL);
     if (session == NULL || fluxo_remux_start(session) != 0) {

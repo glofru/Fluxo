@@ -227,7 +227,7 @@ private struct PlaybackMenuItems: View {
         Menu("Audio and Subtitles") {
             MediaSelectionMenuContent(controller: player.mediaSelection)
         }
-        .disabled(!player.mediaSelection.hasChoices || player.isCasting)
+        .disabled(!player.mediaSelection.hasChoices)
 
         Divider()
 

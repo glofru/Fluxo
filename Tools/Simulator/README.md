@@ -10,7 +10,7 @@ library that never touches a real one. Everything here runs on the Mac; nothing 
 | `shot.sh` | Screenshots every display of a kept clone (`--front` first brings a running Fluxo to the front). |
 | `cleanup.sh` | Deletes clones by name prefix (`fluxo-…` only). |
 | `test-stream.sh` | Loopback-only test streams for the player: live HLS, live raw MPEG-TS, on-demand MP4 / TS, and an M3U playlist of them. |
-| `gesture-tests.sh` | Real touches on a kept clone (`GestureTests/`, an XCUITest bundle that drives the installed app): deleting a TV guide source by swipe and by context menu in Settings and in the Guide Sources sheet over the Guide (`testDeleteGuideSource…`; the swipe used to crash), mini player tap and swipe up, the player's drag down (follows, springs back, closes on a long drag or a flick, ignores horizontal drags), scrubbing that never closes the player, the X that stops playback, and nothing above the tab bar while nothing plays (at launch, back from the background, after stopping with the tab bar minimized, after a relaunch), and Copy Link / Share in the menus of a channel row, a Home card, the player, its side panel (iPad), a series card ("Copy Episode Link"), a series page and a TV guide programme (`testCopyLink…`; `TEST_RUNNER_FLUXO_APPEARANCE=dark` for dark mode). Needs `test-stream.sh`; quit Fluxo on other booted clones first, since every simulator shares the Mac's loopback interface and so the player's local stream port. |
+| `gesture-tests.sh` | Real touches on a kept clone (`GestureTests/`, an XCUITest bundle that drives the installed app): deleting a TV guide source by swipe and by context menu in Settings and in the Guide Sources sheet over the Guide (`testDeleteGuideSource…`; the swipe used to crash), mini player tap and swipe up, the player's drag down (follows, springs back, closes on a long drag or a flick, ignores horizontal drags), scrubbing that never closes the player, the X that stops playback, and nothing above the tab bar while nothing plays (at launch, back from the background, after stopping with the tab bar minimized, after a relaunch), the Audio and Subtitles menu (`testTracks…`: a Matroska file's tracks through the engine, a loaded subtitle file with its timing controls and the document picker, a live channel with two audio tracks, the receiver's tracks while casting; `TEST_RUNNER_FLUXO_TEST_STREAM_URL` for a test-stream server on another port), and Copy Link / Share in the menus of a channel row, a Home card, the player, its side panel (iPad), a series card ("Copy Episode Link"), a series page and a TV guide programme (`testCopyLink…`; `TEST_RUNNER_FLUXO_APPEARANCE=dark` for dark mode). Needs `test-stream.sh`; quit Fluxo on other booted clones first, since every simulator shares the Mac's loopback interface and so the player's local stream port. |
 | `accessibility-audit.sh` | The Xcode accessibility audit (`AccessibilityAudit/`, an XCUITest bundle) of 15 screens of the installed app on a kept clone, in the variants `default`, `ax5` (the largest text size; also audits Dynamic Type and clipped text) and `contrast` (dark mode, Increase Contrast). One `report.txt` per variant with every issue, accepted ones marked with the reason (`knownIssues`), and a screenshot per screen, in `/tmp/fluxo-shots/<clone>/accessibility-audit/<variant>/`. With `FLUXO_TEST_STREAM_URL` (test-stream.sh running) it also checks the player's Audio and Subtitles menu. |
 | `siri-tests.sh` | The system side of the App Intents on a kept clone (`SiriTests/`, an XCUITest bundle): the Shortcuts app lists Fluxo's ten App Shortcuts and runs What's On in the running app, the action search is screenshotted, Spotlight finds a seeded favorite and opening it plays it in Fluxo, and Siri is asked two phrases. Screenshots and hierarchy dumps (Spotlight's results are in its own process, `com.apple.Spotlight`) in `/tmp/fluxo-shots/<clone>/siri-tests/`. On iOS 27.2 the Simulator has no Siri ("not enabled on this device"): try phrases on a device. |
 | `contact_sheet.swift` | Combines screenshots into one labelled grid (`run.sh` does it when a run makes several). |
@@ -143,6 +143,11 @@ first that contains the text.
 | `remove-from-history:<channel>` | Removes a Continue Watching card like its context menu does (for an episode, its whole series). |
 | `favorite-series:<title>` | Adds a series to the favorites. |
 | `featured-series:<playlist>` | Selects a playlist on Home whose billboard then starts at its first series. |
+| `audio-track:<name\|number>` | Chooses an audio track of what plays (by name, e.g. `Italian`, or 1-based number), as the Audio and Subtitles menu does (and so remembers its language). |
+| `subtitles:<automatic\|off\|file\|name\|number>` | Chooses the subtitles of what plays (`file`: the loaded subtitle file). |
+| `subtitle-file:<url>` | Loads a SubRip / WebVTT file (a file URL, or http such as the test server's `/subtitles/clip.srt`) for the movie or episode that plays, as Load Subtitle File… does. |
+| `subtitle-offset:<seconds>` | Shifts the loaded subtitle file (positive: later), as Subtitle Timing does. |
+| `tracks-log` | Logs the audio tracks, subtitles and choices of what plays (`Tracks: …` in `app.log`). |
 | `seek-end:<seconds>` | Seeks the playing on-demand item to that many seconds before its end. |
 | `schedule:<channel>` | The schedule sheet of a live channel (needs a guide, e.g. `seed-guide`). |
 | `programme:<channel>[,<artwork>][,long]` | The TV Guide with the programme on now on a channel open (a sheet; the inspector on iPad; needs a guide, e.g. `seed-guide`). `<artwork>` replaces its image with a sample of a size and shape guides carry: `tiny` (32 x 32), `still` (1280 x 720), `huge` (6000 x 3375), `classic` (4:3), `wide` (10:1), `tall` (1:8), `poster` (2:3), `square`, or `none`; `long` gives it a long title, description and category list. |
@@ -218,7 +223,7 @@ generated M3U files, then gets favorites, a watch history and three recordings:
   `The Night Desk 1x01 Title`, `Paper Kings Stagione 1 Episodio 1`, `IT: Office Plants S01E01 [MULTI] FHD`,
   `Deep Field (2021) S01E01`, `The Lantern Protocol Staffel 1 Folge 1`, `Sky Runners Episode 1`, …); Orbit has
   three seasons.
-- **Loopback Test**: "Test Pattern (HLS)", "Test Pattern (MPEG-TS)", "Test Clip (MP4)", "Test Clip (Audio and Subtitles)", "Test Clip
+- **Loopback Test**: "Test Pattern (HLS)", "Test Pattern (MPEG-TS)", "Test Clip (MP4)", "Test Clip (Audio and Subtitles)", "Test Clip (Matroska Tracks)", "Test Pattern (Two Audio Tracks)", "Test Clip
   (MPEG-TS)" (the streams of `test-stream.sh`), "Unreachable Channel" (fails at once), and "Test Series" (two
   playable 60 s episodes, for the player's next-episode card: `player:Test Series S01E01;wait:62`, and a third one
   served slowly, so its download shows its progress). For the downloads: "Test Clip (Matroska)" and "Test Clip
@@ -247,9 +252,12 @@ It serves on `127.0.0.1:18080` only (`PORT=` changes the port; the address canno
 Simulator shares the Mac's loopback interface): `/playlist.m3u`, `/hls/live.m3u8` (live HLS with a 2
 minute window, played directly by AVPlayer), `/live/test-pattern` and `/live.ts` (live raw MPEG-TS
 through the remux engine, one real-time encoder per client, at most 4 at once, more get 503),
-`/movie/clip.mp4` and `/movie/clip.ts` (60 s on demand, with byte ranges; `?slow=1` sends the MP4 at about 300
+`/live/two-audio` (live raw MPEG-TS with an English AAC and a German AC-3 track: "Test Pattern (Two Audio
+Tracks)"), `/movie/clip.mp4` and `/movie/clip.ts` (60 s on demand, with byte ranges; `?slow=1` sends the MP4 at about 300
 KB/s, as does `/movie/slow.mp4`), `/movie/clip.mkv` and `/movie/play/42` (the clip as Matroska, named and
-extensionless), `/movie/tracks/…` (the HLS of `/tracks/` at a movie path), `/tracks/master.m3u8` (60 s on demand HLS with an English and an Italian audio rendition, the latter tagged as an audio description, and English SDH and Italian WebVTT subtitles: "Test Clip (Audio and Subtitles)"), and `/logo/<n>.png`,
+extensionless), `/movie/tracks.mkv` (60 s Matroska with English AAC and Italian AC-3 audio, SubRip English, ASS Italian
+and forced English subtitles, played through the remux engine: "Test Clip (Matroska Tracks)"), `/movie/tracks/…` (the
+HLS of `/tracks/` at a movie path), `/subtitles/clip.srt` (a SubRip file for the 60 s clips), `/tracks/master.m3u8` (60 s on demand HLS with an English and an Italian audio rendition, the latter tagged as an audio description, and English SDH and Italian WebVTT subtitles: "Test Clip (Audio and Subtitles)"), and `/logo/<n>.png`,
 `/poster/<n>.png`. It needs `ffmpeg` (`/opt/homebrew/bin/ffmpeg`, or `FFMPEG=`), and `/usr/bin/python3`.
 The content is synthetic test patterns, so the loopback bind is its only protection; do not change it.
 

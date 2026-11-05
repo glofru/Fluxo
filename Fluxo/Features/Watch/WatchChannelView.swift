@@ -28,6 +28,8 @@ struct WatchChannelView: View {
     static let autoHideDelay: Duration = .seconds(4)
     /// The controls fade out in 0.25 s; the status bar hides after them.
     static let statusBarHideDelay: Duration = .milliseconds(300)
+    /// How far loaded subtitles rise while the controls (the timeline and transport at the bottom) show.
+    static let subtitleControlsInset: CGFloat = 150
 
     let viewModel: AVPlayerViewModel
 
@@ -238,6 +240,8 @@ struct WatchChannelView: View {
         .sensoryFeedback(trigger: viewModel.isRecording) { _, isRecording in
             isRecording ? .impact(weight: .medium) : .success
         }
+        // "Load Subtitle File…" of the Audio and Subtitles menu (the menu itself may hide with the controls).
+        .subtitleFileImporter(viewModel.mediaSelection)
         .sheet(isPresented: $isShowingChannelGuide, onDismiss: openPendingFullGuide) {
             if let item = viewModel.currentItem {
                 PlayerChannelGuideSheet(item: item) {
@@ -287,6 +291,17 @@ struct WatchChannelView: View {
                 // A Chromecast plays the channel: where, and its volume, instead of the (stopped) video.
                 CastingBackdrop(viewModel: viewModel)
                     .transition(.opacity)
+            } else if let subtitles = viewModel.mediaSelection.externalPlayback {
+                // A subtitle file the user loaded, on the picture, above the controls while they show. (Subtitles
+                // inside the stream are drawn by the video layer itself.)
+                SubtitleOverlay(
+                    playback: subtitles,
+                    videoSize: viewModel.mediaSelection.presentationSize,
+                    fillsScreen: viewModel.fillsScreen,
+                    bottomInset: controlsVisible && !layout.isStacked ? Self.subtitleControlsInset : 0
+                )
+                .ignoresSafeArea()
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: controlsVisible)
             }
 
             tapTarget
@@ -759,17 +774,16 @@ private struct PlayerTopBar: View {
                 .help("Picture in Picture")
             }
 
-            // Audio tracks and subtitles, when the item has a choice (not while a Chromecast plays it).
-            if !viewModel.isCasting {
-                MediaSelectionMenu(controller: viewModel.mediaSelection) {
-                    Image(systemName: "captions.bubble")
-                        .frame(width: Self.buttonSize, height: Self.buttonSize)
-                        .contentShape(.circle)
-                }
-                .buttonStyle(.plain)
-                .largeContentControl(String(localized: "Audio and Subtitles"), systemImage: "captions.bubble")
-                .accessibilityIdentifier("player.mediaSelection")
+            // Audio tracks and subtitles, when the item has a choice (the receiver's tracks while casting), and
+            // subtitle files for movies and episodes.
+            MediaSelectionMenu(controller: viewModel.mediaSelection) {
+                Image(systemName: "captions.bubble")
+                    .frame(width: Self.buttonSize, height: Self.buttonSize)
+                    .contentShape(.circle)
             }
+            .buttonStyle(.plain)
+            .largeContentControl(String(localized: "Audio and Subtitles"), systemImage: "captions.bubble")
+            .accessibilityIdentifier("player.mediaSelection")
 
             RoutePicker(player: viewModel.player)
                 .frame(width: Self.buttonSize, height: Self.buttonSize)

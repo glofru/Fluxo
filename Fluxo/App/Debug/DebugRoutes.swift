@@ -500,6 +500,65 @@ enum DebugRoutes {
             await context.wait(timeout: 20) { context.player.canSeek && context.player.timeline.duration > 0 }
             context.player.seek(toSeconds: max(0, context.player.timeline.duration - seconds))
         },
+        DebugRoute("audio-track:<name|number>", "Chooses an audio track of what plays, by name (\"Italian\") or number (1-based), as the Audio and Subtitles menu does.") { context, argument in
+            let tracks = context.player.mediaSelection
+            await context.wait(timeout: 15) { tracks.audioTracks.count > 1 }
+            guard let track = DebugRoutes.track(argument, in: tracks.audioTracks) else {
+                throw DebugRouteError.notFound("audio track", argument)
+            }
+            tracks.selectAudioTrack(track.id)
+            DebugRoutes.logTracks(tracks)
+        },
+        DebugRoute("subtitles:<automatic|off|file|name|number>", "Chooses the subtitles of what plays, as the Audio and Subtitles menu does.") { context, argument in
+            let tracks = context.player.mediaSelection
+            await context.wait(timeout: 15) { !tracks.subtitleTracks.isEmpty || tracks.externalSubtitles != nil }
+            switch argument.lowercased() {
+            case "automatic", "auto":
+                tracks.selectSubtitles(.automatic)
+            case "off":
+                tracks.selectSubtitles(.off)
+            case "file":
+                tracks.selectSubtitles(.external)
+            default:
+                guard let track = DebugRoutes.track(argument, in: tracks.subtitleTracks) else {
+                    throw DebugRouteError.notFound("subtitle track", argument)
+                }
+                tracks.selectSubtitles(.track(track.id))
+            }
+            DebugRoutes.logTracks(tracks)
+        },
+        DebugRoute("subtitle-file:<url>", "Loads a subtitle file (.srt / .vtt; a file or http URL, e.g. the test server's /subtitles/clip.srt) for what plays, as Load Subtitle File… does.") { context, argument in
+            guard let url = URL(string: argument), let scheme = url.scheme?.lowercased(), ["http", "https", "file"].contains(scheme) else {
+                throw DebugRouteError.invalidArgument("subtitle-file", argument)
+            }
+            let tracks = context.player.mediaSelection
+            await context.wait(timeout: 15) { tracks.allowsExternalSubtitles }
+            var file = url
+            if !url.isFileURL {
+                // The importer hands over a local file: download it first.
+                let (data, _) = try await URLSession.shared.data(from: url)
+                file = FileManager.default.temporaryDirectory.appendingPathComponent(url.lastPathComponent.isEmpty ? "subtitles.srt" : url.lastPathComponent)
+                try data.write(to: file, options: .atomic)
+            }
+            tracks.loadExternalSubtitles(from: file)
+            await context.wait(timeout: 5) { tracks.externalSubtitles != nil || tracks.externalSubtitleError != nil }
+            if let error = tracks.externalSubtitleError {
+                throw DebugRouteError.invalidArgument("subtitle-file", error)
+            }
+            DebugRoutes.logTracks(tracks)
+        },
+        DebugRoute("subtitle-offset:<seconds>", "Shifts a loaded subtitle file (positive: later), as Subtitle Timing does.") { context, argument in
+            guard let seconds = Double(argument) else {
+                throw DebugRouteError.invalidArgument("subtitle-offset", argument)
+            }
+            let tracks = context.player.mediaSelection
+            tracks.adjustExternalSubtitleOffset(by: seconds - tracks.externalSubtitleOffset)
+        },
+        DebugRoute("tracks-log", "Logs the audio tracks and subtitles of what plays and the choices (in app.log).") { context, _ in
+            let tracks = context.player.mediaSelection
+            await context.wait(timeout: 15) { tracks.hasChoices }
+            DebugRoutes.logTracks(tracks)
+        },
         DebugRoute("wait:<seconds>", "Waits before the next route.") { _, argument in
             guard let seconds = Double(argument), seconds >= 0 else {
                 throw DebugRouteError.invalidArgument("wait", argument)
@@ -510,6 +569,22 @@ enum DebugRoutes {
             DebugLaunchOptions.logger.notice("\(DebugRoutes.helpText, privacy: .public)")
         },
     ] + DebugIntentRoutes.all + DebugDownloadRoutes.all
+
+    /// A track by number (1-based) or by name (exact, then contained), for the track routes.
+    static func track(_ argument: String, in tracks: [MediaSelectionController.Track]) -> MediaSelectionController.Track? {
+        if let number = Int(argument), tracks.indices.contains(number - 1) {
+            return tracks[number - 1]
+        }
+        return tracks.first { $0.title.caseInsensitiveCompare(argument) == .orderedSame }
+            ?? tracks.first { $0.menuTitle.localizedCaseInsensitiveContains(argument) }
+    }
+
+    static func logTracks(_ tracks: MediaSelectionController) {
+        let audio = tracks.audioTracks.map { "\($0.id == tracks.selectedAudioTrack ? "*" : "")\($0.menuTitle)" }.joined(separator: ", ")
+        let subtitles = tracks.subtitleTracks.map(\.menuTitle).joined(separator: ", ")
+        let file = tracks.externalSubtitles.map { "\($0.fileName) (\($0.file.cues.count) cues)" } ?? "-"
+        DebugLaunchOptions.logger.notice("Tracks: audio [\(audio, privacy: .public)] subtitles [\(subtitles, privacy: .public)] choice \(String(describing: tracks.subtitleChoice), privacy: .public) file \(file, privacy: .public) cast \(tracks.isShowingCastTracks, privacy: .public)")
+    }
 
     /// The route registered under the name of `step` ("name" or "name:argument").
     static func resolve(_ step: String) -> (DebugRoute, String)? {

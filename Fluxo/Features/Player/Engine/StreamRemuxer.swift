@@ -38,6 +38,11 @@ final class StreamRemuxer {
         var segmentCount: Int = 0
         var duration: TimeInterval = 0
         var bytes: Int64 = 0
+        /// The input has extra audio tracks or text subtitles: the engine wrote a master playlist
+        /// (`Configuration.masterPlaylistURL`) with them as renditions, and the player should open it.
+        var hasMasterPlaylist = false
+        var audioTrackCount = 0
+        var subtitleTrackCount = 0
     }
 
     struct RecordingProgress: Equatable {
@@ -101,6 +106,15 @@ final class StreamRemuxer {
 
         var playlistURL: URL {
             outputDirectory.appendingPathComponent(playlistFileName)
+        }
+
+        /// The master playlist, written only when the input has several audio tracks or text subtitles.
+        var masterPlaylistFileName: String {
+            "\(filePrefix)-master.m3u8"
+        }
+
+        var masterPlaylistURL: URL {
+            outputDirectory.appendingPathComponent(masterPlaylistFileName)
         }
 
         var segmentPathPrefix: String {
@@ -278,26 +292,31 @@ final class StreamRemuxer {
     private static func makeSession(_ configuration: Configuration, context: UnsafeMutableRawPointer) -> OpaquePointer? {
         let input = configuration.inputURL.isFileURL ? configuration.inputURL.path : configuration.inputURL.absoluteString
         let playlist = configuration.playlistURL.path
+        let master = configuration.masterPlaylistURL.path
         let prefix = configuration.segmentPathPrefix
         let userAgent = configuration.userAgent ?? ""
 
         return input.withCString { inputPointer in
             playlist.withCString { playlistPointer in
                 prefix.withCString { prefixPointer in
-                    userAgent.withCString { userAgentPointer in
-                        var config = FluxoRemuxConfig()
-                        config.input_url = inputPointer
-                        config.user_agent = userAgentPointer
-                        config.io_timeout_us = Int64(configuration.ioTimeout * 1_000_000)
-                        config.is_live = configuration.isLive ? 1 : 0
-                        config.max_reconnect_attempts = Int32(clamping: configuration.maxReconnectAttempts)
-                        config.hls.playlist_path = playlistPointer
-                        config.hls.segment_path_prefix = prefixPointer
-                        config.hls.segment_duration = configuration.segmentDuration
-                        config.hls.max_window_duration = configuration.maxWindowDuration
-                        config.hls.max_window_bytes = configuration.maxWindowBytes
-                        config.hls.min_window_segments = 3
-                        return fluxo_remux_create(&config, StreamRemuxer.engineCallback, context)
+                    master.withCString { masterPointer in
+                        userAgent.withCString { userAgentPointer in
+                            var config = FluxoRemuxConfig()
+                            config.input_url = inputPointer
+                            config.user_agent = userAgentPointer
+                            config.io_timeout_us = Int64(configuration.ioTimeout * 1_000_000)
+                            config.is_live = configuration.isLive ? 1 : 0
+                            config.max_reconnect_attempts = Int32(clamping: configuration.maxReconnectAttempts)
+                            config.hls.playlist_path = playlistPointer
+                            config.hls.segment_path_prefix = prefixPointer
+                            config.hls.segment_duration = configuration.segmentDuration
+                            config.hls.max_window_duration = configuration.maxWindowDuration
+                            config.hls.max_window_bytes = configuration.maxWindowBytes
+                            config.hls.min_window_segments = 3
+                            // Extra audio tracks and text subtitles become renditions of a master playlist.
+                            config.hls.master_playlist_path = masterPointer
+                            return fluxo_remux_create(&config, StreamRemuxer.engineCallback, context)
+                        }
                     }
                 }
             }
@@ -371,7 +390,10 @@ private struct EngineEvent {
             segmentsWritten: Int(event.segments_written),
             segmentCount: Int(event.window_segment_count),
             duration: event.window_duration,
-            bytes: event.window_bytes
+            bytes: event.window_bytes,
+            hasMasterPlaylist: event.master_playlist_written != 0,
+            audioTrackCount: Int(event.audio_rendition_count),
+            subtitleTrackCount: Int(event.subtitle_rendition_count)
         )
         recordingPath = event.recording_path.map { String(cString: $0) }
         recordingDuration = event.recording_duration

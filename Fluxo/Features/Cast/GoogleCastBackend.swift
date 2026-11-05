@@ -103,6 +103,8 @@ final class GoogleCastBackend: CastBackend {
         media.contentType = request.contentType
         media.streamType = request.streamType == .live ? .live : .buffered
         media.metadata = metadata
+        // Subtitles on the TV in the caption style chosen on this device (Accessibility > Subtitles & Captioning).
+        media.textTrackStyle = GCKMediaTextTrackStyle.createDefault()
 
         let load = GCKMediaLoadRequestDataBuilder()
         load.mediaInformation = media.build()
@@ -147,6 +149,10 @@ final class GoogleCastBackend: CastBackend {
 
     func setMuted(_ isMuted: Bool) {
         context.sessionManager.currentSession?.setDeviceMuted(isMuted)
+    }
+
+    func setActiveTracks(_ trackIDs: [Int]) {
+        _ = remoteMediaClient?.setActiveTrackIDs(trackIDs.map { NSNumber(value: $0) })
     }
 
     func approximatePosition() -> TimeInterval? {
@@ -290,8 +296,22 @@ final class GoogleCastBackend: CastBackend {
             positionDate: Date(),
             playbackRate: Double(status.playbackRate),
             canSeek: status.isMediaCommandSupported(kGCKMediaCommandSeek),
-            canPause: status.isMediaCommandSupported(kGCKMediaCommandPause)
+            canPause: status.isMediaCommandSupported(kGCKMediaCommandPause),
+            tracks: (information?.mediaTracks ?? []).compactMap(track),
+            activeTrackIDs: (status.activeTrackIDs ?? []).map(\.intValue)
         )
+    }
+
+    /// The audio and text tracks the receiver lists (video tracks are not a choice).
+    private static func track(_ track: GCKMediaTrack) -> CastTrack? {
+        switch track.type {
+        case .audio:
+            return CastTrack(id: track.identifier, kind: .audio, name: track.name, language: track.languageCode, isCaptions: false)
+        case .text where track.textSubtype == .subtitles || track.textSubtype == .captions || track.textSubtype == .unknown:
+            return CastTrack(id: track.identifier, kind: .text, name: track.name, language: track.languageCode, isCaptions: track.textSubtype == .captions)
+        default:
+            return nil
+        }
     }
 
     nonisolated fileprivate static func failure(for error: Error) -> CastFailure {

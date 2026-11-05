@@ -2086,6 +2086,9 @@
         }
       }
     },
+    "%@, subtitle file" : {
+      "comment" : "VoiceOver label of a loaded subtitle file in the player's Subtitles menu; the placeholder is its name."
+    },
     "%@. %@" : {
       "comment" : "VoiceOver announcement of a playback failure: the failure, then the reason.",
       "localizations" : {
@@ -10637,6 +10640,9 @@
         }
       }
     },
+    "Audio language" : {
+      "comment" : "Settings, Audio and Subtitles: the language the player starts with."
+    },
     "Audio: %@" : {
       "comment" : "VoiceOver value of the Audio and Subtitles button; the placeholder is the audio track name.",
       "localizations" : {
@@ -15246,6 +15252,12 @@
         }
       }
     },
+    "Channels, movies and episodes start with these languages when they have them; a track you choose in the player is remembered. Automatic follows your preferred languages and Settings > Accessibility > Subtitles & Captioning, which also sets the subtitle style." : {
+      "comment" : "Footer of the Audio and Subtitles settings on iPhone and iPad."
+    },
+    "Channels, movies and episodes start with these languages when they have them; a track you choose in the player is remembered. Automatic follows your preferred languages and the Captions settings in System Settings > Accessibility, which also set the subtitle style." : {
+      "comment" : "Footer of the Audio and Subtitles settings on the Mac."
+    },
     "Channels, movies and series" : {
       "comment" : "Search field placeholder — Search screen.",
       "localizations" : {
@@ -18597,6 +18609,9 @@
           }
         }
       }
+    },
+    "Couldn't Load the Subtitles" : {
+      "comment" : "Title of the alert when a subtitle file the user picked cannot be loaded."
     },
     "Couldn't connect to the Cast device." : {
       "comment" : "Cast: shown when connecting to or playing on a Chromecast fails for a reason that has no specific message.",
@@ -33043,6 +33058,9 @@
         }
       }
     },
+    "Load Subtitle File…" : {
+      "comment" : "Player's Audio and Subtitles menu: opens Files to pick a subtitle file (.srt or .vtt)."
+    },
     "Loading the TV guide…" : {
       "comment" : "Text — TV guide.",
       "localizations" : {
@@ -39013,6 +39031,9 @@
           }
         }
       }
+    },
+    "Not enough free space to play this file." : {
+      "comment" : "Player error: playing a movie or an episode file needs disk space for a temporary copy, and the device is almost full."
     },
     "Not enough free space to play this recording." : {
       "comment" : "Player error: playing a recorded file needs disk space for a temporary copy.",
@@ -53423,6 +53444,9 @@
       }
     },
     "Removes a channel from your favorites. Nothing changes if it is not one." : {},
+    "Reset (%@)" : {
+      "comment" : "Player's Subtitle Timing menu: removes the shift of a subtitle file; the placeholder is the shift, as in '+1.5 s'."
+    },
     "Results" : {
       "comment" : "Section header: search results.",
       "localizations" : {
@@ -59148,6 +59172,12 @@
         }
       }
     },
+    "Show Earlier" : {
+      "comment" : "Player's Subtitle Timing menu: shows the lines of a subtitle file half a second earlier."
+    },
+    "Show Later" : {
+      "comment" : "Player's Subtitle Timing menu: shows the lines of a subtitle file half a second later."
+    },
     "Show Player" : {
       "comment" : "Button — menu bar and keyboard commands.",
       "localizations" : {
@@ -64831,6 +64861,9 @@
         }
       }
     },
+    "Subtitle Timing" : {
+      "comment" : "Section title of the player's Audio and Subtitles menu: shifts a subtitle file in time."
+    },
     "Subtitles" : {
       "comment" : "Section of the Audio and Subtitles menu: subtitle tracks.",
       "localizations" : {
@@ -67781,6 +67814,12 @@
           }
         }
       }
+    },
+    "The file has no subtitles Fluxo can read. Use a SubRip (.srt) or WebVTT (.vtt) file." : {
+      "comment" : "Error when loading a subtitle file that has no subtitle lines."
+    },
+    "The file isn't a text subtitle file." : {
+      "comment" : "Error when loading a subtitle file: its text cannot be read."
     },
     "The guide file is damaged (zlib error %d)." : {
       "comment" : "Text — TV guide import. The placeholder is a number (code).",

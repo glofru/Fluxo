@@ -50,6 +50,8 @@ protocol CastBackend: AnyObject {
     func setMuted(_ isMuted: Bool)
     /// The receiver's position now, when media is loaded.
     func approximatePosition() -> TimeInterval?
+    /// Plays the audio track and shows the text track of `trackIDs` (an empty list turns subtitles off).
+    func setActiveTracks(_ trackIDs: [Int])
 }
 
 @MainActor
@@ -277,6 +279,11 @@ final class CastController {
     func setMuted(_ isMuted: Bool) {
         self.isMuted = isMuted
         backend?.setMuted(isMuted)
+    }
+
+    /// Changes the audio and text tracks the receiver plays (see `CastMediaStatus.tracks`).
+    func setActiveTracks(_ trackIDs: [Int]) {
+        backend?.setActiveTracks(trackIDs)
     }
 
     // MARK: - Debug
