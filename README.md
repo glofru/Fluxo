@@ -149,13 +149,63 @@ Tools/PlaylistBenchmark/run.sh             # ENTRIES=20000 for a quicker run
   about 5 ms (50 ms for a typo search), 250 ms after the last keystroke. Only the best 150 channels
   and 20 groups are fetched from the store.
 - **Library** (`Features/Library/LibraryView.swift`, iOS): the tab with what the user keeps. A first section links
-  to Favorites (with their count) and Recently Watched (with the last thing watched), then the recordings are
-  listed in place (play, share, delete; Delete All in the More menu); offline downloads get a section of their
-  own between the two. Library replaced the Favorites tab: Favorites already lead Home (a row with See All), so
-  a tab repeated Home, while the recordings were only reachable from a Home toolbar button or the player's menu.
-- **macOS** uses a sidebar (Home, TV Guide, Search, a Library section with Favorites, Recently Watched and
-  Recordings, and each playlist) and a Settings window (Cmd-,). iPhone uses tabs; iPad uses a sidebar-adaptable
+  to Favorites (with their count) and Recently Watched (with the last thing watched), then the offline downloads
+  (see "Offline downloads"), then the recordings are listed in place (play, share, delete; Delete All in the More
+  menu). Library replaced the Favorites tab: Favorites already lead Home (a row with See All), so a tab repeated Home,
+  while the recordings were only reachable from a Home toolbar button or the player's menu.
+- **macOS** uses a sidebar (Home, TV Guide, Search, a Library section with Favorites, Recently Watched, Downloads
+  and Recordings, and each playlist) and a Settings window (Cmd-,). iPhone uses tabs; iPad uses a sidebar-adaptable
   tab view (see "iPad" below).
+
+## Offline downloads
+
+Movies and episodes (never live channels) download to watch without a network (`Features/Downloads`).
+
+- **Where**: Download in every movie and episode menu (cards, rows, the series page), a download button on each
+  episode of a series page, and Download Season above its episodes (a tap downloads the episodes not downloaded yet;
+  its menu pauses or deletes the season). Cards and rows show a downloaded arrow, or a progress ring while it
+  downloads; series cards how many episodes are downloaded.
+- **How** (`DownloadProbe`, `DownloadTransport`): the first 4 KB of the link are read (a ranged request) and the
+  content is recognized by its signature, then its type and extension, since IPTV links are often extensionless:
+  - HLS goes through `AVAssetDownloadURLSession` with an `AVAssetDownloadConfiguration`: the variant of the Video
+    Quality setting (Best, up to 1080p, 720p or 480p; the size is estimated from its bit rate and the duration), the
+    audio renditions in the user's languages and every subtitle, so Audio and Subtitles still switch offline (the
+    player's menu lists only what was downloaded, `AVAssetCache`). The `.movpkg` stays where AVFoundation puts it,
+    stored relative to the home folder (the container moves with updates), with the `important` storage priority.
+  - MP4 / MOV / M4V / MP3 / AAC download as they are in a background `URLSession`.
+  - What AVPlayer cannot play (Matroska / WebM, MPEG-TS, FLV, MPEG-PS) downloads the same way, then the remux engine
+    copies it into an MP4 (`fluxo_remux_convert_file`, no re-encoding; video and audio, not the subtitles), so it plays
+    and seeks like any file. AVI is refused (the bundled FFmpeg has no AVI demuxer), as are links that return a web
+    page.
+- **Queue**: two transfers at a time, the others wait in order; pause (file transfers keep resume data and continue
+  where they stopped, HLS tasks are suspended), resume, cancel, retry, delete; Pause All / Resume All. Network failures
+  are retried three times from where they stopped, and again when the network returns; a refused or vanished link
+  (401, 403, 404, 410: expired tokens or credentials) is looked up again in the current copy of the playlist before it
+  fails. The free space is checked first (the size, twice it for a file that is converted, plus 500 MB).
+- **In the background**: the transfers run in background sessions, so they continue while the app is suspended or
+  terminated; iOS relaunches the app to deliver their results (`backgroundTask(.urlSession(matching:))`) and the
+  transfers that survived a relaunch are adopted at launch. An interrupted conversion starts again at the next launch.
+- **Settings › Downloads**: Use Cellular Data (off by default; each kind of transfer has a session that may and one
+  that may not use cellular data, and running transfers move when it changes), Video Quality, Delete Watched Downloads
+  (a download played to the end is deleted once something else plays), Download Next Episode (finishing a downloaded
+  episode downloads the next one), the space used and Delete All Downloads.
+- **Offline playback**: a download is keyed like a bookmark (playlist + stream URL), so a downloaded movie or episode
+  plays from its file wherever it is started (a card, Continue Watching, the series page, Siri), with its resume
+  position, watched state and series progress; Chromecast still gets the stream URL.
+- **Library**: Downloading (progress, size, time left, "Waiting for Wi-Fi" or "Waiting for a network connection"),
+  then the downloads: movies one per row, a series as one row with its episodes behind it (by season), the first five
+  with See All. Each keeps its artwork (shown offline), size, duration, quality and languages. The Mac sidebar has a
+  Downloads entry. A download whose media the system removed (storage pressure) says so and offers Download Again.
+- **Offline**: `NetworkMonitor` (`NWPathMonitor`) knows when the device has no network at all. Home then says "You're
+  Offline" with the downloads first, the player says at once that something that is not downloaded needs a connection
+  (and starts it when the network returns) instead of spinning until a timeout, and the TV guide refreshes wait for the
+  network. Everything else (playlists, guide, artwork in the logo cache) comes from the device.
+- **Storage**: files in `Application Support/Downloads/<id>/` (excluded from device backups: they can be downloaded
+  again), the manifest in `Downloads/downloads.json` (not SwiftData: it describes files and must survive a reset of
+  the library store). Downloads are deleted with their playlist.
+- **Simulator**: background HLS downloads need a signed app (an unsigned build fails with "does not have write access
+  to destination directory"); `Tools/Simulator/build.sh` builds unsigned, so build the simulator app with
+  `CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual` to try them. See the download routes in `Tools/Simulator/README.md`.
 
 ## Series
 

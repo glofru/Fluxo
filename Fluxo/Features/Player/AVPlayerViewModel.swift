@@ -149,7 +149,22 @@ final class AVPlayerViewModel {
     private(set) var currentChannel: PlayableChannel?
     /// The playlist entry being played, when it was started from a card, a row or by zapping (not for
     /// recordings). Channel up / down moves within its group.
-    private(set) var currentItem: ChannelItem?
+    private(set) var currentItem: ChannelItem? {
+        didSet {
+            if oldValue?.bookmarkKey != currentItem?.bookmarkKey {
+                // Watched downloads are deleted once they no longer play ("Delete Watched Downloads").
+                downloads?.playbackDidChange()
+            }
+        }
+    }
+    /// The current item plays from its offline download (a local file), not from the network.
+    private(set) var isPlayingDownload = false
+
+    /// The current channel looks like a live stream (an extensionless link). Never for a download: whatever the
+    /// link looks like, its file is on-demand media.
+    var isCurrentChannelLiveContent: Bool {
+        !isPlayingDownload && currentChannel?.isLiveContent == true
+    }
     private(set) var playbackState: PlaybackState = .idle
     /// Last error reported by the stream engine or AVPlayer for the current channel.
     private(set) var streamError: String?
@@ -190,6 +205,13 @@ final class AVPlayerViewModel {
     /// Finds the previous / next channel of the current group. Set by the app once the store is open.
     @ObservationIgnored
     var zapper: ChannelZapper?
+
+    /// Offline downloads: a downloaded movie or episode plays from its local file. Set by the app.
+    @ObservationIgnored
+    var downloads: DownloadCenter?
+
+    /// The current channel could not start because the device is offline: it starts when the network returns.
+    private(set) var isWaitingForNetwork = false
 
     private let server = SimpleHTTPServer()
     private let nowPlaying = NowPlayingController()
@@ -273,6 +295,13 @@ final class AVPlayerViewModel {
         self.cast.onEvent = { [weak self] event in
             self?.handleCast(event)
         }
+        NetworkMonitor.shared.addObserver { [weak self] online in
+            guard let self, online, self.isWaitingForNetwork, self.currentChannel != nil else {
+                return
+            }
+            // Back online: the channel that could not start offline starts now.
+            self.retry()
+        }
     }
 
     private static var didRemoveLeftoverSegments = false
@@ -324,13 +353,29 @@ final class AVPlayerViewModel {
             castChannel(channel)
             return
         }
-        guard let url = channel.url else {
+        guard let url = playbackURL(for: channel) else {
             currentChannel = channel
             streamError = String(localized: "This channel has no valid stream URL.", comment: "Player error: the playlist entry has no usable address.")
             refreshPlaybackState()
             return
         }
         start(channel, url: url)
+    }
+
+    /// Where `channel` plays from: its offline download when the current item has one, else its stream.
+    private func playbackURL(for channel: PlayableChannel) -> URL? {
+        if let item = currentItem, item.id == channel.id, item.url == channel.url, let local = downloads?.localPlaybackURL(for: item) {
+            return local
+        }
+        return channel.url
+    }
+
+    /// Stops playback when the current item plays from its download, which is about to be deleted.
+    func stopIfPlayingDownload() {
+        guard isPlayingDownload else {
+            return
+        }
+        stop()
     }
 
     func playRecording(_ recording: Recording) {
@@ -346,7 +391,7 @@ final class AVPlayerViewModel {
             castCurrentChannel(startTime: isCasting ? castResumePosition : nil)
             return
         }
-        guard let channel = currentChannel, let url = channel.url else {
+        guard let channel = currentChannel, let url = playbackURL(for: channel) else {
             return
         }
         start(channel, url: url)
@@ -656,6 +701,18 @@ final class AVPlayerViewModel {
         currentChannel = channel
         streamError = nil
         recordingError = nil
+        isPlayingDownload = url.isFileURL && currentItem?.id == channel.id && currentItem?.url != nil && channel.url != url
+        isWaitingForNetwork = false
+        if NetworkMonitor.shared.isOffline, !NetworkMonitor.isReachableOffline(url) {
+            // Say so at once instead of waiting for the stream to time out (or the engine to give up reconnecting);
+            // it starts by itself when the network returns.
+            isWaitingForNetwork = true
+            streamError = currentItem?.kind == .live || currentItem == nil
+                ? String(localized: "You're offline. This plays when your device is connected to the internet again.", comment: "Player error: the device has no network connection; a live channel or stream cannot start.")
+                : String(localized: "You're offline. Connect to the internet to watch this, or download it to watch it offline.", comment: "Player error: the device has no network connection and this movie or episode is not downloaded.")
+            refreshPlaybackState()
+            return
+        }
         route = PlaybackRoute(url: url)
         surface.startsPictureInPictureAutomatically = PlayerPreferences.autoPictureInPicture
         activateAudioSession()

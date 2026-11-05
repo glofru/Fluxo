@@ -48,6 +48,8 @@ struct ContentView: View {
                     // that is playing through Siri and Apple Intelligence.
                     .appEntityIdentifier(viewModel.currentItem.flatMap(ChannelEntity.entityIdentifier(for:)))
             }
+            // A download that could not start (no space, not a video).
+            .downloadNotices()
             // The Copy Link confirmation, over the app and the player.
             .linkCopyFeedbackHost(colorScheme: coordinator.shows(.player, in: windowID, isActive: viewModel.isPresented) ? .dark : nil)
             .windowPresentation(.player, isActive: viewModel.isPresented)
@@ -309,7 +311,7 @@ struct PlayerBottomAccessory: View {
     }
 
     private var isLive: Bool {
-        viewModel.isTimeShiftAvailable || viewModel.currentChannel?.isLiveContent == true
+        viewModel.isTimeShiftAvailable || viewModel.isCurrentChannelLiveContent
     }
 
     private var isPaused: Bool {

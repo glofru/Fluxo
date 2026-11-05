@@ -72,6 +72,9 @@ final class EPGStore {
 
     let reminders: ReminderCenter
 
+    /// Waits for the network to refresh the stale guides (see `refreshStaleSources()`).
+    @ObservationIgnored
+    private var networkObserver: UUID?
     @ObservationIgnored
     private let container: ModelContainer
     @ObservationIgnored
@@ -279,6 +282,21 @@ final class EPGStore {
     }
 
     func refreshStaleSources() {
+        guard NetworkMonitor.shared.isOnline else {
+            // Offline a refresh can only fail: the guide on disk stays, and the stale sources refresh once the
+            // network returns.
+            if networkObserver == nil {
+                networkObserver = NetworkMonitor.shared.addObserver { [weak self] online in
+                    guard online, let self, let token = self.networkObserver else {
+                        return
+                    }
+                    NetworkMonitor.shared.removeObserver(token)
+                    self.networkObserver = nil
+                    self.refreshStaleSources()
+                }
+            }
+            return
+        }
         enqueue(staleSourceIDs(), reportingFailures: false)
     }
 

@@ -157,6 +157,8 @@ final class DebugEnvironment: @unchecked Sendable {
     /// nil for the in-memory store.
     let storeURL: URL?
     let recordingsDirectory: URL
+    /// Offline downloads (their manifest and files; HLS packages stay where AVFoundation puts them).
+    let downloadsDirectory: URL
     /// Generated M3U files of `-FluxoDebugSeed`.
     let seedDirectory: URL
     let userDefaults: UserDefaults
@@ -183,6 +185,7 @@ final class DebugEnvironment: @unchecked Sendable {
         self.mode = mode
         storeURL = mode == .memory ? nil : root.appendingPathComponent("Fluxo.store")
         recordingsDirectory = root.appendingPathComponent("Recordings", isDirectory: true)
+        downloadsDirectory = root.appendingPathComponent("Downloads", isDirectory: true)
         seedDirectory = root.appendingPathComponent("Seed", isDirectory: true)
         try? fileManager.createDirectory(at: recordingsDirectory, withIntermediateDirectories: true)
         try? fileManager.createDirectory(at: seedDirectory, withIntermediateDirectories: true)

@@ -198,6 +198,13 @@ enum DebugSeedCatalog {
             ("Test Clip (MPEG-TS)", "\(base)/movie/clip.ts"),
             // Two audio renditions (one an audio description) and two subtitle renditions (one SDH).
             ("Test Clip (Audio and Subtitles)", "\(base)/tracks/master.m3u8"),
+            // Matroska (AVPlayer cannot play it; a download converts it into MP4), named and extensionless.
+            ("Test Clip (Matroska)", "\(base)/movie/clip.mkv"),
+            ("Test Clip (Xtream)", "\(base)/movie/play/42"),
+            // The HLS with audio and subtitle renditions at a movie path: a movie, so it can be downloaded.
+            ("Test Movie (HLS)", "\(base)/movie/tracks/master.m3u8"),
+            // Sent slowly, so a download shows its progress.
+            ("Test Clip (Slow Download)", "\(base)/movie/slow.mp4"),
         ]
         for (name, url) in onDemand {
             playlist.entries.append(.init(name: name, group: "Test On Demand", url: url, logo: DebugArtwork.poster(title: name, subtitle: "Loopback")))
@@ -208,6 +215,8 @@ enum DebugSeedCatalog {
             let name = "Test Series S01E0\(episode) - \(episode == 1 ? "Countdown" : "Encore")"
             playlist.entries.append(.init(name: name, group: "Test Series", url: "\(base)/movie/clip.mp4?episode=\(episode)", logo: DebugArtwork.poster(title: "Test Series", subtitle: "Loopback")))
         }
+        // A third episode served slowly, so its download shows its progress on the series page.
+        playlist.entries.append(.init(name: "Test Series S01E03 - Slow Motion", group: "Test Series", url: "\(base)/movie/clip.mp4?episode=3&slow=1", logo: DebugArtwork.poster(title: "Test Series", subtitle: "Loopback")))
         return playlist
     }
 

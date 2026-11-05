@@ -104,6 +104,7 @@ private struct PlaylistManagementPresenter: ViewModifier {
     @Environment(PlaylistActions.self) private var actions
     @Environment(PlaylistImportCenter.self) private var importCenter
     @Environment(ChannelLibrary.self) private var library
+    @Environment(DownloadCenter.self) private var downloads: DownloadCenter?
     /// With several windows (iPad), each sheet and alert shows in one of them (see `WindowCoordinator`).
     @Environment(WindowCoordinator.self) private var coordinator: WindowCoordinator?
     @Environment(\.windowID) private var windowID
@@ -134,13 +135,21 @@ private struct PlaylistManagementPresenter: ViewModifier {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: { playlist in
-                Text("“\(playlist.name)” and its \(playlist.channelCount) channels, favorites and watch history will be removed from this device.", comment: "Message of the Delete Playlist alert; the placeholders are the playlist name and its number of channels.")
+                // Its offline downloads go with it (`DownloadCenter.playlistWasDeleted`): said, when it has some.
+                hasDownloads(playlist)
+                    ? Text("“\(playlist.name)” and its \(playlist.channelCount) channels, favorites, watch history and downloads will be removed from this device.", comment: "Message of the Delete Playlist alert when movies or episodes of the playlist are downloaded; the placeholders are the playlist name and its number of channels.")
+                    : Text("“\(playlist.name)” and its \(playlist.channelCount) channels, favorites and watch history will be removed from this device.", comment: "Message of the Delete Playlist alert; the placeholders are the playlist name and its number of channels.")
             }
             .alert("Playlist Error", isPresented: failureAlertBinding, presenting: importCenter.failure) { _ in
                 Button("OK", role: .cancel) {}
             } message: { failure in
                 Text("\(failure.playlistName): \(failure.message)")
             }
+    }
+
+    private func hasDownloads(_ playlist: Playlist) -> Bool {
+        let uuid = playlist.uuid
+        return downloads?.records.contains { $0.item.playlistID == uuid } ?? false
     }
 
     private func delete(_ playlist: Playlist) {

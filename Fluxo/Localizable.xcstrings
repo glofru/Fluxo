@@ -3916,6 +3916,85 @@
         }
       }
     },
+    "%lld downloads" : {
+      "comment" : "Footer of the downloads list: how many movies and episodes are downloaded, followed by their size and the free space.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld download"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld downloads"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld downloads (%@) will be deleted from this device." : {
+      "comment" : "Message of the confirmation to delete every download; the placeholders are their number and size.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$#@downloads@ (%2$@) will be deleted from this device."
+          },
+          "substitutions" : {
+            "downloads" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg download"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg downloads"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld downloads added" : {
+      "comment" : "VoiceOver announcement: several episodes were added to the downloads; the placeholder is their number.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld download added"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld downloads added"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%lld episodes" : {
       "comment" : "A number of episodes, on the card of a series category.",
       "localizations" : {
@@ -4268,6 +4347,29 @@
                 "stringUnit" : {
                   "state" : "translated",
                   "value" : "%lld 集"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld episodes downloaded" : {
+      "comment" : "VoiceOver and the downloads of a series: how many episodes of a series are on the device; the placeholder is a number.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld episode downloaded"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld episodes downloaded"
                 }
               }
             }
@@ -19002,6 +19104,52 @@
         }
       }
     },
+    "Delete %lld Downloads" : {
+      "comment" : "Confirmation button: deletes several downloads; the placeholder is their number.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Delete %lld Download"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Delete %lld Downloads"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Delete %lld Downloads?" : {
+      "comment" : "Title of the confirmation to delete several downloads; the placeholder is their number.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Delete %lld Download?"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Delete %lld Downloads?"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "Delete All" : {
       "comment" : "Button — recordings, Reminders screen.",
       "localizations" : {
@@ -20715,6 +20863,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "完成"
+          }
+        }
+      }
+    },
+    "Download %lld Episodes" : {
+      "comment" : "Menu item of a season: downloads the episodes that are not downloaded yet; the placeholder is their number.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Download %lld Episode"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Download %lld Episodes"
+                }
+              }
+            }
           }
         }
       }

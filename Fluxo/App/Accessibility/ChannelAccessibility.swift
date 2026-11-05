@@ -159,6 +159,8 @@ private struct ChannelAccessibilityActions: ViewModifier {
                         playChannel(item)
                     }
                 }
+                // Download, Pause, Resume, Delete Download of movies and episodes.
+                DownloadMenuItems(item: item)
                 // Announces "Link copied" (and the credentials warning) itself.
                 if let link = StreamLink(item.url) {
                     Button("Copy Link") {

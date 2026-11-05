@@ -164,6 +164,14 @@ first that contains the text.
 | `orientation:<portrait\|landscape>` | Asks the scene to rotate (iPhone; iPadOS refuses it in windowed modes, use `testLayoutScreenshots` below). |
 | `side-panel:<channels\|guide\|off>` | Shows the player's side panel (wide players) on a tab, or hides it. |
 | `new-window:<channel>` | Opens a channel in a player window of its own (iPad); logs the number of connected scenes. |
+| `download:<channel>`, `download-season:<series>[,<season>]` | Downloads a movie or episode, or the episodes of a season, like their Download actions. |
+| `download-wait[:<seconds>]`, `download-progress:<fraction>` | Waits until no download is queued, downloading or converting (90 s at most); until every running download reached a fraction of its size (60 s at most). |
+| `pause-download:<channel>`, `resume-download:<channel>`, `delete-download:<channel>`, `delete-downloads` | Pauses, resumes (or retries), deletes a download; deletes every download. |
+| `downloads`, `downloads-all`, `downloaded-series:<title>` | The downloads in the Library tab (the Downloads item on macOS); every download on its own screen; the downloaded episodes of a series. |
+| `play-download:<channel>` | Plays a completed download full screen and appends where it plays from to `Status/downloads.log`. |
+| `downloads-log` | Appends every download (state, method, sizes, quality, languages, file, failure) to `Status/downloads.log`. |
+| `offline:<on\|off\|system>` | Pretends the device is offline (Home's offline section, the player's offline error), online, or follows the system; `-FluxoDebugOffline YES` does it from launch. Loopback URLs still play offline. |
+| `settings-section:downloads` | Settings, scrolled to its Downloads section (iOS). |
 | `wait:<seconds>` | Waits before the next route. |
 | `intent:<action>[:<words>]` | Runs an App Intent in the app as Siri and Shortcuts do, its channel or programme parameter resolved from the words through the entity query (`ChannelEntityQuery.entities(matching:)`). Actions: `play`, `play-name`, `continue`, `pause`, `resume`, `stop`, `whats-on`, `search-guide`, `find`, `search`, `suggestions`, `favorites`, `favorite-add`, `favorite-remove`, `schedule`, `open` (`home`, `guide`, `search`, `favorites`, `history`, `recordings`, `library`), `record-start`, `record-stop`, `reminder`. Each run appends the dialog, the returned value and the player state to `Status/intents.log`. |
 | `siri-resolve:<words>` | Resolves spoken words to a channel like "Play … in Fluxo" (`AppServices.resolveChannel`), with the reason (name, programme, number, closest). |
@@ -212,7 +220,10 @@ generated M3U files, then gets favorites, a watch history and three recordings:
   three seasons.
 - **Loopback Test**: "Test Pattern (HLS)", "Test Pattern (MPEG-TS)", "Test Clip (MP4)", "Test Clip (Audio and Subtitles)", "Test Clip
   (MPEG-TS)" (the streams of `test-stream.sh`), "Unreachable Channel" (fails at once), and "Test Series" (two
-  playable 60 s episodes, for the player's next-episode card: `player:Test Series S01E01;wait:62`).
+  playable 60 s episodes, for the player's next-episode card: `player:Test Series S01E01;wait:62`, and a third one
+  served slowly, so its download shows its progress). For the downloads: "Test Clip (Matroska)" and "Test Clip
+  (Xtream)" (the Matroska clip, named and at an extensionless path: downloads convert it into MP4), "Test Movie (HLS)"
+  (the HLS with audio and subtitle renditions at a movie path) and "Test Clip (Slow Download)" (about 300 KB/s).
 
 Live channels have iptv-org style `tvg-id`s (`SkySportF1.it`, `BBCOneHD.uk`). Logos and posters are
 drawn locally and stored as `data:image` URIs, in the styles real playlists use: filled, transparent,
@@ -236,7 +247,9 @@ It serves on `127.0.0.1:18080` only (`PORT=` changes the port; the address canno
 Simulator shares the Mac's loopback interface): `/playlist.m3u`, `/hls/live.m3u8` (live HLS with a 2
 minute window, played directly by AVPlayer), `/live/test-pattern` and `/live.ts` (live raw MPEG-TS
 through the remux engine, one real-time encoder per client, at most 4 at once, more get 503),
-`/movie/clip.mp4` and `/movie/clip.ts` (60 s on demand, with byte ranges), `/tracks/master.m3u8` (60 s on demand HLS with an English and an Italian audio rendition, the latter tagged as an audio description, and English SDH and Italian WebVTT subtitles: "Test Clip (Audio and Subtitles)"), and `/logo/<n>.png`,
+`/movie/clip.mp4` and `/movie/clip.ts` (60 s on demand, with byte ranges; `?slow=1` sends the MP4 at about 300
+KB/s, as does `/movie/slow.mp4`), `/movie/clip.mkv` and `/movie/play/42` (the clip as Matroska, named and
+extensionless), `/movie/tracks/…` (the HLS of `/tracks/` at a movie path), `/tracks/master.m3u8` (60 s on demand HLS with an English and an Italian audio rendition, the latter tagged as an audio description, and English SDH and Italian WebVTT subtitles: "Test Clip (Audio and Subtitles)"), and `/logo/<n>.png`,
 `/poster/<n>.png`. It needs `ffmpeg` (`/opt/homebrew/bin/ffmpeg`, or `FFMPEG=`), and `/usr/bin/python3`.
 The content is synthetic test patterns, so the loopback bind is its only protection; do not change it.
 

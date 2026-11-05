@@ -37,6 +37,8 @@ final class AppNavigation {
         case favorites
         case history
         case recordings
+        /// The offline downloads: listed in the Library tab (iOS); the Downloads item of the macOS sidebar.
+        case downloads
     }
 
     var tab: Tab = .home
@@ -115,6 +117,8 @@ final class AppNavigation {
             sidebarSelection = .favorites
         case .history:
             sidebarSelection = .history
+        case .downloads:
+            sidebarSelection = .downloads
         }
         homePath = NavigationPath()
         #else
@@ -127,8 +131,8 @@ final class AppNavigation {
         case .search:
             tab = .search
             searchPath = NavigationPath()
-        case .library, .recordings:
-            // The recordings are listed in the Library itself.
+        case .library, .recordings, .downloads:
+            // The recordings and the downloads are listed in the Library itself.
             tab = .library
             libraryPath = NavigationPath()
         case .favorites:

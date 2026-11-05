@@ -135,6 +135,10 @@ final class ChannelLibrary {
     /// Favorite series and what was watched of each (`SeriesLibrary`), kept up to date by this library.
     let series: SeriesLibrary
 
+    /// Called when a movie or episode was played to the end (offline downloads count it as watched).
+    @ObservationIgnored
+    var onFinishedWatching: ((ChannelItem) -> Void)?
+
     @ObservationIgnored
     private let context: ModelContext
 
@@ -229,6 +233,10 @@ final class ChannelLibrary {
         if finished, episode.series != nil, !series.isWatched(episode) {
             // An episode played to the end counts as watched ("Continue" moves on to the next one).
             series.setWatched(true, for: [episode])
+        }
+        if finished {
+            // Idempotent on the other side: the last saves of an item may all be past its end.
+            onFinishedWatching?(episode)
         }
         let newPosition = finished ? 0 : max(0, position)
         guard abs(bookmark.resumePosition - newPosition) >= 1 || bookmark.knownDuration != duration else {

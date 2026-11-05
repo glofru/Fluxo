@@ -35,6 +35,20 @@ struct SettingsView: View {
     }
 
     var body: some View {
+        ScrollViewReader { proxy in
+            form
+                #if DEBUG
+                // Debug harness (`settings-section:<name>`): scrolls to a section for screenshots.
+                .onReceive(NotificationCenter.default.publisher(for: .fluxoDebugSettingsSection)) { notification in
+                    if let section = notification.object as? String {
+                        proxy.scrollTo(section, anchor: .top)
+                    }
+                }
+                #endif
+        }
+    }
+
+    private var form: some View {
         Form {
             Section {
                 SettingsHeader(recordingCount: player.recordings.recordings.count)
@@ -46,6 +60,8 @@ struct SettingsView: View {
             GuideSettingsSection()
             IntelligenceSettingsSection()
             SiriSettingsSection()
+            DownloadSettingsSection()
+                .id("downloads")
             recordingsSection
             storageSection
             aboutSection
@@ -274,19 +290,27 @@ struct SettingsView: View {
 
 /// A settings row title with its symbol on a small colored tile, as in the system Settings.
 struct SettingsLabel: View {
-    let title: LocalizedStringKey
+    let title: Text
     let systemImage: String
     let tint: Color
 
     init(_ title: LocalizedStringKey, systemImage: String, tint: Color) {
-        self.title = title
+        self.title = Text(title)
+        self.systemImage = systemImage
+        self.tint = tint
+    }
+
+    /// A title localized already (`String(localized:)`). A distinct label, so string literals keep
+    /// resolving to the `LocalizedStringKey` initializer above and stay looked up in the catalog.
+    init(localized title: String, systemImage: String, tint: Color) {
+        self.title = Text(title)
         self.systemImage = systemImage
         self.tint = tint
     }
 
     var body: some View {
         Label {
-            Text(title)
+            title
         } icon: {
             Image(systemName: systemImage)
                 .font(.footnote.weight(.semibold))
@@ -397,3 +421,10 @@ private struct SettingsHeader: View {
     }
     .fluxoPreviewEnvironment()
 }
+
+#if DEBUG
+extension Notification.Name {
+    /// Debug harness: scrolls Settings to the section whose id is the object (`settings-section:downloads`).
+    static let fluxoDebugSettingsSection = Notification.Name("FluxoDebugSettingsSection")
+}
+#endif

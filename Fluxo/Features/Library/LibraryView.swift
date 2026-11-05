@@ -12,8 +12,8 @@
 //
 //  Layout: one `Section` per kind of saved content, each its own view, in this order:
 //    1. `LibraryShortcutsSection` (Favorites, Recently Watched),
-//    2. offline downloads, when they exist (a section of their own, inserted here: content the user chose to keep
-//       comes before what was recorded live),
+//    2. `LibraryDownloadsSections`, when there are downloads: the transfers in progress, then the downloaded
+//       movies and series (content the user chose to keep comes before what was recorded live),
 //    3. `LibraryRecordingsSection`.
 //  The More menu of the toolbar acts on the recordings.
 //
@@ -39,7 +39,8 @@ struct LibraryView: View {
         List {
             LibraryShortcutsSection()
 
-            // Offline downloads: a section of their own goes here, before the recordings.
+            // Offline downloads (the transfers in progress, then what is downloaded), before the recordings.
+            LibraryDownloadsSections()
 
             LibraryRecordingsSection(store: store, isRecordingActive: player.isRecording, prompts: $prompts) { recording in
                 player.playRecording(recording)

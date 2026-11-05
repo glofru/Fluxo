@@ -58,7 +58,9 @@ struct FeaturedCarousel: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// Series grouped at launch in a library imported before series existed: the picks are made again.
     @Environment(PlaylistImportCenter.self) private var importCenter
-    @State private var items: [ChannelItem] = []
+    @Environment(DownloadCenter.self) private var downloads: DownloadCenter?
+    /// The picks of the day, as loaded; `items` are those shown.
+    @State private var picks: [ChannelItem] = []
     @State private var currentID: UUID?
     /// Imports the current `items` were picked from; nil until the first load finishes.
     @State private var loadedImportIDs: [UUID]?
@@ -74,6 +76,26 @@ struct FeaturedCarousel: View {
     private struct SideInsets: Equatable {
         var leading: CGFloat = 0
         var trailing: CGFloat = 0
+    }
+
+    /// The picks shown: offline, only those that play without a network (downloaded, or a series with downloaded
+    /// episodes), so the top of Home never promotes something that cannot play.
+    private var items: [ChannelItem] {
+        guard NetworkMonitor.shared.isOffline else {
+            return picks
+        }
+        guard let downloads else {
+            return []
+        }
+        return picks.filter { item in
+            if let record = downloads.record(for: item), record.status == .completed, !record.isMissing {
+                return true
+            }
+            guard let series = item.series else {
+                return false
+            }
+            return downloads.records(ofSeries: item.playlistID, key: series.seriesKey).contains { $0.status == .completed && !$0.isMissing }
+        }
     }
 
     var body: some View {
@@ -93,12 +115,19 @@ struct FeaturedCarousel: View {
             guard !Task.isCancelled else {
                 return
             }
-            items = picks
+            self.picks = picks
             currentID = picks.first?.id
             loadedImportIDs = importIDs
         }
         .onChange(of: items.isEmpty, initial: true) { _, isEmpty in
             isShowingBillboard?.wrappedValue = !isEmpty
+        }
+        .onChange(of: items.map(\.id)) { _, ids in
+            // Offline (or back online) the shown pages change: the current one stays if it is still shown.
+            if let currentID, ids.contains(currentID) {
+                return
+            }
+            currentID = ids.first
         }
         .onGeometryChange(for: SideInsets.self) { proxy in
             SideInsets(leading: proxy.safeAreaInsets.leading, trailing: proxy.safeAreaInsets.trailing)

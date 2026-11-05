@@ -16,11 +16,12 @@ enum SidebarItem: Hashable {
     case favorites
     case history
     case recordings
+    case downloads
     case playlist(UUID)
 }
 
 /// macOS layout: a sidebar with Home, TV Guide and Search, a Library section (Favorites, Recently Watched,
-/// Recordings: the places of the iOS Library tab), and every playlist, and the selected screen as the detail.
+/// Downloads, Recordings: the places of the iOS Library tab), and every playlist, and the selected screen as the detail.
 /// Selecting a playlist shows Home filtered to it.
 struct MacRootView: View {
 
@@ -116,6 +117,11 @@ struct MacRootView: View {
             RecordingsView(store: player.recordings, isRecordingActive: player.isRecording, showsDoneButton: false) { recording in
                 player.playRecording(recording)
             }
+        case .downloads:
+            NavigationStack {
+                DownloadsView()
+                    .channelDestinations()
+            }
         }
     }
 }
@@ -156,6 +162,12 @@ private struct MacSidebar: View {
                     .favoritesDropDestination(library: library)
                 Label("Recently Watched", systemImage: "clock")
                     .tag(SidebarItem.history)
+                Label {
+                    Text(DownloadText.downloads)
+                } icon: {
+                    Image(systemName: "arrow.down.circle")
+                }
+                .tag(SidebarItem.downloads)
                 Label("Recordings", systemImage: "film.stack")
                     .tag(SidebarItem.recordings)
             } header: {

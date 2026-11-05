@@ -10,6 +10,10 @@ Serves on 127.0.0.1 only (never another interface; the simulator shares the Mac'
                        MAX_LIVE_CLIENTS at once (more get 503, so a retry loop cannot start many encoders)
   /movie/clip.mp4      a 60 s on-demand MP4 (byte ranges supported)
   /movie/clip.ts       the same clip as an on-demand MPEG-TS file
+  /movie/clip.mkv      the same clip as a Matroska file (AVPlayer cannot play it: downloads convert it to MP4)
+  /movie/play/42       the Matroska clip at an extensionless Xtream-style path (no type in the URL)
+  /movie/tracks/…      the HLS of /tracks/ at a movie path (a movie of an Xtream-style playlist), for downloads
+  /movie/slow.mp4      (or /movie/clip.mp4?slow=1) the MP4 clip sent at about 300 KB/s, so a download shows its progress, pause and resume
   /tracks/master.m3u8  a 60 s on-demand HLS with two audio renditions (English, Italiano: an audio description)
                        and two WebVTT subtitle renditions (English SDH, Italiano), for the player's Audio and
                        Subtitles menu
@@ -40,6 +44,7 @@ HOST = "127.0.0.1"
 MAX_LIVE_CLIENTS = 4
 
 CONTENT_TYPES = {
+    ".mkv": "video/x-matroska",
     ".m3u8": "application/vnd.apple.mpegurl",
     ".m3u": "audio/x-mpegurl",
     ".ts": "video/mp2t",
@@ -80,6 +85,7 @@ class Streams:
         self.hls_dir = os.path.join(work, "hls")
         self.clip_mp4 = os.path.join(work, "clip.mp4")
         self.clip_ts = os.path.join(work, "clip.ts")
+        self.clip_mkv = os.path.join(work, "clip.mkv")
         self.tracks_dir = os.path.join(work, "tracks")
         self.hls_process = None
         self.stopping = threading.Event()
@@ -92,6 +98,7 @@ class Streams:
 
     def prepare_clips(self):
         if os.path.exists(self.clip_mp4) and os.path.exists(self.clip_ts):
+            self.prepare_matroska()
             return
         log("generating the 60 s on-demand clips")
         subprocess.run(
@@ -104,6 +111,15 @@ class Streams:
         subprocess.run(
             [self.ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", self.clip_mp4,
              "-c", "copy", "-bsf:v", "h264_mp4toannexb", "-f", "mpegts", self.clip_ts],
+            check=True)
+        self.prepare_matroska()
+
+    def prepare_matroska(self):
+        if os.path.exists(self.clip_mkv):
+            return
+        subprocess.run(
+            [self.ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", self.clip_mp4,
+             "-c", "copy", "-f", "matroska", self.clip_mkv],
             check=True)
 
     def prepare_tracks(self):
@@ -253,8 +269,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_error(404)
                 return
             self.send_file(os.path.join(self.streams.hls_dir, name), send_body, cacheable=name.endswith(".ts"))
-        elif path.startswith("/tracks/"):
-            name = path[len("/tracks/"):]
+        elif path.startswith("/tracks/") or path.startswith("/movie/tracks/"):
+            name = path.split("/tracks/", 1)[1]
             # Only plain file names of the tracks directory.
             if not re.fullmatch(r"[A-Za-z0-9_-]+\.(m3u8|ts|vtt)", name):
                 self.send_error(404)
@@ -265,9 +281,15 @@ class Handler(BaseHTTPRequestHandler):
             size = (200, 120) if kind == "logo" else (240, 360)
             self.send_bytes(gradient_png(size[0], size[1], int(number)), "image/png", send_body, cache="max-age=3600")
         elif path == "/movie/clip.mp4":
-            self.send_file(self.streams.clip_mp4, send_body, cacheable=True)
+            # "?slow=1" sends it like /movie/slow.mp4 (a series episode whose download shows its progress).
+            slow = "slow=1" in (urlsplit(self.path).query or "")
+            self.send_file(self.streams.clip_mp4, send_body, cacheable=not slow, bytes_per_second=300 * 1024 if slow else None)
         elif path == "/movie/clip.ts":
             self.send_file(self.streams.clip_ts, send_body, cacheable=True)
+        elif path in ("/movie/clip.mkv", "/movie/play/42"):
+            self.send_file(self.streams.clip_mkv, send_body, cacheable=True)
+        elif path == "/movie/slow.mp4":
+            self.send_file(self.streams.clip_mp4, send_body, cacheable=False, bytes_per_second=300 * 1024)
         else:
             self.send_error(404)
 
@@ -311,7 +333,7 @@ class Handler(BaseHTTPRequestHandler):
             if process is not None:
                 self.streams.close_live_encoder(process)
 
-    def send_file(self, file_path, send_body, cacheable):
+    def send_file(self, file_path, send_body, cacheable, bytes_per_second=None):
         try:
             size = os.path.getsize(file_path)
             handle = open(file_path, "rb")
@@ -356,12 +378,15 @@ class Handler(BaseHTTPRequestHandler):
             handle.seek(start)
             remaining = length
             try:
+                chunk_size = min(256 * 1024, bytes_per_second // 4) if bytes_per_second else 256 * 1024
                 while remaining > 0:
-                    chunk = handle.read(min(256 * 1024, remaining))
+                    chunk = handle.read(min(chunk_size, remaining))
                     if not chunk:
                         break
                     self.wfile.write(chunk)
                     remaining -= len(chunk)
+                    if bytes_per_second:
+                        time.sleep(len(chunk) / bytes_per_second)
             except (BrokenPipeError, ConnectionResetError, TimeoutError):
                 pass
 

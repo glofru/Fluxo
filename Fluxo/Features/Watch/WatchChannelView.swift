@@ -869,6 +869,8 @@ private struct PlayerStatusBadges: View {
             busyBadge(String(localized: "Buffering…", comment: "Player status: waiting for media data."))
         case .reconnecting:
             PlayerBadge(text: viewModel.playbackState.label, systemImage: "wifi.exclamationmark", tint: Theme.warning)
+        case .failed where viewModel.isWaitingForNetwork:
+            PlayerBadge(text: String(localized: "Offline", comment: "Player status badge: the device has no network connection, so the stream waits for it."), systemImage: "wifi.slash", tint: Theme.warning)
         case .failed:
             PlayerBadge(text: String(localized: "Error", comment: "Player status badge: playback failed."), systemImage: "exclamationmark.triangle.fill", tint: Theme.error)
         case .ended:
@@ -892,7 +894,7 @@ private struct PlayerStatusBadges: View {
     }
 
     private var isLive: Bool {
-        viewModel.currentChannel?.isLiveContent == true || (timeline.duration == 0 && !viewModel.canSeek)
+        viewModel.isCurrentChannelLiveContent || (timeline.duration == 0 && !viewModel.canSeek)
     }
 
     private func busyBadge(_ text: String) -> some View {
@@ -1217,8 +1219,10 @@ private struct PlayerTransport: View {
                     .contentShape(.circle)
             }
             .buttonStyle(.plain)
-            .glassEffect(isPaused ? .regular.tint(Theme.accentFill).interactive() : .regular.interactive(), in: .circle)
+            .glassEffect(isPaused && !viewModel.isWaitingForNetwork ? .regular.tint(Theme.accentFill).interactive() : .regular.interactive(), in: .circle)
             .glassEffectID("transport.play", in: namespace)
+            // Offline, nothing can start until the network returns (it then starts by itself).
+            .disabled(viewModel.isWaitingForNetwork)
             .sensoryFeedback(.impact(weight: .light), trigger: playPauseTaps)
             .accessibilityLabel(isPaused ? "Play" : "Pause")
             .accessibilityInputLabels(isPaused ? [Text("Play"), Text("Resume")] : [Text("Pause")])
@@ -1416,6 +1420,21 @@ private struct PlayerStatusOverlay: View {
                 .padding(.vertical, 8)
                 .glassEffect(.regular, in: .capsule)
                 .allowsHitTesting(false)
+        case .failed(let message) where viewModel.isWaitingForNetwork:
+            // Not an error: it starts by itself when the network returns.
+            PlayerMessageCard(
+                systemImage: "wifi.slash",
+                tint: Theme.warning,
+                title: viewModel.currentItem?.kind == .live || viewModel.currentItem == nil
+                    ? String(localized: "Waiting for a Connection", comment: "Player message title: the device is offline; the live channel starts when the network returns.")
+                    : String(localized: "Not Available Offline", comment: "Player message title: the device is offline and this movie or episode is not downloaded."),
+                message: message
+            ) {
+                Button("Try Again", systemImage: "arrow.clockwise") {
+                    viewModel.retry()
+                }
+                .buttonStyle(.glass)
+            }
         case .failed(let message):
             PlayerMessageCard(
                 systemImage: "exclamationmark.triangle.fill",

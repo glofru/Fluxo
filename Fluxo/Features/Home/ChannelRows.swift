@@ -17,6 +17,10 @@ enum ChannelRoute: Hashable {
     case history(playlistIDs: [UUID]?)
     /// A series of a playlist (its visible import is looked up, so the route survives a refresh).
     case series(playlistID: UUID, key: String, title: String)
+    /// Every offline download (See All of the Library's downloads).
+    case downloads
+    /// The downloaded episodes of a series.
+    case downloadedSeries(playlistID: UUID, key: String, title: String)
 }
 
 extension View {
@@ -52,6 +56,11 @@ private struct ChannelDestinations: ViewModifier {
                     SeriesDetailView(playlistID: playlistID, seriesKey: key, title: title)
                         .id(route)
                         .zoomTransition(sourceID: route, in: namespace)
+                case .downloads:
+                    DownloadsView()
+                case let .downloadedSeries(playlistID, key, title):
+                    DownloadedSeriesView(playlistID: playlistID, seriesKey: key, title: title)
+                        .id(route)
                 }
             }
             // Outside the destination too, so pushed screens can mark sources of their own.
@@ -428,6 +437,7 @@ struct CompactChannelCard: View {
     var isUpNext = false
 
     @Environment(ChannelLibrary.self) private var library
+    @Environment(DownloadCenter.self) private var downloads: DownloadCenter?
     @Environment(\.playChannel) private var playChannel
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var sourceID = UUID().uuidString
@@ -445,6 +455,7 @@ struct CompactChannelCard: View {
     var body: some View {
         let progress = library.watchProgress(for: item)
         let isFavorite = library.isFavorite(item)
+        let isUnavailableOffline = OfflineAvailability.isUnavailable(item, downloads: downloads)
         Button {
             playChannel(item, from: sourceID)
         } label: {
@@ -511,6 +522,7 @@ struct CompactChannelCard: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .opacity(isUnavailableOffline ? OfflineAvailability.dimmedOpacity : 1)
             .padding(10)
             .frame(width: scale.scaled(Self.width), alignment: .leading)
             .frame(minHeight: 72)
@@ -528,7 +540,7 @@ struct CompactChannelCard: View {
             ChannelContextMenu(item: item, isFavorite: library.isFavorite(item), extraActions: extraActions)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityValue(isFavorite ? ChannelAccessibility.favoriteState : "")
+        .accessibilityValue(TextParts.spoken([isFavorite ? ChannelAccessibility.favoriteState : nil, isUnavailableOffline ? OfflineAvailability.unavailableText : nil]))
         .accessibilityHint(item.kind == .live ? "Plays the channel" : (isUpNext ? "Plays the next episode" : "Resumes the video"))
         .channelAccessibilityActions(item, isFavorite: isFavorite)
     }

@@ -180,6 +180,9 @@ struct ChannelListRow: View {
                         .transition(.scale.combined(with: .opacity))
                         .accessibilityLabel(ChannelAccessibility.favoriteState)
                 }
+                if item.kind != .live {
+                    DownloadInlineIndicator(item: item)
+                }
             }
             if let episode = item.series {
                 Text(TextParts.line([EpisodeFormat.code(episode), episode.episodeTitle]))

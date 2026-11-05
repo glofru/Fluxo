@@ -28,23 +28,42 @@ struct FluxoApp: App {
     /// The windows of the app (iPad): which one shows the player and the app-wide sheets, and the navigation
     /// App Intents move.
     @State private var windows: WindowCoordinator
+    /// Offline downloads of movies and episodes (the transfers continue in the background).
+    @State private var downloads: DownloadCenter
     /// The objects above, for App Intents (Siri, Shortcuts, Spotlight).
     private let services: AppServices
 
     init() {
         let container = ModelContainerFactory.make()
         self.container = container
+        // First: the player, the guide and the downloads ask whether the device is online.
+        NetworkMonitor.shared.start()
         let library = ChannelLibrary(container: container)
         // Chromecast through the Google Cast SDK on iOS; unsupported (no cast UI) on macOS.
         let player = AVPlayerViewModel(cast: .makeDefault())
         player.zapper = ChannelZapper(container: container, library: library)
+        let downloads = DownloadCenter(container: container)
+        player.downloads = downloads
+        downloads.currentlyPlayingItem = { [weak player] in
+            player?.currentItem
+        }
+        downloads.willDeleteMedia = { [weak player] in
+            player?.stopIfPlayingDownload()
+        }
+        library.onFinishedWatching = { [weak downloads] item in
+            downloads?.itemWasWatched(item)
+        }
+        // Now, not when a view appears: transfers that finished while the app was not running are collected, and
+        // the queue goes on.
+        downloads.start()
         let importCenter = PlaylistImportCenter(container: container)
         let epg = EPGStore(container: container)
         importCenter.onPlaylistImported = { [weak epg] playlistID in
             epg?.playlistDidImport(playlistID)
         }
-        importCenter.onPlaylistDeleted = { [weak epg] playlistID in
+        importCenter.onPlaylistDeleted = { [weak epg, weak downloads] playlistID in
             epg?.playlistWasDeleted(playlistID)
+            downloads?.playlistWasDeleted(playlistID)
         }
         // Now, not when the first view appears: the reminder notification delegate must be installed before a
         // notification that launched the app is delivered.
@@ -61,6 +80,7 @@ struct FluxoApp: App {
         _library = State(initialValue: library)
         _player = State(initialValue: player)
         _epg = State(initialValue: epg)
+        _downloads = State(initialValue: downloads)
     }
 
     var body: some Scene {
@@ -80,6 +100,7 @@ struct FluxoApp: App {
         Settings {
             SettingsView(player: player)
                 .environment(library)
+                .environment(downloads)
                 .environment(epg)
                 .environment(intelligence)
                 .modelContainer(container)
@@ -101,6 +122,11 @@ struct FluxoApp: App {
             EPGBackgroundRefresh.schedule()
             await epg.performBackgroundRefresh()
         }
+        // Downloads that progressed or finished while the app was suspended or not running: the system relaunches
+        // it in the background to deliver their events, and waits until they are handled.
+        .backgroundTask(.urlSession(matching: { $0.hasPrefix(DownloadTransport.identifierPrefix) })) { identifier in
+            await DownloadTransport.shared.handleBackgroundEvents(for: identifier)
+        }
         #endif
 
         #if os(iOS)
@@ -108,7 +134,7 @@ struct FluxoApp: App {
         // for a tap instead of playing on its own (see `WindowCoordinator.pendingPlayerWindows`).
         WindowGroup("Player", id: PlayerWindowValue.windowID, for: PlayerWindowValue.self) { $value in
             PlayerWindowView(value: value, player: player)
-                .modifier(AppEnvironment(importCenter: importCenter, library: library, actions: playlistActions, epg: epg, intelligence: intelligence, windows: windows, player: player))
+                .modifier(AppEnvironment(importCenter: importCenter, library: library, actions: playlistActions, epg: epg, intelligence: intelligence, windows: windows, player: player, downloads: downloads))
         }
         .modelContainer(container)
         .defaultSize(width: 960, height: 600)
@@ -130,6 +156,7 @@ struct FluxoApp: App {
             .environment(playlistActions)
             .environment(epg)
             .environment(windows)
+            .environment(downloads)
     }
 }
 
@@ -142,6 +169,7 @@ private struct AppEnvironment: ViewModifier {
     let intelligence: FluxoIntelligence
     let windows: WindowCoordinator
     let player: AVPlayerViewModel
+    let downloads: DownloadCenter
 
     @State private var navigation = AppNavigation()
 
@@ -155,6 +183,7 @@ private struct AppEnvironment: ViewModifier {
             .environment(epg)
             .environment(intelligence)
             .environment(windows)
+            .environment(downloads)
             .environment(navigation)
             .defaultAppStorage(.fluxo)
             .tint(Theme.accent)

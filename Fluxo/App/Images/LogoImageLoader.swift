@@ -38,6 +38,8 @@ struct LogoRequest: Hashable, Sendable {
 
     enum Source: Hashable, Sendable {
         case remote(URL)
+        /// A local file (the artwork kept with an offline download).
+        case file(URL)
         /// The full `data:` URI.
         case inline(String)
     }
@@ -51,6 +53,9 @@ struct LogoRequest: Hashable, Sendable {
     let key: String
     /// Cache key of the source only, used to remember images that cannot be loaded.
     let sourceKey: String
+
+    /// The only folder local artwork is read from: the downloads (`DownloadRecord.artworkFileName`).
+    private static let localArtworkFolder = DownloadCenter.defaultDirectory.standardizedFileURL.path + "/"
 
     /// Returns nil for sources that cannot be an image (empty, unsupported scheme, not a data:image URI).
     init?(source string: String?, pointSize: CGSize, scale: CGFloat, contentMode: LogoContentMode) {
@@ -67,10 +72,18 @@ struct LogoRequest: Hashable, Sendable {
             hasher.combine(string)
             sourceKey = "data:\(string.utf8.count):\(String(UInt(bitPattern: hasher.finalize()), radix: 36))"
         } else {
-            guard let url = URL(string: string), let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
+            guard let url = URL(string: string), let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" || scheme == "file" else {
                 return nil
             }
-            source = .remote(url)
+            if scheme == "file" {
+                // Only the artwork kept with a download: a playlist's own `file://` logo is not read.
+                guard url.standardizedFileURL.path.hasPrefix(Self.localArtworkFolder) else {
+                    return nil
+                }
+                source = .file(url)
+            } else {
+                source = .remote(url)
+            }
             sourceKey = url.absoluteString
         }
         let scale = max(1, scale)
@@ -324,6 +337,8 @@ final class LogoImageLoader: @unchecked Sendable {
             case .remote(let url):
                 data = try await download(url)
                 record { $0.remoteLoads += 1 }
+            case .file(let url):
+                data = try Data(contentsOf: url, options: .mappedIfSafe)
             case .inline(let uri):
                 guard let decoded = Self.decodeDataURI(uri) else {
                     throw LoadFailure.invalidData

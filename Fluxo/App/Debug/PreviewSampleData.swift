@@ -139,6 +139,7 @@ extension View {
             .environment(PlaylistActions())
             .environment(AppNavigation())
             .environment(WindowCoordinator())
+            .environment(DownloadCenter(container: container, directory: FileManager.default.temporaryDirectory.appendingPathComponent("PreviewDownloads", isDirectory: true)))
             .environment(\.playChannel, PlayChannelAction(library: library, player: player))
             .modelContainer(container)
     }

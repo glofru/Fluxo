@@ -29,6 +29,7 @@ struct ChannelPreview: View {
     var presentsSeries = true
 
     @Environment(ChannelLibrary.self) private var library
+    @Environment(DownloadCenter.self) private var downloads: DownloadCenter?
     @Environment(\.playChannel) private var playChannel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -76,6 +77,7 @@ struct ChannelPreview: View {
     private var channelCard: some View {
         let isFavorite = library.isFavorite(item)
         let subtitle = secondLine
+        let isUnavailableOffline = OfflineAvailability.isUnavailable(item, downloads: downloads)
         return Button {
             playChannel(item, from: sourceID)
         } label: {
@@ -119,6 +121,11 @@ struct ChannelPreview: View {
                     .overlay {
                         borderShape.strokeBorder(Theme.surfaceStroke)
                     }
+                    // Downloaded (or downloading) for offline playback.
+                    .overlay(alignment: .topLeading) {
+                        DownloadCardBadge(item: item)
+                            .padding(8)
+                    }
                     .overlay(alignment: .bottomLeading) {
                         if item.kind != .live, library.watchProgress(for: item) == nil {
                             Image(systemName: item.kind.systemImage)
@@ -153,6 +160,7 @@ struct ChannelPreview: View {
                 }
             }
             .frame(width: size.width, alignment: .leading)
+            .opacity(isUnavailableOffline ? OfflineAvailability.dimmedOpacity : 1)
             .contentShape(Rectangle())
             // What the channel shows now (from the overlay, or the line under the title), for the label.
             .onPreferenceChange(ChannelProgrammeSummaryKey.self) { summary in
@@ -167,16 +175,17 @@ struct ChannelPreview: View {
         }
         // Drag onto the Favorites tab or row (iPad), or into another window.
         .channelDraggable(item)
-        .accessibilityLabel(Text(accessibilityLabel(isFavorite: isFavorite)))
+        .accessibilityLabel(Text(accessibilityLabel(isFavorite: isFavorite, isUnavailableOffline: isUnavailableOffline)))
         .accessibilityHint(item.kind == .live ? "Plays the channel" : "Plays the video")
         .channelAccessibilityActions(item, isFavorite: isFavorite)
         .help(item.displayName)
     }
 
-    private func accessibilityLabel(isFavorite: Bool) -> String {
+    private func accessibilityLabel(isFavorite: Bool, isUnavailableOffline: Bool) -> String {
         let progress = library.watchProgress(for: item).map(WatchProgressFormat.remaining)
+        let offline = isUnavailableOffline ? OfflineAvailability.unavailableText : nil
         // (An episode's number and title are part of the label already, see `ChannelAccessibility.label`.)
-        return ChannelAccessibility.label(for: item, isFavorite: isFavorite, extra: [programmeSummary, progress, self.subtitle])
+        return ChannelAccessibility.label(for: item, isFavorite: isFavorite, extra: [programmeSummary, progress, DownloadCardBadge.accessibilityText(for: item, downloads: downloads), offline, self.subtitle])
     }
 
     private var artworkBackground: some ShapeStyle {
@@ -241,6 +250,11 @@ struct ChannelContextMenu: View {
             Button(isFavorite ? "Remove from Favorites" : "Add to Favorites", systemImage: isFavorite ? "star.slash" : "star") {
                 library.toggleFavorite(item)
             }
+        }
+
+        // Movies and episodes: Download (or the state of their download: Pause, Resume, Delete).
+        if item.kind != .live {
+            DownloadMenuItems(item: item)
         }
 
         if let epg, let navigation, item.kind == .live, epg.hasGuide {

@@ -63,6 +63,11 @@ struct SeriesDetailView: View {
                     }
 
                     if let season {
+                        SeasonDownloadButton(episodes: episodes.episodes(inSeason: season), seasonTitle: EpisodeFormat.seasonTitle(season))
+                            .padding(.horizontal, HomeLayout.horizontalMargin)
+                            .frame(maxWidth: Self.columnWidth, alignment: .leading)
+                            .frame(maxWidth: .infinity)
+
                         EpisodeList(
                             title: seasons.count > 1 ? nil : EpisodeFormat.seasonTitle(season),
                             episodes: episodes.episodes(inSeason: season),
@@ -436,14 +441,30 @@ private struct EpisodeRow: View {
     @Environment(\.playChannel) private var playChannel
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.linkCopyFeedback) private var linkCopyFeedback
+    @Environment(DownloadCenter.self) private var downloads: DownloadCenter?
     @State private var sourceID = UUID().uuidString
 
+    /// The download control takes the trailing margin of the row.
+    private var downloadsAvailable: Bool {
+        downloads?.canDownload(episode) ?? false
+    }
+
     var body: some View {
+        HStack(spacing: 0) {
+            row
+            // Its own control (a button or a menu cannot be inside the row's button).
+            DownloadButton(item: episode)
+                .padding(.trailing, HomeLayout.horizontalMargin - 9)
+        }
+        .background(isUpNext ? Theme.accent.opacity(0.08) : Color.clear)
+    }
+
+    private var row: some View {
         let ref = episode.series
         let isWatched = library.series.isWatched(episode)
         let progress = library.watchProgress(for: episode)
         let isFavorite = library.isFavorite(episode)
-        Button {
+        return Button {
             playChannel(episode, from: sourceID)
         } label: {
             HStack(alignment: .center, spacing: 12) {
@@ -499,9 +520,9 @@ private struct EpisodeRow: View {
                     .foregroundStyle(isWatched ? Theme.secondaryText : Theme.accent)
                     .contentTransition(.symbolEffect(.replace))
             }
-            .padding(.horizontal, HomeLayout.horizontalMargin)
+            .padding(.leading, HomeLayout.horizontalMargin)
+            .padding(.trailing, downloadsAvailable ? 4 : HomeLayout.horizontalMargin)
             .padding(.vertical, 12)
-            .background(isUpNext ? Theme.accent.opacity(0.08) : Color.clear)
             .contentShape(.rect)
             .playerTransitionSource(id: sourceID, cornerRadius: 0)
         }
@@ -509,6 +530,7 @@ private struct EpisodeRow: View {
         .rowHoverEffect()
         .contextMenu {
             actions(isWatched: isWatched, progress: progress, isFavorite: isFavorite)
+            DownloadMenuItems(item: episode)
             // Copy Link and Share, in their own group, as in every channel menu.
             if StreamLink(episode.url) != nil {
                 Divider()
@@ -521,6 +543,7 @@ private struct EpisodeRow: View {
         .accessibilityAddTraits(.isButton)
         .accessibilityActions {
             actions(isWatched: isWatched, progress: progress, isFavorite: isFavorite)
+            DownloadMenuItems(item: episode)
             // Announces "Link copied" (and the credentials warning) itself.
             if let link = StreamLink(episode.url) {
                 Button("Copy Link") {
@@ -569,6 +592,7 @@ private struct EpisodeRow: View {
             EpisodeFormat.title(ref),
             state,
             isFavorite ? ChannelAccessibility.favoriteState : nil,
+            DownloadCardBadge.accessibilityText(for: episode, downloads: downloads),
         ])
     }
 }

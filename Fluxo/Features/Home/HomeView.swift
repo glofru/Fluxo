@@ -107,17 +107,24 @@ struct HomeView: View {
     private func scrollContent(scope: LibraryScope, topInset: CGFloat) -> some View {
         let available = ChannelContentKind.allCases.filter { (groupCounts?[$0] ?? 0) > 0 }
         let kind = available.first { $0.rawValue == kindRawValue } ?? available.first
+        let isOffline = NetworkMonitor.shared.isOffline
         return ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 28) {
+                    // Offline, the featured pages are only downloads, and the downloads row comes first: what
+                    // plays without a network is at the top.
                     #if os(iOS)
                     FeaturedCarousel(importIDs: scope.importIDs, style: .billboard, topInset: topInset, isShowingBillboard: $isShowingBillboard)
                         .padding(.bottom, -12)
+
+                    OfflineHomeSection()
 
                     if showsSwitcher {
                         PlaylistSwitcher(playlists: playlists, selection: selectionBinding(scope: scope))
                     }
                     #else
+                    OfflineHomeSection()
+
                     if showsSwitcher {
                         PlaylistSwitcher(playlists: playlists, selection: selectionBinding(scope: scope))
                     }
@@ -130,17 +137,22 @@ struct HomeView: View {
                     RecentlyWatchedRow(playlistIDs: scope.bookmarkFilter)
                         .id(scope.bookmarkFilter)
 
-                    ForYouRow(scope: scope)
-                        .id(HomeSection.forYou)
+                    // Offline, the suggestions and what is on now (streams) give way to the downloads above.
+                    if !isOffline {
+                        ForYouRow(scope: scope)
+                            .id(HomeSection.forYou)
 
-                    OnNowRow(scope: scope)
-                        .id(HomeSection.onNow)
+                        OnNowRow(scope: scope)
+                            .id(HomeSection.onNow)
+                    }
 
                     FavoritesRow(playlistIDs: scope.bookmarkFilter)
                         .id(scope.bookmarkFilter)
 
-                    BecauseYouWatchedRow(scope: scope)
-                        .id(scope.importIDs)
+                    if !isOffline {
+                        BecauseYouWatchedRow(scope: scope)
+                            .id(scope.importIDs)
+                    }
 
                     if let kind {
                         ContentKindHeader(available: available, kind: kindBinding(current: kind))

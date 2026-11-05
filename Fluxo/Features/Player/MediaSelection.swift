@@ -172,13 +172,23 @@ final class MediaSelectionController {
         audioGroup = audible
         legibleGroup = legible
 
-        audioOptions = audible.map { AVMediaSelectionGroup.playableMediaSelectionOptions(from: $0.options) } ?? []
+        // A downloaded HLS stream (a .movpkg) plays offline only the renditions that were downloaded with it.
+        let cache = (asset as? AVURLAsset)?.assetCache
+        func available(_ options: [AVMediaSelectionOption], in group: AVMediaSelectionGroup) -> [AVMediaSelectionOption] {
+            guard let cache else {
+                return options
+            }
+            let offline = cache.mediaSelectionOptions(in: group)
+            return offline.isEmpty ? options : options.filter(offline.contains)
+        }
+
+        audioOptions = audible.map { available(AVMediaSelectionGroup.playableMediaSelectionOptions(from: $0.options), in: $0) } ?? []
         audioTracks = Self.tracks(for: audioOptions, kind: .audio)
 
         // Forced subtitles (signs, foreign dialog) are shown automatically with their audio: they are not a choice.
         subtitleOptions = legible.map { group in
             AVMediaSelectionGroup.mediaSelectionOptions(
-                from: AVMediaSelectionGroup.playableMediaSelectionOptions(from: group.options),
+                from: available(AVMediaSelectionGroup.playableMediaSelectionOptions(from: group.options), in: group),
                 withoutMediaCharacteristics: [.containsOnlyForcedSubtitles]
             )
         } ?? []

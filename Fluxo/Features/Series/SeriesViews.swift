@@ -71,18 +71,22 @@ struct SeriesCard: View {
     var subtitle: String?
     /// Width of the card (grids); nil for the standard poster size.
     var width: CGFloat?
+    /// Where the card leads; nil for the series page (the offline Home opens the downloaded episodes instead).
+    private let destination: ChannelRoute?
 
     @Environment(ChannelLibrary.self) private var library
+    @Environment(DownloadCenter.self) private var downloads: DownloadCenter?
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var scale = CardScale()
 
     private let borderShape = RoundedRectangle(cornerRadius: 16, style: .continuous)
 
-    init(series: SeriesItem, subtitle: String? = nil, width: CGFloat? = nil) {
+    init(series: SeriesItem, subtitle: String? = nil, width: CGFloat? = nil, destination: ChannelRoute? = nil) {
         givenSeries = series
         self.subtitle = subtitle
         self.width = width
+        self.destination = destination
     }
 
     private var series: SeriesItem {
@@ -101,7 +105,7 @@ struct SeriesCard: View {
         let isFavorite = library.series.isFavorite(series)
         let state = library.series.state(for: series)
         let posterSize = CGSize(width: size.width, height: size.height - Self.stackInset)
-        NavigationLink(value: series.route) {
+        NavigationLink(value: destination ?? series.route) {
             VStack(alignment: .leading, spacing: 6) {
                 ZStack(alignment: .bottom) {
                     // The stack: two sheets peeking out above the poster.
@@ -130,6 +134,11 @@ struct SeriesCard: View {
                         }
                         .overlay(alignment: .bottomLeading) {
                             badge(state: state)
+                                .padding(8)
+                        }
+                        // Episodes downloaded for offline playback.
+                        .overlay(alignment: .topLeading) {
+                            SeriesDownloadBadge(series: series)
                                 .padding(8)
                         }
                         .overlay {
@@ -168,7 +177,7 @@ struct SeriesCard: View {
         }
         .animation(reduceMotion ? nil : .spring(duration: 0.3, bounce: 0.4), value: isFavorite)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(SeriesAccessibility.label(for: series, isFavorite: isFavorite, state: state, extra: [subtitle])))
+        .accessibilityLabel(Text(SeriesAccessibility.label(for: series, isFavorite: isFavorite, state: state, extra: [subtitle, SeriesDownloadBadge.accessibilityText(for: series, downloads: downloads)])))
         .accessibilityHint(Text("Shows the episodes"))
         .accessibilityAddTraits(.isButton)
         .seriesAccessibilityActions(series)

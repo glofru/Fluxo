@@ -181,6 +181,8 @@ enum FluxoDestination: String, AppEnum {
     case favorites
     case history
     case recordings
+    /// The offline downloads (in the Library tab on iOS; the Downloads item of the Mac sidebar).
+    case downloads
     /// The Library tab (favorites, recently watched and recordings; on the Mac, its Recordings item).
     case library
 
@@ -196,6 +198,7 @@ enum FluxoDestination: String, AppEnum {
             .favorites: DisplayRepresentation(title: "Favorites", image: .init(systemName: "star"), synonyms: ["Favourites"]),
             .history: DisplayRepresentation(title: "Recently Watched", image: .init(systemName: "clock"), synonyms: ["History", "Continue Watching"]),
             .recordings: DisplayRepresentation(title: "Recordings", image: .init(systemName: "film.stack")),
+            .downloads: DisplayRepresentation(title: "Downloads", image: .init(systemName: "arrow.down.circle"), synonyms: ["Offline", "Offline Videos", "Downloaded"]),
             .library: DisplayRepresentation(title: "Library", image: .init(systemName: "rectangle.stack")),
         ]
     }
@@ -214,6 +217,8 @@ enum FluxoDestination: String, AppEnum {
             return .history
         case .recordings:
             return .recordings
+        case .downloads:
+            return .downloads
         case .library:
             return .library
         }
@@ -224,7 +229,7 @@ enum FluxoDestination: String, AppEnum {
 struct OpenFluxoIntent: OpenIntent {
 
     static let title: LocalizedStringResource = "Open Screen"
-    static let description = IntentDescription("Opens the TV guide, search, favorites, recently watched or recordings.", categoryName: "Navigation")
+    static let description = IntentDescription("Opens the TV guide, search, favorites, recently watched, downloads or recordings.", categoryName: "Navigation")
 
     @Parameter(title: "Screen", requestValueDialog: "Which screen?")
     var target: FluxoDestination

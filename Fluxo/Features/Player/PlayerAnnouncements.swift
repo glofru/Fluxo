@@ -127,7 +127,7 @@ private struct PlayerAnnouncer: View {
             guard await settle(for: .milliseconds(600)) else {
                 return
             }
-            let isLive = viewModel.isTimeShiftAvailable || viewModel.currentChannel?.isLiveContent == true
+            let isLive = viewModel.isTimeShiftAvailable || viewModel.isCurrentChannelLiveContent
             if let name = startedChannel {
                 startedChannel = nil
                 spoken = .channel
@@ -148,6 +148,11 @@ private struct PlayerAnnouncer: View {
         case .failed(let message):
             spoken = .failed
             startedChannel = nil
+            guard !viewModel.isWaitingForNetwork else {
+                // "You're offline. …": not a failure of the channel; it starts when the network returns.
+                AccessibilityAnnouncer.announce(message, priority: .high)
+                return
+            }
             let title = viewModel.isCasting
                 ? String(localized: "Can't play on the Cast device", comment: "VoiceOver announcement: the Chromecast could not play the channel.")
                 : String(localized: "Can't play this channel", comment: "VoiceOver announcement: playback failed.")
