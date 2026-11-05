@@ -291,6 +291,19 @@ struct AddGuideSourceView: View {
                     }
                 }
 
+                #if os(tvOS)
+                // Apple TV: the sheet's bar is too narrow for the title and two buttons, so Add follows the address
+                // (and Menu on the remote cancels, as everywhere on tvOS).
+                Section {
+                    if isSaving {
+                        ProgressView()
+                    } else {
+                        Button("Add", systemImage: "plus", action: save)
+                            .disabled(validatedURL == nil)
+                    }
+                }
+                #endif
+
                 Section {
                     Picker("Country", selection: $region) {
                         ForEach(sortedGuides, id: \.region) { guide in
@@ -314,6 +327,7 @@ struct AddGuideSourceView: View {
             .glassSheetContentBackground()
             .navigationTitle("Add Guide Source")
             .inlineNavigationBar()
+            #if !os(tvOS)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(role: .cancel) {
@@ -329,6 +343,7 @@ struct AddGuideSourceView: View {
                     }
                 }
             }
+            #endif
             .onAppear {
                 if !Self.freeGuides.contains(where: { $0.region == region }) {
                     region = "US"

@@ -206,11 +206,24 @@ struct AddPlaylistView: View {
                         .disabled(!canSubmit)
                 }
             }
+            #if os(tvOS)
+            // Apple TV: the sheet's bar is too narrow for the title and two buttons, so Add is the last row (and
+            // Menu on the remote cancels, as everywhere on tvOS).
+            Section {
+                if isImporting {
+                    ProgressView()
+                } else {
+                    Button(isEditing ? "Save" : "Add", systemImage: isEditing ? "checkmark" : "plus", action: submit)
+                        .disabled(!canSubmit)
+                }
+            }
+            #endif
         }
         .formStyle(.grouped)
         .glassSheetContentBackground()
         .navigationTitle(isEditing ? "Edit Playlist" : "Add Playlist")
         .inlineNavigationBar()
+        #if !os(tvOS)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 // iOS 26 draws the cancel role as a glass close button.
@@ -230,6 +243,7 @@ struct AddPlaylistView: View {
                 }
             }
         }
+        #endif
         // Keep the sheet up while importing so the import is either finished or explicitly cancelled.
         .interactiveDismissDisabled(isImporting)
         .onChange(of: focusedField) { previous, _ in

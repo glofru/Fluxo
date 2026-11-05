@@ -25,6 +25,12 @@ final class AppNavigation {
         case settings
         case search
         case playlist(UUID)
+        #if os(tvOS)
+        /// Apple TV: the movies of the playlists, a tab of their own (the top tab bar has room for them).
+        case movies
+        /// Apple TV: the series of the playlists.
+        case series
+        #endif
     }
 
     /// Places that exist on every platform; `show(_:)` maps them to a tab (iOS) or a sidebar item (macOS).
@@ -83,7 +89,7 @@ final class AppNavigation {
     var debugHomeSection: String?
     /// Debug harness (`programme:<channel>`): the programme the TV Guide opens (a sheet, or the inspector on iPad).
     var debugGuideSelection: GuideSelection?
-    /// Debug harness (`focus:<channel>`, Apple TV): the name of the channel whose card takes the focus.
+    /// Debug harness (`focus:<name>`, Apple TV): the name of the card, button or programme that takes the focus.
     var debugFocusName: String?
     #endif
 
@@ -99,6 +105,10 @@ final class AppNavigation {
             return true
         case .guide, .settings:
             return false
+        #if os(tvOS)
+        case .movies, .series:
+            return false
+        #endif
         }
     }
 

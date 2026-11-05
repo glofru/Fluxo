@@ -2,14 +2,16 @@
 //  TVContentView.swift
 //  Fluxo
 //
-//  The root of the Apple TV app: the top tab bar (Home, Guide, Library, Settings and Search, the order and the
-//  places of the iPhone tabs) over full-screen pages, and the system player on top of them.
+//  The root of the Apple TV app: the top tab bar (Search, Home, Live TV, Movies, Series, Library and Settings) over
+//  full-screen pages, and the system player on top of them. Live TV is the TV guide grid (the iPhone's Guide tab,
+//  `AppNavigation.Tab.guide`, so App Intents and Full Guide reach it); Movies and Series have tabs of their own on
+//  the TV, where the iPhone switches between them on Home. Search comes first, as in the TV app.
 //
 //  It sets up what `ContentView` sets up on iPhone, iPad and Mac, minus what the TV has no use for (the mini player,
 //  drag and drop, Copy Link, offline downloads, several windows, the foldable posture): the playlist and guide
 //  sheets, watch progress, VoiceOver announcements, reminders, the play action every card uses, App Intents
-//  navigation and the debug harness. The pages are first versions wired to the shared features; the player is
-//  `TVPlayerView`.
+//  navigation and the debug harness. The pages are in `Fluxo/TV` (`TVHomeScreen`, `TVGuideScreen`, `TVKindScreen`,
+//  `TVLibraryScreen`, `TVSearchScreen`, `TVSettingsScreen`); the player is `TVPlayerView`.
 //
 //  Everything in Fluxo/TV is compiled for tvOS only (each file is wrapped in `#if os(tvOS)`): the iPhone, iPad and
 //  Mac screens are touch and pointer layouts (swipe actions, drags, hover, context menus) that the TV replaces with
@@ -41,30 +43,52 @@ struct TVContentView: View {
     var body: some View {
         @Bindable var navigation = navigation
         TabView(selection: $navigation.tab) {
-            Tab("Home", systemImage: "play.tv", value: AppNavigation.Tab.home) {
-                TVHomeScreen()
+            Tab("Search", systemImage: "magnifyingglass", value: AppNavigation.Tab.search, role: .search) {
+                TVSearchScreen()
+                    .tvPageBackground()
             }
 
-            Tab("Guide", systemImage: "calendar.day.timeline.left", value: AppNavigation.Tab.guide) {
+            // Titles without symbols, as tvOS tab bars show them: seven tabs fit across the screen that way.
+            Tab(value: AppNavigation.Tab.home) {
+                TVHomeScreen()
+                    .tvPageBackground()
+            } label: {
+                Text("Home")
+            }
+
+            Tab(value: AppNavigation.Tab.guide) {
                 TVGuideScreen()
+                    .tvPageBackground()
+            } label: {
+                Text(String(localized: "Live TV"))
+            }
+
+            Tab(value: AppNavigation.Tab.movies) {
+                TVKindScreen(kind: .movie)
+                    .tvPageBackground()
+            } label: {
+                Text(ChannelContentKind.movie.title)
+            }
+
+            Tab(value: AppNavigation.Tab.series) {
+                TVKindScreen(kind: .series)
+                    .tvPageBackground()
+            } label: {
+                Text(ChannelContentKind.series.title)
             }
 
             Tab(value: AppNavigation.Tab.library) {
                 TVLibraryScreen(player: viewModel)
+                    .tvPageBackground()
             } label: {
-                Label {
-                    Text(LibraryText.title)
-                } icon: {
-                    Image(systemName: "rectangle.stack")
-                }
+                Text(LibraryText.title)
             }
 
-            Tab("Settings", systemImage: "gear", value: AppNavigation.Tab.settings) {
-                TVSettingsScreen()
-            }
-
-            Tab("Search", systemImage: "magnifyingglass", value: AppNavigation.Tab.search, role: .search) {
-                TVSearchScreen()
+            Tab(value: AppNavigation.Tab.settings) {
+                TVSettingsScreen(player: viewModel)
+                    .tvPageBackground()
+            } label: {
+                Text("Settings")
             }
         }
         // The system player, full screen. Menu on the Siri Remote (or the TV remote's Back) closes it: playback

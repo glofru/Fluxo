@@ -223,8 +223,9 @@ struct FeaturedCarousel: View {
         }
     }
 
-    /// Picks `itemCount` consecutive channels with artwork starting at an offset that changes every day.
-    private static func loadPicks(importIDs: [UUID], container: ModelContainer) async -> [ChannelItem] {
+    /// Picks `itemCount` consecutive channels with artwork starting at an offset that changes every day. Also the
+    /// picks of the Apple TV Home's hero (`TVHero`).
+    static func loadPicks(importIDs: [UUID], container: ModelContainer) async -> [ChannelItem] {
         guard !importIDs.isEmpty else {
             return []
         }

@@ -745,8 +745,8 @@ Tools/Simulator/run.sh --device "iPhone 17e" --clone fluxo-mykey-1 --step-shots 
 Fluxo runs on Apple TV (tvOS 26 and later) from the same target as the iPhone, iPad and Mac app. The shared code
 (the store, playlist import, the remux engine and its loopback server, the player view model, the TV guide,
 search, recommendations, recordings, App Intents) is compiled for tvOS as it is; the screens are the TV's own
-(`Fluxo/TV`). This first version is the foundation: the app launches, browses the library and plays; the TV
-screens are first versions that the 10-foot UI replaces.
+(`Fluxo/TV`): a 10-foot interface made for the focus engine and the Siri Remote, not the iPad layout on a bigger
+screen.
 
 ### One multiplatform target
 
@@ -794,16 +794,62 @@ refresh (`BGAppRefreshTask`) runs on tvOS too.
 
 ### The TV app (`Fluxo/TV`)
 
-- **Root** (`TVContentView`): the tvOS top tab bar with the tabs of the iPhone, in the same order (Home, Guide,
-  Library, Settings, Search), driven by `AppNavigation.tab`, so App Intents and the debug routes move it. It sets up
-  what `ContentView` sets up elsewhere: the playlist and guide sheets, watch progress, VoiceOver announcements, the
-  reminder alert, the play action of every card and the debug harness.
-- **Pages** (`TVPages.swift`, first versions): Home (Continue Watching, Favorites, then the first live TV groups of
-  each playlist, as shelves of cards), Guide (what is on now on the favorite and recent live channels, Refresh),
-  Search (the app's token search, as a grid), Library (Favorites, Recently Watched, Recordings), Settings (the
-  playlists: add, refresh, edit and delete through the shared playlist sheets; the version).
-- **Cards** (`TVComponents.swift`): the system's card button style (they lift and tilt under focus), 16:9 artwork,
-  shelves as focus sections; each card is one VoiceOver element with the channel and its group, and the hint "Plays".
+- **Root** (`TVContentView`): the tvOS top tab bar, titles only as tvOS shows them: Search (first, as in the TV app),
+  Home, Live TV, Movies, Series, Library and Settings. It is driven by `AppNavigation.tab` (Live TV is the `.guide` tab
+  of the iPhone; Movies and Series are tvOS-only cases), so App Intents, Show in TV Guide and the debug routes move it.
+  It sets up what `ContentView` sets up elsewhere: the playlist and guide sheets, watch progress, VoiceOver
+  announcements, the reminder alert, the play action of every card and the debug harness. Every page draws its own
+  background (`tvPageBackground()`), which the hero and the series page fade into.
+- **Layout** (`TVComponents.swift`): pages ignore the safe area so artwork runs to the edges of the picture, and keep
+  text and controls 80 points from the sides (`TVLayout.margin`, the overscan-safe inset; 60 at the top and bottom).
+  Cards (`TVCard`) are the system's card button style (lift, tilt and light under focus) on the artwork only, with the
+  title beneath it, which moves down while the card is focused, as in the TV app; each card is one VoiceOver element
+  with a label and a hint, and has a long-press menu (play, favorite, Show in TV Guide, Go to Series, Remove from
+  History). Landscape cards (400 × 225) for channels, Continue Watching, On Now and episodes; posters (248 × 372) for
+  movies and series. Shelves (`TVShelf`) are focus sections that scroll edge to edge; long ones end with a See All card.
+  Action buttons are Liquid Glass (`.glassProminent` for the main one). Every empty page says what to do and has the
+  button that does it (Add Playlist, Add Guide Source, Show Channels).
+- **Home** (`TVHomeScreen`, `TVHero`): a full-bleed hero of the day's featured movies, series or channels (the
+  picks of the iPhone billboard, `FeaturedCarousel.loadPicks`) under the tab bar: blurred backdrop, poster, title,
+  Play (Resume S1 E3, Watch Live), Episodes, favorite, and page dots. Its pages sit side by side, so moving the focus
+  past the last button pages on; while the focus is elsewhere it moves on by itself every 9 s (not with Reduce
+  Motion). Then Continue Watching (a series once, with the episode to watch now and Up Next once one is finished),
+  Favorites (channels and series), On Now (from the guide, ending with a TV Guide card), and the first live, movie and
+  series categories. It follows the playlist selection, which Settings changes.
+- **Live TV** (`TVGuideScreen`): Guide or Channels. The guide is a grid of channels × time for the focus engine: a
+  two-hour window (starting a quarter of an hour before now) with the channel column and the time ruler fixed and the
+  rows scrolling. Each programme is a button as wide as its time in the window, so swiping moves across a channel's
+  programmes and up or down to what airs at the same time on the next channel. The narrow cells at the ends of each
+  row move the window an hour back or on and focus the programme that came into view (`TVGuideModel`); Earlier, Now,
+  Later and the day menu above jump further, and the category menu filters. A line marks now; programmes on air are
+  tinted with their progress, ended ones dimmed. Selecting a programme opens it full screen (Watch Now or Watch
+  Channel, Remind Me, and what follows on the channel, each with its own reminder); Play/Pause plays the channel;
+  selecting a channel's name plays it. Rows read their programmes as they scroll in, for 30 hours around the window,
+  so paging reads nothing new. Without a guide source, Channels shows the live categories with Add a TV Guide.
+- **Movies, Series** (`TVKindScreen`, `TVBrowseScreens.swift`): Continue Watching of that kind, a strip of category
+  tiles (and the full category browser), then every category as a shelf, a page of categories at a time. A category
+  (`TVCategoryScreen`) is a grid with its order (channel number, name, recently added), paged by
+  `CategoryChannelsModel`. Favorites and Recently Watched (by day, Clear History) have full pages too.
+- **Series** (`TVSeriesScreen`): a backdrop of the poster, the poster, title, counts and what plays next; Resume /
+  Play S1 E4 (it has the focus when the page opens), favorite, mark the season as watched; the seasons as a row of
+  tabs (the focused one shows its episodes, as in the TV app) and the episodes as a shelf (number, title, watched,
+  progress, Up Next; the long-press menu marks one as watched).
+- **Library** (`TVLibraryScreen`): Continue Watching, Favorites, Favorite Series, Recently Watched and the recordings
+  (long press deletes one), on `AppNavigation.libraryPath`.
+- **Search** (`TVSearchScreen`): the system search field and keyboard (dictation with the Siri Remote's microphone,
+  the Continuity Keyboard of an iPhone), results as shelves: live channels, programmes of the guide, movies and series
+  (a series named exactly as typed first). Before typing: what was watched last and the favorites.
+- **Settings** (`TVSettingsScreen`): laid out like the system's Settings, the app's mark and the library at a glance on
+  one side and a list on the other: playlists (each with refresh, edit and delete; Add Playlist; which playlists the
+  pages show), TV guide sources (on or off, refresh, delete; add; refresh all; reminder lead time), the time-shift
+  buffer, audio and subtitle languages (the shared `TrackSettingsSection`), Clear Watch History, the recordings and the
+  version; every choice opens its own list. Addresses are typed in the shared Add Playlist and Add Guide Source sheets,
+  whose text fields bring up the tvOS keyboard, dictation and the Continuity Keyboard on a nearby iPhone or iPad; on
+  tvOS their Add button is a row of the form (the sheet's bar has no room for the title and two buttons) and Menu
+  cancels.
+- **Focus**: each page has a sensible first focus (the hero's Play, the series' Continue, the programme on air on the
+  first channel, the Add Playlist of an empty page); the system brings the focus back to the card or programme that
+  opened a player, a sheet or a pushed page.
 - **Player** (`TVPlayerView`): `AVPlayerViewController` on the app's single `AVPlayer`, so the transport bar, the
   info panel, audio and subtitles and the Siri Remote work as in the TV app; live streams show their live edge and
   time-shift window. HLS plays directly, raw MPEG-TS and the other formats through the remux engine on 127.0.0.1, as

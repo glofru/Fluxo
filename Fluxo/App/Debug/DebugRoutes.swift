@@ -173,17 +173,22 @@ enum DebugRoutes {
         DebugRoute("home", "Home, from its root.") { context, _ in
             context.navigation.show(.home)
         },
-        DebugRoute("tab:<home|guide|library|settings|search|playlist name>", "Selects a tab (iOS; playlists are iPad sidebar entries).") { context, argument in
-            let tabs: [String: AppNavigation.Tab] = [
+        DebugRoute("tab:<home|guide|library|settings|search|movies|series|playlist name>", "Selects a tab (iOS, tvOS; movies and series are Apple TV tabs; playlists are iPad sidebar entries).") { context, argument in
+            var tabs: [String: AppNavigation.Tab] = [
                 "home": .home, "guide": .guide, "library": .library, "settings": .settings, "search": .search,
             ]
+            #if os(tvOS)
+            tabs["movies"] = .movies
+            tabs["series"] = .series
+            tabs["live"] = .guide
+            #endif
             if let tab = tabs[argument.lowercased()] {
                 context.navigation.tab = tab
             } else {
                 context.navigation.tab = .playlist(try context.playlist(named: argument).uuid)
             }
         },
-        DebugRoute("focus:<channel>", "Apple TV: moves the focus to the card of a channel on the page shown (its name, exactly; the Siri Remote cannot be scripted), for screenshots of a focused card.") { context, argument in
+        DebugRoute("focus:<name>", "Apple TV: moves the focus to the card of a channel, movie or series, a programme of the guide, or a named button (`hero`, `play`, `season:<n>`, `episode:<code>`, `guide-now`, …) on the page shown (exactly; the Siri Remote cannot be scripted), for screenshots of a focused state.") { context, argument in
             #if os(tvOS)
             context.navigation.debugFocusName = nil
             await Task.yield()

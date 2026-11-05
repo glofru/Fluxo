@@ -4215,8 +4215,11 @@
         }
       }
     },
+    "%lld categories" : {
+      "comment" : "Apple TV: the number of categories of the category browser."
+    },
     "%lld channels" : {
-      "comment" : "A number of channels: of a playlist (Mac sidebar), a category card, or a count in Shortcuts.",
+      "comment" : "A number of channels: of a playlist (Mac sidebar), a category card, or a count in Shortcuts.\nApple TV Settings: how many channels a playlist has.",
       "localizations" : {
         "ar" : {
           "variations" : {
@@ -20318,6 +20321,9 @@
         }
       }
     },
+    "Channel %lld" : {
+
+    },
     "Channel Down" : {
       "comment" : "Button — menu bar and keyboard commands.",
       "localizations" : {
@@ -21341,6 +21347,9 @@
           }
         }
       }
+    },
+    "Channels, Movies and Series" : {
+      "comment" : "Apple TV Search field: what can be searched."
     },
     "Channels, movies and episodes start with these languages when they have them; a track you choose in the player is remembered. Automatic follows your preferred languages and Settings › Accessibility › Subtitles & Captioning, which also sets the subtitle style." : {
       "comment" : "Footer of the Audio and Subtitles settings on iPhone and iPad. 'Settings', 'Accessibility' and 'Subtitles & Captioning' must be the names iOS shows in your language; › separates the steps of the path, as in the app's other paths.",
@@ -53411,6 +53420,9 @@
         }
       }
     },
+    "Not Now" : {
+      "comment" : "Button of a programme reminder on Apple TV: closes the reminder without playing the channel."
+    },
     "Not enough free space to play this file." : {
       "comment" : "Player error: playing a movie or an episode file needs disk space for a temporary copy, and the device is almost full.",
       "localizations" : {
@@ -63361,6 +63373,9 @@
         }
       }
     },
+    "Plays" : {
+      "comment" : "VoiceOver hint of a channel, movie, episode or recording on Apple TV: selecting it starts playback."
+    },
     "Plays a channel, movie or episode from your playlists." : {
       "comment" : "Shortcuts action description — Siri and Shortcuts.",
       "localizations" : {
@@ -68561,6 +68576,9 @@
           }
         }
       }
+    },
+    "Refreshing…" : {
+
     },
     "Remind" : {
       "comment" : "Short button (verb): set a reminder for a programme.",
@@ -86805,6 +86823,786 @@
         }
       }
     },
+    "TV.category.order" : {
+      "comment" : "Apple TV, a category's page: the menu of the order of its entries.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Order"
+          }
+        }
+      }
+    },
+    "TV.downloads.message" : {
+      "comment" : "Apple TV: why there are no downloads.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Apple TV plays movies and series as they stream."
+          }
+        }
+      }
+    },
+    "TV.downloads.title" : {
+      "comment" : "Apple TV: shown if a link to the offline downloads is opened (Apple TV has none).",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No Downloads"
+          }
+        }
+      }
+    },
+    "TV.favorites.empty" : {
+      "comment" : "Apple TV Favorites page when there is none.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No Favorites Yet"
+          }
+        }
+      }
+    },
+    "TV.favorites.emptyMessage" : {
+      "comment" : "Apple TV Favorites page: how to add a favorite (long press on the Siri Remote).",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Press and hold a channel, movie or series, then choose Add to Favorites."
+          }
+        }
+      }
+    },
+    "TV.guide.earlier" : {
+      "comment" : "Apple TV TV guide: moves the grid two hours back.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Earlier"
+          }
+        }
+      }
+    },
+    "TV.guide.earlierHour" : {
+      "comment" : "VoiceOver: the cell at the start of a TV guide row on Apple TV, which moves the grid an hour back.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "An Hour Earlier"
+          }
+        }
+      }
+    },
+    "TV.guide.later" : {
+      "comment" : "Apple TV TV guide: moves the grid two hours on.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Later"
+          }
+        }
+      }
+    },
+    "TV.guide.laterHour" : {
+      "comment" : "VoiceOver: the cell at the end of a TV guide row on Apple TV, which moves the grid an hour on.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "An Hour Later"
+          }
+        }
+      }
+    },
+    "TV.guide.noInformation" : {
+      "comment" : "Apple TV TV guide: a row without programmes in the hours shown.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No programme information"
+          }
+        }
+      }
+    },
+    "TV.guide.now" : {
+      "comment" : "Apple TV TV guide: moves the grid to the current time.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Now"
+          }
+        }
+      }
+    },
+    "TV.guide.programmeHint" : {
+      "comment" : "VoiceOver hint of a programme in the Apple TV TV guide.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Shows the programme. Play/Pause plays the channel."
+          }
+        }
+      }
+    },
+    "TV.hero.episodes" : {
+      "comment" : "Apple TV Home, featured series: opens the page of the series with its seasons and episodes.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Episodes"
+          }
+        }
+      }
+    },
+    "TV.hero.label" : {
+      "comment" : "VoiceOver: the name of the featured items at the top of the Apple TV Home.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Featured"
+          }
+        }
+      }
+    },
+    "TV.hero.page" : {
+      "comment" : "VoiceOver: which featured item of the Apple TV Home hero shows, as in '2 of 8'.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of %2$lld"
+          }
+        }
+      }
+    },
+    "TV.hint.category" : {
+      "comment" : "VoiceOver hint of a category tile or a See All card on Apple TV.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Shows everything in this category"
+          }
+        }
+      }
+    },
+    "TV.hint.guide" : {
+      "comment" : "VoiceOver hint of the card at the end of the On Now row on Apple TV.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Shows the TV guide"
+          }
+        }
+      }
+    },
+    "TV.hint.programme" : {
+      "comment" : "VoiceOver hint of a programme found by search on Apple TV.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Shows the programme"
+          }
+        }
+      }
+    },
+    "TV.hint.series" : {
+      "comment" : "VoiceOver hint of a series card on Apple TV: selecting it opens the page of the series.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Shows the seasons and episodes"
+          }
+        }
+      }
+    },
+    "TV.kind.empty.message" : {
+      "comment" : "Apple TV Movies, Series or Live TV page when the playlists shown have nothing of that kind.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The playlists shown have none. Add another playlist, or show every playlist, in Settings."
+          }
+        }
+      }
+    },
+    "TV.kind.live.empty" : {
+      "comment" : "Apple TV Live TV page when the playlists have no live channel.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No Live Channels"
+          }
+        }
+      }
+    },
+    "TV.kind.movies.empty" : {
+      "comment" : "Apple TV Movies page when the playlists have no movie.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No Movies"
+          }
+        }
+      }
+    },
+    "TV.kind.noPlaylists" : {
+      "comment" : "Apple TV Movies, Series or Live TV page when there is no playlist.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Add an M3U playlist to see its channels, movies and series here."
+          }
+        }
+      }
+    },
+    "TV.kind.series.empty" : {
+      "comment" : "Apple TV Series page when the playlists have no series.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No Series"
+          }
+        }
+      }
+    },
+    "TV.library.empty" : {
+      "comment" : "Apple TV Library, when it is empty.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Your favorites, what you watched and your recordings show here."
+          }
+        }
+      }
+    },
+    "TV.library.favoriteSeries" : {
+      "comment" : "Apple TV Library: the shelf of the favorite series.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Favorite Series"
+          }
+        }
+      }
+    },
+    "TV.live.channels" : {
+      "comment" : "Apple TV Live TV: the live channels by category.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Channels"
+          }
+        }
+      }
+    },
+    "TV.live.guide" : {
+      "comment" : "Apple TV Live TV: the TV guide grid.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Guide"
+          }
+        }
+      }
+    },
+    "TV.live.mode" : {
+      "comment" : "Apple TV Live TV: the picker between the TV guide grid and the channels by category.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Show"
+          }
+        }
+      }
+    },
+    "TV.live.noGuide.message" : {
+      "comment" : "Apple TV Live TV, when no TV guide source is set up: what a guide adds.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "With an XMLTV guide, Live TV shows what is on every channel, now and for the week ahead."
+          }
+        }
+      }
+    },
+    "TV.live.noGuide.title" : {
+      "comment" : "Apple TV Live TV, when no TV guide source is set up: the title of the prompt.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Add a TV Guide"
+          }
+        }
+      }
+    },
+    "TV.live.noMatch" : {
+      "comment" : "Apple TV Live TV, when no channel of the playlists has a TV guide.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "None of the live channels match a channel of the guide."
+          }
+        }
+      }
+    },
+    "TV.live.noPlaylists" : {
+      "comment" : "Apple TV Live TV page when there is no playlist.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Add an M3U playlist. Its channels and TV guide show up here."
+          }
+        }
+      }
+    },
+    "TV.live.showChannels" : {
+      "comment" : "Apple TV Live TV: shows the live channels by category instead of the TV guide.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Show Channels"
+          }
+        }
+      }
+    },
+    "TV.menu.goToSeries" : {
+      "comment" : "Apple TV, long-press menu of an episode: opens the page of its series.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Go to Series"
+          }
+        }
+      }
+    },
+    "TV.menu.showInGuide" : {
+      "comment" : "Apple TV, long-press menu of a live channel: opens the TV guide at the channel.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Show in TV Guide"
+          }
+        }
+      }
+    },
+    "TV.playlist.channels" : {
+      "comment" : "Apple TV, a playlist's page: label of its number of channels.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Channels"
+          }
+        }
+      }
+    },
+    "TV.playlist.updated" : {
+      "comment" : "Apple TV, a playlist's page: label of when it was last refreshed.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Updated"
+          }
+        }
+      }
+    },
+    "TV.programme.remindHint" : {
+      "comment" : "VoiceOver hint of a programme that follows, on Apple TV: selecting it sets a reminder.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Reminds you before it starts"
+          }
+        }
+      }
+    },
+    "TV.programme.reminderSet" : {
+      "comment" : "Apple TV, a programme: the reminder is set (selecting it removes it).",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Reminder Set"
+          }
+        }
+      }
+    },
+    "TV.programme.removeReminderHint" : {
+      "comment" : "VoiceOver hint of a programme that follows, on Apple TV, when a reminder is set for it.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Removes the reminder"
+          }
+        }
+      }
+    },
+    "TV.programme.watchChannel" : {
+      "comment" : "Apple TV, a programme that is not on air: plays its channel.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Watch Channel"
+          }
+        }
+      }
+    },
+    "TV.recording.delete" : {
+      "comment" : "Apple TV Library: confirmation before deleting a recording.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Delete this recording?"
+          }
+        }
+      }
+    },
+    "TV.search.found" : {
+      "comment" : "VoiceOver announcement on Apple TV when search results arrive; the placeholder is how many.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%lld results"
+          }
+        }
+      }
+    },
+    "TV.search.noResults" : {
+      "comment" : "Apple TV Search: nothing matches what was typed; the placeholder is the text.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No Results for “%@”"
+          }
+        }
+      }
+    },
+    "TV.search.noResults.message" : {
+      "comment" : "Apple TV Search: what to try when nothing matches.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Check the spelling, or search for a channel, a movie, a series or a programme."
+          }
+        }
+      }
+    },
+    "TV.search.programmes" : {
+      "comment" : "Apple TV Search: the shelf of the matching programmes of the TV guide.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "On the TV Guide"
+          }
+        }
+      }
+    },
+    "TV.search.prompt" : {
+      "comment" : "Apple TV Search, before anything is typed.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Search Your Playlists"
+          }
+        }
+      }
+    },
+    "TV.search.prompt.message" : {
+      "comment" : "Apple TV Search, before anything is typed: how to search (the keyboard, or dictation with the Siri Remote).",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Type with the remote, or hold the microphone button on the Siri Remote and say what you are looking for."
+          }
+        }
+      }
+    },
+    "TV.series.continue" : {
+      "comment" : "Apple TV, series page: before the episode watched part-way, as in 'Continue · S1 E3 · Title'.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Continue"
+          }
+        }
+      }
+    },
+    "TV.series.markSeasonUnwatched" : {
+      "comment" : "Apple TV, series page: marks every episode of a season as not watched; the placeholder is the season, such as 'Season 2'.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Mark %@ as Unwatched"
+          }
+        }
+      }
+    },
+    "TV.series.markSeasonWatched" : {
+      "comment" : "Apple TV, series page: marks every episode of a season as watched; the placeholder is the season, such as 'Season 2'.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Mark %@ as Watched"
+          }
+        }
+      }
+    },
+    "TV.series.start" : {
+      "comment" : "Apple TV, series page: before the first episode of a series never watched, as in 'Start Watching · S1 E1 · Title'.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Start Watching"
+          }
+        }
+      }
+    },
+    "TV.series.watched" : {
+      "comment" : "Apple TV, series page: before the first episode when every episode was watched, as in 'Watched · S1 E1 · Title'.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Watched"
+          }
+        }
+      }
+    },
+    "TV.settings.playlists.footer" : {
+      "comment" : "Apple TV Settings, Playlists footer: how to type an address (the Continuity Keyboard of an iPhone).",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "M3U playlists over HTTP or HTTPS. When the keyboard shows, your iPhone or iPad offers to type the address for you."
+          }
+        }
+      }
+    },
+    "TV.settings.recordings.footer" : {
+      "comment" : "Apple TV Settings, Recordings footer: tvOS may delete recordings when the Apple TV runs out of space.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Apple TV keeps recordings in its cache: tvOS may delete them when it runs out of space."
+          }
+        }
+      }
+    },
+    "TV.settings.show" : {
+      "comment" : "Apple TV Settings: which playlists Home, Live TV, Movies, Series and Search show.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Show"
+          }
+        }
+      }
+    },
+    "TV.settings.source.failed" : {
+      "comment" : "Apple TV Settings: a TV guide source whose last refresh failed.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Failed"
+          }
+        }
+      }
+    },
+    "TV.settings.timeShift.footer" : {
+      "comment" : "Apple TV Settings, Playback footer: what the time-shift buffer is.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "How far back you can pause and rewind a live channel. Applies the next time a channel starts."
+          }
+        }
+      }
+    },
+    "TV.settings.version" : {
+      "comment" : "Apple TV Settings: the app's version number.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Version"
+          }
+        }
+      }
+    },
+    "TV.source.address" : {
+      "comment" : "Apple TV, a TV guide source's page: its URL.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Address"
+          }
+        }
+      }
+    },
+    "TV.source.origin" : {
+      "comment" : "Apple TV, a TV guide source's page: where the source comes from (a playlist, or added by the user).",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "From"
+          }
+        }
+      }
+    },
+    "TV.source.programmes" : {
+      "comment" : "Apple TV, a TV guide source's page: how many programmes it has.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Programmes"
+          }
+        }
+      }
+    },
+    "TV.source.status" : {
+      "comment" : "Apple TV, a TV guide source's page: what it is doing or how its last refresh went.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Status"
+          }
+        }
+      }
+    },
+    "TV.welcome.continuity" : {
+      "comment" : "Apple TV Home, first launch: how to type a playlist address (the Siri Remote, dictation, or the Continuity Keyboard on a nearby iPhone).",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Type the address with the remote, by voice, or with the keyboard of your iPhone when it offers to help."
+          }
+        }
+      }
+    },
     "Tells what a channel shows now and next. Without a channel, tells what your favorite channels show now." : {
       "comment" : "Shortcuts action description — Siri and Shortcuts.",
       "localizations" : {
@@ -96629,6 +97427,9 @@
         }
       }
     },
+    "Up Next on %@" : {
+
+    },
     "Updating %@" : {
       "comment" : "Text — Home page. The placeholder is the playlist name.",
       "localizations" : {
@@ -98044,7 +98845,7 @@
       }
     },
     "Watch" : {
-      "comment" : "Button (verb): play the channel.",
+      "comment" : "Button (verb): play the channel.\nButton of a programme reminder on Apple TV: plays the channel of the programme that is about to start.",
       "localizations" : {
         "ar" : {
           "stringUnit" : {

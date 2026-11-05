@@ -124,8 +124,8 @@ first that contains the text.
 | Route | Opens |
 |---|---|
 | `home` | Home, from its root. |
-| `tab:<home\|guide\|library\|settings\|search\|playlist name>` | A tab (iOS, tvOS; playlists are iPad sidebar entries). |
-| `focus:<channel>` | Apple TV: moves the focus to the card of that channel (its exact name) on the page shown, for screenshots of the focused state. |
+| `tab:<home\|guide\|library\|settings\|search\|playlist name>` | A tab (iOS, tvOS; playlists are iPad sidebar entries). Apple TV also has `movies`, `series` and `live` (the Live TV tab, the same as `guide`). |
+| `focus:<name>` | Apple TV: moves the focus on the page shown, for screenshots of the focused state: the card of a channel, movie, series or programme (its exact name), `hero` (the hero's Play), `play`, `favorite`, `season:<n>`, `episode:<S1 E2>` (series page), `guide-now`, `guide-later`, `guide-channel`, `programme:<channel>` (TV guide), `see-all-<group>`, `open-guide`. Cards inside lazy shelves must be on screen: bring them in with `home-section:` first. |
 | `guide` | The TV Guide (the Guide tab on iOS, the sidebar item on macOS). |
 | `search[:<query>]` | Search, with the query typed in. |
 | `settings` | The Settings tab (iOS) or window (macOS). |
@@ -137,7 +137,7 @@ first that contains the text.
 | `group:<name>` | Pushes a category (group) on Home. |
 | `categories:<live\|movies\|series>` | Pushes the category browser of a kind on Home. |
 | `browse:<order>[,<layout>]` | Order (`playlist`, `name`, `recentlyAdded`, `mostWatched`) and layout (`list`, `grid`) of every category. |
-| `home-section:<forYou\|onNow\|browse>` | Scrolls Home to a section. |
+| `home-section:<forYou\|onNow\|browse>` | Scrolls Home to a section (Apple TV: `continueWatching`, `favorites`, `onNow`, `live`, `movies`, `series`). |
 | `seed-guide` | Adds a sample TV guide for the live channels of every playlist (for On Now, now / next in rows, schedules). |
 | `add-guide-source[:<days>]` | Adds a guide "added by you", "Debug Guide" (the kind Settings can delete), with half-hour programmes for every live channel over 7 days (1 to 14), written in the background like an import (about 56,000 programmes for the sample library, 112,000 over 14 days). |
 | `delete-guide-source[:<name>]` | Deletes a guide source (the Debug Guide by default) as its Delete button does and checks that its row leaves at once, that no source, programme, channel or manual match of it is left and that the guide no longer uses it; the step fails otherwise. Logs the time and the longest main-actor stall. |
@@ -213,7 +213,7 @@ The same scripts drive Apple TV simulators: build the tvOS app with `build.sh --
 routes are the same; routes of screens tvOS does not have (the touch player's `player-drag`, `player-controls`,
 `player-guide`, `side-panel`; Spotlight, Cast, downloads, foldable postures) fail with "not available on this
 platform" or change nothing. The Siri Remote cannot be scripted, so `focus:<channel>` moves the focus for screenshots.
-There is no status bar to override. `gesture-tests.sh`, `accessibility-audit.sh`, `siri-tests.sh` and
+There is no status bar to override, and `simctl ui appearance` does not work on tvOS: use `-- -FluxoDebugAppearance light`. `gesture-tests.sh`, `accessibility-audit.sh`, `siri-tests.sh` and
 `format-matrix.sh` are iOS only for now.
 
 ```sh
