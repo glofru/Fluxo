@@ -236,7 +236,7 @@ struct RowProgrammeInfo: View {
                 }
             }
             if let next = nowNext.next {
-                Text("Next \(GuideFormat.time(next.start)) · \(next.title)")
+                Text(TextParts.line([GuideFormat.next(at: next.start), next.title]))
                     .font(.caption2)
                     .foregroundStyle(Theme.secondaryText)
                     .lineLimit(dynamicTypeSize.prefersStackedLayout ? 3 : 1)

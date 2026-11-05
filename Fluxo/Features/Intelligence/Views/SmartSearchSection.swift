@@ -68,7 +68,10 @@ struct SmartSearchSections: View {
         HStack(spacing: 6) {
             Label("Smart Results", systemImage: "sparkles")
             if isFromModel {
-                Text("· Apple Intelligence")
+                Text("·")
+                    .foregroundStyle(Theme.secondaryText)
+                    .accessibilityHidden(true)
+                Text("Apple Intelligence")
                     .foregroundStyle(Theme.secondaryText)
             }
         }

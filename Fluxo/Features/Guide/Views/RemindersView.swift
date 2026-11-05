@@ -134,7 +134,10 @@ private struct ReminderRow: View {
                 Text(reminder.title)
                     .font(.body.weight(.medium))
                     .lineLimit(2)
-                Text("\(reminder.channelName ?? String(localized: "Channel", comment: "Stands in for the name of a reminder's channel when it is unknown.")) · \(GuideFormat.day(reminder.start)), \(GuideFormat.time(reminder.start))", comment: "Reminder row: the channel, the day (Today, Tomorrow or a date) and the start time.")
+                Text(TextParts.line([
+                    reminder.channelName ?? String(localized: "Channel", comment: "Stands in for the name of a reminder's channel when it is unknown."),
+                    GuideFormat.dayAndTime(at: reminder.start),
+                ]))
                     .font(.caption)
                     .foregroundStyle(Theme.secondaryText)
                     .lineLimit(1)

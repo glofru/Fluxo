@@ -51,7 +51,7 @@ struct ChannelCandidate: Sendable {
         switch origin {
         case .favorite:
             if let programme {
-                return [String(localized: "Your favorite · \(programme.title)")]
+                return [TextParts.line([String(localized: "Your favorite", comment: "Apple Intelligence suggestions: why a channel is suggested. A programme title follows after a separator, as in 'Your favorite · Evening News'."), programme.title])]
             }
             return [String(localized: "One of your favorites"), String(localized: "From your favorites")]
         case .history(let watchCount):

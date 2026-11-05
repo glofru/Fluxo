@@ -138,7 +138,7 @@ struct ProgrammeDetailView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(channel.displayName)
                         .font(.subheadline.weight(.semibold))
-                    Text("\(GuideFormat.dayAndTime(programme)) · \(GuideFormat.duration(programme))")
+                    Text(TextParts.line([GuideFormat.dayAndTime(programme), GuideFormat.duration(programme)]))
                         .font(.subheadline)
                         .foregroundStyle(Theme.secondaryText)
                         .monospacedDigit()

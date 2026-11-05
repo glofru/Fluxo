@@ -139,7 +139,7 @@ struct SettingsView: View {
         let store = player.recordings
         return Section {
             LabeledContent {
-                Text("\(store.recordings.count) · \(Self.bytes(store.totalBytes))")
+                Text(TextParts.line([store.recordings.count.formatted(), Self.bytes(store.totalBytes)]))
                     .monospacedDigit()
             } label: {
                 SettingsLabel("Recordings", systemImage: "record.circle", tint: Theme.recording)

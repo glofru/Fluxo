@@ -141,7 +141,17 @@ enum GuideFormat {
 
     /// "Today, 20:00 – 21:30".
     static func dayAndTime(_ programme: GuideProgramme) -> String {
-        String(localized: "\(day(programme.start)), \(timeRange(programme))", comment: "When a programme airs: the day (Today, Tomorrow or a date), then its time range.")
+        String(localized: "\(day(programme.start)), \(timeRange(programme))", comment: "When a programme airs: the day (Today, Tomorrow or a date), then its time range or its start time.")
+    }
+
+    /// "Today, 20:00": the day and the start time of a reminder.
+    static func dayAndTime(at date: Date) -> String {
+        String(localized: "\(day(date)), \(time(date))", comment: "When a programme airs: the day (Today, Tomorrow or a date), then its time range or its start time.")
+    }
+
+    /// "Next 21:00": the start of the next programme, before its title in a line of text.
+    static func next(at date: Date) -> String {
+        String(localized: "Next \(time(date))", comment: "TV guide, category and channel lists: the start time of the next programme. Its title follows after a separator, as in 'Next 21:00 · Weather'.")
     }
 
     /// The widest start times of the current locale ("10:58 AM" and "10:58 PM", or "10:58" and "22:58"), to
@@ -241,7 +251,9 @@ struct ChannelProgrammeLine: View {
                             .frame(width: 28)
                         Text(current.title)
                             .lineLimit(1)
-                        Text("· \(GuideFormat.remaining(current, at: now))")
+                        Text("·")
+                            .foregroundStyle(Theme.tertiaryText)
+                        Text(GuideFormat.remaining(current, at: now))
                             .foregroundStyle(Theme.tertiaryText)
                             .lineLimit(1)
                             .layoutPriority(-1)
@@ -343,7 +355,7 @@ struct PlayerProgrammeInfo: View {
                     .frame(maxWidth: 220)
             }
             if let next = nowNext.next {
-                Text("Next \(GuideFormat.time(next.start)) · \(next.title)")
+                Text(TextParts.line([GuideFormat.next(at: next.start), next.title]))
                     .font(.caption)
                     .foregroundStyle(Theme.secondaryText)
                     .lineLimit(1)

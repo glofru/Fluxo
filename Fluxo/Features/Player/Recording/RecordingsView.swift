@@ -61,7 +61,10 @@ struct RecordingsView: View {
                                 }
                             }
                         } footer: {
-                            Text("\(store.recordings.count) recordings · \(store.totalBytes.formatted(.byteCount(style: .file)))", comment: "Footer of the recordings list: the number of recordings and their total size.")
+                            Text(TextParts.line([
+                                String(localized: "\(store.recordings.count) recordings", comment: "Footer of the recordings list: the number of recordings, followed by their total size."),
+                                store.totalBytes.formatted(.byteCount(style: .file)),
+                            ]))
                         }
                     }
                     .glassSheetContentBackground()

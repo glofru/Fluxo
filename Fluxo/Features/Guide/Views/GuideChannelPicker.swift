@@ -32,7 +32,7 @@ struct GuideChannelPicker: View {
                     } label: {
                         row(
                             title: Text("Automatic"),
-                            subtitle: automatic.map { Text("Matches \($0.displayName) · \($0.sourceName)") } ?? Text("No matching guide channel found"),
+                            subtitle: automatic.map { Text(TextParts.line([String(localized: "Matches \($0.displayName)", comment: "Guide channel picker: the guide channel that matches this channel automatically. The name of its guide source follows after a separator."), $0.sourceName])) } ?? Text("No matching guide channel found"),
                             icon: nil,
                             isSelected: !isManual
                         )
@@ -59,7 +59,7 @@ struct GuideChannelPicker: View {
                         } label: {
                             row(
                                 title: Text(verbatim: choice.displayName),
-                                subtitle: choice.hasProgrammes ? Text(verbatim: choice.sourceName) : Text("\(choice.sourceName) · loads with the next refresh"),
+                                subtitle: choice.hasProgrammes ? Text(verbatim: choice.sourceName) : Text(TextParts.line([choice.sourceName, String(localized: "loads with the next refresh", comment: "Guide channel picker: a guide channel whose programmes are not loaded yet. Follows the name of its guide source after a separator, as in 'epgshare01 · loads with the next refresh'; start in lower case where your language allows.")])),
                                 icon: choice.icon,
                                 isSelected: isManual && current?.sourceID == choice.ref.sourceID && current?.channelID == choice.ref.channelID
                             )
