@@ -6,11 +6,18 @@
 //
 
 import Foundation
+import OSLog
+
+private let logger = Logger(subsystem: "dev.watermelon.Fluxo", category: "Engine")
 
 /// Remuxes a stream into an HLS playlist on disk using the shared libavformat engine.
 ///
 /// The class is main-thread confined: call its methods and read its state from the main thread.
 /// Events coming from the engine thread are delivered on the main queue.
+///
+/// On-demand inputs get a complete VOD playlist at once; its segments are produced when the player asks
+/// for them: the loopback server calls `requestFile(named:)` for every segment request, which tells the
+/// engine and waits until the segment is on disk (see `fluxo_remux_request_segment`).
 final class StreamRemuxer {
 
     enum State: Equatable {
@@ -84,9 +91,12 @@ final class StreamRemuxer {
         var outputDirectory: URL
         /// Unique name of the session, used as prefix for the playlist and the segments.
         var name: String
-        /// Live inputs are reconnected when they drop; on-demand inputs end with EXT-X-ENDLIST.
+        /// Live inputs are reconnected when they drop; on-demand inputs get a complete VOD playlist.
         var isLive: Bool = true
         var segmentDuration: Double = 2
+        /// On-demand inputs: media produced ahead of the player before the engine pauses reading (it reads in
+        /// bursts, so the radio can rest in between).
+        var readAheadDuration: TimeInterval = 60
         /// Longest time-shift (DVR) window. 0 keeps every segment.
         var maxWindowDuration: TimeInterval = 30 * 60
         /// Disk budget of the time-shift window. 0 means no limit.
@@ -120,7 +130,56 @@ final class StreamRemuxer {
         var segmentPathPrefix: String {
             outputDirectory.appendingPathComponent(filePrefix).path
         }
+
+        /// The segment a file of this session holds: `<prefix>-000042.ts` (or `.m4s`) of the main playlist,
+        /// `<prefix>-init.mp4` (index -1, the initialization segment of fMP4 playlists), or `<prefix>-a1-000042.ts`
+        /// (`.m4s`, with `<prefix>-a1-init.mp4`, next to fMP4 video) and `<prefix>-s0-000042.vtt` of the audio and
+        /// subtitle renditions. nil for any other file (the playlists, other sessions).
+        func segmentFile(named fileName: String) -> SegmentFile? {
+            if fileName == "\(filePrefix)-init.mp4" {
+                return SegmentFile(rendition: nil, index: -1)
+            }
+            guard fileName.hasPrefix("\(filePrefix)-") else {
+                return nil
+            }
+            var rest = fileName.dropFirst(filePrefix.count + 1)
+            guard let dot = rest.lastIndex(of: ".") else {
+                return nil
+            }
+            let fileExtension = rest[rest.index(after: dot)...]
+            rest = rest[..<dot]
+            var rendition: String?
+            if let first = rest.first, first == "a" || first == "s", let dash = rest.firstIndex(of: "-") {
+                let number = rest[rest.index(after: rest.startIndex)..<dash]
+                guard !number.isEmpty, number.allSatisfy({ $0.isASCII && $0.isNumber }) else {
+                    return nil
+                }
+                rendition = String(rest[..<dash])
+                rest = rest[rest.index(after: dash)...]
+                if first == "a" && rest == "init" && fileExtension == "mp4" {
+                    return SegmentFile(rendition: rendition, index: -1)
+                }
+                guard first == "a" ? fileExtension == "ts" || fileExtension == "m4s" : fileExtension == "vtt" else {
+                    return nil
+                }
+            } else if fileExtension != "ts" && fileExtension != "m4s" {
+                return nil
+            }
+            guard !rest.isEmpty, rest.allSatisfy({ $0.isASCII && $0.isNumber }), let index = Int(rest) else {
+                return nil
+            }
+            return SegmentFile(rendition: rendition, index: index)
+        }
     }
+
+    /// A segment file the player asks for: the main playlist's (rendition nil) or a rendition's ("a1", "s0").
+    struct SegmentFile: Hashable {
+        var rendition: String?
+        var index: Int
+    }
+
+    /// Longest wait for a requested segment: a slow server, or a seek far into a file that cannot seek.
+    static let segmentRequestTimeout: Duration = .seconds(45)
 
     /// Called on the main queue for every engine event.
     var onEvent: ((Event) -> Void)?
@@ -140,6 +199,8 @@ final class StreamRemuxer {
 
     private var session: OpaquePointer?
     private var callbackBox: Unmanaged<CallbackBox>?
+    /// Requests of the player waiting for a segment (index -1 is the initialization segment).
+    private var segmentWaiters: [SegmentFile: [UUID: CheckedContinuation<Bool, Never>]] = [:]
 
     private static let teardownQueue = DispatchQueue(label: "dev.watermelon.Fluxo.StreamRemuxer.teardown", qos: .utility)
 
@@ -196,6 +257,7 @@ final class StreamRemuxer {
         // Ignore any late callback of the stopped session.
         box?.takeUnretainedValue().owner = nil
         fluxo_remux_cancel(session)
+        resolveAllSegmentWaiters()
         if isProcessing {
             update(.cancelled)
         }
@@ -212,6 +274,71 @@ final class StreamRemuxer {
                     recordingCompletion(recordingURL)
                 }
             }
+        }
+    }
+
+    /// Called by the loopback server for every file the player requests. Segment files of an on-demand
+    /// session are produced on request: this tells the engine (which seeks the input when the segment is far
+    /// from what it reads) and waits until the file is on disk. Returns false when the file will not come
+    /// (no such segment, the session ended or failed, or it took longer than `segmentRequestTimeout`);
+    /// the server then answers 404, and AVPlayer reports the failure.
+    @MainActor
+    func requestFile(named fileName: String) async -> Bool {
+        guard let session, let configuration, !configuration.isLive,
+              let file = configuration.segmentFile(named: fileName) else {
+            // Live sessions and playlists: the file is on disk or it is not.
+            return true
+        }
+        // Only the main playlist moves the reader; a rendition's segment is written with the main one.
+        let result = fluxo_remux_request_segment(session, Int64(file.index), file.rendition == nil ? 0 : 1)
+        if result != 0 {
+            return result > 0
+        }
+        guard isProcessing else {
+            return false
+        }
+        // A request far from the others of the same playlist supersedes them (the player seeked): the engine no
+        // longer produces those, so they fail now instead of at the timeout (and free the player's connections).
+        let index = file.index
+        for (waiting, _) in segmentWaiters where index >= 0 && waiting.index >= 0 && waiting.rendition == file.rendition
+            && (waiting.index < index || waiting.index > index + 8) {
+            resolveSegmentWaiters(for: waiting, with: false)
+        }
+        let id = UUID()
+        return await withCheckedContinuation { continuation in
+            segmentWaiters[file, default: [:]][id] = continuation
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: Self.segmentRequestTimeout)
+                guard let self, let waiter = self.segmentWaiters[file]?.removeValue(forKey: id) else {
+                    return
+                }
+                logger.error("Segment \(index) (\(file.rendition ?? "main", privacy: .public)) not produced in time")
+                waiter.resume(returning: false)
+            }
+        }
+    }
+
+    private func resolveSegmentWaiters(for file: SegmentFile, with available: Bool) {
+        guard let waiters = segmentWaiters.removeValue(forKey: file) else {
+            return
+        }
+        for waiter in waiters.values {
+            waiter.resume(returning: available)
+        }
+    }
+
+    /// Resolves the requests for segment `index` of every playlist (the engine writes them together).
+    private func resolveSegmentWaiters(forIndex index: Int, with available: Bool) {
+        for file in segmentWaiters.keys where file.index == index {
+            resolveSegmentWaiters(for: file, with: available)
+        }
+    }
+
+    private func resolveAllSegmentWaiters() {
+        let waiters = segmentWaiters
+        segmentWaiters.removeAll()
+        for waiter in waiters.values.flatMap(\.values) {
+            waiter.resume(returning: false)
         }
     }
 
@@ -258,6 +385,10 @@ final class StreamRemuxer {
 
         switch event.kind {
         case .stateChanged:
+            if !event.state.isActive {
+                // Nothing more will be produced.
+                resolveAllSegmentWaiters()
+            }
             if !event.state.isActive, let recordingURL {
                 // The engine thread has ended and reports every recording before its final state, so
                 // this request was never opened (e.g. it was queued after the engine's last check).
@@ -266,6 +397,9 @@ final class StreamRemuxer {
             }
             update(event.state)
         case .segmentWritten:
+            // The initialization segment of an fMP4 playlist is written with the first segment.
+            resolveSegmentWaiters(forIndex: event.segmentIndex, with: true)
+            resolveSegmentWaiters(forIndex: -1, with: true)
             onEvent?(.segmentWritten(event.statistics))
             if let progress, recordingURL != nil {
                 onEvent?(.recordingProgress(progress))
@@ -307,6 +441,7 @@ final class StreamRemuxer {
                             config.io_timeout_us = Int64(configuration.ioTimeout * 1_000_000)
                             config.is_live = configuration.isLive ? 1 : 0
                             config.max_reconnect_attempts = Int32(clamping: configuration.maxReconnectAttempts)
+                            config.read_ahead_duration = configuration.readAheadDuration
                             config.hls.playlist_path = playlistPointer
                             config.hls.segment_path_prefix = prefixPointer
                             config.hls.segment_duration = configuration.segmentDuration
@@ -366,9 +501,11 @@ private struct EngineEvent {
     let recordingPath: String?
     let recordingDuration: TimeInterval
     let recordingBytes: Int64
+    let segmentIndex: Int
 
     init(_ event: FluxoRemuxEvent) {
         kind = event.kind
+        segmentIndex = Int(event.segment_index)
         message = event.message.map { EngineMessage.localized(String(cString: $0)) }
         switch event.state {
         case .idle:

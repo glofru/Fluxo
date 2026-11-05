@@ -102,6 +102,7 @@ nothing when none of these is passed.
 | `-FluxoDebugCast simulated` | Uses the simulated Chromecast receiver from launch instead of the Google Cast SDK (the `cast:` route switches to it too). Nothing goes on the network. |
 | `-FluxoDebugIntelligence available\|off\|unavailable\|notReady\|unsupported` | Forces the Apple Intelligence status (`FluxoIntelligence`), e.g. `unavailable` to see the built-in suggestions and search on a simulator that has the model. Alone, it keeps the real library. |
 | `-FluxoDebugTestStreamURL <url>` | Base URL of the test-stream server used by the seeded "Loopback Test" playlist and the large seed's artwork (default `http://127.0.0.1:18080`). |
+| `-FluxoDebugLoopbackPort <port>` | Port of the player's loopback HLS server (default 19123, always on 127.0.0.1). Every simulator shares the Mac's loopback interface: give clones that play at the same time different ports. |
 
 Other useful system arguments: `-AppleLanguages "(de)" -AppleLocale de_DE`,
 `-NSForceRightToLeftWritingDirection YES` (right-to-left layout in any language),
@@ -156,6 +157,8 @@ first that contains the text.
 | `copy-link:<channel>` | Copy Link of a channel, as its menus do: the stream link on the pasteboard and the confirmation toast (held for 20 seconds, for screenshots; with the account-login warning when the link carries credentials). |
 | `play-url:<url>` | Plays any URL full screen. |
 | `close-player`, `stop` | Closes the player screen (playback continues); stops playback. |
+| `skip:<seconds>`, `seek:<seconds\|percent%>` | Skips (negative: back) like the skip buttons; seeks like the scrubber. Then checks that playback continues there with video frames that are not black: a failure is reported as the step's problem. |
+| `probe-playback[:<seconds>]` | The same check without moving (near `<seconds>` when given), e.g. after a relaunch that resumes. |
 | `dismiss-player` | Closes the player like its chevron or a swipe down (into Picture in Picture when the device supports it; the Simulator does not, so the mini player shows). |
 | `player-guide[:full]` | The player's guide control, like a tap on what is on now in its top bar: the playing channel's schedule, at now, in the side panel (wide players), the other pane (open foldable) or a sheet over the video; `player-guide:full` then chooses Full Guide (the player closes and the TV Guide shows the channel, scrolled to its row, highlighted). Needs a guide, e.g. `seed-guide`. |
 | `open-player` | Opens the player for what plays, like a tap on the mini player. |
@@ -186,6 +189,32 @@ first that contains the text.
 | `visual-ocr:<text>[\|<text>…]` | Draws the texts in an image (the first one large), reads it with the same text recognition as Visual Intelligence images, and matches. |
 | `spotlight-reindex`, `spotlight-search:<words>` | Indexes the channels in Spotlight now, timing the call; queries the app's Spotlight items (in the Simulator the query may not complete: it gives up after 10 s). |
 | `help` | Logs the list of routes (in `app.log`). |
+
+### On-demand seeking
+
+Movies and episodes through the engine (see "On demand through the engine" in the main README), with the
+media of `Tools/EngineSmokeTest/run_vod.sh` (start it once to generate them, or serve any folder of movies
+with `python3 -I Tools/EngineSmokeTest/vod_server.py --root <folder>`, loopback only):
+
+```sh
+python3 -I Tools/EngineSmokeTest/vod_server.py --root /tmp/fluxo-vod-media --port 18930 &
+Tools/Simulator/run.sh --device "iPhone 17e" --clone fluxo-mykey-1 --step-shots \
+    --route "play-url:http://127.0.0.1:18930/series/user/pass/2001.mkv;wait:3;skip:30;seek:50%;seek:90%;skip:-10"
+```
+
+The seeded "Test Clip (MPEG-TS)" and "Test Clip (MP4)" are movies (`/movie/` URLs) of the test-stream server:
+pointing `-FluxoDebugTestStreamURL` at a folder with `movie/clip.ts` and `movie/clip.mp4` (e.g. links to
+`h264.ts` and `hevc-hev1.mp4` of the generated media) plays those as movies, the way a playlist entry is. With a
+`scratch` store the position is kept, so a second launch checks the resume:
+
+```sh
+Tools/Simulator/run.sh --device "iPhone 17e" --clone fluxo-mykey-1 --store scratch --keep \
+    --route "player:Test Clip (MPEG-TS);wait:3;skip:30;seek:60%;wait:12;stop" -- \
+    -FluxoDebugTestStreamURL http://127.0.0.1:18931 -FluxoDebugLoopbackPort 19151
+Tools/Simulator/run.sh --clone fluxo-mykey-1 --store scratch --no-install \
+    --route "player:Test Clip (MPEG-TS);probe-playback:372" -- \
+    -FluxoDebugTestStreamURL http://127.0.0.1:18931 -FluxoDebugLoopbackPort 19151
+```
 
 Routes drive the app through `AppNavigation` (`Fluxo/App/AppNavigation.swift`: the selected tab or
 sidebar item, the Home / Library / Search navigation paths and the search text)

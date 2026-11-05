@@ -269,17 +269,37 @@ CHANNELS=100000 Tools/HomeQueriesCheck/run.sh
 
 ## Player
 
-- **Routing** (`PlaybackRoute`): HLS playlists and MP4/MOV files play directly in
-  AVPlayer. Raw MPEG-TS channels (no extension or `.ts`, or `udp://`, `rtp://`,
+- **Routing** (`PlaybackRoute`, from the URL and the kind of the entry): HLS playlists and MP4/MOV
+  files play directly in AVPlayer. Raw MPEG-TS channels (no extension or `.ts`, or `udp://`, `rtp://`,
   `rtmp://`, `rtsp://`) go through the remux engine, which writes local HLS that
   AVPlayer reads from the loopback server (`127.0.0.1:19123` only).
   Live channels with `.m3u8` URLs play directly in AVPlayer, so they use the
   DVR window of the source playlist (if it has one) and cannot be recorded.
-  An on-demand `.ts` file served over HTTP ends normally once its last byte is
-  read; any other end of a live input is treated as a dropped connection.
-  Movies and episodes in containers AVPlayer cannot open (`.mkv`, `.mk3d`, `.webm`, `.avi`, `.divx`, `.xvid`)
-  go through the engine as on-demand inputs, which also makes their audio tracks and subtitles selectable (see
-  "Audio tracks and subtitles"). The engine reads them from the start and keeps them whole while they play.
+  Movies and episodes AVPlayer cannot open go through the engine's on-demand mode: Matroska, AVI, WebM,
+  FLV, MPEG-PS, MPEG-TS files (Xtream Codes `…/movie/user/pass/123.ts`), extensionless and `.php`
+  URLs. A movie that plays directly but fails (a server without byte ranges), whose video AVPlayer cannot
+  decode (HEVC tagged `hev1`, which plays as audio over black) or that keeps waiting for data for 12 s
+  (servers that allow one connection per account stall AVPlayer's seeks) moves to the engine, at the
+  same position.
+- **On demand through the engine** (`fluxo_remux_request_segment`): the engine plans a complete VOD
+  playlist before playback starts, from the duration and the key frame index of the input (MP4,
+  Matroska Cues, AVI), or one segment every 4 s cut at the next key frame (MPEG-TS, files without an
+  index). Segments are produced when AVPlayer asks the loopback server for them: a request far from
+  what the engine reads seeks the input there (`av_seek_frame`, keeping the real timestamps, so every
+  segment plays where the playlist puts it), so skipping, scrubbing to any point and resuming play at
+  once. The engine reads 60 s ahead of the player, then pauses until half of it is used (the radio
+  rests in between), keeps at most the time-shift disk budget of segments (the farthest from the
+  player are deleted and made again if needed), and reopens the input after a read error (6 attempts,
+  "Reconnecting…"). HTTP movies are read through the engine's own AVIOContext: a seek closes the connection
+  before it opens one at the new position (FFmpeg's HTTP protocol opens the new one first, which accounts limited
+  to one connection refuse), and a connection refused as busy (403, 429, 5xx) is tried again for a few seconds,
+  at the start too (the previous channel's or AVPlayer's connection may still be open). Inputs that cannot seek (no byte ranges) are read on to the target, or again from
+  the start for a jump back; inputs without a known duration are remuxed from start to end into a
+  growing playlist that starts at the beginning. HEVC video gets fragmented MP4 segments (with an
+  `EXT-X-MAP` initialization segment, `hvc1`): AVPlayer decodes HEVC from HLS only in fMP4. This also
+  applies to live HEVC channels. Audio tracks and subtitles (see "Audio tracks and subtitles") are complete VOD
+  playlists of the same segments, written with the main segment of the same number; only the requests of the
+  main playlist move the reader, a rendition's request waits for its segment.
 - **Deterministic start**: the engine has its own HLS segmenter and reports each
   completed segment. The player item is created once, after the first segment
   exists and the server is listening. There is no polling.
@@ -335,7 +355,8 @@ CHANNELS=100000 Tools/HomeQueriesCheck/run.sh
     decode (AAC, AC-3, E-AC-3, MP3), or text subtitles (SubRip, ASS / SSA, WebVTT, timed text), the engine also
     writes a master playlist with one EXT-X-MEDIA rendition per track: the default audio stays in the main media
     playlist, every other audio track gets audio-only MPEG-TS segments, every subtitle stream WebVTT segments cut at
-    the same times (`X-TIMESTAMP-MAP` mapped onto the segments' 1.4 s muxing delay), with the language, the title,
+    the same times (`X-TIMESTAMP-MAP` mapped onto the segments' 1.4 s muxing delay; next to fMP4 HEVC video the
+    audio segments have no muxing delay and the map starts at 0), with the language, the title,
     the default / forced flags and the accessibility characteristics of the streams. MP2 audio (DVB channels) is not
     offered: it is not an HLS codec and AVPlayer on iOS fails the whole item on it. Bitmap subtitles (DVB, PGS, DVD)
     and teletext cannot be converted and are not listed. The first segment's video tells whether the channel carries
@@ -373,7 +394,16 @@ only; set `FFMPEG` / `FFPROBE` to use others):
 Tools/EngineSmokeTest/run.sh           # window cleanup, reconnection, recording + MP4 conversion
 Tools/EngineSmokeTest/run_avplayer.sh  # AVPlayer pause/resume/skip/go-live on the engine output
 Tools/EngineSmokeTest/run_tracks.sh    # audio tracks and subtitles: master playlist, renditions, WebVTT, AVPlayer
+Tools/EngineSmokeTest/run_vod.sh       # movies: skip, scrub, resume on MP4 / MKV / TS / HLS, H.264 and HEVC
 ```
+
+`run_vod.sh` generates 10-minute test movies and serves them on 127.0.0.1 the way IPTV panels do (Xtream
+Codes paths, extensionless and `.php` URLs, a server without byte ranges, a throttled one, one connection per
+account that refuses a second one or drops the older one; Matroska with two audio tracks and subtitles in H.264
+and HEVC, whose audio switch and subtitle timing are checked too). Each case is
+played by `VODCheck` (the app's `PlaybackRoute`, `StreamRemuxer` and loopback server, on another port, with
+AVPlayer): skip +30 s twice, scrub to 25 / 50 / 90 %, skip back, then close and resume at the saved
+position; after each step playback must continue there with video frames that are not black.
 
 Debug builds have a test harness for the simulators (`Tools/Simulator/README.md`): an isolated in-memory or
 temporary library (`-FluxoDebugStore`), seeded sample content with local artwork (`-FluxoDebugSeed sample|large`),

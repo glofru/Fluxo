@@ -23,7 +23,8 @@ extension View {
 /// - Saves every `saveInterval` seconds of playback, when playback pauses or ends, and when another item
 ///   starts or playback stops (with the last position seen, since the player resets its timeline first).
 /// - Resumes once per start: as soon as the item can seek and the saved position is within the seekable
-///   range (a remuxed file becomes seekable progressively), for at most `resumeWindow` seconds.
+///   range (a remuxed file becomes seekable progressively), for at most `resumeWindow` seconds. The resume
+///   counts once playback is there: a seek AVPlayer drops while it starts the item is made again.
 /// - Bridges a Cast handoff: casting starting or ending resets the timeline before the receiver (or this
 ///   device) reports the position again, so the last position is kept as a pending resume meanwhile instead
 ///   of being overwritten with 0. The receiver's position is recorded while casting.
@@ -33,6 +34,9 @@ private struct WatchProgressRecorder: View {
     static let resumeWindow: TimeInterval = 20
     /// A resume this close to where playback already is (e.g. the receiver started at it) needs no seek.
     static let resumeTolerance: TimeInterval = 5
+    /// How long a resume seek may take to land before it is made again (at most `resumeAttempts` times).
+    static let resumeRetryInterval: TimeInterval = 3
+    static let resumeAttempts = 3
 
     let player: AVPlayerViewModel
 
@@ -50,8 +54,11 @@ private struct WatchProgressRecorder: View {
         var savedPosition: TimeInterval = 0
         /// Whether the item was being cast at the last update (see `bridgeCastHandoff()`).
         var isCasting: Bool
-        /// The saved position to resume from, until it was applied or given up.
+        /// The saved position to resume from, until playback is there or it was given up.
         var pendingResume: TimeInterval?
+        /// The resume seeks made so far, and when the last one was made.
+        var resumeSeeks = 0
+        var lastResumeSeek: Date?
     }
 
     var body: some View {
@@ -102,10 +109,21 @@ private struct WatchProgressRecorder: View {
         if let resume = current.pendingResume {
             if Date.now.timeIntervalSince(current.startedAt) > Self.resumeWindow {
                 current.pendingResume = nil
-            } else if player.canSeek, seekableEnd >= resume {
+            } else if abs(position - resume) <= Self.resumeTolerance {
+                // Playback is there (the receiver started at it, or the seek landed).
                 current.pendingResume = nil
-                if abs(position - resume) > Self.resumeTolerance {
-                    player.seek(toSeconds: resume)
+            } else if player.canSeek, seekableEnd >= resume {
+                let due = current.lastResumeSeek.map { Date.now.timeIntervalSince($0) >= Self.resumeRetryInterval } ?? true
+                if due && current.resumeSeeks >= Self.resumeAttempts {
+                    // It never landed: continue from where playback is.
+                    current.pendingResume = nil
+                } else {
+                    if due {
+                        current.resumeSeeks += 1
+                        current.lastResumeSeek = .now
+                        player.seek(toSeconds: resume)
+                    }
+                    // Not there yet: do not overwrite the saved position with the start.
                     tracked = current
                     return
                 }
@@ -143,6 +161,8 @@ private struct WatchProgressRecorder: View {
             current.pendingResume = current.position
         }
         current.startedAt = .now
+        current.resumeSeeks = 0
+        current.lastResumeSeek = nil
         tracked = current
     }
 

@@ -30,11 +30,13 @@
 #pragma clang diagnostic ignored "-Wdocumentation-html"
 #pragma clang diagnostic ignored "-Wdocumentation-deprecated-sync"
 #include <libavcodec/avcodec.h>
+#include <libavcodec/bsf.h>
 #include <libavformat/avformat.h>
 #include <libavutil/avutil.h>
 #include <libavutil/dict.h>
 #include <libavutil/error.h>
 #include <libavutil/mathematics.h>
+#include <libavutil/mem.h>
 #include <libavutil/opt.h>
 #pragma clang diagnostic pop
 
@@ -57,6 +59,32 @@
 #define FLUXO_MAX_PENDING_CUES 4096
 // Duration given to a subtitle cue that has none.
 #define FLUXO_DEFAULT_CUE_DURATION (4 * AV_TIME_BASE)
+// Added to every output timestamp, so that the first decoding timestamps (which precede the first
+// presentation timestamp by the B-frame delay) stay positive: fragmented MP4 cannot store negative times.
+#define FLUXO_TIMESTAMP_BASE AV_TIME_BASE
+
+// On-demand (VOD) inputs.
+// Media produced ahead of the latest requested segment before reading pauses (resumes at half of it).
+#define FLUXO_DEFAULT_READ_AHEAD 60.0
+// A requested segment at most this many segments after the one being read is reached by reading on;
+// one farther away (or behind) is reached by seeking the input.
+#define FLUXO_VOD_READ_ON_SEGMENTS 3
+// Consecutive attempts to resume an on-demand input after a read error (reopening it at the segment).
+#define FLUXO_VOD_MAX_RECOVERIES 6
+// Packets held while waiting for the key frame that starts the next segment (see fluxo_vod_route).
+#define FLUXO_VOD_MAX_HELD_PACKETS 4096
+// An index whose last key frame is this far from the end does not cover the input: segments are
+// planned at nominal times instead.
+#define FLUXO_VOD_INDEX_COVERAGE_GAP (60 * AV_TIME_BASE)
+// An index with two consecutive key frames farther apart than this has holes (it lists only the key frames
+// read so far): segments are planned at nominal times instead.
+#define FLUXO_VOD_INDEX_MAX_KEY_GAP (20 * AV_TIME_BASE)
+// Timestamps this close are equal (index and packet times are rescaled from the same time base).
+#define FLUXO_VOD_TIME_EPSILON 1000
+// Buffer of the AVIOContext of on-demand HTTP inputs, and the longest forward seek made by reading on (a longer
+// one opens a connection at the new position).
+#define FLUXO_INPUT_IO_BUFFER (64 * 1024)
+#define FLUXO_INPUT_IO_READ_ON (512 * 1024)
 
 // MARK: - Types
 
@@ -79,6 +107,12 @@ typedef struct FluxoOutput {
     // 0: every audio stream, -1: none, n > 0: only the n-th audio stream of the input (1-based, counting the
     // streams fluxo_is_stream_supported accepts).
     int audio_selection;
+    // Convert ADTS AAC (e.g. from MPEG-TS) to raw AAC with an AudioSpecificConfig (aac_adtstoasc), for
+    // outputs whose muxer does not insert the filter itself. One filter per output stream, created at the
+    // first packet that needs it.
+    int convert_adts;
+    AVBSFContext **filters;
+    unsigned int filter_count;
 } FluxoOutput;
 
 // A subtitle cue waiting to be written to the WebVTT segments it overlaps. Times are output times
@@ -118,8 +152,13 @@ typedef struct FluxoRendition {
     const char *base_name;
     char *playlist_path;
     char *playlist_tmp_path;
-    // Audio: the muxer of its audio-only segments.
+    // Audio: the muxer of its audio-only segments: MPEG-TS, or fragmented MP4 next to fMP4 video (AVPlayer
+    // misplaces MPEG-TS audio against fMP4 video), with its own initialization segment "<base>-init.mp4".
     FluxoOutput output;
+    int fragmented;
+    char *init_path;
+    int init_written;
+    int moov_flushed;
     // Subtitles: cues that may still belong to the current or a later segment.
     FluxoCue *cues;
     int cue_count;
@@ -141,6 +180,15 @@ typedef struct FluxoHLS {
     char *segment_prefix;
     // File name part of segment_prefix (points into segment_prefix).
     const char *segment_base_name;
+    // Fragmented MP4 segments ("m4s", with the initialization segment "<prefix>-init.mp4") instead of
+    // MPEG-TS ("ts"). Chosen from the video codec when the output is created.
+    int fragmented;
+    const char *segment_extension;
+    char *init_path;
+    // The initialization segment exists (written once, by the first muxer of the session), and the
+    // current muxer has written its moov (see fluxo_hls_flush).
+    int init_written;
+    int moov_flushed;
     double segment_duration;
     double max_window_duration;
     int64_t max_window_bytes;
@@ -201,6 +249,29 @@ typedef struct FluxoDiscardedRecording {
     struct FluxoDiscardedRecording *next;
 } FluxoDiscardedRecording;
 
+// The VOD playlist of an on-demand input: segment boundaries planned before playback starts.
+typedef struct FluxoPlan {
+    // count + 1 times (AV_TIME_BASE units, input timeline): segment i covers starts[i] to starts[i + 1].
+    int64_t *starts;
+    // Size on disk of each segment, 0 while it is not on disk. Guarded by vod_lock.
+    int64_t *bytes;
+    int count;
+    // The boundaries are key frames of the input's index, so segments are exact and start with a key
+    // frame; otherwise they are planned every segment_duration and cut at the next key frame.
+    int exact;
+    // Index times of this demuxer are decoding times (MP4, AVI); otherwise presentation times.
+    int key_uses_dts;
+    // Output stream used to decide cuts (the video, or the first audio stream), and its input stream.
+    int reference_input_stream;
+    int has_video;
+} FluxoPlan;
+
+// A packet held back until the cut between two segments is known.
+typedef struct FluxoHeldPacket {
+    AVPacket *packet;
+    int64_t time;
+} FluxoHeldPacket;
+
 struct FluxoRemuxSession {
     char *input_url;
     char *user_agent;
@@ -229,6 +300,8 @@ struct FluxoRemuxSession {
     int output_failed;
 
     AVFormatContext *input;
+    // On-demand HTTP inputs are read through the engine's own AVIOContext (see fluxo_input_io_open), or NULL.
+    struct FluxoInputIO *input_io;
     FluxoHLS hls;
     FluxoRecording recording;
 
@@ -237,6 +310,48 @@ struct FluxoRemuxSession {
     int64_t timestamp_offset;
     int64_t last_input_dts;
     int rebase_pending;
+
+    // MARK: On-demand inputs (is_live == 0)
+    double read_ahead;
+    // A VOD plan exists (otherwise an on-demand input is remuxed from start to end, see fluxo_run_loop).
+    int on_demand;
+    FluxoPlan plan;
+    // Guards the fields below that other threads read or write (fluxo_remux_request_segment).
+    pthread_mutex_t vod_lock;
+    pthread_cond_t vod_cond;
+    // Latest segment the player requested, and a segment to seek to (-1: none). Guarded by vod_lock.
+    int64_t vod_requested;
+    int64_t vod_reposition;
+    // Segment the reader is in, and the first segment it writes after a seek. Guarded by vod_lock.
+    int64_t vod_segment;
+    int64_t vod_target;
+    // The input was read to its end; segments after vod_end_segment do not exist. Guarded by vod_lock.
+    int vod_ended;
+    int64_t vod_end_segment;
+    int64_t vod_cached_bytes;
+    // Engine thread only: the current segment's file is open (otherwise packets are skipped), the
+    // output of the current run (one muxer per run of consecutive segments), packets held at a cut.
+    // Segments listed so far (on-demand input without a plan) and the initialization segment exists.
+    // Guarded by vod_lock.
+    int64_t vod_available;
+    int vod_init_ready;
+    int64_t vod_segments_on_disk;
+    // Reading paused because the reader is far enough ahead of the player.
+    int vod_paused;
+    // Disk budget of an on-demand input without a plan: its segments are all kept (its playlist grows), and
+    // beyond this size reading pauses whenever it is read_ahead seconds ahead of the player.
+    int64_t vod_budget_bytes;
+    // Index reported with the next SegmentWritten event.
+    int64_t event_segment_index;
+    // The reader just seeked: the first packet of the reference stream shows whether it landed before the
+    // target segment (MPEG-TS seeks by timestamp search, and can overshoot).
+    int vod_check_seek;
+    int vod_writing;
+    int vod_need_key;
+    int vod_recoveries;
+    FluxoHeldPacket *vod_held;
+    int vod_held_count;
+    int vod_held_capacity;
 };
 
 static pthread_once_t fluxo_init_once = PTHREAD_ONCE_INIT;
@@ -297,6 +412,13 @@ static void fluxo_emit_with_path(FluxoRemuxSession *session, FluxoRemuxEventKind
     event.master_playlist_written = session->hls.master_written;
     event.audio_rendition_count = session->hls.master_written ? session->hls.audio_rendition_count : 0;
     event.subtitle_rendition_count = session->hls.master_written ? session->hls.subtitle_rendition_count : 0;
+    event.segment_index = session->event_segment_index;
+    if (session->on_demand) {
+        // On-demand: the segments on disk and their size; the duration of the whole playlist.
+        event.window_segment_count = (int32_t)session->vod_segments_on_disk;
+        event.window_duration = session->plan.count > 0 ? (double)(session->plan.starts[session->plan.count] - session->plan.starts[0]) / AV_TIME_BASE : 0;
+        event.window_bytes = session->vod_cached_bytes;
+    }
 
     FluxoRecording *recording = &session->recording;
     if (explicit_path != NULL) {
@@ -342,6 +464,168 @@ static void fluxo_format_unsupported_protocol(char *buffer, size_t size, const c
 
 // MARK: - Input
 
+static void fluxo_close_input(FluxoRemuxSession *session);
+static int fluxo_is_busy_server_error(int error);
+static void fluxo_wait(FluxoRemuxSession *session, int64_t duration_us);
+
+// MARK: Input of on-demand HTTP files
+//
+// FFmpeg's HTTP protocol seeks by opening a connection at the new position before it closes the current one
+// (it continues on the old one if the new one fails). IPTV panels often allow a single connection per account
+// and refuse the second one, so every seek in a movie failed there. On-demand HTTP inputs are therefore read
+// through this AVIOContext: a seek closes the connection first, then opens one at the position (with a Range
+// request; only for servers that announced byte ranges), and short forward seeks read on.
+typedef struct FluxoInputIO {
+    FluxoRemuxSession *session;
+    AVIOContext *inner;
+    // Protocol options of every connection (timeouts, reconnection, user agent).
+    AVDictionary *options;
+    int64_t position;
+    int64_t size;
+    int seekable;
+} FluxoInputIO;
+
+static int fluxo_input_io_connect(FluxoInputIO *io, int64_t offset) {
+    AVDictionary *options = NULL;
+    av_dict_copy(&options, io->options, 0);
+    if (offset > 0) {
+        char value[32];
+        snprintf(value, sizeof(value), "%lld", (long long)offset);
+        av_dict_set(&options, "offset", value, 0);
+    }
+    AVIOInterruptCB interrupt = { fluxo_interrupt_callback, io->session };
+    int ret = avio_open2(&io->inner, io->session->input_url, AVIO_FLAG_READ, &interrupt, &options);
+    av_dict_free(&options);
+    if (ret < 0) {
+        return ret;
+    }
+    io->position = offset;
+    return 0;
+}
+
+static int fluxo_input_io_read(void *opaque, uint8_t *buffer, int size) {
+    FluxoInputIO *io = opaque;
+    if (io->inner == NULL) {
+        return AVERROR(EIO);
+    }
+    int ret = avio_read_partial(io->inner, buffer, size);
+    if (ret == 0) {
+        return avio_feof(io->inner) ? AVERROR_EOF : AVERROR(EAGAIN);
+    }
+    if (ret > 0) {
+        io->position += ret;
+    }
+    return ret;
+}
+
+static int64_t fluxo_input_io_seek(void *opaque, int64_t offset, int whence) {
+    FluxoInputIO *io = opaque;
+    if (whence & AVSEEK_SIZE) {
+        return io->size > 0 ? io->size : AVERROR(ENOSYS);
+    }
+    whence &= ~AVSEEK_FORCE;
+    int64_t target;
+    if (whence == SEEK_SET) {
+        target = offset;
+    } else if (whence == SEEK_CUR) {
+        target = io->position + offset;
+    } else if (whence == SEEK_END && io->size > 0) {
+        target = io->size + offset;
+    } else {
+        return AVERROR(ENOSYS);
+    }
+    if (target < 0) {
+        return AVERROR(EINVAL);
+    }
+    if (target == io->position && io->inner != NULL) {
+        return target;
+    }
+    if (!io->seekable) {
+        return AVERROR(ENOSYS);
+    }
+    if (io->size > 0 && target >= io->size) {
+        // Past the end: nothing to read there, no connection needed.
+        avio_closep(&io->inner);
+        io->position = target;
+        return target;
+    }
+    if (io->inner != NULL && target > io->position && target - io->position <= FLUXO_INPUT_IO_READ_ON) {
+        uint8_t discard[4096];
+        while (io->position < target) {
+            int count = (int)(target - io->position < (int64_t)sizeof(discard) ? target - io->position : (int64_t)sizeof(discard));
+            int ret = avio_read(io->inner, discard, count);
+            if (ret <= 0) {
+                break;
+            }
+            io->position += ret;
+        }
+        if (io->position == target) {
+            return target;
+        }
+    }
+    // The current connection closes before the next one opens. A server limited to one connection notices that
+    // only a moment later (at its next write) and refuses the new one meanwhile: retried for about 4 s.
+    avio_closep(&io->inner);
+    int ret = fluxo_input_io_connect(io, target);
+    for (int64_t delay = AV_TIME_BASE / 4; ret < 0 && fluxo_is_busy_server_error(ret) && delay <= 2 * AV_TIME_BASE && !fluxo_is_cancelled(io->session); delay *= 2) {
+        fluxo_wait(io->session, delay);
+        ret = fluxo_input_io_connect(io, target);
+    }
+    return ret < 0 ? ret : target;
+}
+
+static void fluxo_input_io_free(FluxoInputIO **pointer) {
+    FluxoInputIO *io = *pointer;
+    if (io == NULL) {
+        return;
+    }
+    avio_closep(&io->inner);
+    av_dict_free(&io->options);
+    av_free(io);
+    *pointer = NULL;
+}
+
+// Opens the first connection of an on-demand HTTP input and the AVIOContext the demuxer reads. `options` are the
+// protocol options; the context goes to `pb`.
+static int fluxo_input_io_open(FluxoRemuxSession *session, const AVDictionary *options, AVIOContext **pb, FluxoInputIO **result) {
+    FluxoInputIO *io = av_mallocz(sizeof(FluxoInputIO));
+    if (io == NULL) {
+        return AVERROR(ENOMEM);
+    }
+    io->session = session;
+    av_dict_copy(&io->options, options, 0);
+    int ret = fluxo_input_io_connect(io, 0);
+    if (ret < 0) {
+        fluxo_input_io_free(&io);
+        return ret;
+    }
+    io->size = avio_size(io->inner);
+    io->seekable = (io->inner->seekable & AVIO_SEEKABLE_NORMAL) != 0;
+    uint8_t *buffer = av_malloc(FLUXO_INPUT_IO_BUFFER);
+    AVIOContext *context = buffer != NULL ? avio_alloc_context(buffer, FLUXO_INPUT_IO_BUFFER, 0, io, fluxo_input_io_read, NULL, fluxo_input_io_seek) : NULL;
+    if (context == NULL) {
+        av_free(buffer);
+        fluxo_input_io_free(&io);
+        return AVERROR(ENOMEM);
+    }
+    context->seekable = io->seekable ? AVIO_SEEKABLE_NORMAL : 0;
+    *pb = context;
+    *result = io;
+    return 0;
+}
+
+static void fluxo_input_io_close(AVIOContext **pb, FluxoInputIO **io) {
+    if (*pb != NULL) {
+        av_freep(&(*pb)->buffer);
+        avio_context_free(pb);
+    }
+    fluxo_input_io_free(io);
+}
+
+static int fluxo_is_http_url(const char *url) {
+    return url != NULL && (strncmp(url, "http://", 7) == 0 || strncmp(url, "https://", 8) == 0);
+}
+
 static int fluxo_open_input(FluxoRemuxSession *session) {
     AVFormatContext *input = avformat_alloc_context();
     if (input == NULL) {
@@ -358,11 +642,31 @@ static int fluxo_open_input(FluxoRemuxSession *session) {
     // HTTP specific options; ignored by other protocols. They cover short drops inside a connection,
     // longer outages are handled by the reconnection loop of the engine.
     av_dict_set(&options, "reconnect", "1", 0);
-    av_dict_set(&options, "reconnect_streamed", "1", 0);
+    if (session->is_live) {
+        // A live stream has no position: after a drop it simply continues. A file served without byte
+        // ranges would restart from its first byte instead (corrupting the demuxer's view of it), so
+        // on-demand inputs are reopened by the engine itself (fluxo_vod_recover).
+        av_dict_set(&options, "reconnect_streamed", "1", 0);
+    }
     av_dict_set(&options, "reconnect_on_network_error", "1", 0);
     av_dict_set(&options, "reconnect_delay_max", "4", 0);
     if (session->user_agent != NULL) {
         av_dict_set(&options, "user_agent", session->user_agent, 0);
+    }
+
+    AVIOContext *pb = NULL;
+    FluxoInputIO *io = NULL;
+    if (!session->is_live && fluxo_is_http_url(session->input_url)) {
+        int ret = fluxo_input_io_open(session, options, &pb, &io);
+        if (ret < 0) {
+            av_dict_free(&options);
+            avformat_free_context(input);
+            return ret;
+        }
+        input->pb = pb;
+        input->flags |= AVFMT_FLAG_CUSTOM_IO;
+        // The protocol options went to the connections.
+        av_dict_free(&options);
     }
     // Keep the start-up latency low: live inputs rarely need more than 3 seconds of probing.
     av_dict_set(&options, "analyzeduration", "3000000", 0);
@@ -370,17 +674,28 @@ static int fluxo_open_input(FluxoRemuxSession *session) {
     int ret = avformat_open_input(&input, session->input_url, NULL, &options);
     av_dict_free(&options);
     if (ret < 0) {
-        // avformat_open_input frees the context on failure.
+        // avformat_open_input frees the context on failure (not a custom AVIOContext).
+        fluxo_input_io_close(&pb, &io);
         return ret;
     }
     session->input = input;
+    session->input_io = io;
 
     ret = avformat_find_stream_info(input, NULL);
     if (ret < 0) {
-        avformat_close_input(&session->input);
+        fluxo_close_input(session);
         return ret;
     }
     return 0;
+}
+
+// Errors of a server that may accept the connection a moment later: refused for the number of connections of the
+// account (403, 429 and other 4xx IPTV panels use, 5xx), reset or timed out. Not a missing stream (404) or bad
+// credentials (401).
+static int fluxo_is_busy_server_error(int error) {
+    return error == AVERROR_HTTP_FORBIDDEN || error == AVERROR_HTTP_TOO_MANY_REQUESTS || error == AVERROR_HTTP_OTHER_4XX ||
+           error == AVERROR_HTTP_SERVER_ERROR || error == AVERROR(ECONNRESET) || error == AVERROR(ECONNREFUSED) ||
+           error == AVERROR(ETIMEDOUT) || error == AVERROR(EIO);
 }
 
 // True when the input has a known size and everything up to it was read. Live inputs have no
@@ -394,9 +709,12 @@ static int fluxo_input_reached_end_of_file(FluxoRemuxSession *session) {
 }
 
 static void fluxo_close_input(FluxoRemuxSession *session) {
+    AVIOContext *pb = session->input != NULL && session->input_io != NULL ? session->input->pb : NULL;
     if (session->input != NULL) {
         avformat_close_input(&session->input);
     }
+    // A custom AVIOContext is not closed by avformat_close_input.
+    fluxo_input_io_close(&pb, &session->input_io);
 }
 
 // MARK: - Outputs
@@ -412,6 +730,15 @@ static void fluxo_output_free(FluxoOutput *output) {
     free(output->stream_map);
     output->stream_map = NULL;
     output->stream_map_size = 0;
+    if (output->filters != NULL) {
+        for (unsigned int i = 0; i < output->filter_count; i++) {
+            av_bsf_free(&output->filters[i]);
+        }
+        free(output->filters);
+        output->filters = NULL;
+    }
+    output->filter_count = 0;
+    output->convert_adts = 0;
     free(output->last_dts);
     output->last_dts = NULL;
     output->header_written = 0;
@@ -503,6 +830,10 @@ static int fluxo_output_prepare(FluxoOutput *output, AVFormatContext *input, con
         if (in_stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO && output->video_index >= 0) {
             continue;
         }
+        // A codec the container cannot carry would fail the whole header: leave that stream out.
+        if (is_mp4 && avformat_query_codec(output->context->oformat, in_stream->codecpar->codec_id, FF_COMPLIANCE_NORMAL) != 1) {
+            continue;
+        }
         AVStream *out_stream = avformat_new_stream(output->context, NULL);
         if (out_stream == NULL) {
             return AVERROR(ENOMEM);
@@ -538,6 +869,55 @@ static int fluxo_output_prepare(FluxoOutput *output, AVFormatContext *input, con
     return ret < 0 ? ret : 0;
 }
 
+// Converts an ADTS packet of output stream `index` in place. Returns 1 when `scratch` holds the converted
+// packet (the first one carries the AudioSpecificConfig as new extradata), 0 when it must be skipped.
+static int fluxo_output_convert_adts(FluxoOutput *output, int index, AVPacket *scratch) {
+    unsigned int count = output->context->nb_streams;
+    if (output->filters == NULL) {
+        output->filters = calloc(count, sizeof(AVBSFContext *));
+        if (output->filters == NULL) {
+            return AVERROR(ENOMEM);
+        }
+        output->filter_count = count;
+    }
+    AVBSFContext *filter = output->filters[index];
+    if (filter == NULL) {
+        const AVBitStreamFilter *definition = av_bsf_get_by_name("aac_adtstoasc");
+        if (definition == NULL) {
+            return AVERROR_BSF_NOT_FOUND;
+        }
+        int ret = av_bsf_alloc(definition, &filter);
+        if (ret < 0) {
+            return ret;
+        }
+        AVStream *stream = output->context->streams[index];
+        ret = avcodec_parameters_copy(filter->par_in, stream->codecpar);
+        if (ret >= 0) {
+            filter->time_base_in = stream->time_base;
+            ret = av_bsf_init(filter);
+        }
+        if (ret < 0) {
+            av_bsf_free(&filter);
+            return ret;
+        }
+        output->filters[index] = filter;
+    }
+    int ret = av_bsf_send_packet(filter, scratch);
+    if (ret < 0) {
+        // A damaged frame: drop it, not the stream.
+        return 0;
+    }
+    ret = av_bsf_receive_packet(filter, scratch);
+    if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+        return 0;
+    }
+    if (ret < 0) {
+        return 0;
+    }
+    scratch->stream_index = index;
+    return 1;
+}
+
 // Copies `packet` (input time base, already adjusted) into `scratch` for `output`.
 // Returns 1 when `scratch` must be written, 0 when the packet is skipped, a negative value on errors.
 static int fluxo_output_prepare_packet(FluxoOutput *output, const AVPacket *packet, const AVStream *in_stream, AVPacket *scratch) {
@@ -563,6 +943,15 @@ static int fluxo_output_prepare_packet(FluxoOutput *output, const AVPacket *pack
     scratch->stream_index = out_index;
     av_packet_rescale_ts(scratch, in_stream->time_base, out_stream->time_base);
     scratch->pos = -1;
+
+    if (output->convert_adts && out_stream->codecpar->codec_id == AV_CODEC_ID_AAC && scratch->size > 2 &&
+        scratch->data[0] == 0xff && (scratch->data[1] & 0xf0) == 0xf0) {
+        ret = fluxo_output_convert_adts(output, out_index, scratch);
+        if (ret <= 0) {
+            av_packet_unref(scratch);
+            return ret;
+        }
+    }
 
     // Muxers reject non monotonic DTS; drop late packets and nudge duplicates.
     int64_t last = output->last_dts[out_index];
@@ -608,7 +997,150 @@ static int64_t fluxo_packet_time(const AVPacket *packet, const AVStream *stream)
 // MARK: - HLS segmenter
 
 static void fluxo_hls_segment_path(const FluxoHLS *hls, int64_t sequence, int temporary, char *buffer, size_t size) {
-    snprintf(buffer, size, "%s-%06lld.ts%s", hls->segment_prefix, (long long)sequence, temporary ? ".tmp" : "");
+    snprintf(buffer, size, "%s-%06lld.%s%s", hls->segment_prefix, (long long)sequence, hls->segment_extension, temporary ? ".tmp" : "");
+}
+
+// AVPlayer decodes HEVC from HLS only in fragmented MP4 (from MPEG-TS segments it plays the audio
+// over a black picture), so HEVC video gets fMP4 segments; everything else stays MPEG-TS.
+static int fluxo_hls_wants_fragmented_mp4(const AVFormatContext *input) {
+    for (unsigned int i = 0; i < input->nb_streams; i++) {
+        const AVStream *stream = input->streams[i];
+        if (stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO && fluxo_is_stream_supported(stream)) {
+            return stream->codecpar->codec_id == AV_CODEC_ID_HEVC;
+        }
+    }
+    return 0;
+}
+
+// Header options of the fragmented MP4 muxers (the main output of HEVC video and its audio renditions): one
+// fragment per segment, flushed by the segmenter (frag_custom); the moov written at the first flush
+// (delay_moov: AC-3 / E-AC-3 tracks need packets before their sample entry can be written), into the
+// initialization segment; fragments addressed from their own moof, so they can be stored as separate files; no
+// edit list and no timestamp shift, so that the tfdt of every fragment is its real decoding time, also for the
+// first fragment after a seek (frag_discont).
+static AVDictionary *fluxo_fragmented_options(void) {
+    AVDictionary *options = NULL;
+    av_dict_set(&options, "movflags", "+frag_custom+delay_moov+default_base_moof+frag_discont+skip_trailer", 0);
+    av_dict_set(&options, "use_editlist", "0", 0);
+    return options;
+}
+
+// Writes the muxer header: into the open segment for MPEG-TS; nowhere for fragmented MP4, whose header
+// is the moov written at the first flush (fluxo_output_flush).
+static int fluxo_output_write_header(FluxoOutput *output, int fragmented) {
+    AVFormatContext *context = output->context;
+    int ret;
+    if (!fragmented) {
+        ret = avformat_write_header(context, NULL);
+    } else {
+        AVDictionary *options = fluxo_fragmented_options();
+        AVIOContext *segment = context->pb;
+        ret = avio_open_dyn_buf(&context->pb);
+        if (ret >= 0) {
+            ret = avformat_write_header(context, &options);
+            uint8_t *discarded = NULL;
+            avio_close_dyn_buf(context->pb, &discarded);
+            av_free(discarded);
+        }
+        context->pb = segment;
+        av_dict_free(&options);
+    }
+    if (ret >= 0) {
+        output->header_written = 1;
+    }
+    return ret < 0 ? ret : 0;
+}
+
+// Writes the packets buffered for the current segment into its file. The first flush of a fragmented MP4
+// muxer writes only the ftyp and moov (delay_moov): the first time into the initialization segment
+// `init_path`, later (every run of an on-demand input has the same moov) into a discarded buffer; then the
+// fragment follows.
+static int fluxo_output_flush(FluxoOutput *output, int fragmented, const char *init_path, int *init_written, int *moov_flushed) {
+    AVFormatContext *context = output->context;
+    if (!fragmented) {
+        int ret = av_write_frame(context, NULL);
+        return ret < 0 ? ret : 0;
+    }
+    if (!*moov_flushed) {
+        AVIOContext *segment = context->pb;
+        char temporary[PATH_MAX];
+        snprintf(temporary, sizeof(temporary), "%s.tmp", init_path);
+        int write_init = !*init_written;
+        int ret = write_init ? avio_open(&context->pb, temporary, AVIO_FLAG_WRITE) : avio_open_dyn_buf(&context->pb);
+        if (ret >= 0) {
+            ret = av_write_frame(context, NULL);
+            if (write_init) {
+                avio_flush(context->pb);
+                if (avio_closep(&context->pb) < 0 && ret >= 0) {
+                    ret = AVERROR(EIO);
+                }
+                if (ret >= 0 && rename(temporary, init_path) != 0) {
+                    ret = AVERROR(errno);
+                }
+                if (ret < 0) {
+                    unlink(temporary);
+                } else {
+                    *init_written = 1;
+                }
+            } else {
+                uint8_t *discarded = NULL;
+                avio_close_dyn_buf(context->pb, &discarded);
+                av_free(discarded);
+            }
+        }
+        context->pb = segment;
+        if (ret < 0) {
+            return ret;
+        }
+        *moov_flushed = 1;
+    }
+    int ret = av_write_frame(context, NULL);
+    return ret < 0 ? ret : 0;
+}
+
+// Muxing delay of the MPEG-TS outputs of a master playlist. The main output and the audio renditions are
+// separate muxers, so they must put the same timestamps on the same media: an explicit delay, and no
+// automatic shift of negative timestamps (libavformat would shift each muxer by its own first packet).
+// Fragmented MP4 outputs (HEVC video and its audio renditions) write their timestamps as they are.
+#define FLUXO_RENDITION_MUX_DELAY 700000
+
+// Aligns an MPEG-TS muxer of a master playlist (the main output or an audio rendition), see above, and sets
+// the time of output time 0 in the segments, for the X-TIMESTAMP-MAP of the WebVTT segments: the MPEG-TS
+// muxer adds twice its maximum delay to every timestamp (90 kHz clock). With fragmented MP4 it stays 0: the
+// map then refers to the media timeline itself.
+static void fluxo_hls_align_muxer(FluxoHLS *hls, AVFormatContext *context) {
+    context->max_delay = FLUXO_RENDITION_MUX_DELAY;
+    context->avoid_negative_ts = AVFMT_AVOID_NEG_TS_DISABLED;
+    hls->mpegts_time_zero = av_rescale(FLUXO_RENDITION_MUX_DELAY, 90000, AV_TIME_BASE) * 2;
+}
+
+// Allocates the HLS muxer for the input. The caller opens the segment file and writes the header.
+static int fluxo_hls_prepare_output(FluxoRemuxSession *session) {
+    FluxoHLS *hls = &session->hls;
+    hls->fragmented = fluxo_hls_wants_fragmented_mp4(session->input);
+    hls->segment_extension = hls->fragmented ? "m4s" : "ts";
+    hls->moov_flushed = 0;
+    int ret = fluxo_output_prepare(&hls->output, session->input, hls->fragmented ? "mp4" : "mpegts", NULL);
+    if (ret < 0) {
+        return ret;
+    }
+    // Timestamps are positive (FLUXO_TIMESTAMP_BASE) and are kept as they are: segments of different
+    // runs of an on-demand input (after a seek) are placed by their own timestamps.
+    hls->output.context->avoid_negative_ts = AVFMT_AVOID_NEG_TS_DISABLED;
+    // The MP4 muxer does not insert aac_adtstoasc itself when the moov comes first.
+    hls->output.convert_adts = hls->fragmented;
+    if (hls->rendition_count > 0 && !hls->fragmented) {
+        fluxo_hls_align_muxer(hls, hls->output.context);
+    }
+    return 0;
+}
+
+static int fluxo_hls_write_header(FluxoHLS *hls) {
+    return fluxo_output_write_header(&hls->output, hls->fragmented);
+}
+
+static int fluxo_hls_flush(FluxoHLS *hls) {
+    return fluxo_output_flush(&hls->output, hls->fragmented, hls->init_path, &hls->init_written, &hls->moov_flushed);
 }
 
 static void fluxo_hls_delete_rendition_segments(const FluxoHLS *hls, int64_t sequence);
@@ -654,8 +1186,11 @@ static void fluxo_hls_prune(FluxoHLS *hls) {
 }
 
 // Writes one media playlist of the window: the main one, or a rendition's (same segments, other files).
+static const char *fluxo_rendition_extension(const FluxoRendition *rendition);
+
+// `init_path`: the initialization segment of fragmented MP4 segments (EXT-X-MAP), NULL for MPEG-TS and WebVTT.
 static int fluxo_hls_write_media_playlist(FluxoHLS *hls, const char *path, const char *tmp_path, const char *base_name,
-                                          const char *extension, int independent, int ended) {
+                                          const char *extension, const char *init_path, int independent, int ended) {
     FILE *file = fopen(tmp_path, "w");
     if (file == NULL) {
         return AVERROR(errno);
@@ -663,7 +1198,9 @@ static int fluxo_hls_write_media_playlist(FluxoHLS *hls, const char *path, const
     int64_t media_sequence = hls->count > 0 ? hls->segments[0].sequence : hls->next_sequence;
     int unlimited = hls->max_window_duration <= 0 && hls->max_window_bytes <= 0;
 
-    fprintf(file, "#EXTM3U\n#EXT-X-VERSION:3\n");
+    // fMP4 segments (EXT-X-MAP in a media playlist without I-frames only) need version 6; 7 is what
+    // Apple's tools write for them.
+    fprintf(file, "#EXTM3U\n#EXT-X-VERSION:%d\n", init_path != NULL ? 7 : 3);
     fprintf(file, "#EXT-X-TARGETDURATION:%d\n", hls->target_duration);
     fprintf(file, "#EXT-X-MEDIA-SEQUENCE:%lld\n", (long long)media_sequence);
     if (hls->discontinuity_sequence > 0) {
@@ -672,9 +1209,18 @@ static int fluxo_hls_write_media_playlist(FluxoHLS *hls, const char *path, const
     if (unlimited) {
         // Nothing is ever removed: lets players seek back to the very beginning.
         fprintf(file, "#EXT-X-PLAYLIST-TYPE:EVENT\n");
+        if (!hls->program_date_time) {
+            // An on-demand input still being read: AVPlayer would join a growing playlist near its end,
+            // like a live stream; a movie starts at its beginning.
+            fprintf(file, "#EXT-X-START:TIME-OFFSET=0,PRECISE=YES\n");
+        }
     }
     if (independent) {
         fprintf(file, "#EXT-X-INDEPENDENT-SEGMENTS\n");
+    }
+    if (init_path != NULL) {
+        const char *slash = strrchr(init_path, '/');
+        fprintf(file, "#EXT-X-MAP:URI=\"%s\"\n", slash != NULL ? slash + 1 : init_path);
     }
     for (int i = 0; i < hls->count; i++) {
         const FluxoSegment *segment = &hls->segments[i];
@@ -715,12 +1261,14 @@ static int fluxo_hls_write_playlist(FluxoHLS *hls, int ended) {
         }
         int is_audio = rendition->type == FluxoRenditionAudio;
         int ret = fluxo_hls_write_media_playlist(hls, rendition->playlist_path, rendition->playlist_tmp_path, rendition->base_name,
-                                                 is_audio ? "ts" : "vtt", is_audio, ended);
+                                                 fluxo_rendition_extension(rendition), rendition->fragmented ? rendition->init_path : NULL,
+                                                 is_audio, ended);
         if (ret < 0) {
             return ret;
         }
     }
-    return fluxo_hls_write_media_playlist(hls, hls->playlist_path, hls->playlist_tmp_path, hls->segment_base_name, "ts",
+    return fluxo_hls_write_media_playlist(hls, hls->playlist_path, hls->playlist_tmp_path, hls->segment_base_name,
+                                          hls->segment_extension, hls->fragmented ? hls->init_path : NULL,
                                           hls->output.video_index >= 0, ended);
 }
 
@@ -1084,6 +1632,13 @@ static int fluxo_rendition_add_cue(FluxoRendition *rendition, const AVPacket *pa
     if (text == NULL) {
         return 0;
     }
+    // The same cue read again (an on-demand input read over the same span after a seek or a reopen).
+    for (int i = rendition->cue_count - 1; i >= 0 && rendition->cues[i].start >= start; i--) {
+        if (rendition->cues[i].start == start && rendition->cues[i].end == start + duration && strcmp(rendition->cues[i].text, text) == 0) {
+            free(text);
+            return 0;
+        }
+    }
     if (rendition->cue_count == FLUXO_MAX_PENDING_CUES) {
         fluxo_rendition_drop_cue(rendition, 0);
     }
@@ -1117,9 +1672,17 @@ static void fluxo_vtt_time(int64_t time, char *buffer, size_t size) {
              (long long)(milliseconds / 1000 % 60), (long long)(milliseconds % 1000));
 }
 
+// The extension of a rendition's segments.
+static const char *fluxo_rendition_extension(const FluxoRendition *rendition) {
+    if (rendition->type == FluxoRenditionSubtitles) {
+        return "vtt";
+    }
+    return rendition->fragmented ? "m4s" : "ts";
+}
+
 static void fluxo_rendition_segment_path(const FluxoRendition *rendition, int64_t sequence, int temporary, char *buffer, size_t size) {
-    snprintf(buffer, size, "%s-%06lld.%s%s", rendition->base_path, (long long)sequence,
-             rendition->type == FluxoRenditionAudio ? "ts" : "vtt", temporary ? ".tmp" : "");
+    snprintf(buffer, size, "%s-%06lld.%s%s", rendition->base_path, (long long)sequence, fluxo_rendition_extension(rendition),
+             temporary ? ".tmp" : "");
 }
 
 // Writes the WebVTT segment `sequence` covering [start, end) of the output timeline (the last segment also
@@ -1175,6 +1738,7 @@ static void fluxo_hls_free_renditions(FluxoHLS *hls) {
         free(rendition->base_path);
         free(rendition->playlist_path);
         free(rendition->playlist_tmp_path);
+        free(rendition->init_path);
     }
     free(hls->renditions);
     hls->renditions = NULL;
@@ -1188,12 +1752,15 @@ static int fluxo_rendition_set_paths(FluxoHLS *hls, FluxoRendition *rendition, c
     rendition->base_path = malloc(length);
     rendition->playlist_path = malloc(length + 8);
     rendition->playlist_tmp_path = malloc(length + 12);
-    if (rendition->base_path == NULL || rendition->playlist_path == NULL || rendition->playlist_tmp_path == NULL) {
+    rendition->init_path = malloc(length + 12);
+    if (rendition->base_path == NULL || rendition->playlist_path == NULL || rendition->playlist_tmp_path == NULL ||
+        rendition->init_path == NULL) {
         return AVERROR(ENOMEM);
     }
     snprintf(rendition->base_path, length, "%s-%c%d", hls->segment_prefix, kind, number);
     snprintf(rendition->playlist_path, length + 8, "%s.m3u8", rendition->base_path);
     snprintf(rendition->playlist_tmp_path, length + 12, "%s.m3u8.tmp", rendition->base_path);
+    snprintf(rendition->init_path, length + 12, "%s-init.mp4", rendition->base_path);
     const char *slash = strrchr(rendition->base_path, '/');
     rendition->base_name = slash != NULL ? slash + 1 : rendition->base_path;
     return 0;
@@ -1339,9 +1906,17 @@ static int fluxo_hls_prepare_renditions(FluxoRemuxSession *session) {
         if (rendition->type != FluxoRenditionAudio || rendition->muxed) {
             continue;
         }
-        int ret = fluxo_output_prepare(&rendition->output, session->input, "mpegts", NULL);
+        rendition->fragmented = hls->fragmented;
+        rendition->moov_flushed = 0;
+        int ret = fluxo_output_prepare(&rendition->output, session->input, rendition->fragmented ? "mp4" : "mpegts", NULL);
         if (ret < 0) {
             return ret;
+        }
+        if (rendition->fragmented) {
+            rendition->output.context->avoid_negative_ts = AVFMT_AVOID_NEG_TS_DISABLED;
+            rendition->output.convert_adts = 1;
+        } else {
+            fluxo_hls_align_muxer(hls, rendition->output.context);
         }
     }
     return 0;
@@ -1353,11 +1928,10 @@ static int fluxo_hls_write_rendition_headers(FluxoHLS *hls) {
         if (rendition->output.context == NULL) {
             continue;
         }
-        int ret = avformat_write_header(rendition->output.context, NULL);
+        int ret = fluxo_output_write_header(&rendition->output, rendition->fragmented);
         if (ret < 0) {
             return ret;
         }
-        rendition->output.header_written = 1;
     }
     return 0;
 }
@@ -1585,29 +2159,30 @@ static void fluxo_hls_remap_renditions(FluxoRemuxSession *session) {
     }
 }
 
-// Opens the next audio segment of every audio rendition (next to the main one).
-static int fluxo_hls_open_rendition_segments(FluxoHLS *hls) {
+// Opens audio segment `sequence` of every audio rendition (next to the main one). `resend_headers`: the muxer
+// already wrote a segment, and this one must start with PAT/PMT too.
+static int fluxo_hls_open_rendition_segments(FluxoHLS *hls, int64_t sequence, int resend_headers) {
     for (int i = 0; i < hls->rendition_count; i++) {
         FluxoRendition *rendition = &hls->renditions[i];
         if (rendition->output.context == NULL) {
             continue;
         }
         char path[PATH_MAX];
-        fluxo_rendition_segment_path(rendition, hls->next_sequence, 1, path, sizeof(path));
+        fluxo_rendition_segment_path(rendition, sequence, 1, path, sizeof(path));
         int ret = avio_open(&rendition->output.context->pb, path, AVIO_FLAG_WRITE);
         if (ret < 0) {
             return ret;
         }
-        if (hls->segments_written > 0 || hls->count > 0) {
+        if (resend_headers && !rendition->fragmented) {
             av_opt_set(rendition->output.context->priv_data, "mpegts_flags", "+resend_headers", 0);
         }
     }
     return 0;
 }
 
-// Closes the audio segments of the renditions, keeping (publish) or deleting them with the main one.
+// Closes audio segment `sequence` of the renditions, keeping (publish) or deleting it with the main one.
 // Returns the bytes kept, or a negative error.
-static int64_t fluxo_hls_close_rendition_segments(FluxoHLS *hls, int flush, int publish) {
+static int64_t fluxo_hls_close_rendition_segments(FluxoHLS *hls, int64_t sequence, int flush, int publish) {
     int64_t total = 0;
     for (int i = 0; i < hls->rendition_count; i++) {
         FluxoRendition *rendition = &hls->renditions[i];
@@ -1616,19 +2191,27 @@ static int64_t fluxo_hls_close_rendition_segments(FluxoHLS *hls, int flush, int 
             continue;
         }
         if (flush && rendition->output.header_written) {
-            av_write_frame(context, NULL);
+            int ret = fluxo_output_flush(&rendition->output, rendition->fragmented, rendition->init_path, &rendition->init_written,
+                                         &rendition->moov_flushed);
+            if (ret < 0 && publish) {
+                avio_closep(&context->pb);
+                char temporary[PATH_MAX];
+                fluxo_rendition_segment_path(rendition, sequence, 1, temporary, sizeof(temporary));
+                unlink(temporary);
+                return ret;
+            }
         }
         avio_flush(context->pb);
         int64_t bytes = avio_tell(context->pb);
         avio_closep(&context->pb);
         char temporary[PATH_MAX];
-        fluxo_rendition_segment_path(rendition, hls->next_sequence, 1, temporary, sizeof(temporary));
+        fluxo_rendition_segment_path(rendition, sequence, 1, temporary, sizeof(temporary));
         if (!publish) {
             unlink(temporary);
             continue;
         }
         char final_path[PATH_MAX];
-        fluxo_rendition_segment_path(rendition, hls->next_sequence, 0, final_path, sizeof(final_path));
+        fluxo_rendition_segment_path(rendition, sequence, 0, final_path, sizeof(final_path));
         if (rename(temporary, final_path) != 0) {
             return AVERROR(errno);
         }
@@ -1637,15 +2220,15 @@ static int64_t fluxo_hls_close_rendition_segments(FluxoHLS *hls, int flush, int 
     return total;
 }
 
-// Writes the WebVTT segments of the segment being finished, [start, end) of the output timeline.
-static int64_t fluxo_hls_write_subtitle_segments(FluxoHLS *hls, int64_t start, int64_t end, int last) {
+// Writes the WebVTT segments `sequence` of the segment being finished, [start, end) of the output timeline.
+static int64_t fluxo_hls_write_subtitle_segments(FluxoHLS *hls, int64_t sequence, int64_t start, int64_t end, int last) {
     int64_t total = 0;
     for (int i = 0; i < hls->rendition_count; i++) {
         FluxoRendition *rendition = &hls->renditions[i];
         if (rendition->type != FluxoRenditionSubtitles) {
             continue;
         }
-        int64_t bytes = fluxo_rendition_write_vtt(hls, rendition, hls->next_sequence, start, end, last);
+        int64_t bytes = fluxo_rendition_write_vtt(hls, rendition, sequence, start, end, last);
         if (bytes < 0) {
             return bytes;
         }
@@ -1696,6 +2279,27 @@ static int fluxo_hls_write_renditions(FluxoHLS *hls, const AVPacket *packet, con
     return 0;
 }
 
+// True when input stream `index` is the source of a subtitle rendition.
+static int fluxo_hls_is_subtitle_source(const FluxoHLS *hls, int index) {
+    for (int i = 0; i < hls->rendition_count; i++) {
+        if (hls->renditions[i].type == FluxoRenditionSubtitles && hls->renditions[i].input_index == index) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+// Forgets the subtitle cues waiting for their segments.
+static void fluxo_hls_clear_cues(FluxoHLS *hls) {
+    for (int i = 0; i < hls->rendition_count; i++) {
+        FluxoRendition *rendition = &hls->renditions[i];
+        for (int j = 0; j < rendition->cue_count; j++) {
+            free(rendition->cues[j].text);
+        }
+        rendition->cue_count = 0;
+    }
+}
+
 static int fluxo_hls_open_segment(FluxoHLS *hls) {
     char path[PATH_MAX];
     fluxo_hls_segment_path(hls, hls->next_sequence, 1, path, sizeof(path));
@@ -1703,12 +2307,12 @@ static int fluxo_hls_open_segment(FluxoHLS *hls) {
     if (ret < 0) {
         return ret;
     }
-    if (hls->segments_written > 0 || hls->count > 0) {
+    if (!hls->fragmented && (hls->segments_written > 0 || hls->count > 0)) {
         // Every segment must start with PAT/PMT so that it can be decoded on its own.
         av_opt_set(hls->output.context->priv_data, "mpegts_flags", "+resend_headers", 0);
     }
     hls->segment_open = 1;
-    ret = fluxo_hls_open_rendition_segments(hls);
+    ret = fluxo_hls_open_rendition_segments(hls, hls->next_sequence, hls->segments_written > 0 || hls->count > 0);
     if (ret < 0) {
         return ret;
     }
@@ -1727,7 +2331,10 @@ static int fluxo_hls_finish_segment(FluxoRemuxSession *session, int64_t end_time
     }
     AVFormatContext *context = hls->output.context;
     if (flush) {
-        av_write_frame(context, NULL);
+        int ret = fluxo_hls_flush(hls);
+        if (ret < 0) {
+            return ret;
+        }
     }
     avio_flush(context->pb);
     int64_t bytes = avio_tell(context->pb);
@@ -1746,18 +2353,18 @@ static int fluxo_hls_finish_segment(FluxoRemuxSession *session, int64_t end_time
     if (bytes <= 0 || duration < 0.05) {
         // Nothing playable (e.g. cancelled right after a cut).
         unlink(temporary);
-        fluxo_hls_close_rendition_segments(hls, flush, 0);
+        fluxo_hls_close_rendition_segments(hls, hls->next_sequence, flush, 0);
         return ended ? fluxo_hls_write_playlist(hls, 1) : 0;
     }
     if (rename(temporary, final_path) != 0) {
         return AVERROR(errno);
     }
     // The renditions' segments of the same span, under the same sequence number.
-    int64_t rendition_bytes = fluxo_hls_close_rendition_segments(hls, flush, 1);
+    int64_t rendition_bytes = fluxo_hls_close_rendition_segments(hls, hls->next_sequence, flush, 1);
     if (rendition_bytes < 0) {
         return (int)rendition_bytes;
     }
-    int64_t subtitle_bytes = fluxo_hls_write_subtitle_segments(hls, hls->segment_start_time, end_time, ended);
+    int64_t subtitle_bytes = fluxo_hls_write_subtitle_segments(hls, hls->next_sequence, hls->segment_start_time, end_time, ended);
     if (subtitle_bytes < 0) {
         return (int)subtitle_bytes;
     }
@@ -1813,18 +2420,16 @@ static int fluxo_hls_finish_segment(FluxoRemuxSession *session, int64_t end_time
     }
     // A segment is the proof that the (re)connection works.
     session->reconnect_attempt = 0;
+    // (The window may have been pruned: `segment` no longer points at this segment.)
+    session->event_segment_index = hls->next_sequence - 1;
+    if (!session->is_live) {
+        pthread_mutex_lock(&session->vod_lock);
+        session->vod_available = hls->next_sequence;
+        session->vod_init_ready = hls->init_written || !hls->fragmented;
+        pthread_mutex_unlock(&session->vod_lock);
+    }
     fluxo_emit(session, FluxoRemuxEventSegmentWritten, 0, NULL);
     return 0;
-}
-
-// Muxing delay of the MPEG-TS outputs of a master playlist. The main output and the audio renditions are
-// separate muxers, so they must put the same timestamps on the same media: an explicit delay, and no
-// automatic shift of negative timestamps (libavformat would shift each muxer by its own first packet).
-#define FLUXO_RENDITION_MUX_DELAY 700000
-
-static void fluxo_hls_align_muxer(AVFormatContext *context) {
-    context->max_delay = FLUXO_RENDITION_MUX_DELAY;
-    context->avoid_negative_ts = AVFMT_AVOID_NEG_TS_DISABLED;
 }
 
 static int fluxo_hls_open(FluxoRemuxSession *session) {
@@ -1833,7 +2438,7 @@ static int fluxo_hls_open(FluxoRemuxSession *session) {
     if (ret < 0) {
         return ret;
     }
-    ret = fluxo_output_prepare(&hls->output, session->input, "mpegts", NULL);
+    ret = fluxo_hls_prepare_output(session);
     if (ret < 0) {
         return ret;
     }
@@ -1843,26 +2448,15 @@ static int fluxo_hls_open(FluxoRemuxSession *session) {
     }
     hls->reference_stream = hls->output.video_index >= 0 ? hls->output.video_index : 0;
     hls->target_duration = (int)ceil(hls->segment_duration);
-    if (hls->rendition_count > 0) {
-        fluxo_hls_align_muxer(hls->output.context);
-        for (int i = 0; i < hls->rendition_count; i++) {
-            if (hls->renditions[i].output.context != NULL) {
-                fluxo_hls_align_muxer(hls->renditions[i].output.context);
-            }
-        }
-        // The MPEG-TS muxer adds twice its maximum delay to every timestamp (90 kHz clock).
-        hls->mpegts_time_zero = av_rescale(FLUXO_RENDITION_MUX_DELAY, 90000, AV_TIME_BASE) * 2;
-    }
 
     ret = fluxo_hls_open_segment(hls);
     if (ret < 0) {
         return ret;
     }
-    ret = avformat_write_header(hls->output.context, NULL);
+    ret = fluxo_hls_write_header(hls);
     if (ret < 0) {
         return ret;
     }
-    hls->output.header_written = 1;
     // The master playlist is written with the first segment (fluxo_hls_finish_segment).
     return fluxo_hls_write_rendition_headers(hls);
 }
@@ -1938,11 +2532,19 @@ static int fluxo_hls_break(FluxoRemuxSession *session) {
 static void fluxo_hls_close(FluxoRemuxSession *session, int ended) {
     FluxoHLS *hls = &session->hls;
     if (hls->output.header_written) {
-        // Drains the muxer into the current segment, which is then published with EXT-X-ENDLIST.
+        // Drains the muxer into the current segment, which is then published with EXT-X-ENDLIST. A
+        // fragmented MP4 muxer is flushed first, so that its moov (if not written yet) goes to the
+        // initialization segment.
+        if (hls->fragmented && hls->segment_open) {
+            fluxo_hls_flush(hls);
+        }
         av_write_trailer(hls->output.context);
         for (int i = 0; i < hls->rendition_count; i++) {
             FluxoRendition *rendition = &hls->renditions[i];
             if (rendition->output.header_written && rendition->output.context->pb != NULL) {
+                if (rendition->fragmented) {
+                    fluxo_output_flush(&rendition->output, 1, rendition->init_path, &rendition->init_written, &rendition->moov_flushed);
+                }
                 av_write_trailer(rendition->output.context);
             }
         }
@@ -1956,7 +2558,7 @@ static void fluxo_hls_close(FluxoRemuxSession *session, int ended) {
         avio_closep(&hls->output.context->pb);
         fluxo_hls_segment_path(hls, hls->next_sequence, 1, temporary, sizeof(temporary));
         unlink(temporary);
-        fluxo_hls_close_rendition_segments(hls, 0, 0);
+        fluxo_hls_close_rendition_segments(hls, hls->next_sequence, 0, 0);
         hls->segment_open = 0;
     }
     fluxo_output_free(&hls->output);
@@ -2126,7 +2728,7 @@ static void fluxo_adjust_timestamps(FluxoRemuxSession *session, AVPacket *packet
         int64_t raw = av_rescale_q(packet->dts, in_stream->time_base, AV_TIME_BASE_Q);
         if (session->rebase_pending) {
             // Continue right after the last packet written before the input changed.
-            int64_t target = session->last_input_dts == AV_NOPTS_VALUE ? 0 : session->last_input_dts + FLUXO_RECONNECT_GAP;
+            int64_t target = session->last_input_dts == AV_NOPTS_VALUE ? FLUXO_TIMESTAMP_BASE : session->last_input_dts + FLUXO_RECONNECT_GAP;
             session->timestamp_offset = target - raw;
             session->last_input_dts = AV_NOPTS_VALUE;
             session->rebase_pending = 0;
@@ -2154,6 +2756,8 @@ static void fluxo_adjust_timestamps(FluxoRemuxSession *session, AVPacket *packet
     }
 }
 
+static void fluxo_vod_wait(FluxoRemuxSession *session, int64_t timeout_us);
+
 // Reads the input until it ends, fails or the session is cancelled. Returns the read error
 // (AVERROR_EOF at the end) or the output error, in which case `output_failed` is set.
 static int fluxo_run_loop(FluxoRemuxSession *session) {
@@ -2167,8 +2771,25 @@ static int fluxo_run_loop(FluxoRemuxSession *session) {
     }
 
     int ret = 0;
+    // On-demand input without a plan: segments are listed as they are written, as fast as the input
+    // allows (positions are seekable only once read); over the disk budget, reading pauses once it is
+    // read_ahead seconds of segments ahead of the latest one the player requested.
+    int64_t read_ahead_segments = (int64_t)ceil(session->read_ahead / session->hls.segment_duration);
     while (!fluxo_is_cancelled(session)) {
         fluxo_process_requests(session);
+
+        if (!session->is_live) {
+            pthread_mutex_lock(&session->vod_lock);
+            int64_t ahead = session->vod_available - 1 - session->vod_requested;
+            int over_budget = session->vod_budget_bytes > 0 && session->hls.window_bytes > session->vod_budget_bytes;
+            session->vod_paused = over_budget && (session->vod_paused ? ahead > read_ahead_segments / 2 : ahead > read_ahead_segments);
+            int paused = session->vod_paused;
+            pthread_mutex_unlock(&session->vod_lock);
+            if (paused) {
+                fluxo_vod_wait(session, 250000);
+                continue;
+            }
+        }
 
         ret = av_read_frame(session->input, packet);
         if (ret == AVERROR(EAGAIN)) {
@@ -2268,6 +2889,874 @@ static int fluxo_reconnect(FluxoRemuxSession *session, int last_error) {
     return AVERROR_EXIT;
 }
 
+// MARK: - On-demand inputs
+
+// Wakes the engine thread (a segment request, a cancellation).
+static void fluxo_vod_signal(FluxoRemuxSession *session) {
+    pthread_mutex_lock(&session->vod_lock);
+    pthread_cond_broadcast(&session->vod_cond);
+    pthread_mutex_unlock(&session->vod_lock);
+}
+
+// Waits at most `timeout_us` for a request (or a cancellation), while reading is paused.
+static void fluxo_vod_wait(FluxoRemuxSession *session, int64_t timeout_us) {
+    struct timespec deadline;
+    clock_gettime(CLOCK_REALTIME, &deadline);
+    deadline.tv_sec += (time_t)(timeout_us / 1000000);
+    deadline.tv_nsec += (long)(timeout_us % 1000000) * 1000;
+    if (deadline.tv_nsec >= 1000000000L) {
+        deadline.tv_sec++;
+        deadline.tv_nsec -= 1000000000L;
+    }
+    pthread_mutex_lock(&session->vod_lock);
+    if (session->vod_reposition < 0 && !fluxo_is_cancelled(session)) {
+        pthread_cond_timedwait(&session->vod_cond, &session->vod_lock, &deadline);
+    }
+    pthread_mutex_unlock(&session->vod_lock);
+}
+
+static int fluxo_compare_times(const void *a, const void *b) {
+    int64_t left = *(const int64_t *)a;
+    int64_t right = *(const int64_t *)b;
+    return left < right ? -1 : left > right;
+}
+
+// Time of `packet` (input timeline, AV_TIME_BASE units) used to place it in a segment. Key frames of the
+// reference video use the same clock as the index the plan was made from.
+static int64_t fluxo_vod_packet_time(const FluxoPlan *plan, const AVPacket *packet, const AVStream *stream, int key_clock) {
+    int64_t ts;
+    if (key_clock && plan->key_uses_dts) {
+        ts = packet->dts != AV_NOPTS_VALUE ? packet->dts : packet->pts;
+    } else {
+        ts = packet->pts != AV_NOPTS_VALUE ? packet->pts : packet->dts;
+    }
+    return ts == AV_NOPTS_VALUE ? AV_NOPTS_VALUE : av_rescale_q(ts, stream->time_base, AV_TIME_BASE_Q);
+}
+
+static int fluxo_vod_input_is_seekable(const AVFormatContext *input) {
+    // Demuxers without an AVIOContext of their own (e.g. HLS) seek through their own requests.
+    return input->pb == NULL || (input->pb->seekable & AVIO_SEEKABLE_NORMAL) != 0;
+}
+
+// Plans the VOD playlist of an on-demand input: from the key frame index when it covers the input (MP4,
+// Matroska with Cues, AVI), otherwise one segment every segment_duration. Returns 1 when planned, 0 when
+// the input has no reliable duration (it is then remuxed from start to end, see fluxo_run_loop), a
+// negative error on allocation failure.
+static int fluxo_vod_plan(FluxoRemuxSession *session) {
+    AVFormatContext *input = session->input;
+    FluxoPlan *plan = &session->plan;
+    // A duration estimated from the bit rate (an MPEG-TS file served without byte ranges) can be minutes off.
+    if (input->duration == AV_NOPTS_VALUE || input->duration <= 0 || input->duration_estimation_method == AVFMT_DURATION_FROM_BITRATE) {
+        return 0;
+    }
+    int video = -1;
+    int audio = -1;
+    for (unsigned int i = 0; i < input->nb_streams; i++) {
+        AVStream *stream = input->streams[i];
+        if (!fluxo_is_stream_supported(stream)) {
+            continue;
+        }
+        if (stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO && video < 0) {
+            video = (int)i;
+        } else if (stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO && audio < 0) {
+            audio = (int)i;
+        }
+    }
+    if (video < 0 && audio < 0) {
+        return 0;
+    }
+    plan->has_video = video >= 0;
+    plan->reference_input_stream = video >= 0 ? video : audio;
+    const char *format = input->iformat->name;
+    plan->key_uses_dts = strstr(format, "mov") != NULL || strstr(format, "avi") != NULL;
+
+    int64_t start = input->start_time != AV_NOPTS_VALUE ? input->start_time : 0;
+    int64_t end = start + input->duration;
+    int64_t step = (int64_t)(session->hls.segment_duration * AV_TIME_BASE);
+
+    int64_t *keys = NULL;
+    int key_count = 0;
+    if (video >= 0) {
+        AVStream *stream = input->streams[video];
+        int indexed = avformat_index_get_entries_count(stream);
+        const AVIndexEntry *last_entry = indexed > 0 ? avformat_index_get_entry(stream, indexed - 1) : NULL;
+        int64_t indexed_until = last_entry != NULL && last_entry->timestamp != AV_NOPTS_VALUE
+            ? av_rescale_q(last_entry->timestamp, stream->time_base, AV_TIME_BASE_Q) : AV_NOPTS_VALUE;
+        if ((indexed_until == AV_NOPTS_VALUE || indexed_until < end - FLUXO_VOD_INDEX_COVERAGE_GAP) && fluxo_vod_input_is_seekable(input)) {
+            // Matroska reads its index (Cues) at the first seek (until then it lists the key frames it read while
+            // probing, often one); this one goes back to the start.
+            av_seek_frame(input, video, stream->start_time != AV_NOPTS_VALUE ? stream->start_time : 0, AVSEEK_FLAG_BACKWARD);
+        }
+        int entries = avformat_index_get_entries_count(stream);
+        if (entries > 0) {
+            keys = malloc(sizeof(int64_t) * (size_t)entries);
+            if (keys == NULL) {
+                return AVERROR(ENOMEM);
+            }
+            for (int i = 0; i < entries; i++) {
+                const AVIndexEntry *entry = avformat_index_get_entry(stream, i);
+                if (entry != NULL && (entry->flags & AVINDEX_KEYFRAME) && entry->timestamp != AV_NOPTS_VALUE) {
+                    keys[key_count++] = av_rescale_q(entry->timestamp, stream->time_base, AV_TIME_BASE_Q);
+                }
+            }
+            qsort(keys, (size_t)key_count, sizeof(int64_t), fluxo_compare_times);
+        }
+    }
+    // The index must reach both ends (some files index only their first minutes) and have no holes: a
+    // demuxer without an index of its own (MPEG-TS) only lists the key frames it happened to read while
+    // probing the start and the end of the file, which would plan a single segment for the whole movie.
+    int exact = key_count >= 2 && keys[0] <= start + 10 * AV_TIME_BASE && keys[key_count - 1] >= end - FLUXO_VOD_INDEX_COVERAGE_GAP;
+    for (int i = 1; exact && i < key_count; i++) {
+        if (keys[i] - keys[i - 1] > FLUXO_VOD_INDEX_MAX_KEY_GAP) {
+            exact = 0;
+        }
+    }
+
+    int capacity = exact ? key_count + 1 : (int)(input->duration / (step > 0 ? step : AV_TIME_BASE)) + 3;
+    plan->starts = malloc(sizeof(int64_t) * (size_t)(capacity + 1));
+    if (plan->starts == NULL) {
+        free(keys);
+        return AVERROR(ENOMEM);
+    }
+    int count = 0;
+    if (exact) {
+        // Segments of at least the target duration, each starting on a key frame; a short tail joins the last one.
+        plan->starts[count++] = keys[0];
+        for (int i = 1; i < key_count; i++) {
+            if (keys[i] - plan->starts[count - 1] >= step && keys[i] < end - step / 2 && keys[i] > plan->starts[count - 1]) {
+                plan->starts[count++] = keys[i];
+            }
+        }
+    } else {
+        for (int64_t time = start; (count == 0 || time < end - step / 2) && count < capacity; time += step) {
+            plan->starts[count++] = time;
+        }
+    }
+    free(keys);
+    if (end <= plan->starts[count - 1]) {
+        end = plan->starts[count - 1] + step;
+    }
+    plan->starts[count] = end;
+    plan->count = count;
+    plan->exact = exact;
+    plan->bytes = calloc((size_t)count, sizeof(int64_t));
+    if (plan->bytes == NULL) {
+        return AVERROR(ENOMEM);
+    }
+    session->vod_end_segment = count - 1;
+    return 1;
+}
+
+static void fluxo_vod_plan_free(FluxoPlan *plan) {
+    free(plan->starts);
+    plan->starts = NULL;
+    free(plan->bytes);
+    plan->bytes = NULL;
+    plan->count = 0;
+}
+
+// Writes one complete VOD media playlist of the plan: the main one, or a rendition's (the same segments under
+// other file names, `extension` "ts" for audio, "vtt" for subtitles).
+static int fluxo_vod_write_media_playlist(FluxoRemuxSession *session, const char *path, const char *tmp_path, const char *base_name,
+                                          const char *extension, const char *init_path, int is_main) {
+    const FluxoPlan *plan = &session->plan;
+    FILE *file = fopen(tmp_path, "w");
+    if (file == NULL) {
+        return AVERROR(errno);
+    }
+    int target = 1;
+    for (int i = 0; i < plan->count; i++) {
+        int rounded = (int)ceil((double)(plan->starts[i + 1] - plan->starts[i]) / AV_TIME_BASE - 0.001);
+        if (rounded > target) {
+            target = rounded;
+        }
+    }
+    fprintf(file, "#EXTM3U\n#EXT-X-VERSION:%d\n", init_path != NULL ? 7 : 3);
+    fprintf(file, "#EXT-X-TARGETDURATION:%d\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-PLAYLIST-TYPE:VOD\n", target);
+    if (!is_main || (plan->exact && plan->has_video)) {
+        // Every segment starts with a key frame of the index (audio and subtitle segments always do).
+        fprintf(file, "#EXT-X-INDEPENDENT-SEGMENTS\n");
+    }
+    if (init_path != NULL) {
+        const char *slash = strrchr(init_path, '/');
+        fprintf(file, "#EXT-X-MAP:URI=\"%s\"\n", slash != NULL ? slash + 1 : init_path);
+    }
+    for (int i = 0; i < plan->count; i++) {
+        fprintf(file, "#EXTINF:%.3f,\n%s-%06d.%s\n", (double)(plan->starts[i + 1] - plan->starts[i]) / AV_TIME_BASE, base_name, i, extension);
+    }
+    fprintf(file, "#EXT-X-ENDLIST\n");
+    int failed = ferror(file);
+    if (fclose(file) != 0 || failed) {
+        unlink(tmp_path);
+        return AVERROR(EIO);
+    }
+    if (rename(tmp_path, path) != 0) {
+        return AVERROR(errno);
+    }
+    return 0;
+}
+
+// Writes the complete VOD playlists, once, before playback starts: the renditions' first, then the main one.
+// Segments are produced when requested. The master playlist follows with the first segment.
+static int fluxo_vod_write_playlist(FluxoRemuxSession *session) {
+    FluxoHLS *hls = &session->hls;
+    for (int i = 0; i < hls->rendition_count; i++) {
+        const FluxoRendition *rendition = &hls->renditions[i];
+        if (rendition->muxed) {
+            continue;
+        }
+        int ret = fluxo_vod_write_media_playlist(session, rendition->playlist_path, rendition->playlist_tmp_path, rendition->base_name,
+                                                 fluxo_rendition_extension(rendition), rendition->fragmented ? rendition->init_path : NULL, 0);
+        if (ret < 0) {
+            return ret;
+        }
+    }
+    return fluxo_vod_write_media_playlist(session, hls->playlist_path, hls->playlist_tmp_path, hls->segment_base_name,
+                                          hls->segment_extension, hls->fragmented ? hls->init_path : NULL, 1);
+}
+
+static void fluxo_vod_drop_held(FluxoRemuxSession *session) {
+    for (int i = 0; i < session->vod_held_count; i++) {
+        av_packet_free(&session->vod_held[i].packet);
+    }
+    session->vod_held_count = 0;
+}
+
+static int fluxo_vod_hold(FluxoRemuxSession *session, const AVPacket *packet, int64_t time) {
+    if (session->vod_held_count == session->vod_held_capacity) {
+        int capacity = session->vod_held_capacity > 0 ? session->vod_held_capacity * 2 : 64;
+        FluxoHeldPacket *held = realloc(session->vod_held, sizeof(FluxoHeldPacket) * (size_t)capacity);
+        if (held == NULL) {
+            return AVERROR(ENOMEM);
+        }
+        session->vod_held = held;
+        session->vod_held_capacity = capacity;
+    }
+    AVPacket *copy = av_packet_clone(packet);
+    if (copy == NULL) {
+        return AVERROR(ENOMEM);
+    }
+    session->vod_held[session->vod_held_count].packet = copy;
+    session->vod_held[session->vod_held_count].time = time;
+    session->vod_held_count++;
+    return 0;
+}
+
+// Ends the current run: the partial segment is deleted and the muxer freed without a trailer (after a
+// seek, an error or a cancellation).
+static void fluxo_vod_abort_run(FluxoRemuxSession *session) {
+    FluxoHLS *hls = &session->hls;
+    if (hls->segment_open && hls->output.context != NULL) {
+        char temporary[PATH_MAX];
+        avio_closep(&hls->output.context->pb);
+        fluxo_hls_segment_path(hls, session->vod_segment, 1, temporary, sizeof(temporary));
+        unlink(temporary);
+        fluxo_hls_close_rendition_segments(hls, session->vod_segment, 0, 0);
+    }
+    hls->segment_open = 0;
+    fluxo_output_free(&hls->output);
+    for (int i = 0; i < hls->rendition_count; i++) {
+        fluxo_output_free(&hls->renditions[i].output);
+    }
+    hls->moov_flushed = 0;
+    session->vod_writing = 0;
+    fluxo_vod_drop_held(session);
+}
+
+// Deletes the segments farthest from the player while the cache is over its budget. Kept: the two
+// segments before the latest request and the read-ahead after it.
+static void fluxo_vod_evict(FluxoRemuxSession *session) {
+    FluxoHLS *hls = &session->hls;
+    FluxoPlan *plan = &session->plan;
+    if (hls->max_window_bytes <= 0) {
+        return;
+    }
+    pthread_mutex_lock(&session->vod_lock);
+    while (session->vod_cached_bytes > hls->max_window_bytes) {
+        int64_t requested = session->vod_requested;
+        int64_t keep_from = requested - 2;
+        int64_t keep_to = requested;
+        int64_t horizon = plan->starts[requested] + (int64_t)(session->read_ahead * AV_TIME_BASE);
+        while (keep_to + 1 < plan->count && plan->starts[keep_to + 1] <= horizon) {
+            keep_to++;
+        }
+        keep_to++;
+        int victim = -1;
+        int64_t farthest = -1;
+        for (int i = 0; i < plan->count; i++) {
+            if (plan->bytes[i] <= 0 || (i >= keep_from && i <= keep_to)) {
+                continue;
+            }
+            // Played segments go first: going back far is rarer than continuing.
+            int64_t distance = i < requested ? (requested - i) * 2 : i - requested;
+            if (distance > farthest) {
+                farthest = distance;
+                victim = i;
+            }
+        }
+        if (victim < 0) {
+            break;
+        }
+        fluxo_hls_delete_segment(hls, victim);
+        session->vod_cached_bytes -= plan->bytes[victim];
+        plan->bytes[victim] = 0;
+        session->vod_segments_on_disk--;
+    }
+    pthread_mutex_unlock(&session->vod_lock);
+}
+
+// Opens the file of segment `index`, starting a new run (muxer) when none is open.
+static int fluxo_vod_open_segment(FluxoRemuxSession *session, int64_t index) {
+    FluxoHLS *hls = &session->hls;
+    int new_run = hls->output.context == NULL;
+    if (new_run) {
+        int ret = fluxo_hls_prepare_output(session);
+        if (ret >= 0) {
+            ret = fluxo_hls_prepare_renditions(session);
+        }
+        if (ret < 0) {
+            return ret;
+        }
+        // The plan decides the cuts and where a run starts (fluxo_vod_route).
+        hls->output.wait_keyframe = 0;
+    }
+    char path[PATH_MAX];
+    fluxo_hls_segment_path(hls, index, 1, path, sizeof(path));
+    int ret = avio_open(&hls->output.context->pb, path, AVIO_FLAG_WRITE);
+    if (ret < 0) {
+        return ret;
+    }
+    hls->segment_open = 1;
+    // The audio renditions' segments of the same span, under the same number.
+    ret = fluxo_hls_open_rendition_segments(hls, index, !new_run);
+    if (ret < 0) {
+        return ret;
+    }
+    if (new_run) {
+        ret = fluxo_hls_write_header(hls);
+        if (ret >= 0) {
+            ret = fluxo_hls_write_rendition_headers(hls);
+        }
+        if (ret < 0) {
+            return ret;
+        }
+        // Video packets before the first key frame of a run cannot be decoded.
+        session->vod_need_key = session->plan.has_video;
+    } else if (!hls->fragmented) {
+        // Every segment must start with PAT/PMT so that it can be decoded on its own.
+        av_opt_set(hls->output.context->priv_data, "mpegts_flags", "+resend_headers", 0);
+    }
+    session->vod_writing = 1;
+    return 0;
+}
+
+// Publishes the current segment: flushes it, renames it into place and reports it.
+static int fluxo_vod_finish_segment(FluxoRemuxSession *session) {
+    FluxoHLS *hls = &session->hls;
+    AVFormatContext *context = hls->output.context;
+    int64_t index = session->vod_segment;
+    int ret = fluxo_hls_flush(hls);
+    if (ret < 0) {
+        return ret;
+    }
+    avio_flush(context->pb);
+    int64_t bytes = avio_tell(context->pb);
+    ret = avio_closep(&context->pb);
+    hls->segment_open = 0;
+    session->vod_writing = 0;
+
+    char temporary[PATH_MAX];
+    char final_path[PATH_MAX];
+    fluxo_hls_segment_path(hls, index, 1, temporary, sizeof(temporary));
+    fluxo_hls_segment_path(hls, index, 0, final_path, sizeof(final_path));
+    if (ret < 0 || bytes <= 0) {
+        // An error, or no packet reached it (the input ended, or had nothing between two cuts): nothing to publish.
+        unlink(temporary);
+        fluxo_hls_close_rendition_segments(hls, index, 1, 0);
+        return ret < 0 ? ret : 0;
+    }
+    if (rename(temporary, final_path) != 0) {
+        fluxo_hls_close_rendition_segments(hls, index, 1, 0);
+        return AVERROR(errno);
+    }
+    if (hls->rendition_count > 0) {
+        // The renditions' segments are in place before the segment is reported (the player asks for them
+        // at about the same time). Subtitles cover the planned span of the segment, output timeline.
+        int64_t rendition_bytes = fluxo_hls_close_rendition_segments(hls, index, 1, 1);
+        if (rendition_bytes < 0) {
+            return (int)rendition_bytes;
+        }
+        const FluxoPlan *plan = &session->plan;
+        int64_t subtitle_bytes = fluxo_hls_write_subtitle_segments(hls, index, plan->starts[index] + session->timestamp_offset,
+                                                                   plan->starts[index + 1] + session->timestamp_offset,
+                                                                   index == plan->count - 1);
+        if (subtitle_bytes < 0) {
+            return (int)subtitle_bytes;
+        }
+        bytes += rendition_bytes + subtitle_bytes;
+        if (!hls->master_written) {
+            // Before the first SegmentWritten event: the player opens the master playlist when it gets it.
+            ret = fluxo_hls_write_master(session);
+            if (ret < 0) {
+                return ret;
+            }
+        }
+    }
+
+    pthread_mutex_lock(&session->vod_lock);
+    session->plan.bytes[index] = bytes;
+    session->vod_cached_bytes += bytes;
+    session->vod_segments_on_disk++;
+    session->vod_init_ready = hls->init_written || !hls->fragmented;
+    pthread_mutex_unlock(&session->vod_lock);
+
+    hls->segments_written++;
+    session->vod_recoveries = 0;
+    session->reconnect_attempt = 0;
+    session->event_segment_index = index;
+    fluxo_emit(session, FluxoRemuxEventSegmentWritten, 0, NULL);
+    fluxo_vod_evict(session);
+    return 0;
+}
+
+// Moves the reader from its segment to the next one: publishes the finished segment, then opens the next
+// one if it is wanted and not on disk yet. A segment already on disk is read through without writing,
+// unless the next missing one is far: then the reader seeks there.
+static int fluxo_vod_cut(FluxoRemuxSession *session) {
+    FluxoHLS *hls = &session->hls;
+    FluxoPlan *plan = &session->plan;
+    if (session->vod_writing) {
+        int ret = fluxo_vod_finish_segment(session);
+        if (ret < 0) {
+            return ret;
+        }
+    }
+    int64_t next = session->vod_segment + 1;
+    pthread_mutex_lock(&session->vod_lock);
+    session->vod_segment = next;
+    int on_disk = next < plan->count && plan->bytes[next] > 0;
+    int64_t missing = -1;
+    if (on_disk) {
+        for (int64_t i = next + 1; i < plan->count; i++) {
+            if (plan->bytes[i] <= 0) {
+                missing = i;
+                break;
+            }
+        }
+    }
+    if (on_disk && missing > next + FLUXO_VOD_READ_ON_SEGMENTS && session->vod_reposition < 0) {
+        session->vod_reposition = missing;
+    }
+    pthread_mutex_unlock(&session->vod_lock);
+
+    if (next >= plan->count) {
+        return 0;
+    }
+    if (next >= session->vod_target && !on_disk) {
+        return fluxo_vod_open_segment(session, next);
+    }
+    // Not written: the next written segment starts a new run, whose first fragment is placed by its own
+    // timestamps (frag_discont), like after a seek.
+    if (hls->output.context != NULL) {
+        fluxo_vod_abort_run(session);
+    }
+    return 0;
+}
+
+// Writes `packet` (input timeline) to the current segment, or drops it while no segment is written.
+static int fluxo_vod_write(FluxoRemuxSession *session, AVPacket *packet, AVPacket *scratch) {
+    if (!session->vod_writing) {
+        return 0;
+    }
+    AVStream *in_stream = session->input->streams[packet->stream_index];
+    if (session->vod_need_key && packet->stream_index == session->plan.reference_input_stream && session->plan.has_video) {
+        if (!(packet->flags & AV_PKT_FLAG_KEY)) {
+            return 0;
+        }
+        session->vod_need_key = 0;
+    }
+    int64_t offset = av_rescale_q(session->timestamp_offset, AV_TIME_BASE_Q, in_stream->time_base);
+    if (packet->dts != AV_NOPTS_VALUE) {
+        packet->dts += offset;
+    }
+    if (packet->pts != AV_NOPTS_VALUE) {
+        packet->pts += offset;
+    }
+    FluxoHLS *hls = &session->hls;
+    if (hls->rendition_count > 0 && !hls->master_written && !hls->closed_captions && hls->output.video_index >= 0 &&
+        (unsigned int)packet->stream_index < hls->output.stream_map_size &&
+        hls->output.stream_map[packet->stream_index] == hls->output.video_index) {
+        hls->closed_captions = fluxo_packet_has_closed_captions(packet);
+    }
+    int ret = fluxo_output_prepare_packet(&hls->output, packet, in_stream, scratch);
+    if (ret > 0) {
+        ret = fluxo_output_commit(&hls->output, scratch);
+    }
+    if (ret >= 0 && hls->rendition_count > 0) {
+        // Extra audio tracks and subtitles: packets the main output does not take.
+        ret = fluxo_hls_write_renditions(hls, packet, in_stream, scratch);
+    }
+    if (packet->dts != AV_NOPTS_VALUE) {
+        packet->dts -= offset;
+    }
+    if (packet->pts != AV_NOPTS_VALUE) {
+        packet->pts -= offset;
+    }
+    return ret < 0 ? ret : 0;
+}
+
+// Places one input packet in the plan. A segment ends at the first key frame of the reference video at or
+// after the start of the next segment. Packets at or after that start are held until that key frame
+// arrives (they belong to the current segment if they come before it). When no key frame comes before the
+// segment after next (a longer GOP than planned), the cut is made at the planned time instead.
+static int fluxo_vod_route(FluxoRemuxSession *session, AVPacket *packet, AVPacket *scratch) {
+    FluxoPlan *plan = &session->plan;
+    AVStream *in_stream = session->input->streams[packet->stream_index];
+    int reference = packet->stream_index == plan->reference_input_stream;
+    int key = reference && (packet->flags & AV_PKT_FLAG_KEY);
+    int64_t time = fluxo_vod_packet_time(plan, packet, in_stream, 0);
+    int64_t key_time = key ? fluxo_vod_packet_time(plan, packet, in_stream, 1) : AV_NOPTS_VALUE;
+    int ret;
+
+    if (session->vod_check_seek && reference && time != AV_NOPTS_VALUE) {
+        session->vod_check_seek = 0;
+        int64_t target = plan->starts[session->vod_target];
+        int64_t step = (int64_t)(session->hls.segment_duration * AV_TIME_BASE);
+        if (time > target + 2 * step && session->vod_target > 0) {
+            // Landed after the target: seek again from earlier, with a margin of the overshoot.
+            int64_t earlier = target - (time - target) - step;
+            if (earlier < plan->starts[0]) {
+                earlier = plan->starts[0];
+            }
+            if (av_seek_frame(session->input, -1, earlier, AVSEEK_FLAG_BACKWARD) >= 0) {
+                return 0;
+            }
+        }
+    }
+    if (session->vod_segment < 0) {
+        // Reading from the start: the first packet opens segment 0.
+        ret = fluxo_vod_cut(session);
+        if (ret < 0) {
+            return ret;
+        }
+    }
+    for (;;) {
+        int64_t next = session->vod_segment + 1;
+        if (next >= plan->count) {
+            return fluxo_vod_write(session, packet, scratch);
+        }
+        int64_t boundary = plan->starts[next];
+        int64_t following = next + 1 < plan->count ? plan->starts[next + 1] : INT64_MAX;
+        if (!plan->has_video) {
+            if (reference && time != AV_NOPTS_VALUE && time >= boundary - FLUXO_VOD_TIME_EPSILON) {
+                ret = fluxo_vod_cut(session);
+                if (ret < 0) {
+                    return ret;
+                }
+                continue;
+            }
+            return fluxo_vod_write(session, packet, scratch);
+        }
+        if (key && key_time != AV_NOPTS_VALUE && key_time >= boundary - FLUXO_VOD_TIME_EPSILON) {
+            for (int i = 0; i < session->vod_held_count; i++) {
+                ret = fluxo_vod_write(session, session->vod_held[i].packet, scratch);
+                if (ret < 0) {
+                    return ret;
+                }
+            }
+            fluxo_vod_drop_held(session);
+            ret = fluxo_vod_cut(session);
+            if (ret < 0) {
+                return ret;
+            }
+            return fluxo_vod_write(session, packet, scratch);
+        }
+        int pending = session->vod_held_count > 0 || (time != AV_NOPTS_VALUE && time >= boundary - FLUXO_VOD_TIME_EPSILON);
+        if (!pending) {
+            return fluxo_vod_write(session, packet, scratch);
+        }
+        int overdue = (reference && time != AV_NOPTS_VALUE && time >= following - FLUXO_VOD_TIME_EPSILON) ||
+                      session->vod_held_count >= FLUXO_VOD_MAX_HELD_PACKETS;
+        if (!overdue) {
+            return fluxo_vod_hold(session, packet, time);
+        }
+        // No key frame in the next segment: cut at its planned start.
+        int held = session->vod_held_count;
+        for (int i = 0; i < held; i++) {
+            if (session->vod_held[i].time == AV_NOPTS_VALUE || session->vod_held[i].time < boundary) {
+                ret = fluxo_vod_write(session, session->vod_held[i].packet, scratch);
+                if (ret < 0) {
+                    return ret;
+                }
+            }
+        }
+        ret = fluxo_vod_cut(session);
+        if (ret < 0) {
+            return ret;
+        }
+        for (int i = 0; i < held; i++) {
+            if (session->vod_held[i].time != AV_NOPTS_VALUE && session->vod_held[i].time >= boundary) {
+                ret = fluxo_vod_write(session, session->vod_held[i].packet, scratch);
+                if (ret < 0) {
+                    return ret;
+                }
+            }
+        }
+        fluxo_vod_drop_held(session);
+        // The packet is placed against the boundaries of the new segment.
+    }
+}
+
+// Positions the reader at the start of segment `index`: seeks to the key frame at or before it, or (an
+// input that cannot seek, e.g. a server without byte ranges) reads on to it, or reads again from the start.
+static int fluxo_vod_seek(FluxoRemuxSession *session, int64_t index) {
+    FluxoPlan *plan = &session->plan;
+    fluxo_vod_abort_run(session);
+    int64_t current = session->vod_segment;
+
+    // Demuxers emulate seeking on an input that cannot seek by reading and skipping, which can lose their
+    // place in the file: such inputs are only read on, or reopened.
+    int ret = fluxo_vod_input_is_seekable(session->input) ? av_seek_frame(session->input, -1, plan->starts[index], AVSEEK_FLAG_BACKWARD) : AVERROR(ENOSYS);
+    int64_t position;
+    if (ret >= 0) {
+        position = index - 1;
+        session->vod_check_seek = 1;
+    } else if (index > current) {
+        // Reading on reaches it; nothing is written until then.
+        position = current;
+    } else {
+        fluxo_close_input(session);
+        ret = fluxo_open_input(session);
+        if (ret < 0) {
+            return ret;
+        }
+        fluxo_hls_remap_renditions(session);
+        position = -1;
+    }
+    // Cues read before the jump belong to other segments.
+    fluxo_hls_clear_cues(&session->hls);
+    pthread_mutex_lock(&session->vod_lock);
+    session->vod_segment = position;
+    session->vod_target = index;
+    session->vod_ended = 0;
+    session->vod_paused = 0;
+    pthread_mutex_unlock(&session->vod_lock);
+    session->vod_need_key = plan->has_video;
+    return 0;
+}
+
+// Reopens the input after a read error and positions the reader at the segment it was producing.
+// Returns 0 when reading can continue, the error when the input could not be resumed.
+static int fluxo_vod_recover(FluxoRemuxSession *session, int error) {
+    int64_t resume = session->vod_segment;
+    if (!session->vod_writing) {
+        resume = resume + 1 > session->vod_target ? resume + 1 : session->vod_target;
+    }
+    if (resume < 0) {
+        resume = 0;
+    }
+    if (resume >= session->plan.count) {
+        resume = session->plan.count - 1;
+    }
+    fluxo_vod_abort_run(session);
+    int ret = error;
+    while (!fluxo_is_cancelled(session)) {
+        session->vod_recoveries++;
+        if (session->vod_recoveries > FLUXO_VOD_MAX_RECOVERIES) {
+            return ret;
+        }
+        session->reconnect_attempt = session->vod_recoveries;
+        fluxo_set_state(session, FluxoRemuxStateReconnecting, ret, NULL);
+        int shift = session->vod_recoveries - 1 < 4 ? session->vod_recoveries - 1 : 4;
+        fluxo_wait(session, (AV_TIME_BASE / 2) << shift);
+        if (fluxo_is_cancelled(session)) {
+            break;
+        }
+        fluxo_close_input(session);
+        ret = fluxo_open_input(session);
+        if (ret < 0) {
+            continue;
+        }
+        fluxo_hls_remap_renditions(session);
+        pthread_mutex_lock(&session->vod_lock);
+        if (session->vod_reposition < 0) {
+            session->vod_reposition = resume;
+        }
+        pthread_mutex_unlock(&session->vod_lock);
+        fluxo_set_state(session, FluxoRemuxStateRunning, 0, NULL);
+        return 0;
+    }
+    return AVERROR_EXIT;
+}
+
+// The input was read to its end: the last segment is published and the reader waits for requests (the
+// player may seek back to segments that were deleted from the cache).
+static int fluxo_vod_finish_input(FluxoRemuxSession *session, AVPacket *scratch) {
+    for (int i = 0; i < session->vod_held_count; i++) {
+        int ret = fluxo_vod_write(session, session->vod_held[i].packet, scratch);
+        if (ret < 0) {
+            return ret;
+        }
+    }
+    fluxo_vod_drop_held(session);
+    if (session->vod_writing) {
+        int ret = fluxo_vod_finish_segment(session);
+        if (ret < 0) {
+            return ret;
+        }
+    }
+    fluxo_output_free(&session->hls.output);
+    for (int i = 0; i < session->hls.rendition_count; i++) {
+        fluxo_output_free(&session->hls.renditions[i].output);
+    }
+    session->hls.moov_flushed = 0;
+    pthread_mutex_lock(&session->vod_lock);
+    session->vod_ended = 1;
+    // Nothing exists after the segment the reader reached (the plan can be longer than the media: MPEG-TS
+    // durations are estimated), nor that segment itself if nothing was written to it.
+    int64_t reached = session->vod_segment;
+    if (reached >= 0 && reached < session->plan.count) {
+        int64_t last = session->plan.bytes[reached] > 0 ? reached : reached - 1;
+        if (last >= 0 && last < session->vod_end_segment) {
+            session->vod_end_segment = last;
+        }
+    }
+    pthread_mutex_unlock(&session->vod_lock);
+    return 0;
+}
+
+// True when the reader is far enough ahead of the latest request to pause (with hysteresis: it resumes
+// at half the read-ahead).
+static int fluxo_vod_should_pause(FluxoRemuxSession *session) {
+    const FluxoPlan *plan = &session->plan;
+    pthread_mutex_lock(&session->vod_lock);
+    int64_t reader = session->vod_segment > session->vod_target ? session->vod_segment : session->vod_target;
+    int64_t requested = session->vod_requested;
+    if (reader < 0) {
+        reader = 0;
+    }
+    if (reader >= plan->count) {
+        reader = plan->count - 1;
+    }
+    int64_t ahead = plan->starts[reader] - plan->starts[requested];
+    int64_t limit = (int64_t)(session->read_ahead * AV_TIME_BASE);
+    if (session->vod_paused) {
+        session->vod_paused = ahead > limit / 2;
+    } else {
+        session->vod_paused = ahead > limit;
+    }
+    int paused = session->vod_paused;
+    pthread_mutex_unlock(&session->vod_lock);
+    return paused;
+}
+
+// Produces the segments of a planned on-demand input until the session is cancelled or the input fails.
+static int fluxo_vod_run(FluxoRemuxSession *session) {
+    AVPacket *packet = av_packet_alloc();
+    AVPacket *scratch = av_packet_alloc();
+    if (packet == NULL || scratch == NULL) {
+        av_packet_free(&packet);
+        av_packet_free(&scratch);
+        session->output_failed = 1;
+        return AVERROR(ENOMEM);
+    }
+    int ret = 0;
+    while (!fluxo_is_cancelled(session)) {
+        pthread_mutex_lock(&session->vod_lock);
+        int64_t reposition = session->vod_reposition;
+        session->vod_reposition = -1;
+        int ended = session->vod_ended;
+        pthread_mutex_unlock(&session->vod_lock);
+
+        if (reposition >= 0) {
+            ret = fluxo_vod_seek(session, reposition);
+            if (ret < 0) {
+                ret = fluxo_vod_recover(session, ret);
+                if (ret < 0) {
+                    break;
+                }
+            }
+            continue;
+        }
+        if (ended || fluxo_vod_should_pause(session)) {
+            fluxo_vod_wait(session, 250000);
+            continue;
+        }
+
+        ret = av_read_frame(session->input, packet);
+        if (ret == AVERROR(EAGAIN)) {
+            ret = 0;
+            continue;
+        }
+        if (ret == AVERROR_EOF) {
+            // The real end, or a connection the server closed early (then the reader resumes where it was).
+            const FluxoPlan *plan = &session->plan;
+            int at_end = fluxo_input_reached_end_of_file(session) || session->vod_segment >= plan->count - 1 ||
+                         session->input->pb == NULL || avio_size(session->input->pb) <= 0;
+            if (at_end) {
+                ret = fluxo_vod_finish_input(session, scratch);
+                if (ret < 0) {
+                    session->output_failed = 1;
+                    break;
+                }
+                ret = 0;
+                continue;
+            }
+        }
+        if (ret < 0) {
+            ret = fluxo_vod_recover(session, ret);
+            if (ret < 0) {
+                break;
+            }
+            continue;
+        }
+        if (packet->stream_index < 0 || (unsigned int)packet->stream_index >= session->input->nb_streams ||
+            !(fluxo_is_stream_supported(session->input->streams[packet->stream_index]) ||
+              fluxo_hls_is_subtitle_source(&session->hls, packet->stream_index))) {
+            av_packet_unref(packet);
+            continue;
+        }
+        ret = fluxo_vod_route(session, packet, scratch);
+        av_packet_unref(packet);
+        if (ret < 0) {
+            session->output_failed = 1;
+            break;
+        }
+    }
+    if (fluxo_is_cancelled(session) && ret >= 0) {
+        ret = AVERROR_EXIT;
+    }
+    fluxo_vod_abort_run(session);
+    av_packet_free(&packet);
+    av_packet_free(&scratch);
+    return ret;
+}
+
+// Prepares the output of a planned on-demand input: the segment format and the complete playlist.
+static int fluxo_vod_open(FluxoRemuxSession *session) {
+    FluxoHLS *hls = &session->hls;
+    hls->fragmented = fluxo_hls_wants_fragmented_mp4(session->input);
+    hls->segment_extension = hls->fragmented ? "m4s" : "ts";
+    // Extra audio tracks and text subtitles: renditions of a master playlist, with the same segments (audio in
+    // fragmented MP4 too next to fMP4 video).
+    int ret = fluxo_hls_plan_renditions(session);
+    if (ret < 0) {
+        return ret;
+    }
+    for (int i = 0; i < hls->rendition_count; i++) {
+        hls->renditions[i].fragmented = hls->fragmented && hls->renditions[i].type == FluxoRenditionAudio;
+    }
+    // Output timestamps: the input timeline from the first segment, plus the base.
+    session->timestamp_offset = FLUXO_TIMESTAMP_BASE - session->plan.starts[0];
+    pthread_mutex_lock(&session->vod_lock);
+    session->vod_segment = -1;
+    session->vod_target = 0;
+    session->vod_requested = 0;
+    session->vod_reposition = -1;
+    pthread_mutex_unlock(&session->vod_lock);
+    return fluxo_vod_write_playlist(session);
+}
+
 static void *fluxo_thread_main(void *arg) {
     FluxoRemuxSession *session = arg;
     fluxo_set_state(session, FluxoRemuxStateOpening, 0, NULL);
@@ -2276,23 +3765,55 @@ static void *fluxo_thread_main(void *arg) {
     // Set when a live input could not be reconnected: always a failure, even if the last error was EOF.
     int reconnect_failed = 0;
     int ret = fluxo_open_input(session);
-    // A missing protocol (e.g. srt://, which needs libsrt) is not a transient error: no retry.
-    if (ret < 0 && ret != AVERROR_PROTOCOL_NOT_FOUND && session->is_live && !fluxo_is_cancelled(session)) {
-        // One quick retry: IPTV servers often refuse the very first connection of a burst.
-        fluxo_wait(session, AV_TIME_BASE / 2);
+    // A missing protocol (e.g. srt://, which needs libsrt) is not a transient error: no retry. One quick retry
+    // otherwise: IPTV servers often refuse the very first connection of a burst. Accounts limited to one
+    // connection refuse new ones (403, 429, 5xx) until they notice the previous one closed (the channel played
+    // before, or AVPlayer's own connections to a movie the engine takes over): two more, 1 s and 2 s later.
+    for (int attempt = 1; ret < 0 && ret != AVERROR_PROTOCOL_NOT_FOUND && !fluxo_is_cancelled(session) && attempt <= 3; attempt++) {
+        if (attempt > 1 && !fluxo_is_busy_server_error(ret)) {
+            break;
+        }
+        fluxo_wait(session, (AV_TIME_BASE / 2) << (attempt - 1));
         if (!fluxo_is_cancelled(session)) {
             ret = fluxo_open_input(session);
         }
     }
+    int planned = 0;
     if (ret >= 0) {
         int64_t start = session->input->start_time;
-        session->timestamp_offset = start == AV_NOPTS_VALUE ? 0 : -start;
+        session->timestamp_offset = (start == AV_NOPTS_VALUE ? 0 : -start) + FLUXO_TIMESTAMP_BASE;
         session->last_input_dts = AV_NOPTS_VALUE;
 
         stage = "Unable to create the HLS output";
-        ret = fluxo_hls_open(session);
+        if (!session->is_live) {
+            ret = fluxo_vod_plan(session);
+            planned = ret > 0;
+            if (planned) {
+                pthread_mutex_lock(&session->vod_lock);
+                session->on_demand = 1;
+                pthread_mutex_unlock(&session->vod_lock);
+                ret = fluxo_vod_open(session);
+            }
+        }
+        if (ret >= 0 && !planned) {
+            if (!session->is_live) {
+                // Every segment stays listed (EXT-X-PLAYLIST-TYPE:EVENT), so that every position read so
+                // far stays seekable; the budget only slows reading down (fluxo_run_loop).
+                session->vod_budget_bytes = session->hls.max_window_bytes;
+                session->hls.max_window_bytes = 0;
+                session->hls.max_window_duration = 0;
+            }
+            ret = fluxo_hls_open(session);
+        }
     }
-    if (ret >= 0) {
+    if (ret >= 0 && planned) {
+        fluxo_set_state(session, FluxoRemuxStateRunning, 0, NULL);
+        stage = "Stream interrupted";
+        ret = fluxo_vod_run(session);
+        if (session->output_failed) {
+            stage = "Unable to write the stream";
+        }
+    } else if (ret >= 0) {
         fluxo_set_state(session, FluxoRemuxStateRunning, 0, NULL);
         for (;;) {
             stage = "Stream interrupted";
@@ -2322,7 +3843,12 @@ static void *fluxo_thread_main(void *arg) {
 
     fluxo_recording_close(session, 0, NULL);
     fluxo_drain_requests(session);
-    fluxo_hls_close(session, !cancelled);
+    if (planned) {
+        // The VOD playlist stays as it is; only the partial segment goes (fluxo_vod_run).
+        fluxo_vod_abort_run(session);
+    } else {
+        fluxo_hls_close(session, !cancelled);
+    }
     fluxo_close_input(session);
 
     if (cancelled) {
@@ -2357,6 +3883,11 @@ FluxoRemuxSession *fluxo_remux_create(const FluxoRemuxConfig *config, FluxoRemux
         return NULL;
     }
     pthread_mutex_init(&session->request_lock, NULL);
+    pthread_mutex_init(&session->vod_lock, NULL);
+    pthread_cond_init(&session->vod_cond, NULL);
+    session->vod_reposition = -1;
+    session->vod_segment = -1;
+    session->read_ahead = config->read_ahead_duration > 0 ? config->read_ahead_duration : FLUXO_DEFAULT_READ_AHEAD;
     atomic_init(&session->cancel_requested, false);
     atomic_init(&session->started, false);
     atomic_init(&session->request_pending, false);
@@ -2397,6 +3928,7 @@ FluxoRemuxSession *fluxo_remux_create(const FluxoRemuxConfig *config, FluxoRemux
             snprintf(hls->master_tmp_path, master_length, "%s.tmp", hls->master_path);
         }
     }
+    hls->segment_extension = "ts";
 
     if (session->input_url == NULL || hls->playlist_path == NULL || hls->segment_prefix == NULL) {
         fluxo_remux_destroy(session);
@@ -2409,6 +3941,13 @@ FluxoRemuxSession *fluxo_remux_create(const FluxoRemuxConfig *config, FluxoRemux
         return NULL;
     }
     snprintf(hls->playlist_tmp_path, length, "%s.tmp", hls->playlist_path);
+    length = strlen(hls->segment_prefix) + sizeof("-init.mp4");
+    hls->init_path = malloc(length);
+    if (hls->init_path == NULL) {
+        fluxo_remux_destroy(session);
+        return NULL;
+    }
+    snprintf(hls->init_path, length, "%s-init.mp4", hls->segment_prefix);
     const char *slash = strrchr(hls->segment_prefix, '/');
     hls->segment_base_name = slash != NULL ? slash + 1 : hls->segment_prefix;
     return session;
@@ -2434,7 +3973,49 @@ int32_t fluxo_remux_start(FluxoRemuxSession *session) {
 void fluxo_remux_cancel(FluxoRemuxSession *session) {
     if (session != NULL) {
         atomic_store(&session->cancel_requested, true);
+        fluxo_vod_signal(session);
     }
+}
+
+int32_t fluxo_remux_request_segment(FluxoRemuxSession *session, int64_t index, int32_t is_rendition) {
+    if (session == NULL || session->is_live) {
+        return -1;
+    }
+    int32_t result;
+    pthread_mutex_lock(&session->vod_lock);
+    if (index == -1) {
+        // The initialization segment of fMP4 playlists, written with the first segment.
+        result = session->vod_init_ready ? 1 : 0;
+    } else if (index < 0) {
+        result = -1;
+    } else if (!session->on_demand) {
+        // Remuxed from start to end: segments are listed as they are written.
+        if (!is_rendition) {
+            session->vod_requested = index;
+        }
+        result = index < session->vod_available ? 1 : 0;
+    } else if (index >= session->plan.count || index > session->vod_end_segment) {
+        result = -2;
+    } else if (is_rendition) {
+        // Produced with the main segment of the same number; only the main playlist moves the reader (players
+        // load the audio and subtitle segments of a rendition about where they load the video, some ahead).
+        result = session->plan.bytes[index] > 0 ? 1 : 0;
+    } else {
+        session->vod_requested = index;
+        if (session->plan.bytes[index] > 0) {
+            result = 1;
+        } else {
+            result = 0;
+            // The segment the reader produces next: the one it is in, or the one it seeks to.
+            int64_t reader = session->vod_segment > session->vod_target ? session->vod_segment : session->vod_target;
+            if (session->vod_ended || index < reader || index > reader + FLUXO_VOD_READ_ON_SEGMENTS) {
+                session->vod_reposition = index;
+            }
+        }
+    }
+    pthread_cond_broadcast(&session->vod_cond);
+    pthread_mutex_unlock(&session->vod_lock);
+    return result;
 }
 
 int32_t fluxo_remux_start_recording(FluxoRemuxSession *session, const char *path) {
@@ -2489,9 +4070,15 @@ void fluxo_remux_destroy(FluxoRemuxSession *session) {
     fluxo_hls_free_renditions(&session->hls);
     free(session->hls.master_path);
     free(session->hls.master_tmp_path);
+    free(session->hls.init_path);
+    fluxo_vod_drop_held(session);
+    free(session->vod_held);
+    fluxo_vod_plan_free(&session->plan);
     free(session->pending_recording_path);
     fluxo_free_discarded_recordings(session->discarded_recordings);
     pthread_mutex_destroy(&session->request_lock);
+    pthread_cond_destroy(&session->vod_cond);
+    pthread_mutex_destroy(&session->vod_lock);
     free(session);
 }
 

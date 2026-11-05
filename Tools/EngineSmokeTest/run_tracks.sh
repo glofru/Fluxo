@@ -83,7 +83,7 @@ for NAME in 'NAME="Русский"' 'NAME="Café"'; do
 done
 echo "--- WebVTT segment 6 of the English subtitles"
 cat "$WORK/vod/stream-test-s0-000006.vtt"
-echo "--- first timestamps of the main and the Italian audio segments (both 1.4 s = output time 0)"
+echo "--- first timestamps of the main and the Italian audio segments (both 2.4 s: the 1 s timestamp base and the 1.4 s muxing delay)"
 "$FFPROBE" -v error -show_entries packet=pts_time,stream_index -of compact=p=0 -read_intervals "%+#2" "$WORK/vod/stream-test-000000.ts"
 "$FFPROBE" -v error -show_entries packet=pts_time -of compact=p=0 -read_intervals "%+#1" "$WORK/vod/stream-test-a1-000000.ts"
 

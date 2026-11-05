@@ -67,7 +67,8 @@ final class PlaybackTimeline {
 }
 
 /// Drives playback for the whole app: one AVPlayer, one long-lived player view (for Picture in
-/// Picture), the remux engine for live MPEG-TS channels and the loopback HLS server.
+/// Picture), the remux engine (live MPEG-TS channels, and movies and episodes AVPlayer cannot open) and
+/// the loopback HLS server.
 ///
 /// FluxoApp creates the only instance, because the loopback port, the PiP surface and the segment
 /// directory can only have one owner. macOS has a single main `Window`; iPad windows share this instance and
@@ -160,10 +161,17 @@ final class AVPlayerViewModel {
     /// The current item plays from its offline download (a local file), not from the network.
     private(set) var isPlayingDownload = false
 
-    /// The current channel looks like a live stream (an extensionless link). Never for a download: whatever the
-    /// link looks like, its file is on-demand media.
+    /// What plays is a live channel: the kind of the playlist entry, or for other URLs (recordings, a URL played
+    /// on its own) what the URL looks like. An Xtream Codes movie without extension is not live, and neither is a
+    /// download: whatever the link looks like, its file is on-demand media.
     var isCurrentChannelLiveContent: Bool {
-        !isPlayingDownload && currentChannel?.isLiveContent == true
+        if isPlayingDownload {
+            return false
+        }
+        if let kind = currentItem?.kind {
+            return kind == .live
+        }
+        return currentChannel?.isLiveContent == true
     }
     private(set) var playbackState: PlaybackState = .idle
     /// Last error reported by the stream engine or AVPlayer for the current channel.
@@ -284,6 +292,12 @@ final class AVPlayerViewModel {
     private var pendingResumePosition: TimeInterval?
     @ObservationIgnored
     private var castTimelineTask: Task<Void, Never>?
+    /// The current movie or episode already fell back from AVPlayer to the engine (see `fallBackToEngine`).
+    @ObservationIgnored
+    private var didFallBackToEngine = false
+    /// Watches a direct on-demand item that keeps waiting for data (see `watchForStall()`).
+    @ObservationIgnored
+    private var stallTask: Task<Void, Never>?
 
     init(recordings: RecordingStore? = nil, cast: CastController? = nil) {
         self.recordings = recordings ?? RecordingStore()
@@ -705,9 +719,14 @@ final class AVPlayerViewModel {
         }
     }
 
-    private func start(_ channel: PlayableChannel, url: URL) {
+    /// - Parameter forcedRoute: the route to use instead of the one the URL and the kind of the item call for
+    ///   (the engine, after AVPlayer could not play a movie directly).
+    private func start(_ channel: PlayableChannel, url: URL, route forcedRoute: PlaybackRoute? = nil) {
         tearDownPlayback()
         isLocalPlaybackSuspended = false
+        if forcedRoute == nil {
+            didFallBackToEngine = false
+        }
 
         currentChannel = channel
         streamError = nil
@@ -724,7 +743,8 @@ final class AVPlayerViewModel {
             refreshPlaybackState()
             return
         }
-        route = PlaybackRoute(url: url)
+        route = forcedRoute ?? PlaybackRoute(url: url, kind: currentItem?.kind)
+        logger.info("Route: \(String(describing: self.route), privacy: .public) for a \(url.pathExtension.isEmpty ? "extensionless" : url.pathExtension, privacy: .public) URL")
         surface.startsPictureInPictureAutomatically = PlayerPreferences.autoPictureInPicture
         activateAudioSession()
 
@@ -746,26 +766,34 @@ final class AVPlayerViewModel {
                 configuration.maxWindowDuration = PlayerPreferences.timeShiftDuration
                 configuration.maxWindowBytes = Self.diskBudget(for: outputDirectory, maximum: PlayerPreferences.timeShiftBytes)
             } else {
-                // On-demand inputs (local .ts files) are kept whole, so that every position stays
-                // seekable. The engine reads them at disk speed, so a sliding byte window would delete
-                // segments far ahead of the playhead. The remuxed copy is about the size of the input,
-                // which is known: refuse to start when it would not fit instead.
+                // Movies and episodes: a complete VOD playlist whose segments the engine produces as AVPlayer
+                // asks for them (seeking the input for a jump), reading at most `onDemandReadAhead` ahead of
+                // the player. The segments farthest from the player are deleted beyond the disk budget.
+                configuration.segmentDuration = Self.onDemandSegmentDuration
+                configuration.readAheadDuration = Self.onDemandReadAhead
                 configuration.maxWindowDuration = 0
-                configuration.maxWindowBytes = 0
-                if let message = Self.insufficientSpaceMessage(forRemuxing: url, into: outputDirectory) {
-                    streamError = message
-                    refreshPlaybackState()
-                    return
-                }
+                configuration.maxWindowBytes = Self.diskBudget(for: outputDirectory, maximum: PlayerPreferences.timeShiftBytes)
             }
-            if !isLive && !url.isFileURL {
-                watchDiskSpace(forRemuxing: url)
+            if !isLive {
+                watchDiskSpace()
             }
 
             guard let streamURL = SimpleHTTPServer.url(forFileNamed: configuration.playlistFileName) else {
                 streamError = String(localized: "Unable to create the local stream address.", comment: "Player error: the in-app streaming server could not provide an address.")
                 refreshPlaybackState()
                 return
+            }
+            // Segments of on-demand playlists are produced when AVPlayer requests them.
+            if isLive {
+                server.setFileProvider(nil)
+            } else {
+                let provider: SimpleHTTPServer.FileProvider = { [weak self] fileName in
+                    guard let self else {
+                        return false
+                    }
+                    return await self.provideFile(named: fileName)
+                }
+                server.setFileProvider(provider)
             }
             do {
                 try remuxer.start(configuration)
@@ -784,12 +812,20 @@ final class AVPlayerViewModel {
         refreshPlaybackState()
     }
 
+    /// Asks the engine for a file AVPlayer requests from the loopback server and waits until it exists.
+    private func provideFile(named fileName: String) async -> Bool {
+        await remuxer.requestFile(named: fileName)
+    }
+
     /// Stops the engine and the player item of the current channel. A running recording is finalized.
     private func tearDownPlayback() {
         attachTask?.cancel()
         attachTask = nil
         diskSpaceTask?.cancel()
         diskSpaceTask = nil
+        stallTask?.cancel()
+        stallTask = nil
+        server.setFileProvider(nil)
         waitingForFirstSegment = false
         streamURL = nil
         itemCancellables.removeAll()
@@ -848,13 +884,14 @@ final class AVPlayerViewModel {
                 if status == .readyToPlay {
                     // HLS renditions are known once the playlist is read.
                     self.mediaSelection.reload()
+                    self.checkVideoIsDecodable(item)
                 }
                 if status == .failed {
                     self.handleItemFailure(item.error)
                 } else if status == .readyToPlay, let position = self.pendingResumePosition {
-                    // Back from casting: continue where the Chromecast was.
+                    // Back from casting (continue where the Chromecast was), or the engine took a movie over.
                     self.pendingResumePosition = nil
-                    self.seek(to: position)
+                    self.resume(at: position, in: item)
                 }
                 self.refreshPlaybackState()
             }
@@ -895,10 +932,30 @@ final class AVPlayerViewModel {
         let message = error?.localizedDescription ?? String(localized: "Playback failed.", comment: "Player error shown when the system gives no reason.")
         // An audio track this device cannot decode fails the whole item: the recovered item uses the default one.
         let failedAfterAudioSwitch = mediaSelection.playbackFailed(error)
+        if let error {
+            let nsError = error as NSError
+            logger.error("Player item error \(nsError.domain, privacy: .public) \(nsError.code): \(message, privacy: .public)")
+        }
+        if fallBackToEngine(reason: "the item failed") {
+            return
+        }
+        let position = player.currentItem.map { $0.currentTime().seconds } ?? timeline.currentTime
+        if route.isOnDemandRemux, !failedAfterAudioSwitch, timeline.duration > 0, position.isFinite,
+           position >= timeline.duration - 2 * Self.onDemandSegmentDuration {
+            // The media ended a little before the planned end of the playlist (durations of MPEG-TS files
+            // are estimated): it simply ended.
+            didReachEnd = true
+            refreshPlaybackState()
+            return
+        }
         if route != .direct, remuxer.isProcessing, itemRecoveryAttempts < 3 || failedAfterAudioSwitch {
             // The engine still produces media: the player lost the local stream (e.g. the server
-            // socket was reclaimed in the background). Restart the server and attach a fresh item.
+            // socket was reclaimed in the background). Restart the server and attach a fresh item, at the
+            // same position for a movie.
             itemRecoveryAttempts += 1
+            if route.isOnDemandRemux, position.isFinite, position > 1 {
+                pendingResumePosition = position
+            }
             server.start(root: outputDirectory)
             attachRemuxedStream()
             return
@@ -907,6 +964,80 @@ final class AVPlayerViewModel {
         itemFailure = message
         streamError = message
         refreshPlaybackState()
+    }
+
+    /// Whether the current movie or episode played directly by AVPlayer may move to the engine: AVPlayer
+    /// opens MP4 files only from servers with byte ranges, does not decode HEVC tagged `hev1`, and opens
+    /// several connections (some IPTV servers allow one per account, which stalls seeking).
+    private var canFallBackToEngine: Bool {
+        guard route == .direct, !didFallBackToEngine, !isCasting, !isPlayingDownload, currentItem?.kind != .live,
+              let url = currentChannel?.url else {
+            return false
+        }
+        return PlaybackRoute.onDemandFallback(for: url) != nil
+    }
+
+    /// Plays the current movie or episode through the engine instead of AVPlayer's own loader, from where it
+    /// was. Returns false when it does not apply (see `canFallBackToEngine`).
+    @discardableResult
+    private func fallBackToEngine(reason: String) -> Bool {
+        guard canFallBackToEngine, let channel = currentChannel, let url = channel.url,
+              let fallback = PlaybackRoute.onDemandFallback(for: url) else {
+            return false
+        }
+        logger.info("Playing through the engine: \(reason, privacy: .public)")
+        let position = player.currentItem.map { $0.currentTime().seconds } ?? 0
+        didFallBackToEngine = true
+        start(channel, url: url, route: fallback)
+        if position.isFinite, position > 1 {
+            pendingResumePosition = position
+        }
+        return true
+    }
+
+    /// An MP4 file whose video AVPlayer cannot decode (HEVC tagged `hev1`) plays its audio over a black
+    /// picture: the engine plays it instead (it tags HEVC `hvc1`).
+    private func checkVideoIsDecodable(_ item: AVPlayerItem) {
+        guard canFallBackToEngine else {
+            return
+        }
+        let asset = item.asset
+        Task { [weak self] in
+            guard let tracks = try? await asset.loadTracks(withMediaType: .video), !tracks.isEmpty else {
+                return
+            }
+            for track in tracks where (try? await track.load(.isPlayable)) == true {
+                return
+            }
+            guard let self, self.player.currentItem === item else {
+                return
+            }
+            self.fallBackToEngine(reason: "AVPlayer cannot decode the video track")
+        }
+    }
+
+    /// AVPlayer keeps waiting for a movie or episode it plays directly (typically after a seek, from a server
+    /// that allows a single connection): after `stallTimeout` without the buffer growing, the engine takes over.
+    private func watchForStall() {
+        stallTask?.cancel()
+        stallTask = nil
+        guard canFallBackToEngine, player.timeControlStatus == .waitingToPlayAtSpecifiedRate, let item = player.currentItem else {
+            return
+        }
+        let bufferedEnd = Self.bufferedEnd(of: item)
+        stallTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.stallTimeout)
+            guard !Task.isCancelled, let self, self.player.currentItem === item,
+                  self.player.timeControlStatus == .waitingToPlayAtSpecifiedRate,
+                  Self.bufferedEnd(of: item) < bufferedEnd + 1 else {
+                return
+            }
+            self.fallBackToEngine(reason: "AVPlayer stalled for \(Self.stallTimeout)")
+        }
+    }
+
+    private static func bufferedEnd(of item: AVPlayerItem) -> TimeInterval {
+        item.loadedTimeRanges.map { $0.timeRangeValue }.map { $0.start.seconds + $0.duration.seconds }.filter(\.isFinite).max() ?? 0
     }
 
     // MARK: - Engine events
@@ -1067,6 +1198,7 @@ final class AVPlayerViewModel {
                 if status == .playing {
                     self.itemRecoveryAttempts = 0
                 }
+                self.watchForStall()
                 self.refreshPlaybackState()
             }
             .store(in: &cancellables)
@@ -1157,8 +1289,38 @@ final class AVPlayerViewModel {
         }
     }
 
+    /// Seeks a new item to `position`. AVPlayer can drop a seek made while it starts an item (it then reports
+    /// the seek as not finished and plays from the start), so the seek is made again until playback is there,
+    /// up to `attempt` == 3.
+    private func resume(at position: TimeInterval, in item: AVPlayerItem, attempt: Int = 1) {
+        let tolerance = CMTime(value: 1, timescale: 4)
+        player.seek(to: CMTime(seconds: position, preferredTimescale: 600), toleranceBefore: tolerance, toleranceAfter: tolerance) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(500))
+                guard let self, self.player.currentItem === item else {
+                    return
+                }
+                if abs(item.currentTime().seconds - position) > 5, attempt < 3 {
+                    self.resume(at: position, in: item, attempt: attempt + 1)
+                    return
+                }
+                self.updateTimeline()
+                self.updateNowPlaying()
+            }
+        }
+    }
+
     // The time-shift (DVR) window of live streams and its disk budget come from PlayerPreferences.
-    /// Free space kept in reserve when an on-demand file is remuxed whole.
+
+    /// Segments of on-demand playlists made by the engine. Short, so that a seek plays after one segment
+    /// is read (at most a few MB), and a multiple of the usual 1–2 s GOP of IPTV movies.
+    static let onDemandSegmentDuration: TimeInterval = 4
+    /// Media the engine reads ahead of the player in an on-demand playlist, then pauses (the network radio
+    /// rests until the player has used half of it).
+    static let onDemandReadAhead: TimeInterval = 60
+    /// How long a movie played directly may wait for data (its buffer not growing) before the engine takes over.
+    static let stallTimeout: Duration = .seconds(12)
+    /// Free space kept in reserve while the segments of an on-demand input accumulate.
     static let onDemandFreeSpaceMargin: Int64 = 256 * 1024 * 1024
 
     /// Media AVPlayer buffers ahead of the playhead (in memory). Remuxed streams are read from the local
@@ -1184,20 +1346,15 @@ final class AVPlayerViewModel {
         return min(maximum, max(minimum, available / 10))
     }
 
-    /// A remote on-demand file (Matroska, AVI) is copied whole at network speed, so that every position stays
-    /// seekable: playback stops with an error before the copy fills the disk. The size the server announces
-    /// is checked first; the free space is then checked while the copy grows (servers do not always announce it).
-    private func watchDiskSpace(forRemuxing url: URL) {
+    /// The engine keeps a bounded number of segments of a planned on-demand playlist (its disk budget), but an
+    /// on-demand input without a known duration is remuxed whole into a growing playlist, so that every position
+    /// read so far stays seekable: playback stops with an error before that copy fills the disk.
+    private func watchDiskSpace() {
         let directory = outputDirectory
         diskSpaceTask?.cancel()
         diskSpaceTask = Task { [weak self] in
-            if let size = await Self.announcedSize(of: url), !Task.isCancelled,
-               let available = Self.availableSpace(in: directory), size + Self.onDemandFreeSpaceMargin > available {
-                self?.stopForDiskSpace()
-                return
-            }
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(5))
+                try? await Task.sleep(for: .seconds(10))
                 guard !Task.isCancelled else {
                     return
                 }
@@ -1210,22 +1367,10 @@ final class AVPlayerViewModel {
     }
 
     private func stopForDiskSpace() {
-        logger.error("Not enough free space for the copy of the on-demand file: playback stops")
+        logger.error("Not enough free space for the segments of the on-demand file: playback stops")
         tearDownPlayback()
         streamError = String(localized: "Not enough free space to play this file.", comment: "Player error: playing a movie or an episode file needs disk space for a temporary copy, and the device is almost full.")
         refreshPlaybackState()
-    }
-
-    /// The Content-Length of `url` (a HEAD request), when the server announces it.
-    private nonisolated static func announcedSize(of url: URL) async -> Int64? {
-        var request = URLRequest(url: url, timeoutInterval: 10)
-        request.httpMethod = "HEAD"
-        guard let (_, response) = try? await URLSession.shared.data(for: request),
-              let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-              http.expectedContentLength > 0 else {
-            return nil
-        }
-        return http.expectedContentLength
     }
 
     private nonisolated static func availableSpace(in directory: URL) -> Int64? {
@@ -1235,24 +1380,6 @@ final class AVPlayerViewModel {
             return nil
         }
         return available
-    }
-
-    /// Returns an error message when the remuxed copy of a local on-demand file (about the size of the
-    /// input) would not fit in the free space of `directory`, keeping `onDemandFreeSpaceMargin` free.
-    private static func insufficientSpaceMessage(forRemuxing input: URL, into directory: URL) -> String? {
-        guard input.isFileURL,
-              let inputSize = try? input.resourceValues(forKeys: [.fileSizeKey]).fileSize else {
-            return nil
-        }
-        let probe = FileManager.default.fileExists(atPath: directory.path) ? directory : FileManager.default.temporaryDirectory
-        guard let available = try? probe.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage,
-              available > 0 else {
-            return nil
-        }
-        guard Int64(inputSize) + onDemandFreeSpaceMargin > available else {
-            return nil
-        }
-        return String(localized: "Not enough free space to play this recording.", comment: "Player error: playing a recorded file needs disk space for a temporary copy.")
     }
 
     // MARK: - Picture in Picture

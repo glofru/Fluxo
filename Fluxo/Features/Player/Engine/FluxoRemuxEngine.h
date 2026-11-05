@@ -15,7 +15,16 @@
 //  - record the stream to a second output (an MPEG-TS file) at the same time;
 //  - make the extra audio tracks and the text subtitles of the input selectable (see
 //    FluxoRemuxHLSOptions.master_playlist_path): each becomes an HLS rendition of a master playlist,
-//    audio as audio-only MPEG-TS segments, subtitles as WebVTT segments cut with the video.
+//    audio as audio-only MPEG-TS segments, subtitles as WebVTT segments cut with the video;
+//  - play on-demand inputs (movies, episodes) as a complete VOD playlist: the segments are planned
+//    from the duration and the key frame index of the input before playback starts, and produced
+//    on request (fluxo_remux_request_segment). A request far from what is being read seeks the
+//    input there, so the player can jump anywhere at once; the engine reads only a bounded
+//    distance ahead of the player and keeps a bounded number of segments on disk. Their renditions
+//    are complete VOD playlists of the same segments, produced with them.
+//
+//  Segments are MPEG-TS, or fragmented MP4 (with an EXT-X-MAP initialization segment) when the video
+//  is HEVC: AVPlayer only decodes HEVC from fMP4 HLS (in MPEG-TS it plays the audio over black video).
 //
 //  The header intentionally does not expose any libav* type so that Swift only
 //  sees plain C types through the bridging header.
@@ -82,6 +91,8 @@ typedef struct FluxoRemuxEvent {
     double window_duration;
     /// Size in bytes of the segments of the window.
     int64_t window_bytes;
+    /// SegmentWritten: the media sequence number of the segment (its index in an on-demand playlist).
+    int64_t segment_index;
 
     /// Path of the active (or just closed) recording, or NULL.
     const char *recording_path;
@@ -114,8 +125,10 @@ typedef struct FluxoRemuxHLSOptions {
     /// Target segment duration in seconds (segments are cut on video key frames).
     double segment_duration;
     /// Maximum duration in seconds of the time-shift window. 0 means no duration limit.
+    /// Not used by on-demand inputs.
     double max_window_duration;
     /// Maximum size in bytes of the segments of the window. 0 means no size limit.
+    /// On-demand inputs: the most segment bytes kept on disk (the farthest from the player are deleted).
     int64_t max_window_bytes;
     /// The window never shrinks below this number of segments (default 3).
     int32_t min_window_segments;
@@ -143,7 +156,11 @@ typedef struct FluxoRemuxConfig {
     /// Maximum time in microseconds a single read/connect may block. 0 uses the engine default.
     int64_t io_timeout_us;
     /// Non-zero for live inputs: the engine reconnects when the input ends or fails.
+    /// Zero for on-demand inputs: they are played as a VOD playlist (see fluxo_remux_request_segment).
     int32_t is_live;
+    /// On-demand inputs: seconds of media produced ahead of the latest requested segment before the engine
+    /// pauses reading (it resumes at half of it). 0 uses the default (60 s).
+    double read_ahead_duration;
     /// Consecutive reconnection attempts before giving up. 0 uses the default (10), negative is unlimited.
     int32_t max_reconnect_attempts;
     /// HLS output description.
@@ -172,6 +189,15 @@ int32_t fluxo_remux_start_recording(FluxoRemuxSession *session, const char *path
 /// Asks the engine to close the active recording, or to drop a queued one that is not open yet.
 /// Never blocks; RecordingStopped is reported when done.
 void fluxo_remux_stop_recording(FluxoRemuxSession *session);
+
+/// On-demand inputs: tells the engine that the player wants segment `index` of the playlist (the number in
+/// its file name). The engine produces it next, seeking the input when it is far from what is being read.
+/// `is_rendition`: the segment of an audio or subtitle rendition of the master playlist, which the engine writes
+/// with the main segment of the same number; such requests wait for it but never move the reader.
+/// Never blocks. Returns 1 when the segment is on disk, 0 when it will be reported by a SegmentWritten
+/// event, and a negative value when it will not be produced (no such segment, the input ended before it,
+/// or the playlist of this session is not planned on demand).
+int32_t fluxo_remux_request_segment(FluxoRemuxSession *session, int64_t index, int32_t is_rendition);
 
 /// Cancels the session, waits for the engine thread to exit and frees every resource.
 /// An active recording is closed and its file is complete when this returns.

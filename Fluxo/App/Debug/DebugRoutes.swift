@@ -137,6 +137,8 @@ struct DebugRouteContext {
 enum DebugRouteError: LocalizedError {
     case notFound(String, String)
     case invalidArgument(String, String)
+    /// A playback check failed (`skip:`, `seek:`, `probe-playback`).
+    case check(String)
 
     var errorDescription: String? {
         switch self {
@@ -144,6 +146,8 @@ enum DebugRouteError: LocalizedError {
             return "No \(kind) named \"\(name)\""
         case let .invalidArgument(route, argument):
             return "Invalid argument \"\(argument)\" for \(route)"
+        case let .check(problem):
+            return "Check failed: \(problem)"
         }
     }
 }
@@ -414,6 +418,30 @@ enum DebugRoutes {
         },
         DebugRoute("stop", "Stops playback.") { context, _ in
             context.player.stop()
+        },
+        DebugRoute("skip:<seconds>", "Skips forward (or back, when negative) like the player's skip buttons, then checks that playback continues with video frames.") { context, argument in
+            guard let seconds = Double(argument) else {
+                throw DebugRouteError.invalidArgument("skip", argument)
+            }
+            let target = context.player.timeline.currentTime + seconds
+            context.player.skip(by: seconds)
+            try await DebugPlaybackProbe.check(context.player, near: target, route: "skip:\(argument)")
+        },
+        DebugRoute("seek:<seconds|percent%>", "Seeks like the scrubber (to a time, or a percentage of the duration), then checks that playback continues with video frames.") { context, argument in
+            let duration = context.player.timeline.duration
+            let target: TimeInterval
+            if argument.hasSuffix("%"), let percent = Double(argument.dropLast()), duration > 0 {
+                target = duration * percent / 100
+            } else if let seconds = Double(argument) {
+                target = seconds
+            } else {
+                throw DebugRouteError.invalidArgument("seek", argument)
+            }
+            context.player.seek(toSeconds: target)
+            try await DebugPlaybackProbe.check(context.player, near: target, route: "seek:\(argument)")
+        },
+        DebugRoute("probe-playback[:<seconds>]", "Checks that playback continues with video frames (near <seconds>, when given).") { context, argument in
+            try await DebugPlaybackProbe.check(context.player, near: Double(argument), route: "probe-playback")
         },
         DebugRoute("pip", "Starts Picture in Picture once the playing item allows it.") { context, _ in
             await context.wait { context.player.isPictureInPicturePossible }

@@ -148,7 +148,7 @@ private struct ChannelAccessibilityActions: ViewModifier {
                         navigation.scheduleChannel = item
                     }
                 }
-                if item.kind == .live, let url = item.url, PlaybackRoute(url: url).isLiveRemux {
+                if item.kind == .live, let url = item.url, PlaybackRoute(url: url, kind: item.kind).isLiveRemux {
                     Button("Play and Record") {
                         playChannel.playAndRecord(item)
                     }

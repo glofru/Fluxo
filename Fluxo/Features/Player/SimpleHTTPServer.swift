@@ -16,16 +16,42 @@ private let logger = Logger(subsystem: "dev.watermelon.Fluxo", category: "HTTPSe
 /// The server only listens on the IPv4 loopback interface (127.0.0.1): it is reachable from this
 /// device alone and never from the local network. It serves flat file names from a single directory
 /// and only the HLS file types it knows.
+///
+/// Segments of on-demand playlists are produced when they are requested: before a file is read, the
+/// `fileProvider` is asked for it and may wait until the engine has written it.
 @MainActor
 final class SimpleHTTPServer {
+
+    /// Called for every file request with its name, before the file is read. Returns false when the file
+    /// will not exist (the server answers 404 at once).
+    typealias FileProvider = @Sendable (String) async -> Bool
     nonisolated static let host = "127.0.0.1"
-    nonisolated static let port: UInt16 = 19123
+    /// Debug builds can use another port (`-FluxoDebugLoopbackPort <port>`): simulators share the Mac's loopback
+    /// interface, so two of them playing at the same time would otherwise take the port from each other. The
+    /// server stays on 127.0.0.1 either way.
+    nonisolated static let port: UInt16 = debugPortOverride ?? 19123
+
+    private nonisolated static var debugPortOverride: UInt16? {
+        #if DEBUG
+        let value = UserDefaults.standard.integer(forKey: "FluxoDebugLoopbackPort")
+        return (1024...65535).contains(value) ? UInt16(value) : nil
+        #else
+        return nil
+        #endif
+    }
 
     private var task: Task<Void, Never>?
     private var server: HTTPServer?
     private var root: URL?
     /// Shutdown of the previous server; the next server waits for it so that the port is free.
     private var pendingStop: Task<Void, Never>?
+    /// The provider of the current session, read by every request (requests run off the main actor).
+    private nonisolated let provider = ProviderBox()
+
+    /// Sets (or clears) the file provider of the session being served.
+    func setFileProvider(_ fileProvider: FileProvider?) {
+        provider.set(fileProvider)
+    }
 
     var isRunning: Bool {
         task != nil
@@ -71,9 +97,10 @@ final class SimpleHTTPServer {
         self.server = server
         self.root = root
         let previousStop = pendingStop
+        let provider = provider
         self.task = Task { @MainActor [weak self] in
             await server.appendRoute("GET /*") { request in
-                Self.response(for: request, root: root)
+                await Self.response(for: request, root: root, provider: provider.get())
             }
             // stop() releases the socket asynchronously: binding before it is closed would fail.
             await previousStop?.value
@@ -118,7 +145,7 @@ final class SimpleHTTPServer {
         }
     }
 
-    private nonisolated static func response(for request: HTTPRequest, root: URL) -> HTTPResponse {
+    private nonisolated static func response(for request: HTTPRequest, root: URL, provider: FileProvider?) async -> HTTPResponse {
         // Only flat file names are served: no directories and no path traversal.
         let fileName = String(request.path.drop(while: { $0 == "/" }))
         guard !fileName.isEmpty,
@@ -129,6 +156,9 @@ final class SimpleHTTPServer {
             return HTTPResponse(statusCode: .notFound)
         }
 
+        if let provider, !(await provider(fileName)) {
+            return HTTPResponse(statusCode: .notFound)
+        }
         let fileURL = root.appendingPathComponent(fileName, isDirectory: false)
         guard let contents = try? Data(contentsOf: fileURL, options: .mappedIfSafe) else {
             return HTTPResponse(statusCode: .notFound)
@@ -156,6 +186,24 @@ final class SimpleHTTPServer {
             return "text/vtt"
         default:
             return nil
+        }
+    }
+}
+
+/// The file provider of the session being served, shared with the request handlers.
+private final class ProviderBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var provider: SimpleHTTPServer.FileProvider?
+
+    func set(_ provider: SimpleHTTPServer.FileProvider?) {
+        lock.withLock {
+            self.provider = provider
+        }
+    }
+
+    func get() -> SimpleHTTPServer.FileProvider? {
+        lock.withLock {
+            provider
         }
     }
 }
