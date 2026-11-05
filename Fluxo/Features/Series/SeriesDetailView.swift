@@ -226,10 +226,11 @@ private struct SeriesHero: View {
             .controlSize(.large)
 
             if let nextUp, let detail = upNextDetail(nextUp) {
-                Text(detail)
+                Text(detail.shown)
                     .font(.footnote)
                     .foregroundStyle(Theme.secondaryText)
                     .lineLimit(2)
+                    .accessibilityLabel(Text(detail.spoken))
             }
         }
         .padding(.horizontal, HomeLayout.horizontalMargin)
@@ -252,8 +253,9 @@ private struct SeriesHero: View {
         return TextParts.line([year, series.countsLine, group]).nilIfEmpty
     }
 
-    /// Under the button: what it plays ("S1 E3 · Pilot · 20 min left"), when that says more than the button.
-    private func upNextDetail(_ nextUp: SeriesNextUp) -> String? {
+    /// Under the button: what it plays ("S1 E3 · Pilot · 20 min left"), when that says more than the button; and
+    /// the same for VoiceOver ("Season 1, episode 3, Pilot, 20 min left").
+    private func upNextDetail(_ nextUp: SeriesNextUp) -> (shown: String, spoken: String)? {
         guard let episode = nextUp.episode.series else {
             return nil
         }
@@ -261,7 +263,10 @@ private struct SeriesHero: View {
         guard episode.episodeTitle != nil || remaining != nil else {
             return nil
         }
-        return TextParts.line([EpisodeFormat.code(episode), episode.episodeTitle, remaining])
+        return (
+            TextParts.line([EpisodeFormat.code(episode), episode.episodeTitle, remaining]),
+            TextParts.spoken([EpisodeFormat.spokenCode(episode), episode.episodeTitle, remaining])
+        )
     }
 
     @ViewBuilder

@@ -36,7 +36,7 @@ enum DownloadStatus: String, Codable, Sendable {
     /// Downloaded; being copied into MP4.
     case converting
     case completed
-    /// Stopped by an error (`DownloadRecord.failure`); Retry starts again where it stopped, when it can.
+    /// Stopped by an error (`DownloadRecord.failureReason`); Retry starts again where it stopped, when it can.
     case failed
 
     /// Uses a transfer slot or waits for one: counts as "downloading" in the Library.
@@ -175,8 +175,9 @@ struct DownloadRecord: Codable, Identifiable, Hashable, Sendable {
     var bytesExpected: Int64?
     /// The size on disk once completed.
     var bytesOnDisk: Int64 = 0
-    /// Why it failed, in the user's language at the time.
-    var failure: String?
+    /// Why it failed: a code, not a message (`failureMessage` is in the current language). (Not "failure": the
+    /// manifests of earlier builds keep a message under that name.)
+    var failureReason: DownloadFailure.Reason?
     /// Retrying cannot help (the format cannot be played, the link is not a video): Retry is not offered.
     var failureIsPermanent = false
     /// The media: for `.hls` the `.movpkg` path relative to the home directory (the container moves between
@@ -187,11 +188,13 @@ struct DownloadRecord: Codable, Identifiable, Hashable, Sendable {
     /// The artwork kept with the download (in its folder), so it shows offline.
     var artworkFileName: String?
     var duration: TimeInterval?
-    /// "1080p", for HLS downloads with several qualities.
-    var qualityLabel: String?
-    /// The audio languages and subtitles downloaded with an HLS stream, as shown names ("English", "Italiano").
-    var audioNames: [String] = []
-    var subtitleNames: [String] = []
+    /// The picture height (1080, shown as "1080p"), for HLS downloads with several qualities.
+    var qualityHeight: Int?
+    /// The audio languages and subtitles downloaded with an HLS stream, as language codes ("en", "it"): their
+    /// names are in the language of the moment (`audioLanguageNames`). Optional, so that the manifests of earlier
+    /// builds, which do not have them, still decode.
+    var audioLanguages: [String]?
+    var subtitleLanguages: [String]?
     /// The transfer may use cellular data (the setting when it started or resumed).
     var allowsCellular = false
     /// Automatic retries after network failures, since the last start by the user.
@@ -203,6 +206,25 @@ struct DownloadRecord: Codable, Identifiable, Hashable, Sendable {
 
     var key: String {
         item.key
+    }
+
+    /// Why it failed, in the current language.
+    var failureMessage: String? {
+        failureReason?.message
+    }
+
+    /// "1080p", in the current language.
+    var qualityText: String? {
+        qualityHeight.map { String(localized: "\($0.formatted(.number.grouping(.never)))p", comment: "Quality of a downloaded video: its picture height in pixels followed by p, such as 1080p.") }
+    }
+
+    /// The names of the downloaded audio languages and subtitles ("English", "Italian"), in the current language.
+    var audioLanguageNames: [String] {
+        (audioLanguages ?? []).map(TrackPreferences.displayName(forLanguage:))
+    }
+
+    var subtitleLanguageNames: [String] {
+        (subtitleLanguages ?? []).map(TrackPreferences.displayName(forLanguage:))
     }
 
     var title: String {
@@ -218,6 +240,11 @@ struct DownloadRecord: Codable, Identifiable, Hashable, Sendable {
     /// For an episode: "S1 E3 · Pilot"; otherwise nil.
     var episodeLine: String? {
         item.series.map { TextParts.line([EpisodeFormat.code($0), $0.episodeTitle]) }
+    }
+
+    /// For VoiceOver: "Breaking Bad, Season 1, episode 3, Pilot", or the movie's name.
+    var spokenName: String {
+        TextParts.spoken([title, item.series.map(EpisodeFormat.spokenCode), item.series?.episodeTitle])
     }
 
     /// The series an episode belongs to, for grouping.

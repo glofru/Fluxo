@@ -721,6 +721,7 @@ private struct PlayerTopBar: View {
                             .font(.subheadline.weight(.medium))
                             .foregroundStyle(Theme.Player.secondaryLabel)
                             .lineLimit(lineLimit)
+                            .accessibilityLabel(Text(TextParts.spoken([EpisodeFormat.spokenCode(episode), episode.episodeTitle])))
                     }
                     PlayerStatusBadges(viewModel: viewModel, timeline: viewModel.timeline)
                 }

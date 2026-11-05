@@ -188,6 +188,7 @@ struct ChannelListRow: View {
                 Text(TextParts.line([EpisodeFormat.code(episode), episode.episodeTitle]))
                     .font(.caption.weight(.medium))
                     .lineLimit(stacked ? 3 : 1)
+                    .accessibilityLabel(Text(TextParts.spoken([EpisodeFormat.spokenCode(episode), episode.episodeTitle])))
             }
             if let subtitle, !subtitle.isEmpty {
                 Text(subtitle)

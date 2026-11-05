@@ -50,9 +50,9 @@ struct TrackSettingsSection: View {
 
     private var footer: String {
         #if os(macOS)
-        String(localized: "Channels, movies and episodes start with these languages when they have them; a track you choose in the player is remembered. Automatic follows your preferred languages and the Captions settings in System Settings > Accessibility, which also set the subtitle style.", comment: "Footer of the Audio and Subtitles settings on the Mac.")
+        String(localized: "Channels, movies and episodes start with these languages when they have them; a track you choose in the player is remembered. Automatic follows your preferred languages and the Captions settings in System Settings › Accessibility, which also set the subtitle style.", comment: "Footer of the Audio and Subtitles settings on the Mac. 'System Settings', 'Accessibility' and 'Captions' must be the names macOS shows in your language; › separates the steps of the path, as in the app's other paths.")
         #else
-        String(localized: "Channels, movies and episodes start with these languages when they have them; a track you choose in the player is remembered. Automatic follows your preferred languages and Settings > Accessibility > Subtitles & Captioning, which also sets the subtitle style.", comment: "Footer of the Audio and Subtitles settings on iPhone and iPad.")
+        String(localized: "Channels, movies and episodes start with these languages when they have them; a track you choose in the player is remembered. Automatic follows your preferred languages and Settings › Accessibility › Subtitles & Captioning, which also sets the subtitle style.", comment: "Footer of the Audio and Subtitles settings on iPhone and iPad. 'Settings', 'Accessibility' and 'Subtitles & Captioning' must be the names iOS shows in your language; › separates the steps of the path, as in the app's other paths.")
         #endif
     }
 

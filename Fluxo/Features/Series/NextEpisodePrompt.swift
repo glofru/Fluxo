@@ -205,6 +205,7 @@ private struct NextEpisodeEndCard: View {
                             .font(.subheadline)
                             .foregroundStyle(Theme.Player.secondaryLabel)
                             .lineLimit(2)
+                            .accessibilityLabel(Text(TextParts.spoken([EpisodeFormat.spokenCode(ref), EpisodeFormat.title(ref)])))
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

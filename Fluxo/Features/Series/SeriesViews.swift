@@ -327,15 +327,16 @@ struct SeriesContextMenu: View {
 }
 
 enum SeriesAccessibility {
-    /// "Breaking Bad, Series, Favorite, 5 seasons, 62 episodes, Last watched S1 E4".
+    /// "Breaking Bad, Series, Favorite, 5 seasons, 62 episodes, Last watched: Season 1, episode 4".
     static func label(for series: SeriesItem, isFavorite: Bool, state: SeriesWatchState?, extra: [String?] = []) -> String {
         var parts: [String?] = [series.title, ChannelContentKind.series.title]
         if isFavorite {
             parts.append(ChannelAccessibility.favoriteState)
         }
-        parts.append(series.countsLine)
+        parts.append(contentsOf: series.countParts)
         if let last = state?.lastEpisode {
-            parts.append(String(localized: "Last watched \(EpisodeFormat.code(season: last.season, episode: last.episode))"))
+            let episode = EpisodeFormat.spokenCode(season: last.season, episode: last.episode)
+            parts.append(String(localized: "Last watched: \(episode)", comment: "VoiceOver, on a series card or row: the episode watched last. The placeholder is the spoken season and episode, such as 'Season 1, episode 4'."))
         }
         parts.append(contentsOf: extra)
         return TextParts.spoken(parts.compactMap { $0 }.filter { !$0.isEmpty })

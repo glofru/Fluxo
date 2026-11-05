@@ -349,6 +349,7 @@ private struct FavoriteRow: View {
                             Text(TextParts.line([EpisodeFormat.code(episode), episode.episodeTitle]))
                                 .font(.subheadline.weight(.medium))
                                 .lineLimit(dynamicTypeSize.prefersStackedLayout ? 3 : 1)
+                                .accessibilityLabel(Text(TextParts.spoken([EpisodeFormat.spokenCode(episode), episode.episodeTitle])))
                         }
                         Text(subtitle)
                             .font(.caption)

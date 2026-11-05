@@ -124,14 +124,14 @@ enum GuideFormat {
         switch parts.count {
         case 2:
             if let season = number(parts[0], prefix: "S"), let episode = number(parts[1], prefix: "E") {
-                return String(localized: "S\(season) E\(episode)", comment: "Short season and episode label of a TV programme, as in 'S1 E5'. Keep it very short.")
+                return String(localized: "S\(season.formatted(.number.grouping(.never))) E\(episode.formatted(.number.grouping(.never)))", comment: "Short season and episode label of a TV programme, as in 'S1 E5'. Keep it very short.")
             }
         case 1:
             if let episode = number(parts[0], prefix: "E") {
-                return String(localized: "E\(episode)", comment: "Short episode label of a TV programme, as in 'E5'. Keep it very short.")
+                return String(localized: "E\(episode.formatted(.number.grouping(.never)))", comment: "Short episode label of a TV programme, as in 'E5'. Keep it very short.")
             }
             if let season = number(parts[0], prefix: "S") {
-                return String(localized: "S\(season)", comment: "Short season label of a TV programme, as in 'S1'. Keep it very short.")
+                return String(localized: "S\(season.formatted(.number.grouping(.never)))", comment: "Short season label of a TV programme, as in 'S1'. Keep it very short.")
             }
         default:
             break

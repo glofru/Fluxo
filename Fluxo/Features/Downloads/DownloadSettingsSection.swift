@@ -23,7 +23,10 @@ struct DownloadSettingsSection: View {
         Section {
             if let downloads {
                 LabeledContent {
-                    Text(TextParts.line([downloads.completedCount.formatted(), DownloadText.bytes(downloads.totalBytes)]))
+                    Text(TextParts.line([
+                        String(localized: "\(downloads.completedCount) downloads", comment: "How many movies and episodes are downloaded, followed by their size (the footer of the downloads list, also with the free space, and Settings)."),
+                        DownloadText.bytes(downloads.totalBytes),
+                    ]))
                         .monospacedDigit()
                 } label: {
                     SettingsLabel(localized: DownloadText.downloads, systemImage: "arrow.down.circle", tint: Theme.accentFill)
@@ -69,7 +72,13 @@ struct DownloadSettingsSection: View {
         } header: {
             Text(DownloadText.downloads)
         } footer: {
-            Text(footer)
+            // Two sentences, each a Text: Japanese and Chinese put no space after 。.
+            VStack(alignment: .leading, spacing: 4) {
+                Text("The quality applies to streams that offer several; other videos download as they are.", comment: "Settings footer of the downloads: what the video quality setting changes.")
+                if let available = downloads?.availableBytes {
+                    Text("\(DownloadText.bytes(available)) available on this device.", comment: "Settings footer of the downloads: the free space; the placeholder is a size such as 41 GB.")
+                }
+            }
         }
         .confirmationDialog(String(localized: "Delete All Downloads?", comment: "Title of the confirmation in Settings."), isPresented: $isConfirmingDeleteAll, titleVisibility: .visible) {
             Button(String(localized: "Delete All Downloads", comment: "Confirmation button: deletes every download."), role: .destructive) {
@@ -81,11 +90,5 @@ struct DownloadSettingsSection: View {
                 Text("\(downloads.records.count) downloads (\(DownloadText.bytes(downloads.totalBytes))) will be deleted from this device.", comment: "Message of the confirmation to delete every download; the placeholders are their number and size.")
             }
         }
-    }
-
-    private var footer: String {
-        let quality = String(localized: "The quality applies to streams that offer several; other videos download as they are.", comment: "Settings footer of the downloads: what the video quality setting changes.")
-        let free = downloads?.availableBytes.map { String(localized: "\(DownloadText.bytes($0)) available on this device.", comment: "Settings footer of the downloads: the free space; the placeholder is a size such as 41 GB.") }
-        return [quality, free].compactMap { $0 }.joined(separator: " ")
     }
 }

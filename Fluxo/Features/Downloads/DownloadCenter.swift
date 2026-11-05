@@ -426,7 +426,7 @@ final class DownloadCenter {
         retryNotBefore[id] = nil
         update(id) {
             $0.status = .queued
-            $0.failure = nil
+            $0.failureReason = nil
             $0.automaticRetries = 0
         }
         pump()
@@ -481,7 +481,7 @@ final class DownloadCenter {
         for record in records where record.status == .paused {
             update(record.id) {
                 $0.status = .queued
-                $0.failure = nil
+                $0.failureReason = nil
                 $0.automaticRetries = 0
             }
         }
@@ -763,11 +763,11 @@ final class DownloadCenter {
             update(id) {
                 $0.status = .downloading
                 $0.allowsCellular = allowsCellular
-                $0.qualityLabel = plan.qualityLabel ?? $0.qualityLabel
+                $0.qualityHeight = plan.qualityHeight ?? $0.qualityHeight
                 $0.bytesExpected = plan.expectedBytes ?? $0.bytesExpected
                 $0.duration = plan.duration ?? $0.duration
-                $0.audioNames = plan.audioNames
-                $0.subtitleNames = plan.subtitleNames
+                $0.audioLanguages = plan.audioLanguages
+                $0.subtitleLanguages = plan.subtitleLanguages
             }
             progress(for: self.record(id: id) ?? record).bytesExpected = plan.expectedBytes
         case .file, .remux:
@@ -887,7 +887,7 @@ final class DownloadCenter {
             $0.fraction = 1
             $0.bytesOnDisk = size
             $0.isMissing = false
-            $0.failure = nil
+            $0.failureReason = nil
         }
         didComplete(id)
     }
@@ -943,7 +943,7 @@ final class DownloadCenter {
             $0.location = name
             $0.bytesOnDisk = size
             $0.isMissing = false
-            $0.failure = nil
+            $0.failureReason = nil
         }
         loadDuration(of: id, url: url)
         didComplete(id)
@@ -952,7 +952,7 @@ final class DownloadCenter {
     private func didComplete(_ id: UUID) {
         progressObjects[id] = nil
         if let record = record(id: id) {
-            AccessibilityAnnouncer.announce(String(localized: "\(TextParts.line([record.title, record.episodeLine])) downloaded", comment: "VoiceOver announcement: a download finished; the placeholder is the movie or episode."))
+            AccessibilityAnnouncer.announce(String(localized: "\(record.spokenName) downloaded", comment: "VoiceOver announcement: a download finished; the placeholder is the movie, or the series and the episode, as in 'Breaking Bad, Season 1, episode 3, Pilot'."))
         }
     }
 
@@ -980,7 +980,7 @@ final class DownloadCenter {
         }
         update(id) {
             $0.status = .failed
-            $0.failure = failure.message
+            $0.failureReason = failure.reason
             $0.failureIsPermanent = failure.isPermanent
         }
         if failure.isPermanent || record.method == nil {
@@ -1017,7 +1017,7 @@ final class DownloadCenter {
         for record in records where record.status == .failed && !record.failureIsPermanent && record.automaticRetries > 0 && record.automaticRetries <= Self.maximumAutomaticRetries {
             update(record.id) {
                 $0.status = .queued
-                $0.failure = nil
+                $0.failureReason = nil
                 $0.automaticRetries = 0
             }
         }
@@ -1074,7 +1074,7 @@ final class DownloadCenter {
                     $0.transferFileName = destination.lastPathComponent
                     $0.bytesOnDisk = size
                     $0.duration = duration > 0 ? duration : $0.duration
-                    $0.failure = nil
+                    $0.failureReason = nil
                     $0.isMissing = false
                 }
                 didComplete(id)
@@ -1182,7 +1182,7 @@ final class DownloadCenter {
             $0.bytesOnDisk = 0
             $0.completedOn = nil
             $0.watchedOn = nil
-            $0.failure = nil
+            $0.failureReason = nil
             $0.automaticRetries = 0
         }
         pump()
@@ -1513,15 +1513,15 @@ enum DownloadConversion {
             if result == Int32(FLUXO_REMUX_ERROR_ENCODER_UNAVAILABLE) {
                 return .later
             }
+            // The engine's message stays in English in the record; it is localized when shown.
             let message = buffer.withUnsafeBufferPointer { String(cString: $0.baseAddress!) }
-            let failure = DownloadFailure.unsupportedFormat
-            return .failed(message.isEmpty ? failure : DownloadFailure(message: "\(failure.message) (\(EngineMessage.localized(message)))", isPermanent: true))
+            return .failed(.unsupportedFormat(engineMessage: message))
         }
         do {
             _ = try FileManager.default.replaceItemAt(destination, withItemAt: temporary)
         } catch {
             try? FileManager.default.removeItem(at: temporary)
-            return .failed(DownloadFailure(message: error.localizedDescription))
+            return .failed(.other(error))
         }
         return .converted(duration)
     }

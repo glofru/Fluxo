@@ -125,7 +125,7 @@ enum DebugDownloadRoutes {
     private static func log(_ downloads: DownloadCenter) {
         let lines = downloads.records.map { record in
             let file = downloads.localPlaybackURL(for: record.item.channelItem(logo: nil))?.lastPathComponent ?? "-"
-            return "\(record.title) | \(record.episodeLine ?? "-") | \(record.status.rawValue) | \(record.method?.rawValue ?? "-") | \(record.bytesOnDisk) / \(record.bytesExpected ?? -1) bytes | \(record.qualityLabel ?? "-") | audio: \(record.audioNames.joined(separator: ", ")) | subtitles: \(record.subtitleNames.joined(separator: ", ")) | file: \(file) | failure: \(record.failure ?? "-")"
+            return "\(record.title) | \(record.episodeLine ?? "-") | \(record.status.rawValue) | \(record.method?.rawValue ?? "-") | \(record.bytesOnDisk) / \(record.bytesExpected ?? -1) bytes | \(record.qualityHeight.map { "\($0)p" } ?? "-") | audio: \((record.audioLanguages ?? []).joined(separator: ", ")) | subtitles: \((record.subtitleLanguages ?? []).joined(separator: ", ")) | file: \(file) | failure: \(record.failureReason.map { "\($0)" } ?? "-")"
         }
         appendStatus((["downloads (\(lines.count)):"] + lines).joined(separator: "\n"))
         DebugLaunchOptions.logger.notice("\(lines.joined(separator: "\n"), privacy: .public)")

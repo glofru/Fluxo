@@ -494,6 +494,7 @@ struct CompactChannelCard: View {
                             Text(TextParts.line([EpisodeFormat.code(episode), episode.episodeTitle]))
                                 .font(Theme.Typography.cardSubtitle.weight(.medium))
                                 .lineLimit(1)
+                                .accessibilityLabel(Text(TextParts.spoken([EpisodeFormat.spokenCode(episode), episode.episodeTitle])))
                         }
                     }
 

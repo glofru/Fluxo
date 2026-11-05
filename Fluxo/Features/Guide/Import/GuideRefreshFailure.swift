@@ -146,15 +146,15 @@ enum GuideRefreshFailure {
         case .truncatedFile:
             return InflatingInputStream.InflateError.truncated.localizedDescription
         case .offline:
-            return String(localized: "No internet connection.", comment: "TV guide download error: the device is offline.")
+            return String(localized: "No internet connection.", comment: "Download error (a TV guide or an offline download): the device is offline.")
         case .timedOut:
-            return String(localized: "The server took too long to respond.", comment: "TV guide download error: the request timed out.")
+            return String(localized: "The server took too long to respond.", comment: "Download error (a TV guide or an offline download): the request timed out.")
         case .serverNotFound:
             return String(localized: "The server could not be found. Check the address of the guide.", comment: "TV guide download error: the server name of the guide's address does not exist.")
         case .cannotConnect:
-            return String(localized: "Could not connect to the server.", comment: "TV guide download error: the server did not accept the connection, or the connection was lost.")
+            return String(localized: "Could not connect to the server.", comment: "Download error (a TV guide or an offline download): the server could not be found, did not accept the connection, or the connection was lost.")
         case .insecureConnection:
-            return String(localized: "A secure connection to the server could not be made.", comment: "TV guide download error: the server's certificate is not valid, or the address needs https.")
+            return String(localized: "A secure connection to the server could not be made.", comment: "Download error (a TV guide or an offline download): the server's certificate is not valid, or the address needs https.")
         case .other(let text):
             return text
         }

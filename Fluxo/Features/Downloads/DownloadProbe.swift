@@ -11,15 +11,52 @@
 import Foundation
 
 /// Why a download failed or could not start.
+///
+/// A failed download keeps its `reason` (in the manifest), not a message: the message is built when it is shown,
+/// in the current language, so it follows a language change. Only errors without a known kind keep the text of
+/// their own description, as `GuideRefreshFailure` does.
 struct DownloadFailure: Error, Sendable {
-    let message: String
+
+    enum Reason: Codable, Hashable, Sendable {
+        /// The server answered with an error status.
+        case http(status: Int)
+        /// The server returned a web page or something else that is not a video.
+        case notVideo
+        /// The remux engine can neither copy nor convert the file; its message (in English, from
+        /// FluxoRemuxEngine.c), when it gave one.
+        case unsupportedFormat(engineMessage: String?)
+        case insufficientSpace
+        /// The downloaded HLS stream cannot be played offline.
+        case incomplete
+        /// AVFoundation could not download the HLS stream.
+        case streamUnavailable
+        /// No connection, a timeout, a server that cannot be reached, a certificate that is not valid.
+        case network(NetworkKind)
+        /// Any other error: its description at the time it failed.
+        case other(String)
+    }
+
+    enum NetworkKind: String, Codable, Sendable {
+        case offline
+        case timedOut
+        case cannotConnect
+        case insecureConnection
+    }
+
+    let reason: Reason
     /// Retrying the same link cannot help.
     var isPermanent = false
-    /// The HTTP status, when the server answered with an error.
-    var httpStatus: Int?
     /// A network problem (a timeout, a dropped connection, no route): retried automatically, and again when the
     /// network returns.
     var isNetworkError = false
+
+    /// The HTTP status, when the server answered with an error.
+    var httpStatus: Int? {
+        if case .http(let status) = reason {
+            return status
+        }
+        return nil
+    }
 
     /// The link was refused or is gone (expired credentials or token, an entry the provider removed): a newer copy
     /// of the playlist may have another link for the same entry.
@@ -30,39 +67,130 @@ struct DownloadFailure: Error, Sendable {
         return [401, 403, 404, 410].contains(httpStatus)
     }
 
+    /// The message in the current language.
+    var message: String {
+        reason.message
+    }
+
     static func http(_ status: Int) -> DownloadFailure {
-        let message: String
-        switch status {
-        case 401, 403:
-            message = String(localized: "The provider refused the download. The link may have expired: refresh the playlist and try again.", comment: "Download error: the server answered 401 or 403.")
-        case 404, 410:
-            message = String(localized: "The provider no longer has this video. Refresh the playlist and try again.", comment: "Download error: the server answered 404 or 410.")
-        case 429:
-            message = String(localized: "The provider limits downloads right now. Try again later.", comment: "Download error: the server answered 429 (too many requests).")
-        default:
-            message = DownloadError.httpStatus(status).localizedDescription
-        }
-        return DownloadFailure(message: message, isPermanent: false, httpStatus: status)
+        DownloadFailure(reason: .http(status: status))
     }
 
     static var notVideo: DownloadFailure {
-        DownloadFailure(message: String(localized: "This link doesn't lead to a video that can be downloaded.", comment: "Download error: the server returned a web page or something else that is not a video."), isPermanent: true)
+        DownloadFailure(reason: .notVideo, isPermanent: true)
     }
 
-    static var unsupportedFormat: DownloadFailure {
-        DownloadFailure(message: String(localized: "This video format can't be played on this device, so it isn't downloaded.", comment: "Download error: the file is in a format the app can neither play nor convert (such as an unknown video codec)."), isPermanent: true)
+    static func unsupportedFormat(engineMessage: String? = nil) -> DownloadFailure {
+        DownloadFailure(reason: .unsupportedFormat(engineMessage: engineMessage?.isEmpty == false ? engineMessage : nil), isPermanent: true)
     }
 
     static var insufficientSpace: DownloadFailure {
-        DownloadFailure(message: String(localized: "There isn't enough free space on this device for this download.", comment: "Download error: the device does not have enough free storage."))
+        DownloadFailure(reason: .insufficientSpace)
     }
 
     static var incomplete: DownloadFailure {
-        DownloadFailure(message: String(localized: "The download is incomplete. Try again.", comment: "Download error: the downloaded stream cannot be played offline."))
+        DownloadFailure(reason: .incomplete)
     }
 
+    static var streamUnavailable: DownloadFailure {
+        DownloadFailure(reason: .streamUnavailable)
+    }
+
+    /// A network or other system error: by its kind when it has a known one, otherwise by its description.
     static func network(_ error: Error) -> DownloadFailure {
-        DownloadFailure(message: error.localizedDescription, isNetworkError: DownloadTransport.isNetworkError(error))
+        // The URL error, also when AVFoundation wraps it.
+        var kind: NetworkKind?
+        var current: NSError? = error as NSError
+        for _ in 0..<4 {
+            guard let nsError = current else {
+                break
+            }
+            if nsError.domain == NSURLErrorDomain {
+                kind = NetworkKind(URLError.Code(rawValue: nsError.code))
+                break
+            }
+            current = nsError.userInfo[NSUnderlyingErrorKey] as? NSError
+        }
+        return DownloadFailure(reason: kind.map(Reason.network) ?? .other(error.localizedDescription), isNetworkError: DownloadTransport.isNetworkError(error))
+    }
+
+    /// Any other error, by its description.
+    static func other(_ error: Error) -> DownloadFailure {
+        DownloadFailure(reason: .other(error.localizedDescription))
+    }
+}
+
+extension DownloadFailure.NetworkKind {
+    init?(_ code: URLError.Code) {
+        switch code {
+        case .notConnectedToInternet, .dataNotAllowed, .internationalRoamingOff:
+            self = .offline
+        case .timedOut:
+            self = .timedOut
+        case .cannotFindHost, .dnsLookupFailed, .cannotConnectToHost, .networkConnectionLost:
+            self = .cannotConnect
+        case .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate,
+             .serverCertificateNotYetValid, .serverCertificateHasUnknownRoot, .clientCertificateRejected,
+             .clientCertificateRequired, .appTransportSecurityRequiresSecureConnection:
+            self = .insecureConnection
+        default:
+            return nil
+        }
+    }
+}
+
+extension DownloadFailure.Reason {
+    /// The message in the current language.
+    var message: String {
+        switch self {
+        case .http(let status):
+            switch status {
+            case 401, 403:
+                return String(localized: "The provider refused the download. The link may have expired: refresh the playlist and try again.", comment: "Download error: the server answered 401 or 403.")
+            case 404, 410:
+                return String(localized: "The provider no longer has this video. Refresh the playlist and try again.", comment: "Download error: the server answered 404 or 410.")
+            case 429:
+                return String(localized: "The provider limits downloads right now. Try again later.", comment: "Download error: the server answered 429 (too many requests).")
+            default:
+                return DownloadError.httpStatus(status).localizedDescription
+            }
+        case .notVideo:
+            return String(localized: "This link doesn't lead to a video that can be downloaded.", comment: "Download error: the server returned a web page or something else that is not a video.")
+        case .unsupportedFormat(let engineMessage):
+            let message = String(localized: "This video format can't be played on this device, so it isn't downloaded.", comment: "Download error: the file is in a format the app can neither play nor convert (such as an unknown video codec).")
+            guard let engineMessage else {
+                return message
+            }
+            // The engine named the codec: its sentence says it all ("This video can't be played: its video format
+            // (vp9) isn't supported."). Otherwise its technical detail follows, isolated so that its Latin text
+            // and colons keep their order in a right-to-left sentence.
+            if let sentence = EngineMessage.formatSentence(engineMessage) {
+                return sentence
+            }
+            let detail = TextParts.isolated(EngineMessage.localized(engineMessage))
+            return String(
+                localized: "DownloadFailure.withDetail",
+                defaultValue: "\(message) (\(detail))",
+                comment: "Download error: the reason a video can't be downloaded, then in parentheses the technical detail from the converter (often in English, such as 'Unable to open the stream: Invalid data found when processing input'). Use the parentheses and spacing of your language."
+            )
+        case .insufficientSpace:
+            return String(localized: "There isn't enough free space on this device for this download.", comment: "Download error: the device does not have enough free storage.")
+        case .incomplete:
+            return String(localized: "The download is incomplete. Try again.", comment: "Download error: the downloaded stream cannot be played offline.")
+        case .streamUnavailable:
+            // AVFoundation's own description is often only "unknown error": say what it means here.
+            return String(localized: "This stream can't be saved for offline viewing right now. Try again later.", comment: "Download error: the system could not download an HLS stream for offline playback (an AVFoundation error).")
+        case .network(.offline):
+            return String(localized: "No internet connection.", comment: "Download error (a TV guide or an offline download): the device is offline.")
+        case .network(.timedOut):
+            return String(localized: "The server took too long to respond.", comment: "Download error (a TV guide or an offline download): the request timed out.")
+        case .network(.cannotConnect):
+            return String(localized: "Could not connect to the server.", comment: "Download error (a TV guide or an offline download): the server could not be found, did not accept the connection, or the connection was lost.")
+        case .network(.insecureConnection):
+            return String(localized: "A secure connection to the server could not be made.", comment: "Download error (a TV guide or an offline download): the server's certificate is not valid, or the address needs https.")
+        case .other(let text):
+            return text
+        }
     }
 }
 

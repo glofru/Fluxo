@@ -1291,7 +1291,7 @@ Rules the code follows:
   debug-only text, previews) uses `Text(verbatim:)` or a plain `String`.
 - Counts are interpolated as integers (`"\(count) channels"`), not as `count.formatted()`: the catalog then
   has plural variations for them, and the number still gets the grouping of the locale. Channel numbers use
-  `.number.grouping(.never)`.
+  `.number.grouping(.never)`, and so do season and episode numbers (`EpisodeFormat.number`: "S2023 E5").
 - Dates, times, durations, sizes and time codes use format styles (`.dateTime`, `.interval`,
   `Duration.formatted`, `.byteCount`), never fixed formats or `String(format:)`.
 - Whole sentences are keys; a sentence is never assembled from translated pieces. The parts of a subtitle
@@ -1300,7 +1300,9 @@ Rules the code follows:
   right to left); VoiceOver labels use `TextParts.spoken` / `TextParts.sentences` (、 and 。 in Japanese and
   Chinese).
 - Nothing localized is stored: the guide keeps "S1 E5" and empty titles (`GuideFormat.episode`, "Untitled"
-  when shown), a failed guide refresh keeps a `GuideRefreshFailure` code, a recording without a channel
+  when shown), a failed guide refresh keeps a `GuideRefreshFailure` code, a failed download keeps a
+  `DownloadFailure.Reason` (with the engine's English message) and a download its picture height and the codes of
+  its languages, a recording without a channel
   name keeps no title ("Recording from <date>" when shown), and the recordings folder is always
   `Recordings`. Pending reminder notifications are rewritten when the language or the time format changes.
 - The messages of the C remux engine are English; `EngineMessage.localized` (`StreamRemuxer.swift`)

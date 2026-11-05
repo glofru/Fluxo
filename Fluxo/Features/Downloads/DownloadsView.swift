@@ -108,7 +108,7 @@ struct DownloadsFooter: View {
 
     var body: some View {
         Text(TextParts.line([
-            downloads.completedCount == 0 ? nil : String(localized: "\(downloads.completedCount) downloads", comment: "Footer of the downloads list: how many movies and episodes are downloaded, followed by their size and the free space."),
+            downloads.completedCount == 0 ? nil : String(localized: "\(downloads.completedCount) downloads", comment: "How many movies and episodes are downloaded, followed by their size (the footer of the downloads list, also with the free space, and Settings)."),
             DownloadText.bytes(downloads.totalBytes),
             downloads.availableBytes.map { String(localized: "\(DownloadText.bytes($0)) free", comment: "Free space on the device, in the downloads footer; the placeholder is a size such as 41 GB.") },
         ]))
@@ -285,7 +285,7 @@ struct DownloadRow: View {
                 .buttonStyle(.plain)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(Text(accessibilityLabel(item: item, downloads: downloads, progress: progress)))
-                .accessibilityHint(isPlayable ? Text("Plays the download", comment: "VoiceOver hint of a downloaded movie or episode.") : Text(""))
+                .accessibilityHint(isPlayable ? Text("Plays the download", comment: "VoiceOver hint of a downloaded movie or episode.") : Text(verbatim: ""))
                 .accessibilityAddTraits(isPlayable ? .isButton : [])
 
                 Menu {
@@ -405,7 +405,7 @@ struct DownloadRow: View {
             record.item.series.map(EpisodeFormat.spokenCode),
             record.item.series?.episodeTitle,
             downloads.waitingReason(for: record) ?? DownloadText.state(of: record, fraction: progress?.fraction),
-            record.status == .failed ? record.failure : nil,
+            record.status == .failed ? record.failureMessage : nil,
             record.status == .completed ? DownloadText.bytes(record.bytesOnDisk) : nil,
             library.watchProgress(for: item).map(WatchProgressFormat.remaining),
         ])
@@ -451,7 +451,7 @@ private struct DownloadStatusLine: View {
                     .lineLimit(2)
             }
         case .failed:
-            Text(record.failure ?? DownloadText.state(of: record, fraction: nil))
+            Text(record.failureMessage ?? DownloadText.state(of: record, fraction: nil))
                 .font(.caption)
                 .foregroundStyle(Theme.warning)
                 .lineLimit(3)
@@ -482,14 +482,16 @@ private struct DownloadStatusLine: View {
         }
     }
 
-    /// "1.2 GB · 1 hr 42 min · 1080p · English, Italiano".
+    /// "1.2 GB · 1 hr 42 min · 1080p · English, Italian".
     private var completedDetail: String {
-        let languages = record.audioNames.count > 1 ? ListFormatter.localizedString(byJoining: record.audioNames) : nil
-        let subtitles = record.subtitleNames.isEmpty ? nil : String(localized: "Subtitles: \(ListFormatter.localizedString(byJoining: record.subtitleNames))", comment: "The subtitle languages of a download; the placeholder is a list such as English, Italiano.")
+        let audio = record.audioLanguageNames
+        let subtitleNames = record.subtitleLanguageNames
+        let languages = audio.count > 1 ? ListFormatter.localizedString(byJoining: audio) : nil
+        let subtitles = subtitleNames.isEmpty ? nil : String(localized: "Subtitles: \(ListFormatter.localizedString(byJoining: subtitleNames))", comment: "The subtitle languages of a download; the placeholder is a list such as English, Italian.")
         return TextParts.line([
             DownloadText.bytes(record.bytesOnDisk),
             record.duration.map(DownloadText.duration),
-            record.qualityLabel,
+            record.qualityText,
             languages,
             subtitles,
         ])

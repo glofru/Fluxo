@@ -43,11 +43,13 @@ enum DownloadTransferFailure: Sendable {
 
 /// The variant, renditions and expected size an HLS download was started with.
 struct HLSDownloadPlan: Sendable {
-    var qualityLabel: String?
+    /// The picture height of the chosen variant (1080), when the stream offers several.
+    var qualityHeight: Int?
     var expectedBytes: Int64?
     var duration: TimeInterval?
-    var audioNames: [String] = []
-    var subtitleNames: [String] = []
+    /// The languages of the downloaded audio renditions and subtitles, as language codes ("en", "it").
+    var audioLanguages: [String] = []
+    var subtitleLanguages: [String] = []
 }
 
 final class DownloadTransport: NSObject, @unchecked Sendable {
@@ -327,7 +329,7 @@ final class DownloadTransport: NSObject, @unchecked Sendable {
                 ]
             }
             if let height = chosen.videoAttributes?.presentationSize.height, height > 0, videoVariants.count > 1 {
-                plan.qualityLabel = String(localized: "\(Int(height.rounded()))p", comment: "Quality of a downloaded video: its picture height in pixels followed by p, such as 1080p.")
+                plan.qualityHeight = Int(height.rounded())
             }
             if let duration, rate > 0 {
                 plan.expectedBytes = Int64(rate / 8 * duration * 1.05)
@@ -351,14 +353,14 @@ final class DownloadTransport: NSObject, @unchecked Sendable {
             throw DownloadFailure.incomplete
         }
         let task = session.makeAssetDownloadTask(downloadConfiguration: configuration)
-        Self.logger.info("HLS download: \(variants.count) variants, \(plan.qualityLabel ?? "automatic", privacy: .public), \(configuration.primaryContentConfiguration.mediaSelections.count) selections")
+        Self.logger.info("HLS download: \(variants.count) variants, \(plan.qualityHeight.map { "\($0)p" } ?? "automatic", privacy: .public), \(configuration.primaryContentConfiguration.mediaSelections.count) selections")
         task.taskDescription = id.uuidString
         register(task, id: id, kind: kind)
         task.resume()
         return plan
     }
 
-    /// The media selections to download, and the names of their renditions for the list.
+    /// The media selections to download, and the languages of their renditions for the list.
     private func mediaSelections(for asset: AVURLAsset, plan: inout HLSDownloadPlan) async -> [AVMediaSelection]? {
         guard let preferred = try? await asset.load(.preferredMediaSelection) else {
             return nil
@@ -375,14 +377,20 @@ final class DownloadTransport: NSObject, @unchecked Sendable {
         }
 
         var selections = [preferred]
-        var audioNames: [String] = []
-        var subtitleNames: [String] = []
+        var audioLanguages: [String] = []
+        var subtitleLanguages: [String] = []
+        // Language codes, not names: the list shows them in the language of the moment.
+        func add(_ option: AVMediaSelectionOption, to languages: inout [String]) {
+            if let language = TrackPreferences.language(of: option), !languages.contains(language) {
+                languages.append(language)
+            }
+        }
         if let audible {
             let playable = AVMediaSelectionGroup.playableMediaSelectionOptions(from: audible.options)
             let selected = preferred.selectedMediaOption(in: audible)
             for option in playable {
                 if option == selected || isWanted(option) {
-                    audioNames.append(option.displayName)
+                    add(option, to: &audioLanguages)
                 }
                 guard option != selected, isWanted(option), let selection = preferred.mutableCopy() as? AVMutableMediaSelection else {
                     continue
@@ -397,7 +405,7 @@ final class DownloadTransport: NSObject, @unchecked Sendable {
             for option in playable {
                 let isForced = option.hasMediaCharacteristic(.containsOnlyForcedSubtitles)
                 if !isForced {
-                    subtitleNames.append(option.displayName)
+                    add(option, to: &subtitleLanguages)
                 }
                 guard option != selected, let selection = preferred.mutableCopy() as? AVMutableMediaSelection else {
                     continue
@@ -406,8 +414,8 @@ final class DownloadTransport: NSObject, @unchecked Sendable {
                 selections.append(selection)
             }
         }
-        plan.audioNames = audioNames
-        plan.subtitleNames = subtitleNames
+        plan.audioLanguages = audioLanguages
+        plan.subtitleLanguages = subtitleLanguages
         return selections
     }
 
@@ -562,8 +570,7 @@ final class DownloadTransport: NSObject, @unchecked Sendable {
             return .insufficientSpace
         }
         if nsError.domain == AVFoundationErrorDomain {
-            // AVFoundation's own description is often only "unknown error": say what it means here.
-            return DownloadFailure(message: String(localized: "This stream can't be saved for offline viewing right now. Try again later.", comment: "Download error: the system could not download an HLS stream for offline playback (an AVFoundation error)."))
+            return .streamUnavailable
         }
         return .network(error)
     }

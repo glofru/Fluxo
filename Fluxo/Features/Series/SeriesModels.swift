@@ -184,13 +184,19 @@ struct SeriesItem: Identifiable, Hashable, Sendable {
 
     /// "3 seasons · 30 episodes", "12 episodes"; nil when the counts are unknown.
     var countsLine: String? {
+        countParts.isEmpty ? nil : TextParts.line(countParts)
+    }
+
+    /// The counts as separate parts ("3 seasons", "30 episodes"), for VoiceOver (`TextParts.spoken`); empty when
+    /// they are unknown. The seasons are left out when there is only one.
+    var countParts: [String] {
         guard let episodes = episodesLine else {
-            return nil
+            return []
         }
         guard let seasonCount, seasonCount > 1 else {
-            return episodes
+            return [episodes]
         }
-        return TextParts.line([String(localized: "\(seasonCount) seasons", comment: "Number of seasons of a series."), episodes])
+        return [String(localized: "\(seasonCount) seasons", comment: "Number of seasons of a series."), episodes]
     }
 
     /// "30 episodes" (where "3 seasons · 30 episodes" does not fit); nil when the count is unknown.
@@ -234,9 +240,9 @@ enum EpisodeFormat {
 
     static func code(season: Int?, episode: Int) -> String {
         if let season {
-            return String(localized: "S\(season) E\(episode)", comment: "Short season and episode label of a TV programme, as in 'S1 E5'. Keep it very short.")
+            return String(localized: "S\(number(season)) E\(number(episode))", comment: "Short season and episode label of a TV programme, as in 'S1 E5'. Keep it very short.")
         }
-        return String(localized: "E\(episode)", comment: "Short episode label of a TV programme, as in 'E5'. Keep it very short.")
+        return String(localized: "E\(number(episode))", comment: "Short episode label of a TV programme, as in 'E5'. Keep it very short.")
     }
 
     /// The title of an episode: its own ("Ozymandias"), or "Episode 14".
@@ -244,22 +250,33 @@ enum EpisodeFormat {
         if let title = episode.episodeTitle, !title.isEmpty {
             return title
         }
-        return String(localized: "Episode \(episode.episode)", comment: "Title of an episode that has no title of its own; the number is the episode number.")
+        return String(localized: "Episode \(number(episode.episode))", comment: "Title of an episode that has no title of its own, and VoiceOver for an episode without a season; the placeholder is the episode number.")
     }
 
     /// "Season 2", or "Specials" for season 0.
     static func seasonTitle(_ season: Int) -> String {
         season == 0
             ? String(localized: "Specials", comment: "Season 0 of a series: the specials.")
-            : String(localized: "Season \(season)", comment: "A season of a series; the number is the season number.")
+            : String(localized: "Season \(number(season))", comment: "A season of a series; the placeholder is the season number.")
     }
 
     /// For VoiceOver: "Season 1, episode 3".
     static func spokenCode(_ episode: EpisodeRef) -> String {
-        if let season = episode.season {
-            return String(localized: "Season \(season), episode \(episode.episode)", comment: "VoiceOver: the season and episode number of an episode.")
+        spokenCode(season: episode.season, episode: episode.episode)
+    }
+
+    /// For VoiceOver: "Season 1, episode 3", or "Episode 12" for an episode without a season.
+    static func spokenCode(season: Int?, episode: Int) -> String {
+        if let season {
+            return String(localized: "Season \(number(season)), episode \(number(episode))", comment: "VoiceOver: the season and episode number of an episode.")
         }
-        return String(localized: "Episode \(episode.episode)")
+        return String(localized: "Episode \(number(episode))", comment: "Title of an episode that has no title of its own, and VoiceOver for an episode without a season; the placeholder is the episode number.")
+    }
+
+    /// A season or episode number without grouping: seasons named after a year ("S2023 E5") and the episodes of
+    /// long-running daily shows ("E1234") are not "2,023" or "1.234".
+    static func number(_ value: Int) -> String {
+        value.formatted(.number.grouping(.never))
     }
 }
 

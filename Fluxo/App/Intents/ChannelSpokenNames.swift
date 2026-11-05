@@ -20,7 +20,8 @@ enum ChannelSpokenNames {
 
     /// Spoken variants of `name`, without the name itself: the name without provider prefix, quality tags and
     /// notes ("sky sport f1"), without filler words ("rai 1" for "Rai 1 TV"), with small numbers spelled out
-    /// in the interface language ("rai uno") and "+" read as "plus" ("canal plus").
+    /// in the interface language ("rai uno") and "+" read as people say it in that language ("rai sport più"), and
+    /// as "plus" ("canal plus").
     static func variants(of name: String, locale: Locale = interfaceLocale) -> [String] {
         let tokens = ChannelNameNormalizer.tokens(name)
         guard !tokens.isEmpty else {
@@ -34,8 +35,11 @@ enum ChannelSpokenNames {
         for base in candidates where base.contains(where: isSmallNumber) {
             candidates.append(base.map { isSmallNumber($0) ? spelledOut($0, locale: locale) : $0 })
         }
+        let plus = plusWords(in: locale)
         for base in candidates where base.contains("+") {
-            candidates.append(base.map { $0 == "+" ? "plus" : $0 })
+            for word in plus {
+                candidates.append(base.map { $0 == "+" ? word : $0 })
+            }
         }
 
         let folded = fold(name)
@@ -90,6 +94,25 @@ enum ChannelSpokenNames {
         }
         let letterWords = tokens.filter { $0.count >= 2 && $0.contains(where: \.isLetter) && Int($0) == nil }
         return !letterWords.isEmpty && tokens.joined().count >= 3 && !(tokens.count == 1 && spokenNumbers.contains(tokens[0]))
+    }
+
+    /// The words people say for "+" in a channel name: the one of the language ("più", "artı", "плюс"), then
+    /// "plus", which is said in many languages.
+    private static func plusWords(in locale: Locale) -> [String] {
+        locale == interfaceLocale ? interfacePlusWords : spokenPlusWords(in: locale)
+    }
+
+    private static let interfacePlusWords = spokenPlusWords(in: interfaceLocale)
+
+    private static func spokenPlusWords(in locale: Locale) -> [String] {
+        // Resolved in the language of `locale` (that of Siri), not only in the app's.
+        let word = String(localized: LocalizedStringResource(
+            "ChannelSpokenNames.plus",
+            defaultValue: "plus",
+            locale: locale,
+            comment: "Siri: the word people say for + in a channel name, as in 'Canal plus' or 'Rai Sport plus'. One word, lowercase where the language has case."
+        )).lowercased(with: locale).trimmingCharacters(in: .whitespaces)
+        return word.isEmpty || fold(word) == "plus" ? ["plus"] : [word, "plus"]
     }
 
     /// Single spelled-out numbers, which are no name on their own ("four" for "Channel 4").

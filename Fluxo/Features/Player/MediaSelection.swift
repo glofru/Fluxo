@@ -50,7 +50,9 @@ final class MediaSelectionController {
             guard let badge, !title.localizedCaseInsensitiveContains(badge) else {
                 return title
             }
-            return String(localized: "\(title) (\(badge))", comment: "Audio or subtitle track in the player menu: the track name, then a short badge such as AD, CC or SDH.")
+            // Each part in an isolate: the name often comes from the stream in another script than the badge
+            // ("Director's Commentary" in an Arabic menu), and keeps its order with the parentheses.
+            return String(localized: "\(TextParts.isolated(title)) (\(TextParts.isolated(badge)))", comment: "Audio or subtitle track in the player menu: the track name, then a short badge such as AD, CC or SDH.")
         }
         /// Spoken by VoiceOver: the title and what the badge means.
         var accessibilityLabel: String {
@@ -762,7 +764,7 @@ final class MediaSelectionController {
             let count = (seen[title] ?? 0) + 1
             seen[title] = count
             if count > 1 {
-                title = String(localized: "\(title) \(count)", comment: "A second audio or subtitle track with the same name gets a number, as in 'English 2'.")
+                title = String(localized: "\(TextParts.isolated(title)) \(count)", comment: "A second audio or subtitle track with the same name gets a number, as in 'English 2'.")
             }
             let badge: (short: String, spoken: String)?
             switch kind {

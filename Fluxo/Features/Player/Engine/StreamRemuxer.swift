@@ -574,18 +574,8 @@ enum EngineMessage {
             }
             return String(localized: "Unsupported stream type", comment: "Player error: the stream uses a protocol the app cannot open.")
         }
-        // FluxoRemuxEngine.c: an input whose video (or, without video, audio) the engine can neither copy nor convert.
-        // The codec name comes from FFmpeg ("Windows Media Video 9 Screen", "AV1"), in English.
-        for (prefix, isVideo) in [("Unsupported video format", true), ("Unsupported audio format", false)] where message.hasPrefix(prefix) {
-            let codec = message.dropFirst(prefix.count).drop { $0 == ":" || $0 == " " }
-            if codec.isEmpty || codec == "unknown" {
-                return isVideo
-                    ? String(localized: "This video can't be played: its video format isn't supported.", comment: "Player error: the video is in a format (codec) the app cannot decode or convert.")
-                    : String(localized: "This can't be played: its audio format isn't supported.", comment: "Player error: an audio-only stream is in a format (codec) the app cannot decode or convert.")
-            }
-            return isVideo
-                ? String(localized: "This video can't be played: its video format (\(String(codec))) isn't supported.", comment: "Player error: the video is in a format the app cannot decode or convert; the placeholder is the technical name of the video codec, in English (for example AV1).")
-                : String(localized: "This can't be played: its audio format (\(String(codec))) isn't supported.", comment: "Player error: an audio-only stream is in a format the app cannot decode or convert; the placeholder is the technical name of the audio codec, in English.")
+        if let sentence = formatSentence(message) {
+            return sentence
         }
         let parts = message.split(separator: ": ", maxSplits: 1).map(String.init)
         guard let stage = parts.first, let localizedStage = stages[stage] else {
@@ -595,6 +585,25 @@ enum EngineMessage {
             return localizedStage
         }
         return String(localized: "\(localizedStage): \(parts[1])", comment: "Player or recording error: what failed, then the technical reason (in English).")
+    }
+
+    /// The whole sentence for an engine message that says the video (or, without video, the audio) is in a format
+    /// the engine can neither copy nor convert ("Unsupported video format: AV1"); nil for any other message.
+    /// The codec name comes from FFmpeg ("Windows Media Video 9 Screen", "AV1"), in English.
+    static func formatSentence(_ message: String) -> String? {
+        for (prefix, isVideo) in [("Unsupported video format", true), ("Unsupported audio format", false)] where message.hasPrefix(prefix) {
+            let codec = message.dropFirst(prefix.count).drop { $0 == ":" || $0 == " " }
+            if codec.isEmpty || codec == "unknown" {
+                return isVideo
+                    ? String(localized: "This video can't be played: its video format isn't supported.", comment: "Player error: the video is in a format (codec) the app cannot decode or convert.")
+                    : String(localized: "This can't be played: its audio format isn't supported.", comment: "Player error: an audio-only stream is in a format (codec) the app cannot decode or convert.")
+            }
+            let name = String(codec)
+            return isVideo
+                ? String(localized: "This video can't be played: its video format (\(name)) isn't supported.", comment: "Player error: the video is in a format the app cannot decode or convert; the placeholder is the technical name of the video codec, in English (for example AV1).")
+                : String(localized: "This can't be played: its audio format (\(name)) isn't supported.", comment: "Player error: an audio-only stream is in a format the app cannot decode or convert; the placeholder is the technical name of the audio codec, in English.")
+        }
+        return nil
     }
 
     /// The `what` / `stage` strings of FluxoRemuxEngine.c.
