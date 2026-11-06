@@ -69,7 +69,10 @@ enum DebugSeeder {
                 services.library.recordWatch(item)
             }
         }
-        await DebugRecordingFactory.addRecordings(titled: DebugSeedCatalog.recordingTitles, to: services.recordings)
+        let recordingLogos = DebugSeedCatalog.recordingTitles.reduce(into: [String: String]()) { logos, title in
+            logos[title] = channel(named: title, in: services.modelContext)?.logo
+        }
+        await DebugRecordingFactory.addRecordings(titled: DebugSeedCatalog.recordingTitles, logos: recordingLogos, to: services.recordings)
         logger.notice("Seeded the \(seed.rawValue, privacy: .public) library in \(String(describing: clock.now - startedAt), privacy: .public)")
     }
 
@@ -108,7 +111,8 @@ enum DebugSeeder {
 enum DebugRecordingFactory {
 
     @MainActor
-    static func addRecordings(titled titles: [String], to store: RecordingStore) async {
+    /// - Parameter logos: the logo of each title's channel (the artwork of its card).
+    static func addRecordings(titled titles: [String], logos: [String: String] = [:], to store: RecordingStore) async {
         for (index, title) in titles.enumerated() {
             let createdOn = Date.now.addingTimeInterval(TimeInterval(-86_400 * index - 3_600))
             let url = store.makeRecordingURL(channelName: title, date: createdOn).deletingPathExtension().appendingPathExtension("mp4")
@@ -118,7 +122,7 @@ enum DebugRecordingFactory {
                 let duration = try await Task.detached(priority: .userInitiated) {
                     try await writeClip(to: url, hue: hue, seconds: 4)
                 }.value
-                store.debugAddRecording(at: url, title: title, createdOn: createdOn, duration: duration)
+                store.debugAddRecording(at: url, title: title, logo: logos[title], createdOn: createdOn, duration: duration)
                 DebugLaunchOptions.logger.notice("Wrote the recording \(title, privacy: .public) in \(String(describing: ContinuousClock.now - startedAt), privacy: .public)")
             } catch {
                 DebugLaunchOptions.logger.error("Could not write the recording \(title, privacy: .public): \(error.localizedDescription, privacy: .public)")

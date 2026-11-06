@@ -17,7 +17,8 @@
 //    Try Again after a seek that could not play;
 //  and draws what the system does not (`TVPlayerOverlays`): the channel before the first frame, failures and the end
 //  of a video (with the next episode's countdown), which take the focus, and the channel banner, Reconnecting… and
-//  the recording while the transport bar is hidden.
+//  the recording while the transport bar is hidden. Menu while recording asks first (Stop Recording or Keep
+//  Recording), since closing the player stops the recording.
 //
 
 #if os(tvOS)
@@ -35,6 +36,7 @@ struct TVPlayerView: View {
     @Environment(\.playChannel) private var playChannel
     @Environment(\.accessibilityEnabled) private var isAssistiveTechnologyEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(AppNavigation.self) private var navigation: AppNavigation?
     @State private var resolver = NextEpisodeResolver.shared
     @State private var systemPlayer = TVSystemPlayer.shared
     /// The episode whose next-episode countdown was cancelled: it shows its end screen instead.
@@ -79,6 +81,24 @@ struct TVPlayerView: View {
             .animation(.easeInOut(duration: 0.3), value: overlay)
             .animation(.easeInOut(duration: 0.3), value: bannerItem)
             .animation(.easeInOut(duration: 0.25), value: systemPlayer.isTransportBarVisible)
+        }
+        // Menu while recording (`TVSystemPlayer.isConfirmingClose`): closing the player would stop the recording.
+        .alert(String(localized: "TV.player.stopRecording.title", defaultValue: "Stop Recording?", comment: "Apple TV player: title of the alert when Menu is pressed to close the player while the live channel is being recorded."), isPresented: confirmsClose) {
+            Button(String(localized: "Stop Recording")) {
+                // The viewer is the one moving: nothing is kept for them (as Menu in `TVContentView`).
+                navigation?.releaseKeptTab()
+                // Closing stops playback; the recording is finished and saved in Library.
+                viewModel.closePlayer()
+            }
+            Button(String(localized: "TV.player.keepRecording", defaultValue: "Keep Recording", comment: "Apple TV player: the button of the Stop Recording? alert that goes back to the player and keeps recording."), role: .cancel) {}
+        } message: {
+            Text(String(localized: "TV.player.stopRecording.message", defaultValue: "Closing the player stops the recording. What was recorded so far is saved in Library.", comment: "Apple TV player: message of the alert when Menu is pressed while the live channel is being recorded."))
+        }
+        .onChange(of: viewModel.isRecording) { _, isRecording in
+            // The recording ended by itself (the stream failed, the disk is full): nothing to confirm any more.
+            if !isRecording {
+                systemPlayer.isConfirmingClose = false
+            }
         }
         .onChange(of: viewModel.currentItem, initial: true) { old, item in
             resolver.resolve(after: item, container: modelContext.container)
@@ -145,6 +165,14 @@ struct TVPlayerView: View {
     }
 
     // MARK: - State
+
+    private var confirmsClose: Binding<Bool> {
+        Binding {
+            systemPlayer.isConfirmingClose
+        } set: { isPresented in
+            systemPlayer.isConfirmingClose = isPresented
+        }
+    }
 
     private struct StartKey: Equatable {
         let channel: PlayableChannel.ID?

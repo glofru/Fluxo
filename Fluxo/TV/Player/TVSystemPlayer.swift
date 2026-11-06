@@ -20,6 +20,10 @@
 //    corner while the player screen is closed and the app is browsed; "Full Screen" opens the screen again.
 //  - Now Playing: AVKit publishes it for this controller from the item's `externalMetadata` (the app's own
 //    `NowPlayingController` stays out of its way on tvOS).
+//  - Menu while recording: Menu would close the player, which stops playback and with it the recording. AVKit asks
+//    its delegate first (`playerViewControllerShouldDismiss`, only for the Menu that dismisses, not the one that
+//    hides the transport bar or the info panel): while recording it stays, and the player asks
+//    (`isConfirmingClose`).
 //
 
 #if os(tvOS)
@@ -107,6 +111,8 @@ final class TVSystemPlayer: NSObject {
 
     /// The transport bar is on screen: overlays of the app make room for it.
     private(set) var isTransportBarVisible = false
+    /// Menu was pressed to close the player while it records: `TVPlayerView` asks whether to stop the recording.
+    var isConfirmingClose = false
     /// The first video frame of the player's item is ready (`AVPlayerViewController.isReadyForDisplay`): until then
     /// the app's preroll covers the black screen.
     private(set) var isReadyForDisplay = false
@@ -166,6 +172,7 @@ final class TVSystemPlayer: NSObject {
         }
         container.onDisappear = { [weak self] in
             self?.viewModel?.playerViewDidDisappear()
+            self?.isConfirmingClose = false
         }
     }
 
@@ -671,6 +678,16 @@ extension TVSystemPlayer: @MainActor AVPlayerViewControllerDelegate {
     func playerViewControllerShouldAutomaticallyDismissAtPictureInPictureStart(_ playerViewController: AVPlayerViewController) -> Bool {
         // The controller is embedded in SwiftUI's full-screen cover: the view model closes the screen itself.
         false
+    }
+
+    func playerViewControllerShouldDismiss(_ playerViewController: AVPlayerViewController) -> Bool {
+        guard viewModel?.isRecording == true else {
+            return true
+        }
+        // Closing the player would stop the recording: `TVPlayerView` asks first (Stop Recording or Keep Recording).
+        logger.info("Menu while recording: asking before closing the player")
+        isConfirmingClose = true
+        return false
     }
 
     func playerViewControllerDidStartPictureInPicture(_ playerViewController: AVPlayerViewController) {

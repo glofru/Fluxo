@@ -7,8 +7,10 @@
 
 import SwiftUI
 
-/// A programme: artwork, title, episode, channel, time and progress, categories and description, with Watch
-/// and Remind Me, and what follows on the same channel.
+/// A programme: artwork, title, episode, channel, time and progress, categories and description, with Watch,
+/// Record (on air, on a channel the engine plays) and Remind Me, and what follows on the same channel. Record plays
+/// the channel and starts recording it once its stream is open; while the channel records (the mini player, Picture
+/// in Picture), the sheet shows REC and Stop Recording.
 struct ProgrammeDetailView: View {
 
     /// The tallest the artwork gets: a 16:9 banner as wide as the content, lower in a short window (iPhone
@@ -163,6 +165,9 @@ struct ProgrammeDetailView: View {
             }
             .accessibilityElement(children: .combine)
             if programme.isOnAir(at: now) {
+                if playChannel.isRecording(channel) {
+                    RecordingBadge(duration: playChannel.recordingDuration)
+                }
                 HStack(spacing: 10) {
                     ProgrammeProgressBar(progress: programme.progress(at: now), height: 5)
                     Text(GuideFormat.remaining(programme, at: now))
@@ -178,21 +183,52 @@ struct ProgrammeDetailView: View {
 
     private func actions(now: Date) -> some View {
         let isReminded = epg.reminders.isScheduled(programme)
+        let isRecording = programme.isOnAir(at: now) && playChannel.isRecording(channel)
+        let offersRecording = isRecording || (programme.isOnAir(at: now) && channel.isRecordable)
         return ViewThatFits(in: .horizontal) {
             HStack(spacing: 12) {
                 watchButton(now: now)
+                if offersRecording {
+                    recordButton(isRecording: isRecording)
+                }
                 if ReminderCenter.canRemind(programme, now: now) {
                     reminderButton(isReminded: isReminded)
                 }
             }
             VStack(alignment: .leading, spacing: 10) {
                 watchButton(now: now)
+                if offersRecording {
+                    recordButton(isRecording: isRecording)
+                }
                 if ReminderCenter.canRemind(programme, now: now) {
                     reminderButton(isReminded: isReminded)
                 }
             }
         }
         .controlSize(.large)
+    }
+
+    /// Record plays the channel and records it (the player shows REC); Stop Recording saves the recording.
+    private func recordButton(isRecording: Bool) -> some View {
+        Button {
+            if isRecording {
+                playChannel.stopRecording()
+            } else {
+                close()
+                playChannel.playAndRecord(channel)
+            }
+        } label: {
+            Label {
+                Text(isRecording ? "Stop Recording" : "Record")
+                    .lineLimit(1)
+            } icon: {
+                Image(systemName: isRecording ? "stop.circle.fill" : "record.circle")
+                    .foregroundStyle(Theme.recording)
+                    .contentTransition(.symbolEffect(.replace))
+            }
+        }
+        .buttonStyle(.glass)
+        .accessibilityHint(isRecording ? "Stops recording and saves it in Recordings" : "Plays the channel and records it to Recordings")
     }
 
     private func watchButton(now: Date) -> some View {

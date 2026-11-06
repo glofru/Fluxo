@@ -82,8 +82,9 @@ struct TVLibraryScreen: View {
     }
 }
 
-/// A recording: the channel's logo, its title, when it was made and how long it is. Selecting it plays it; the
-/// long-press menu deletes it.
+/// A recording: the channel's logo (a tile with its initials for recordings made before the logo was kept), its
+/// title, when it was made and how long it is. Selecting it plays it; the long-press menu deletes it. One that is
+/// still written (Picture in Picture records) or converted shows it over its artwork and cannot be played yet.
 private struct TVRecordingCard: View {
     let recording: Recording
     let player: AVPlayerViewModel
@@ -92,24 +93,41 @@ private struct TVRecordingCard: View {
 
     var body: some View {
         let isBusy = recording.isRecording || recording.isFinalizing
+        let date = recording.createdOn.formatted(.dateTime.day().month().hour().minute())
         TVCard(
             size: TVLayout.landscapeCard,
             action: .perform { player.playRecording(recording) },
             focusName: recording.title,
-            accessibilityLabel: Text(TextParts.spoken([recording.title, recording.createdOn.formatted(date: .abbreviated, time: .shortened), isBusy ? String(localized: "Recording") : nil])),
-            accessibilityHint: Text(TVText.playsRecordingHint)
+            accessibilityLabel: Text(TextParts.spoken([recording.title, recording.createdOn.formatted(date: .abbreviated, time: .shortened), recording.duration.map(PlayerTime.spoken), state])),
+            accessibilityHint: isBusy ? nil : Text(TVText.playsRecordingHint)
         ) {
-            ZStack {
-                Theme.tileBackground
-                Image(systemName: isBusy ? "record.circle.fill" : "play.rectangle.fill")
-                    .font(.system(size: 72))
-                    .foregroundStyle(Theme.recording)
-                    .symbolEffect(.pulse, isActive: isBusy)
-            }
+            TVLandscapeArtworkView(logo: recording.logo, name: recording.title, kind: .live)
+                .overlay(alignment: .topLeading) {
+                    if let state {
+                        HStack(spacing: 10) {
+                            if recording.isRecording {
+                                Image(systemName: "record.circle.fill")
+                                    .foregroundStyle(Theme.recording)
+                                    .ambientSymbolEffect(.pulse)
+                            } else {
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
+                            Text(state)
+                        }
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(.black.opacity(0.6), in: .capsule)
+                        .foregroundStyle(.white)
+                        .environment(\.colorScheme, .dark)
+                        .padding(14)
+                    }
+                }
         } caption: { isFocused in
             TVCardCaption(
                 title: recording.title,
-                subtitle: TextParts.line([recording.createdOn.formatted(.dateTime.day().month().hour().minute()), recording.duration.map { Duration.seconds($0).formatted(.units(allowed: [.hours, .minutes], width: .abbreviated)) }]),
+                subtitle: TextParts.line([date, recording.duration.map(Self.duration)]),
                 isFocused: isFocused
             )
         } menu: {
@@ -128,6 +146,26 @@ private struct TVRecordingCard: View {
         } message: {
             Text(recording.title)
         }
+    }
+
+    /// "Recording" while the engine writes it, "Saving…" while it is converted; nil once it can be played.
+    private var state: String? {
+        if recording.isRecording {
+            return String(localized: "TV.recording.inProgress", defaultValue: "Recording", comment: "Apple TV Library: a recording the engine is still writing (the channel is being recorded now, in Picture in Picture).")
+        }
+        if recording.isFinalizing {
+            return String(localized: "TV.recording.saving", defaultValue: "Saving…", comment: "Apple TV Library: a recording that just stopped and is being saved (converted to a file that can be played).")
+        }
+        return nil
+    }
+
+    /// "45 sec" under a minute, "12 min" or "1 hr, 5 min" after (never "0 min").
+    static func duration(_ seconds: TimeInterval) -> String {
+        let duration = Duration.seconds(max(0, seconds.rounded()))
+        if seconds < 59.5 {
+            return duration.formatted(.units(allowed: [.seconds], width: .abbreviated))
+        }
+        return duration.formatted(.units(allowed: [.hours, .minutes], width: .abbreviated))
     }
 }
 #endif

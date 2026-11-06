@@ -17,10 +17,11 @@
 //  Contrast (WCAG 2.2 AA: 4.5:1 for text, 3:1 for icons, strokes and large text; measured on white, the light
 //  surface #F4F2FB, black and the dark surface #17142B): every token that is drawn as text or as a thin glyph
 //  passes 4.5:1 on the backgrounds of its mode (the favorite yellow, an icon only, passes 3:1). Colors drawn
-//  behind white text (`accentFill`, `liveFill`) are the same deep tone in both modes, since the bright dark-mode
-//  accent and pink give white text only about 3:1. Every asset also has an Increase Contrast variant (deeper in
-//  light mode, lighter in dark mode, 6:1 or more), and the hairlines and translucent player colors below get
-//  stronger with Increase Contrast too. `Tools/Simulator/AccessibilityAudit` checks contrast on screen.
+//  behind white text (`accentFill`, `liveFill`, `recordingFill`) are the same deep tone in both modes, since the
+//  bright dark-mode accent, pink and red give white text only about 3:1. Every asset also has an Increase Contrast
+//  variant (deeper in light mode, lighter in dark mode, 6:1 or more), and the hairlines and translucent player
+//  colors below get stronger with Increase Contrast too. `Tools/Simulator/AccessibilityAudit` checks contrast on
+//  screen.
 //
 
 import SwiftUI
@@ -53,6 +54,9 @@ enum Theme {
     static let timeShift = cyan
     /// Recording in progress. Red, as on every recorder.
     static let recording = Color("FluxoRed")
+    /// Behind white text that means recording (the REC badge): the deep light-mode red in both modes (5.4:1 with
+    /// white; the bright dark-mode red would give about 2.6:1).
+    static let recordingFill = Color("FluxoRecordingFill")
     /// Favorites (stars).
     static let favorite = Color("FluxoFavorite")
     /// Behind white text that means favorite (swipe actions): a deep gold.

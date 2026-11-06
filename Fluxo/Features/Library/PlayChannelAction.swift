@@ -73,6 +73,28 @@ struct PlayChannelAction: Equatable {
         }
     }
 
+    /// Whether the player records `item` now (Picture in Picture, the mini player: the programme sheets of its
+    /// channel offer Stop Recording then). Read in a view's body, it updates the view when the recording starts or stops.
+    @MainActor
+    func isRecording(_ item: ChannelItem) -> Bool {
+        guard let player, player.isRecording, let current = player.currentItem else {
+            return false
+        }
+        return current.id == item.id || (current.bookmarkKey != nil && current.bookmarkKey == item.bookmarkKey)
+    }
+
+    /// How long the running recording is (0 when nothing records).
+    @MainActor
+    var recordingDuration: TimeInterval {
+        player?.timeline.recordingDuration ?? 0
+    }
+
+    /// Stops the running recording; it is saved to the recordings (Library).
+    @MainActor
+    func stopRecording() {
+        player?.stopRecording()
+    }
+
     static func == (lhs: PlayChannelAction, rhs: PlayChannelAction) -> Bool {
         lhs.library === rhs.library && lhs.player === rhs.player && lhs.coordinator === rhs.coordinator && lhs.windowID == rhs.windowID
     }
@@ -80,4 +102,15 @@ struct PlayChannelAction: Equatable {
 
 extension EnvironmentValues {
     @Entry var playChannel = PlayChannelAction()
+}
+
+extension ChannelItem {
+    /// A live channel the remux engine plays, which can be recorded: the engine writes the recording. Channels that
+    /// AVPlayer plays straight from their HLS playlist, movies and episodes cannot be (see `PlaybackRoute`).
+    var isRecordable: Bool {
+        guard kind == .live, let url else {
+            return false
+        }
+        return PlaybackRoute(url: url, kind: kind).isLiveRemux
+    }
 }

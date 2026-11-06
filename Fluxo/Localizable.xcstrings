@@ -68891,6 +68891,9 @@
         }
       }
     },
+    "Plays the channel and records it to Recordings" : {
+      "comment" : "VoiceOver hint of Record in a programme's details (TV guide): plays the channel and records it."
+    },
     "Plays the download" : {
       "comment" : "VoiceOver hint of a downloaded movie or episode.",
       "localizations" : {
@@ -90945,6 +90948,9 @@
         }
       }
     },
+    "Stops recording and saves it in Recordings" : {
+      "comment" : "VoiceOver hint of Stop Recording in a programme's details (TV guide), while its channel is being recorded."
+    },
     "Stops what Fluxo is playing and closes the player. A recording in progress is saved." : {
       "comment" : "Description of the Stop Playback action in the Shortcuts app.",
       "localizations" : {
@@ -98100,6 +98106,42 @@
         }
       }
     },
+    "TV.player.keepRecording" : {
+      "comment" : "Apple TV player: the button of the Stop Recording? alert that goes back to the player and keeps recording.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Keep Recording"
+          }
+        }
+      }
+    },
+    "TV.player.stopRecording.message" : {
+      "comment" : "Apple TV player: message of the alert when Menu is pressed while the live channel is being recorded.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Closing the player stops the recording. What was recorded so far is saved in Library."
+          }
+        }
+      }
+    },
+    "TV.player.stopRecording.title" : {
+      "comment" : "Apple TV player: title of the alert when Menu is pressed to close the player while the live channel is being recorded.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Stop Recording?"
+          }
+        }
+      }
+    },
     "TV.playlist.channels" : {
       "comment" : "Apple TV, a playlist's page: label of its number of channels.",
       "extractionState" : "extracted_with_value",
@@ -98312,6 +98354,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "更新時間"
+          }
+        }
+      }
+    },
+    "TV.programme.recordHint" : {
+      "comment" : "VoiceOver hint of Record on a programme on air, on Apple TV.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Plays the channel and records it. The recording is saved in Library"
           }
         }
       }
@@ -98640,6 +98694,18 @@
         }
       }
     },
+    "TV.programme.stopRecordingHint" : {
+      "comment" : "VoiceOver hint of Stop Recording on a programme on Apple TV, while its channel is being recorded.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Stops recording the channel and saves the recording in Library"
+          }
+        }
+      }
+    },
     "TV.programme.watchChannel" : {
       "comment" : "Apple TV, a programme that is not on air: plays its channel.",
       "extractionState" : "extracted_with_value",
@@ -98852,6 +98918,30 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "要刪除此錄影嗎？"
+          }
+        }
+      }
+    },
+    "TV.recording.inProgress" : {
+      "comment" : "Apple TV Library: a recording the engine is still writing (the channel is being recorded now, in Picture in Picture).",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Recording"
+          }
+        }
+      }
+    },
+    "TV.recording.saving" : {
+      "comment" : "Apple TV Library: a recording that just stopped and is being saved (converted to a file that can be played).",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Saving…"
           }
         }
       }

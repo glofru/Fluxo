@@ -976,8 +976,8 @@ refresh (`BGAppRefreshTask`) runs on tvOS too.
   text and controls 80 points from the sides (`TVLayout.margin`, the overscan-safe inset; 60 at the top and bottom).
   Cards (`TVCard`) are the system's card button style (lift, tilt and light under focus) on the artwork only, with the
   title beneath it, which moves down while the card is focused, as in the TV app; each card is one VoiceOver element
-  with a label and a hint, and has a long-press menu (play, favorite, Show in TV Guide, Go to Series, Remove from
-  History). Landscape cards (400 × 225) for channels, Continue Watching, On Now and episodes; posters (248 × 372) for
+  with a label and a hint, and has a long-press menu (play, Record on live channels the engine plays, favorite, Show
+  in TV Guide, Go to Series, Remove from History). Landscape cards (400 × 225) for channels, Continue Watching, On Now and episodes; posters (248 × 372) for
   movies and series. Shelves (`TVShelf`) are focus sections that scroll edge to edge; long ones end with a See All card.
   Action buttons are Liquid Glass (`.glassProminent` for the main one). Every empty page says what to do and has the
   button that does it (Add Playlist, Add Guide Source, Show Channels).
@@ -995,9 +995,14 @@ refresh (`BGAppRefreshTask`) runs on tvOS too.
   row move the window an hour back or on and focus the programme that came into view (`TVGuideModel`); Earlier, Now,
   Later and the day menu above jump further, and the category menu filters. A line marks now; programmes on air are
   tinted with their progress, ended ones dimmed. Selecting a programme opens it full screen (Watch Now or Watch
-  Channel, Remind Me, and what follows on the channel, each with its own reminder); Play/Pause plays the channel;
-  selecting a channel's name plays it. Rows read their programmes as they scroll in, for 30 hours around the window,
-  so paging reads nothing new. Without a guide source, Channels shows the live categories with Add a TV Guide.
+  Channel, Record, Remind Me, and what follows on the channel, each with its own reminder); Play/Pause plays the
+  channel; selecting a channel's name plays it. Record (a programme on air, on a channel the engine plays: not one
+  AVPlayer plays straight from HLS) plays the channel and starts recording as soon as its stream is open
+  (`PlayChannelAction.playAndRecord`, as Siri's "Record this"); while the channel records (Picture in Picture), the
+  sheet shows REC with the duration and Stop Recording. Watch and Record open the player once the sheet has gone,
+  so the focus is back on the programme first and Menu from the player returns to it (the grid gives the focus back
+  to the cell that had it last, `TVGuideGrid.lastFocus`). Rows read their programmes as they scroll in, for 30 hours
+  around the window, so paging reads nothing new. Without a guide source, Channels shows the live categories with Add a TV Guide.
 - **Movies, Series** (`TVKindScreen`, `TVBrowseScreens.swift`): Continue Watching of that kind, a strip of category
   tiles (and the full category browser), then every category as a shelf, a page of categories at a time. A category
   (`TVCategoryScreen`) is a grid with its order (channel number, name, recently added), paged by
@@ -1010,7 +1015,9 @@ refresh (`BGAppRefreshTask`) runs on tvOS too.
   from the episodes land on the selected season, and down from a tab (or Select on it) enters the season at its Up
   Next episode, or its first. `Tools/Simulator/remote-tests.sh` checks it with Siri Remote presses.
 - **Library** (`TVLibraryScreen`): Continue Watching, Favorites, Favorite Series, Recently Watched and the recordings
-  (long press deletes one), on `AppNavigation.libraryPath`.
+  (the channel's logo, kept with the recording since this version, else its initials; when it was made and how long
+  it is, "45 sec" under a minute; Recording or Saving… over the artwork until it can play; long press deletes one),
+  on `AppNavigation.libraryPath`.
 - **Search** (`TVSearchScreen`): the system search field and keyboard (dictation with the Siri Remote's microphone,
   the Continuity Keyboard of an iPhone), results as shelves: live channels, programmes of the guide, movies and series
   (a series named exactly as typed first). Before typing: what was watched last and the favorites. A sentence (what
@@ -1189,7 +1196,9 @@ live channels, recordings. The transport bar, the clickpad and the Siri Remote w
   live at any time); Next Episode during the end credits of an episode (the last
   3 %, at most a minute, of one longer than 5 minutes); Try Again after a seek that could not play.
 - **Transport bar**: Record / Stop Recording (live channels through the engine; a REC capsule with the duration shows
-  at the top right while the bar is hidden) and Picture (Fit to Screen / Fill Screen), next to the system's Audio
+  at the top right while the bar is hidden; Menu while recording asks first, Stop Recording or Keep Recording, since
+  closing the player stops the recording: `playerViewControllerShouldDismiss` keeps the player for that Menu, not
+  for the one that hides the bar or the info panel) and Picture (Fit to Screen / Fill Screen), next to the system's Audio
   and Subtitles menus. Those list the item's AVMediaSelection groups, which include the renditions the engine writes
   (extra audio tracks, text subtitles, CEA-608 captions, see "Audio tracks and subtitles"); a choice there is
   remembered like one in the iPhone menu (`MediaSelectionController.systemPlayerDidSelect`).
@@ -1339,6 +1348,10 @@ channels that have a guide, programme details, programme search and reminders.
   `searchProgrammes(_:importIDs:)`, and `reminders` (`ReminderCenter`). `revision` changes when guide data or
   matching change. `NowNextReader`, `ChannelProgrammeLine`, `ChannelCardProgrammeOverlay` and
   `PlayerProgrammeInfo` show now / next on channel cards, search rows and the player.
+- **Programme details** (`ProgrammeDetailView`, a sheet or the iPad / Mac inspector): Watch, Record (a programme
+  on air, on a channel the engine plays) and Remind Me. Record plays the channel and records it once its stream is
+  open (`PlayChannelAction.playAndRecord`); while the channel records (the mini player, Picture in Picture), the sheet
+  shows REC with the duration (`RecordingBadge`) and Stop Recording, which saves the recording to Recordings.
 - **Reminders** (`ReminderCenter`): a local notification 5 minutes before the start (0 to 30 minutes in
   Settings); tapping it, or its Watch action, plays the channel. The notification carries only the reminder
   key (stream URLs can embed account credentials); the channel is read from the store. The reminders list is in

@@ -504,6 +504,9 @@ struct TVGuideGrid: View {
     @FocusState private var focus: TVGuideFocus?
     /// A move of the window waits for the row's programmes, then focuses this one.
     @State private var pendingFocus: PendingFocus?
+    /// The last channel or programme that had the focus: it gets it back when the focus returns to the grid, from the
+    /// player (Watch or Record in a programme's sheet, a channel's name) or from the tab bar.
+    @State private var lastFocus: TVGuideFocus?
 
     private struct PendingFocus: Equatable {
         let rowID: UUID
@@ -539,8 +542,15 @@ struct TVGuideGrid: View {
             }
         }
         .focusSection()
-        .defaultFocus($focus, initialFocus)
+        .defaultFocus($focus, restoredFocus ?? initialFocus)
         .onChange(of: focus) { old, new in
+            switch new {
+            case .channel, .programme, .empty:
+                lastFocus = new
+            case .earlier, .later, nil:
+                // The end cells move the window as they take the focus: never given back.
+                break
+            }
             moveWindowIfNeeded(from: old, to: new)
         }
         .onChange(of: model.loadCount) {
@@ -556,6 +566,21 @@ struct TVGuideGrid: View {
             }
         }
         #endif
+    }
+
+    /// `lastFocus`, while it is still in the grid (its channel listed, its programme in the window).
+    private var restoredFocus: TVGuideFocus? {
+        guard let last = lastFocus, channels.contains(where: { $0.id == last.rowID }) else {
+            return nil
+        }
+        switch last {
+        case .programme(let rowID, let programmeID):
+            return model.programmes(for: rowID)?.contains { $0.id == programmeID } == true ? last : .channel(rowID)
+        case .empty(let rowID):
+            return model.programmes(for: rowID)?.isEmpty == true ? last : .channel(rowID)
+        case .channel, .earlier, .later:
+            return last
+        }
     }
 
     /// The programme on air on the first channel (or the channel itself while its row loads).
@@ -978,8 +1003,23 @@ private struct TVUpNextRow: View {
     }
 }
 
+/// The recording red of a symbol; when inactive, the symbol keeps the style the button gives its label.
+private struct TVRecordingTint: ViewModifier {
+    let isActive: Bool
+
+    func body(content: Content) -> some View {
+        if isActive {
+            content.foregroundStyle(Theme.recording)
+        } else {
+            content
+        }
+    }
+}
+
 /// A programme, full screen: its image (or the channel's), the channel, the title, when it airs and how far it is,
-/// the categories and the description, with Watch and Remind Me, and what follows on the channel.
+/// the categories and the description, with Watch, Record (on air, on a channel the engine plays) or Remind Me, and
+/// what follows on the channel. Record plays the channel and starts recording it as soon as the stream is open (the
+/// player shows REC); while the channel records (in Picture in Picture), the sheet shows REC and Stop Recording.
 struct TVProgrammeScreen: View {
     let programme: GuideProgramme
     let channel: ChannelItem
@@ -990,11 +1030,15 @@ struct TVProgrammeScreen: View {
     @Environment(\.dismiss) private var dismiss
     @State private var upNext: [GuideProgramme] = []
     @FocusState private var isWatchFocused: Bool
+    @FocusState private var isRecordFocused: Bool
+    /// What Watch or Record does once the sheet has gone (`afterDismissal(_:)`).
+    @State private var pending = PendingAction()
 
     var body: some View {
         TimelineView(.everyMinute) { context in
             let now = context.date
             let isOnAir = programme.isOnAir(at: now)
+            let isRecording = isOnAir && playChannel.isRecording(channel)
             HStack(alignment: .top, spacing: 70) {
                 VStack(alignment: .leading, spacing: 30) {
                     artwork
@@ -1015,6 +1059,9 @@ struct TVProgrammeScreen: View {
                     HStack(spacing: 16) {
                         if isOnAir {
                             LiveBadge()
+                        }
+                        if isRecording {
+                            RecordingBadge(duration: playChannel.recordingDuration)
                         }
                         Text(TextParts.line([channel.displayName, channel.number.map { String(localized: "Channel \($0.formatted(.number.grouping(.never)))", comment: "The channel number of the playlist, as in 'Channel 12'.") }]))
                             .font(.callout.weight(.semibold))
@@ -1053,7 +1100,7 @@ struct TVProgrammeScreen: View {
                             .lineLimit(8)
                             .frame(maxWidth: 1_000, alignment: .leading)
                     }
-                    actions(now: now, isOnAir: isOnAir)
+                    actions(now: now, isOnAir: isOnAir, isRecording: isRecording)
                         .padding(.top, 16)
                 }
                 Spacer(minLength: 0)
@@ -1062,11 +1109,34 @@ struct TVProgrammeScreen: View {
             .padding(.vertical, TVLayout.verticalMargin + 30)
         }
         .defaultFocus($isWatchFocused, true)
+        .onDisappear {
+            pending.run()
+        }
         .task(id: ref) {
             guard let ref else {
                 return
             }
             upNext = await epg.upcoming(for: ref, from: programme.stop, limit: 4).filter { $0.start >= programme.stop }
+        }
+    }
+
+    /// Closes the sheet, then plays: the player's cover opens once the focus is back on the programme in the guide
+    /// (or the result in Search), so Menu from the player returns there. Presented while the sheet still went away,
+    /// the cover would give the focus back to the sheet's button, which is gone, and tvOS would fall back to the
+    /// tab bar (Home).
+    private func afterDismissal(_ action: @escaping @MainActor () -> Void) {
+        pending.action = action
+        dismiss()
+    }
+
+    @MainActor
+    private final class PendingAction {
+        var action: (@MainActor () -> Void)?
+
+        func run() {
+            let action = action
+            self.action = nil
+            action?()
         }
     }
 
@@ -1086,15 +1156,16 @@ struct TVProgrammeScreen: View {
         .accessibilityHidden(true)
     }
 
-    private func actions(now: Date, isOnAir: Bool) -> some View {
+    private func actions(now: Date, isOnAir: Bool, isRecording: Bool) -> some View {
         let reminders = epg.reminders
         let canRemind = ReminderCenter.canRemind(programme, now: now)
         let isScheduled = reminders.isScheduled(programme)
         return GlassEffectContainer(spacing: 24) {
             HStack(spacing: 24) {
                 Button {
-                    dismiss()
-                    playChannel(channel)
+                    afterDismissal {
+                        playChannel(channel)
+                    }
                 } label: {
                     Label(isOnAir ? String(localized: "Watch Now") : String(localized: "TV.programme.watchChannel", defaultValue: "Watch Channel", comment: "Apple TV, a programme that is not on air: plays its channel."), systemImage: "play.fill")
                         .font(.headline)
@@ -1102,6 +1173,38 @@ struct TVProgrammeScreen: View {
                 }
                 .tvActionButton(prominent: true)
                 .focused($isWatchFocused)
+                .tvDebugFocus("programme-watch", focus: $isWatchFocused)
+
+                if isRecording || (isOnAir && channel.isRecordable) {
+                    // One button for both states, so the focus stays on it when the recording stops.
+                    Button {
+                        if isRecording {
+                            playChannel.stopRecording()
+                        } else {
+                            afterDismissal {
+                                playChannel.playAndRecord(channel)
+                            }
+                        }
+                    } label: {
+                        Label {
+                            Text(isRecording ? String(localized: "Stop Recording") : String(localized: "Record"))
+                        } icon: {
+                            // Red on the glass; focused, the color of the label (red would not read on the focused
+                            // button's fill, violet in light mode).
+                            Image(systemName: isRecording ? "stop.circle.fill" : "record.circle")
+                                .modifier(TVRecordingTint(isActive: !isRecordFocused))
+                                .contentTransition(.symbolEffect(.replace))
+                        }
+                        .font(.headline)
+                        .padding(.horizontal, 8)
+                    }
+                    .tvActionButton()
+                    .focused($isRecordFocused)
+                    .tvDebugFocus("programme-record", focus: $isRecordFocused)
+                    .accessibilityHint(Text(isRecording
+                        ? String(localized: "TV.programme.stopRecordingHint", defaultValue: "Stops recording the channel and saves the recording in Library", comment: "VoiceOver hint of Stop Recording on a programme on Apple TV, while its channel is being recorded.")
+                        : String(localized: "TV.programme.recordHint", defaultValue: "Plays the channel and records it. The recording is saved in Library", comment: "VoiceOver hint of Record on a programme on air, on Apple TV.")))
+                }
 
                 if canRemind || isScheduled {
                     Button {

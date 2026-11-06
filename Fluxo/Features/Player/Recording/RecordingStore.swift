@@ -16,6 +16,8 @@ import Observation
 struct Recording: Identifiable, Hashable {
     let url: URL
     let title: String
+    /// The logo of the recorded channel (from its playlist entry); nil for recordings made before it was kept.
+    var logo: String?
     let createdOn: Date
     let duration: TimeInterval?
     let bytes: Int64
@@ -92,10 +94,10 @@ final class RecordingStore {
     }
 
     /// Marks `url` as being written by the engine. Without a `title` (a channel without a name), the list
-    /// shows a localized "Recording from <date>".
-    func recordingDidStart(_ url: URL, title: String?) {
+    /// shows a localized "Recording from <date>". `logo` is the channel's, for the recording's artwork.
+    func recordingDidStart(_ url: URL, title: String?, logo: String? = nil) {
         Self.activeURLs.insert(url)
-        writeMetadata(RecordingMetadata(title: title, createdOn: Date(), duration: nil), for: url)
+        writeMetadata(RecordingMetadata(title: title, logo: logo, createdOn: Date(), duration: nil), for: url)
         reload()
     }
 
@@ -172,6 +174,7 @@ final class RecordingStore {
                 return Recording(
                     url: url,
                     title: Self.title(of: url, metadata: metadata, createdOn: createdOn),
+                    logo: metadata?.logo,
                     createdOn: createdOn,
                     duration: metadata?.duration,
                     bytes: Int64(values?.fileSize ?? 0),
@@ -188,8 +191,8 @@ final class RecordingStore {
 
     #if DEBUG
     /// Debug harness: lists an existing media file of the recordings folder as a finished recording.
-    func debugAddRecording(at url: URL, title: String, createdOn: Date, duration: TimeInterval?) {
-        writeMetadata(RecordingMetadata(title: title, createdOn: createdOn, duration: duration), for: url)
+    func debugAddRecording(at url: URL, title: String, logo: String? = nil, createdOn: Date, duration: TimeInterval?) {
+        writeMetadata(RecordingMetadata(title: title, logo: logo, createdOn: createdOn, duration: duration), for: url)
         reload()
     }
     #endif
@@ -198,7 +201,7 @@ final class RecordingStore {
 
     private func conversionDidFinish(source: URL, destination: URL, result: Result<TimeInterval, ConversionError>) {
         Self.finalizingURLs.remove(source)
-        var metadata = readMetadata(for: source) ?? RecordingMetadata(title: nil, createdOn: Date(), duration: nil)
+        var metadata = readMetadata(for: source) ?? RecordingMetadata(title: nil, logo: nil, createdOn: Date(), duration: nil)
         switch result {
         case .success(let duration):
             metadata.duration = duration
@@ -315,6 +318,8 @@ final class RecordingStore {
 private struct RecordingMetadata: Codable {
     /// Nil for a channel without a name (the title shown is then built in the current language).
     var title: String?
+    /// The channel's logo (optional: sidecars written before it was kept have none).
+    var logo: String?
     var createdOn: Date
     var duration: TimeInterval?
     var conversionFailed: Bool?

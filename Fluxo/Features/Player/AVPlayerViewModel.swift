@@ -766,7 +766,7 @@ final class AVPlayerViewModel {
         let url = recordings.makeRecordingURL(channelName: currentChannel?.name)
         do {
             try remuxer.startRecording(to: url)
-            recordings.recordingDidStart(url, title: currentChannel?.name)
+            recordings.recordingDidStart(url, title: currentChannel?.name, logo: currentChannel?.logo)
             recordingError = nil
             isRecording = true
             timeline.updateRecordingDuration(0)

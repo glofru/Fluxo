@@ -350,7 +350,8 @@ struct TVSeriesCard: View {
     }
 }
 
-/// The long-press menu of a channel, movie or episode card: favorite, the TV guide, the series.
+/// The long-press menu of a channel, movie or episode card: play, record (live channels the engine plays), favorite,
+/// the TV guide, the series.
 struct TVChannelMenu: View {
     let item: ChannelItem
 
@@ -364,6 +365,14 @@ struct TVChannelMenu: View {
             playChannel(item)
         } label: {
             Label(item.kind == .live ? String(localized: "Watch Live", comment: "Button of a featured live channel on the Home page.") : String(localized: "Play", comment: "Button of a featured movie on the Home page."), systemImage: "play.fill")
+        }
+        if item.isRecordable {
+            // Plays the channel and records it once its stream is open (the player then shows REC).
+            Button {
+                playChannel.playAndRecord(item)
+            } label: {
+                Label(String(localized: "Record"), systemImage: "record.circle")
+            }
         }
         if item.bookmarkKey != nil {
             Button {

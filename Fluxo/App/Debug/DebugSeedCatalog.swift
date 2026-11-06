@@ -194,8 +194,11 @@ enum DebugSeedCatalog {
             // Raw MPEG-TS with an English and a German audio track: the remux engine offers both.
             ("Test Pattern (Two Audio Tracks)", "\(base)/live/two-audio"),
         ]
-        for (name, url) in live {
-            playlist.entries.append(.init(name: name, group: "Test Streams", url: url, tvgID: "FluxoTest.test", logo: DebugArtwork.logo(for: name, style: .filled)))
+        for (index, (name, url)) in live.enumerated() {
+            // A tvg-id each: the guide keeps one row per guide channel, so channels sharing one would show only the
+            // first (`seed-guide` gives every test stream its own programmes, `programme:` opens any of them).
+            let tvgID = index == 0 ? "FluxoTest.test" : "FluxoTest.test\(index + 1)"
+            playlist.entries.append(.init(name: name, group: "Test Streams", url: url, tvgID: tvgID, logo: DebugArtwork.logo(for: name, style: .filled)))
         }
         let onDemand: [(String, String)] = [
             ("Test Clip (MP4)", "\(base)/movie/clip.mp4"),
