@@ -794,6 +794,63 @@ enum DebugRoutes {
             }
             try await Task.sleep(for: .seconds(seconds))
         },
+        DebugRoute("topshelf[:<sections>]", "Apple TV: waits (up to 30 s) until the Top Shelf snapshot written for the library shown has the given sections (`continueWatching,favorites,onNow`, default any), and logs it; fails without the App Group.") { _, argument in
+            #if os(tvOS)
+            let wanted = Set(argument.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) })
+            guard TopShelfStorage.directory != nil else {
+                throw DebugRouteError.check("no App Group container (build with Tools/Simulator/build.sh --platform tvos, which signs the app)")
+            }
+            let deadline = ContinuousClock.now + .seconds(30)
+            while true {
+                // Written by this launch (the publisher always writes its first snapshot).
+                if TopShelfPublisher.shared.lastPublishedAt != nil, let snapshot = TopShelfStorage.read() {
+                    let kinds = Set(snapshot.sections.map(\.kind.rawValue))
+                    if wanted.isSubset(of: kinds) {
+                        let summary = snapshot.sections.map { section in
+                            "\(section.kind.rawValue) [\(section.items.map(\.title).joined(separator: " | "))]"
+                        }.joined(separator: "; ")
+                        DebugLaunchOptions.logger.notice("Top Shelf: \(summary, privacy: .public)")
+                        return
+                    }
+                }
+                guard ContinuousClock.now < deadline else {
+                    throw DebugRouteError.check("the Top Shelf snapshot has \(TopShelfStorage.read()?.sections.map(\.kind.rawValue) ?? []), not \(wanted.sorted())")
+                }
+                try await Task.sleep(for: .milliseconds(500))
+            }
+            #else
+            throw DebugRouteError.unsupported("topshelf")
+            #endif
+        },
+        DebugRoute("topshelf-artwork-check", "Apple TV: a Top Shelf image whose logo cannot be loaded (cancelled while it loads, then a refused 127.0.0.1 URL) is never cached as that logo's image.") { _, _ in
+            #if os(tvOS)
+            let fileManager = FileManager.default
+            let directory = fileManager.temporaryDirectory.appending(path: "topshelf-artwork-check-\(UUID().uuidString)")
+            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            defer { try? fileManager.removeItem(at: directory) }
+            func files() -> [String] {
+                ((try? fileManager.contentsOfDirectory(atPath: directory.path(percentEncoded: false))) ?? []).sorted()
+            }
+            // Port 9 (discard) on the loopback: nothing listens, the connection is refused at once.
+            let art = TopShelfArt(logo: "http://127.0.0.1:9/fluxo-missing-logo.png", name: "Missing Logo", kind: .live, isLive: false)
+            let cancelled = Task { await TopShelfArtworkRenderer.write(art, to: directory) }
+            cancelled.cancel()
+            let cancelledNames = await cancelled.value
+            guard cancelledNames == nil, files().isEmpty else {
+                throw DebugRouteError.check("a cancelled write returned \(String(describing: cancelledNames)) and left \(files())")
+            }
+            let names = await TopShelfArtworkRenderer.write(art, to: directory)
+            let placeholder = art.placeholder.fileStem
+            guard let names, names == ("\(placeholder).jpg", "\(placeholder)@2x.jpg"),
+                  files() == ["\(placeholder)@2x.jpg", "\(placeholder).jpg"].sorted(),
+                  !files().contains(where: { $0.hasPrefix(art.fileStem) }) else {
+                throw DebugRouteError.check("a logo that failed wrote \(files()) (names \(String(describing: names))), art \(art.fileStem), placeholder \(placeholder)")
+            }
+            DebugLaunchOptions.logger.notice("Top Shelf artwork check: cancelled wrote nothing; failed logo drawn as \(placeholder, privacy: .public), not cached as \(art.fileStem, privacy: .public)")
+            #else
+            throw DebugRouteError.unsupported("topshelf-artwork-check")
+            #endif
+        },
         DebugRoute("help", "Logs this list.") { _, _ in
             DebugLaunchOptions.logger.notice("\(DebugRoutes.helpText, privacy: .public)")
         },

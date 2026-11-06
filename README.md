@@ -293,9 +293,10 @@ syncing to their private iCloud database at the first launch of this version. Me
 
 The app needs the **iCloud (CloudKit)** capability with the container `iCloud.dev.watermelon.Fluxo`, and **Push
 Notifications** plus the **Remote notifications** background mode (`UIBackgroundModes`: `remote-notification`) so
-that `CKSyncEngine` learns of changes at once. `Fluxo/Fluxo.entitlements` (iOS, iPadOS and tvOS) lists
+that `CKSyncEngine` learns of changes at once. `Fluxo/Fluxo.entitlements` (iOS and iPadOS) lists
 `com.apple.developer.icloud-services` (`CloudKit`), `com.apple.developer.icloud-container-identifiers` and
-`aps-environment`. With automatic signing and the team (4MJXMYZ3D9), Xcode registers the container and the
+`aps-environment`; the Apple TV app's `Fluxo/Fluxo-tvOS.entitlements` lists the same three keys (plus the Top
+Shelf App Group). With automatic signing and the team (4MJXMYZ3D9), Xcode registers the container and the
 capabilities of the App ID the first time it signs; the container appears in the CloudKit Console, where the
 development schema is created by the first records and must be deployed to production before a TestFlight or App
 Store build syncs (record types `Playlist`, `GuideSource`, `ChannelFavorite`, `ChannelProgress`, `SeriesFavorite`,
@@ -309,8 +310,13 @@ cannot carry iCloud entitlements, so `FLUXO_CLOUDKIT_CONTAINER[sdk=macosx*]` is 
 with the team (see "Building"), add the same three keys to `Fluxo/Fluxo-macOS.entitlements`
 (`aps-environment` is `com.apple.developer.aps-environment` there) and remove the `[sdk=macosx*]` override. The
 Apple TV build reads `Fluxo/Info-tvOS.plist`, which has the `FluxoCloudKitContainer` key and the
-`remote-notification` background mode too, and uses `Fluxo/Fluxo.entitlements`: the same capabilities apply to the
-tvOS App ID (the iCloud container is shared by the four platforms).
+`remote-notification` background mode too, and uses `Fluxo/Fluxo-tvOS.entitlements` (the iCloud keys of
+`Fluxo/Fluxo.entitlements` plus the App Group): the same capabilities apply to the tvOS App ID (the iCloud container is shared by the four platforms).
+The SwiftData store opts out of SwiftData's own CloudKit mirroring (`cloudKitDatabase: .none` and
+`groupContainer: .none` in `ModelContainerFactory` and the debug stores): with the iCloud entitlement the default
+(`.automatic`) mirrors the store to the container, which a schema with unique constraints and non-optional attributes
+cannot do, so the store would not open in a signed build; and the Apple TV store stays in the app's container rather
+than the Top Shelf App Group.
 
 ### Checking it
 
@@ -914,7 +920,8 @@ family 3 for the tvOS SDKs) rather than to a target of its own:
 - **The same pattern as macOS**: the target already builds two platforms, with the differences as SDK-conditional
   settings (`[sdk=macosx*]`); tvOS adds its own: its Info.plist (`Fluxo/Info-tvOS.plist`), app icon (below) and
   device family. Packages filter by platform (Google Cast stays iOS only; FFmpeg is linked on iOS, macOS and tvOS).
-  The entitlements file is the iOS one (empty).
+  The entitlements file is `Fluxo/Fluxo-tvOS.entitlements`: the iCloud keys of the iOS one plus the Top Shelf App
+  Group.
 - **No second list of files**: the target uses a file-system synchronized group, so every new file builds for every
   platform, and a change that does not compile on one fails at once instead of drifting in a target nobody builds.
   A second target would need its own membership exceptions for every iOS-only file, kept in step by hand.
@@ -1015,10 +1022,60 @@ refresh (`BGAppRefreshTask`) runs on tvOS too.
   on iPhone. Until the first frame (and after a failure) the channel and the player's state are shown. Menu closes
   the player and stops playback (there is no mini player on Apple TV); Picture in Picture is off until the TV player
   handles it (the app's own `PlayerSurface` drives none on tvOS).
-- **Icon**: Icon Composer has no tvOS rendition, so `Design/Icon/render_tvos_assets.swift` draws the layers of
-  `AppIcon.icon` (the brand gradient, the three stream bands, the play glyph) into the layered "App Icon & Top Shelf
-  Image" brand assets (Back, Middle and Front layers for the parallax, and the Top Shelf images):
-  `xcrun swift Design/Icon/render_tvos_assets.swift`.
+- **Icon**: Icon Composer has no tvOS rendition (checked with Xcode 27.2: `AppIcon.icon` gives the iPhone, iPad and
+  Mac icons only), so `Design/Icon/render_tvos_assets.swift` draws the layers of `AppIcon.icon` (the brand gradient,
+  the three stream bands, the play glyph) into the layered "App Icon & Top Shelf Image" brand assets: Back, Middle
+  and Front layers for the parallax at 400 × 240 (1x, 2x) and 1280 × 768 (App Store), and the static Top Shelf
+  images (1920 × 720 and 2320 × 720, 1x and 2x): `xcrun swift Design/Icon/render_tvos_assets.swift`.
+- **Launch screen** (`FluxoTV/LaunchScreen.storyboard`, tvOS only): the mark of the icon (the stream bands fading in
+  from nothing, into the play glyph) centered on the page background of the TV app, in the system appearance (the
+  `TVLaunchBackground` color, 0.055 white dark and 0.93 light as `Color.tvPageBackground`, and the `TVLaunchMark`
+  image, a white glyph dark and an ink one light), so the launch dissolves into Home in both. Both assets have the tv
+  idiom only, so the iPhone, iPad and Mac catalogs do not carry them; the mark is drawn by
+  `Design/Icon/render_tvos_launch.swift`. (On tvOS 27.2 a `UILaunchScreen` dictionary is drawn plain black.) iPhone
+  and iPad keep their generated launch screen.
+
+### Top Shelf
+
+With Fluxo in the top row of the Home Screen, its Top Shelf shows what Home starts with, for the playlists Home shows:
+**Continue Watching** (a series once, with the episode to watch now, and how far it was watched), **Favorites**
+(channels, movies, episodes and series in the user's order) and **On Now** (what the user's channels show, with the
+programme's progress), as rows of 16:9 images. Selecting an item plays it (a favorite series opens its page);
+Play/Pause plays it (a series where the viewer left off). Without a playlist tvOS shows the static Top Shelf image.
+
+- **The extension** (`FluxoTopShelf`, a `TVTopShelfContentProvider`, embedded in the tvOS app only: the target
+  dependency and the Embed Foundation Extensions phase are filtered to tvOS, so the iPhone, iPad and Mac builds never
+  build it) reads one small JSON file and points at finished images. It never opens the SwiftData store (a second
+  process on the SQLite file, possibly in the middle of a migration or an import) and never goes on the network.
+- **The snapshot** (`TopShelfSnapshot`, compiled into both targets) is written by the app (`TopShelfPublisher`) to
+  `Library/Caches/TopShelf` of the App Group `group.dev.watermelon.Fluxo` (`Fluxo-tvOS.entitlements`,
+  `FluxoTopShelf.entitlements`; `Fluxo-tvOS.entitlements` also keeps the iCloud keys of `Fluxo.entitlements`, and the
+  iOS entitlements are unchanged). A hidden view at the root of the TV app runs
+  Home's queries and publishes again, debounced, when the history, the favorites, the watch progress, the guide or
+  the playlists change, and not while the player is open (the position is saved every 10 s there): once it closes,
+  or at once when the app goes to the background, also with the player open (Home or the TV button leave it up),
+  in background time (`beginBackgroundTask`), so what was just watched leads Continue Watching. Each On Now channel carries its next 12 hours of programmes, so the extension still
+  shows what is on air, titled with it, after the app was closed; then it tells tvOS to reload
+  (`topShelfContentDidChange`).
+- **Images** are drawn by the app (`TopShelfArtwork`) with the look of its cards: a channel's logo on a graphite tile
+  (on a light tile when the logo is dark lettering on a transparent background, which would vanish on graphite), a
+  poster in front of a blurred copy of itself and clear of the progress bar tvOS draws, the initials of the name on
+  its color without artwork, and the LIVE badge in On Now. They are cached by a digest of what they show and the
+  language (a logo that changes makes a new file) and the ones the snapshot no longer uses are deleted. Only drawn
+  artwork is cached under its digest: while a logo or poster cannot be loaded (its host is down, or the publish was
+  cancelled) the initials tile is written under the digest of the art without artwork, and the next publish tries
+  the artwork again.
+- **Links**: `fluxo://play?channel=<id>`, `fluxo://play?playlist=<UUID>&series=<key>` and
+  `fluxo://open?playlist=<UUID>&series=<key>` (`TopShelfLink`; the scheme is registered in `Info-tvOS.plist` only).
+  Channels are named by their App Intents identifier (`ChannelEntityID`: the playlist and a keyed digest of the stream
+  URL), never by the URL, which often carries the account's user name and password; the snapshot holds no URL either.
+  A link to something no longer in the playlists says so ("Not Available").
+- **Target**: a plain app extension (`com.apple.product-type.app-extension`, as Xcode 27.2's TV Top Shelf Extension
+  template makes it), which links with `_NSExtensionMain`; the legacy TV App Extension type sets `_TVExtensionMain`,
+  with which the extension exits before the provider is created in the tvOS 27.2 Simulator. Its version and build
+  (`MARKETING_VERSION`, `CURRENT_PROJECT_VERSION`) are the project's, shared with the app, as the App Store requires.
+- **Accessibility**: tvOS reads each item's title, so the titles say what the image shows ("Orbit · S1 E2", "Quiz
+  Night · Rai 1 HD"); they keep the direction isolates of the app's lines only when a right-to-left script needs them. On Now items have no expiration date: tvOS would show the time left in place of the title.
 
 ### Trying it
 
@@ -1029,7 +1086,8 @@ Tools/Simulator/run.sh --device "Apple TV 4K (4th generation)" --clone fluxo-myk
     --route "home;focus:Sky Sport F1;player:Test Pattern (MPEG-TS);wait:8;probe-playback"
 ```
 
-See "Apple TV" in `Tools/Simulator/README.md` for the harness on tvOS.
+See "Apple TV" in `Tools/Simulator/README.md` for the harness on tvOS, and `topshelf-tests.sh` there for the Top
+Shelf on the Home Screen of the Simulator.
 
 ## iPhone with a hinge (iPhone Duo)
 

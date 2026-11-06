@@ -13,9 +13,16 @@ enum ModelContainerFactory {
 
     private static let logger = Logger(subsystem: "dev.watermelon.Fluxo", category: "Database")
 
-    /// Opens the app store. If an existing store cannot be opened with the current schema (e.g. a pre-release
-    /// layout that lightweight migration cannot map), it is moved aside and a fresh store is created instead of
-    /// crashing at launch. Playlist content can always be downloaded again.
+    /// Opens the app store. iCloud sync is Fluxo's own (`CloudSync`, `CKSyncEngine`), so the store opts out of
+    /// SwiftData's CloudKit mirroring (`cloudKitDatabase: .none`): with the iCloud entitlement the default
+    /// (`.automatic`) mirrors to the entitlement's container, which needs a schema without unique constraints and
+    /// non-optional attributes, and the store would fail to open. It also stays in the app's own container
+    /// (`groupContainer: .none`) when the build has an App Group (the Apple TV app shares one with its Top Shelf
+    /// extension, which reads a JSON snapshot and never this store).
+    ///
+    /// If an existing store cannot be opened with the current schema (e.g. a pre-release layout that lightweight
+    /// migration cannot map), it is moved aside and a fresh store is created instead of crashing at launch.
+    /// Playlist content can always be downloaded again.
     static func make() -> ModelContainer {
         #if DEBUG
         if let demo = DebugGuideDemo.makeContainerIfRequested() {
@@ -29,7 +36,7 @@ enum ModelContainerFactory {
             return environment.makeContainer(schema: schema)
         }
         #endif
-        let configuration = ModelConfiguration(schema: schema)
+        let configuration = ModelConfiguration(schema: schema, groupContainer: .none, cloudKitDatabase: .none)
         do {
             return try ModelContainer(for: schema, configurations: configuration)
         } catch {
@@ -67,7 +74,7 @@ extension ModelContainerFactory {
     /// In-memory container for SwiftUI previews.
     static func preview() -> ModelContainer {
         do {
-            return try ModelContainer(for: Schema(ModelRegistry.all), configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+            return try ModelContainer(for: Schema(ModelRegistry.all), configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none))
         } catch {
             fatalError("Could not create the preview container: \(error)")
         }

@@ -1,0 +1,9 @@
+{
+  "images" : [
+    { "filename" : "TVLaunchMark-light@1x.png", "idiom" : "tv", "scale" : "1x" },
+    { "filename" : "TVLaunchMark-light@2x.png", "idiom" : "tv", "scale" : "2x" },
+    { "filename" : "TVLaunchMark-dark@1x.png", "idiom" : "tv", "scale" : "1x", "appearances" : [ { "appearance" : "luminosity", "value" : "dark" } ] },
+    { "filename" : "TVLaunchMark-dark@2x.png", "idiom" : "tv", "scale" : "2x", "appearances" : [ { "appearance" : "luminosity", "value" : "dark" } ] }
+  ],
+  "info" : { "author" : "xcode", "version" : 1 }
+}

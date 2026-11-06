@@ -10,7 +10,8 @@
 //  It sets up what `ContentView` sets up on iPhone, iPad and Mac, minus what the TV has no use for (the mini player,
 //  drag and drop, Copy Link, offline downloads, several windows, the foldable posture): the playlist and guide
 //  sheets, watch progress, VoiceOver announcements, reminders, the play action every card uses, App Intents
-//  navigation and the debug harness. The pages are in `Fluxo/TV` (`TVHomeScreen`, `TVGuideScreen`, `TVKindScreen`,
+//  navigation, the Top Shelf of the Home Screen (`TopShelfPublisher`, `TopShelfLinks`) and the debug harness. The
+//  pages are in `Fluxo/TV` (`TVHomeScreen`, `TVGuideScreen`, `TVKindScreen`,
 //  `TVLibraryScreen`, `TVSearchScreen`, `TVSettingsScreen`); the player is `TVPlayerView`.
 //
 //  Everything in Fluxo/TV is compiled for tvOS only (each file is wrapped in `#if os(tvOS)`): the iPhone, iPad and
@@ -104,6 +105,9 @@ struct TVContentView: View {
         .guideManagement(epg)
         .watchProgressRecording(player: viewModel)
         .playerAnnouncements(viewModel)
+        // The Top Shelf of the Home Screen: what it shows (written for the FluxoTopShelf extension), and its links.
+        .topShelfPublishing(player: viewModel)
+        .topShelfLinks(player: viewModel)
         .environment(\.playChannel, PlayChannelAction(library: library, player: viewModel, coordinator: coordinator, windowID: windowID))
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {

@@ -5,7 +5,7 @@ library that never touches a real one. Everything here runs on the Mac; nothing 
 
 | Script | What it does |
 |---|---|
-| `build.sh` | Builds the Debug simulator app once (into `/tmp/fluxo-dd/<worktree folder>-sim`); `--platform tvos` builds the Apple TV one. |
+| `build.sh` | Builds the Debug simulator app once (into `/tmp/fluxo-dd/<worktree folder>-sim`); `--platform tvos` builds the Apple TV one, signed to run locally (ad hoc, no team needed) so the Simulator grants it and its Top Shelf extension their App Group. |
 | `run.sh` | Clones a simulator, boots it, installs the app, launches it with the harness, waits until it is ready, screenshots every display, deletes the clone (or keeps it with `--keep`). |
 | `shot.sh` | Screenshots every display of a kept clone (`--front` first brings a running Fluxo to the front). |
 | `cleanup.sh` | Deletes clones by name prefix (`fluxo-…` only). |
@@ -14,6 +14,7 @@ library that never touches a real one. Everything here runs on the Mac; nothing 
 | `accessibility-audit.sh` | The Xcode accessibility audit (`AccessibilityAudit/`, an XCUITest bundle) of 15 screens of the installed app on a kept clone, in the variants `default`, `ax5` (the largest text size; also audits Dynamic Type and clipped text) and `contrast` (dark mode, Increase Contrast). One `report.txt` per variant with every issue, accepted ones marked with the reason (`knownIssues`), and a screenshot per screen, in `/tmp/fluxo-shots/<clone>/accessibility-audit/<variant>/`. With `FLUXO_TEST_STREAM_URL` (test-stream.sh running) it also checks the player's Audio and Subtitles menu. |
 | `siri-tests.sh` | The system side of the App Intents on a kept clone (`SiriTests/`, an XCUITest bundle): the Shortcuts app lists Fluxo's ten App Shortcuts and runs What's On in the running app, the action search is screenshotted, Spotlight finds a seeded favorite and opening it plays it in Fluxo, and Siri is asked two phrases. Screenshots and hierarchy dumps (Spotlight's results are in its own process, `com.apple.Spotlight`) in `/tmp/fluxo-shots/<clone>/siri-tests/`. On iOS 27.2 the Simulator has no Siri ("not enabled on this device"): try phrases on a device. |
 | `format-matrix.sh` | The format matrix in the app (`--device`, `--clone`, optional case words): plays a file of each common container / video / audio codec combination (the media of `Tools/EngineSmokeTest/run_formats.sh`, served on 127.0.0.1) with `play-movie:`, then `probe-tracks`, `probe-playback`, a skip, a scrub and a skip back; one clone boot for every case. Summary in `/tmp/fluxo-shots/<clone>/formats/summary.txt`. |
+| `topshelf-tests.sh` | Apple TV: the Top Shelf on the Home Screen of a kept clone (`TopShelfTests/`, an XCUITest bundle that presses the Siri Remote buttons with `XCUIRemote`): focuses Fluxo's icon in the top row, then follows a list of presses and screenshots (`up`, `right`, `select`, `playpause`, `home`, `wait:<s>`, `shot:<name>`, `focus:<app>`). Fluxo keeps running in the background, so a selected item opens in the seeded library of that run. |
 | `contact_sheet.swift` | Combines screenshots into one labelled grid (`run.sh` does it when a run makes several). |
 
 The app side is in `Fluxo/App/Debug` (`DebugLaunchOptions`, `DebugHarness`, `DebugRoutes`, `DebugSeeder`,
@@ -216,6 +217,8 @@ first that contains the text.
 | `visual-search:<line>[\|<line>…][#<label>,…]` | Visual Intelligence's matching: the channels for lines of text read in an image and the system's labels. |
 | `visual-ocr:<text>[\|<text>…]` | Draws the texts in an image (the first one large), reads it with the same text recognition as Visual Intelligence images, and matches. |
 | `spotlight-reindex`, `spotlight-search:<words>` | Indexes the channels in Spotlight now, timing the call; queries the app's Spotlight items (in the Simulator the query may not complete: it gives up after 10 s). |
+| `topshelf[:<sections>]` | Apple TV: waits (up to 30 s) until this launch has written the Top Shelf snapshot with the given sections (`continueWatching,favorites,onNow`), and logs their titles; fails without the App Group (an unsigned build). |
+| `topshelf-artwork-check` | Apple TV: draws a Top Shelf image whose logo cannot be loaded (cancelled while it loads, then a refused `127.0.0.1:9` URL) into a temporary folder and checks that nothing is cached under that logo's name: the cancelled draw writes nothing, the failed one the initials tile under the name of the art without a logo. |
 | `help` | Logs the list of routes (in `app.log`). |
 
 ### Apple TV
@@ -226,7 +229,7 @@ routes are the same; routes of screens tvOS does not have (the touch player's `p
 `player-guide`, `side-panel`; Spotlight, Cast, downloads, foldable postures) fail with "not available on this
 platform" or change nothing. The Siri Remote cannot be scripted, so `focus:<channel>` moves the focus for screenshots.
 There is no status bar to override, and `simctl ui appearance` does not work on tvOS: use `-- -FluxoDebugAppearance light`. `gesture-tests.sh`, `accessibility-audit.sh`, `siri-tests.sh` and
-`format-matrix.sh` are iOS only for now.
+`format-matrix.sh` are iOS only for now; `topshelf-tests.sh` is Apple TV only.
 
 ```sh
 Tools/Simulator/build.sh --platform tvos
@@ -236,6 +239,24 @@ Tools/Simulator/run.sh --device "Apple TV 4K (4th generation)" --clone fluxo-myk
     --route "home;focus:Sky Sport F1;player:Test Pattern (HLS);wait:6;probe-playback;stop;player:Test Pattern (MPEG-TS);wait:8;probe-tracks;probe-playback"
 Tools/Simulator/run.sh --device "Apple TV 4K (4th generation) (at 1080p)" --clone fluxo-mykey-tv-2 --route "tab:guide"
 ```
+
+The Top Shelf (see "Top Shelf" in the main README) is checked on the Home Screen: run the app with the library to
+publish, keep the clone, then drive the Home Screen with `topshelf-tests.sh`. Sections follow one another from left
+to right (Continue Watching, Favorites, On Now); the seeded library has 10 Continue Watching items and, with
+`favorite-series:Orbit`, 9 favorites, the series first.
+
+```sh
+Tools/Simulator/build.sh --platform tvos
+Tools/Simulator/run.sh --device "Apple TV 4K (4th generation)" --clone fluxo-mykey-tv-1 --keep \
+    --route "seed-guide;favorite-series:Orbit;progress:Crimson Signal;progress:Orbit S01E02;topshelf:continueWatching,favorites,onNow"
+# Fluxo's icon focused (the shelf), the first item focused (its title), the series favorite selected (its page).
+Tools/Simulator/topshelf-tests.sh fluxo-mykey-tv-1 \
+    "home,wait:2,focus:Fluxo,wait:6,shot:shelf,up,wait:2,shot:item,right,right,right,right,right,right,right,right,right,right,wait:2,select,wait:5,shot:series"
+xcrun simctl openurl <udid> "fluxo://play?channel=<id>"   # a link by hand (confirm the system's Open with select)
+Tools/Simulator/cleanup.sh fluxo-mykey-tv-
+```
+
+The XCUITest runner adds its own icon to the top row of the clone; delete the clone afterwards.
 
 ### On-demand seeking
 

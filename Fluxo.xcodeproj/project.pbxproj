@@ -7,13 +7,36 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		99E70F112F0C000000A1B2C3 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 99E70F102F0C000000A1B2C3 /* LaunchScreen.storyboard */; platformFilters = (tvos, ); };
+		99E70F022F0C000000A1B2C3 /* FluxoTopShelf.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 99E70F012F0C000000A1B2C3 /* FluxoTopShelf.appex */; platformFilters = (tvos, ); settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		99CA57022F0B000000C4A571 /* GoogleCastDynamic in Frameworks */ = {isa = PBXBuildFile; platformFilters = (ios, ); productRef = 99CA57032F0B000000C4A571 /* GoogleCastDynamic */; };
 		997F92342E1A3931008E2656 /* FlyingFox in Frameworks */ = {isa = PBXBuildFile; productRef = 997F92332E1A3931008E2656 /* FlyingFox */; };
 		99F0FF022F0A000000D3E9A1 /* FFmpeg.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 99F0FF012F0A000000D3E9A1 /* FFmpeg.xcframework */; platformFilters = (ios, macos, tvos, ); };
 		99F0FF032F0A000000D3E9A1 /* FFmpeg.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 99F0FF012F0A000000D3E9A1 /* FFmpeg.xcframework */; platformFilters = (ios, macos, tvos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		99E70F042F0C000000A1B2C3 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 99B5FABC2DEAF9DC0095A78E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 99E70F0C2F0C000000A1B2C3;
+			remoteInfo = FluxoTopShelf;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXCopyFilesBuildPhase section */
+		99E70F032F0C000000A1B2C3 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				99E70F022F0C000000A1B2C3 /* FluxoTopShelf.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		991C73482E1B3DF9004AF87A /* Embed Frameworks */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -28,11 +51,27 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		99E70F102F0C000000A1B2C3 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+		99E70F012F0C000000A1B2C3 /* FluxoTopShelf.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FluxoTopShelf.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		99B5FAC42DEAF9DC0095A78E /* Fluxo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Fluxo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		99F0FF012F0A000000D3E9A1 /* FFmpeg.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = FFmpeg.xcframework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		99E70F082F0C000000A1B2C3 /* Exceptions for "Fluxo" folder in "FluxoTopShelf" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				TV/TopShelf/TopShelfSnapshot.swift,
+			);
+			target = 99E70F0C2F0C000000A1B2C3 /* FluxoTopShelf */;
+		};
+		99E70F072F0C000000A1B2C3 /* Exceptions for "FluxoTopShelf" folder in "FluxoTopShelf" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 99E70F0C2F0C000000A1B2C3 /* FluxoTopShelf */;
+		};
 		994B5B652DF6CD2300055EA8 /* Exceptions for "Fluxo" folder in "Fluxo" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -55,11 +94,20 @@
 /* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		99E70F062F0C000000A1B2C3 /* FluxoTopShelf */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				99E70F072F0C000000A1B2C3 /* Exceptions for "FluxoTopShelf" folder in "FluxoTopShelf" target */,
+			);
+			path = FluxoTopShelf;
+			sourceTree = "<group>";
+		};
 		99B5FAC62DEAF9DC0095A78E /* Fluxo */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				994B5B652DF6CD2300055EA8 /* Exceptions for "Fluxo" folder in "Fluxo" target */,
 				99CBEE972E1B36A400C9CEE6 /* Exceptions for "Fluxo" folder in "Copy Bundle Resources" phase from "Fluxo" target */,
+				99E70F082F0C000000A1B2C3 /* Exceptions for "Fluxo" folder in "FluxoTopShelf" target */,
 			);
 			path = Fluxo;
 			sourceTree = "<group>";
@@ -67,6 +115,13 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		99E70F0A2F0C000000A1B2C3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		99B5FAC12DEAF9DC0095A78E /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -80,10 +135,20 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		99E70F122F0C000000A1B2C3 /* FluxoTV */ = {
+			isa = PBXGroup;
+			children = (
+				99E70F102F0C000000A1B2C3 /* LaunchScreen.storyboard */,
+			);
+			path = FluxoTV;
+			sourceTree = "<group>";
+		};
 		99B5FABB2DEAF9DC0095A78E = {
 			isa = PBXGroup;
 			children = (
 				99B5FAC62DEAF9DC0095A78E /* Fluxo */,
+				99E70F062F0C000000A1B2C3 /* FluxoTopShelf */,
+				99E70F122F0C000000A1B2C3 /* FluxoTV */,
 				99F0FF042F0A000000D3E9A1 /* Vendor/FFmpeg */,
 				99B5FAC52DEAF9DC0095A78E /* Products */,
 			);
@@ -93,6 +158,7 @@
 			isa = PBXGroup;
 			children = (
 				99B5FAC42DEAF9DC0095A78E /* Fluxo.app */,
+				99E70F012F0C000000A1B2C3 /* FluxoTopShelf.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -108,6 +174,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		99E70F0C2F0C000000A1B2C3 /* FluxoTopShelf */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 99E70F0F2F0C000000A1B2C3 /* Build configuration list for PBXNativeTarget "FluxoTopShelf" */;
+			buildPhases = (
+				99E70F092F0C000000A1B2C3 /* Sources */,
+				99E70F0A2F0C000000A1B2C3 /* Frameworks */,
+				99E70F0B2F0C000000A1B2C3 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				99E70F062F0C000000A1B2C3 /* FluxoTopShelf */,
+			);
+			name = FluxoTopShelf;
+			packageProductDependencies = (
+			);
+			productName = FluxoTopShelf;
+			productReference = 99E70F012F0C000000A1B2C3 /* FluxoTopShelf.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		99B5FAC32DEAF9DC0095A78E /* Fluxo */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 99B5FAD02DEAF9DE0095A78E /* Build configuration list for PBXNativeTarget "Fluxo" */;
@@ -116,10 +204,12 @@
 				99B5FAC12DEAF9DC0095A78E /* Frameworks */,
 				99B5FAC22DEAF9DC0095A78E /* Resources */,
 				991C73482E1B3DF9004AF87A /* Embed Frameworks */,
+				99E70F032F0C000000A1B2C3 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				99E70F052F0C000000A1B2C3 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				99B5FAC62DEAF9DC0095A78E /* Fluxo */,
@@ -145,6 +235,9 @@
 				TargetAttributes = {
 					99B5FAC32DEAF9DC0095A78E = {
 						CreatedOnToolsVersion = 16.3;
+					};
+					99E70F0C2F0C000000A1B2C3 = {
+						CreatedOnToolsVersion = 27.2;
 					};
 				};
 			};
@@ -183,21 +276,37 @@
 			projectRoot = "";
 			targets = (
 				99B5FAC32DEAF9DC0095A78E /* Fluxo */,
+				99E70F0C2F0C000000A1B2C3 /* FluxoTopShelf */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		99B5FAC22DEAF9DC0095A78E /* Resources */ = {
+		99E70F0B2F0C000000A1B2C3 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		99B5FAC22DEAF9DC0095A78E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				99E70F112F0C000000A1B2C3 /* LaunchScreen.storyboard in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		99E70F092F0C000000A1B2C3 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		99B5FAC02DEAF9DC0095A78E /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -207,7 +316,72 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		99E70F052F0C000000A1B2C3 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			platformFilters = (tvos, );
+			target = 99E70F0C2F0C000000A1B2C3 /* FluxoTopShelf */;
+			targetProxy = 99E70F042F0C000000A1B2C3 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		99E70F0D2F0C000000A1B2C3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = FluxoTopShelf/FluxoTopShelf.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 4MJXMYZ3D9;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = FluxoTopShelf/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Fluxo;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.watermelon.Fluxo.TopShelf;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = appletvos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Debug;
+		};
+		99E70F0E2F0C000000A1B2C3 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = FluxoTopShelf/FluxoTopShelf.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 4MJXMYZ3D9;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = FluxoTopShelf/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Fluxo;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.watermelon.Fluxo.TopShelf;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = appletvos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Release;
+		};
 		99B5FACE2DEAF9DE0095A78E /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -242,6 +416,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 4MJXMYZ3D9;
@@ -263,6 +438,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MARKETING_VERSION = 1.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -306,6 +482,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 4MJXMYZ3D9;
@@ -321,6 +498,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MARKETING_VERSION = 1.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -336,11 +514,12 @@
 				"ASSETCATALOG_COMPILER_APPICON_NAME[sdk=appletvsimulator*]" = "App Icon & Top Shelf Image";
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Fluxo/Fluxo.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=appletvos*]" = "Fluxo/Fluxo-tvOS.entitlements";
+				"CODE_SIGN_ENTITLEMENTS[sdk=appletvsimulator*]" = "Fluxo/Fluxo-tvOS.entitlements";
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "Fluxo/Fluxo-macOS.entitlements";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
 				"CODE_SIGN_STYLE[sdk=macosx*]" = Manual;
-				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 4MJXMYZ3D9;
 				"DEVELOPMENT_TEAM[sdk=macosx*]" = 4MJXMYZ3D9;
@@ -371,7 +550,6 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.watermelon.Fluxo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "";
@@ -396,11 +574,12 @@
 				"ASSETCATALOG_COMPILER_APPICON_NAME[sdk=appletvsimulator*]" = "App Icon & Top Shelf Image";
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Fluxo/Fluxo.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=appletvos*]" = "Fluxo/Fluxo-tvOS.entitlements";
+				"CODE_SIGN_ENTITLEMENTS[sdk=appletvsimulator*]" = "Fluxo/Fluxo-tvOS.entitlements";
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "Fluxo/Fluxo-macOS.entitlements";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
 				"CODE_SIGN_STYLE[sdk=macosx*]" = Manual;
-				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 4MJXMYZ3D9;
 				"DEVELOPMENT_TEAM[sdk=macosx*]" = 4MJXMYZ3D9;
@@ -431,7 +610,6 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.watermelon.Fluxo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "";
@@ -451,6 +629,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		99E70F0F2F0C000000A1B2C3 /* Build configuration list for PBXNativeTarget "FluxoTopShelf" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				99E70F0D2F0C000000A1B2C3 /* Debug */,
+				99E70F0E2F0C000000A1B2C3 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		99B5FABF2DEAF9DC0095A78E /* Build configuration list for PBXProject "Fluxo" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

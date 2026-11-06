@@ -207,11 +207,13 @@ final class DebugEnvironment: @unchecked Sendable {
     }
 
     func makeContainer(schema: Schema) -> ModelContainer {
+        // Never SwiftData's CloudKit mirroring (see `ModelContainerFactory.make()`): a signed build has the iCloud
+        // entitlement, and an isolated library must not reach iCloud anyway.
         let configuration: ModelConfiguration
         if let storeURL {
-            configuration = ModelConfiguration(schema: schema, url: storeURL)
+            configuration = ModelConfiguration(schema: schema, url: storeURL, cloudKitDatabase: .none)
         } else {
-            configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+            configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         }
         do {
             return try ModelContainer(for: schema, configurations: configuration)

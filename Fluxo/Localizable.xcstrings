@@ -95117,6 +95117,30 @@
         }
       }
     },
+    "TopShelf.unavailable.message" : {
+      "comment" : "Message of the alert shown when an item of the Apple TV Top Shelf (a channel, movie, episode or series) is opened but its playlist no longer lists it.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "It's no longer in your playlists."
+          }
+        }
+      }
+    },
+    "TopShelf.unavailable.title" : {
+      "comment" : "Title of the alert shown when an item of the Apple TV Top Shelf is opened but is no longer in the user's playlists.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Not Available"
+          }
+        }
+      }
+    },
     "Track %lld" : {
       "comment" : "Name of an audio or subtitle track that has no name; the number is its position.",
       "localizations" : {

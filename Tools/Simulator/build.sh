@@ -14,9 +14,15 @@ if [ "${1:-}" = "--platform" ]; then
     PLATFORM=${2:-}
     shift 2 || true
 fi
+# The iOS app builds unsigned. The Apple TV app is signed to run locally (ad hoc, no team or profile needed): the
+# simulator then grants it and its Top Shelf extension their App Group, which the Top Shelf needs.
+SIGNING="CODE_SIGNING_ALLOWED=NO"
 case "$PLATFORM" in
 ios) DESTINATION='generic/platform=iOS Simulator' ;;
-tvos) DESTINATION='generic/platform=tvOS Simulator' ;;
+tvos)
+    DESTINATION='generic/platform=tvOS Simulator'
+    SIGNING="CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER="
+    ;;
 *) die "unknown platform \"$PLATFORM\" (ios or tvos)" ;;
 esac
 APP=$(app_path "$PLATFORM")
@@ -28,7 +34,7 @@ LOG="$LOG_DIR/$(basename "$DERIVED_DATA")-harness-build-$PLATFORM.log"
 echo "Building the Debug $PLATFORM simulator app (log: $LOG)..." >&2
 if ! xcodebuild -project "$SIM_ROOT/Fluxo.xcodeproj" -scheme Fluxo -configuration Debug \
     -destination "$DESTINATION" -derivedDataPath "$DERIVED_DATA" \
-    build CODE_SIGNING_ALLOWED=NO > "$LOG" 2>&1; then
+    build $SIGNING > "$LOG" 2>&1; then
     grep -E 'error:' "$LOG" | sort -u | head -20 >&2
     die "the build failed; see $LOG"
 fi
