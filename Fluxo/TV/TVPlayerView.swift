@@ -212,7 +212,8 @@ struct TVPlayerView: View {
         case none
         /// Nothing plays yet: the channel and the player's state.
         case preroll
-        case failed(String)
+        /// The reason shown, and the player item's error when it is that reason (see `TVPlayerFailureText`).
+        case failed(String, error: NSError?)
         /// A movie, episode or recording played to its end.
         case ended
         /// An episode ended and the next one counts down.
@@ -238,11 +239,13 @@ struct TVPlayerView: View {
         case .buffering where isBeforeFirstPicture, .playing where isBeforeFirstPicture:
             return .preroll
         case .failed(let message):
-            return .failed(viewModel.streamError ?? message)
+            let reason = viewModel.streamError ?? message
+            // The item's error only while it is the reason shown (a later error replaces the message).
+            return .failed(reason, error: reason == message ? viewModel.itemFailureError : nil)
         case .ended:
             if viewModel.isTimeShiftAvailable || viewModel.isCurrentChannelLiveContent {
                 // A live broadcast that stopped: it may come back.
-                return .failed(String(localized: "The broadcast ended.", comment: "Apple TV player: a live channel stopped sending video."))
+                return .failed(String(localized: "The broadcast ended.", comment: "Apple TV player: a live channel stopped sending video."), error: nil)
             }
             if let current = viewModel.currentItem, let next = resolver.next(after: current), current.series != nil, cancelledCountdownFor != current {
                 return .nextEpisode(next)
@@ -311,7 +314,7 @@ struct TVPlayerView: View {
         metadata.artwork = item.logo
         metadata.artworkIsPoster = item.kind.usesPosterArtwork
         if item.kind == .live {
-            metadata.title = item.number.map { TextParts.line([String($0), item.displayName]) } ?? item.displayName
+            metadata.title = item.number.map { TextParts.line([EpisodeFormat.number($0), item.displayName]) } ?? item.displayName
             if let current = nowNext?.current {
                 metadata.subtitle = TextParts.line([current.title, GuideFormat.timeRange(current), current.detailLine])
                 var summary = current.summary
@@ -320,7 +323,9 @@ struct TVPlayerView: View {
                     summary = summary.isEmpty ? upNext : summary + "\n\n" + upNext
                 }
                 metadata.summary = summary
-                metadata.genre = current.categories.prefix(2).joined(separator: ", ")
+                // Joined with the comma of the language (、 in Japanese, ، in Arabic): AVKit separates the details of
+                // this line with its own ·. Isolated, as any line that is shown.
+                metadata.genre = TextParts.list(Array(current.categories.prefix(2)))
             }
         } else if let ref = item.series {
             metadata.title = ref.seriesTitle
@@ -343,8 +348,8 @@ struct TVPlayerView: View {
             EmptyView()
         case .preroll:
             TVPlayerPreroll(viewModel: viewModel, nowNext: nowNext)
-        case .failed(let message):
-            TVPlayerFailureView(viewModel: viewModel, message: message)
+        case .failed(let message, let error):
+            TVPlayerFailureView(viewModel: viewModel, message: message, error: error)
         case .ended:
             TVPlayerEndView(viewModel: viewModel, next: resolver.next(after: viewModel.currentItem)) { next in
                 playChannel(next)
@@ -391,12 +396,14 @@ struct TVPlayerView: View {
                 TVPlayerStatusPill(label: viewModel.playbackState.label, showsProgress: true)
             }
             if viewModel.isRecording {
+                // The duration as the iPhone, iPad and Mac badge writes it (h:mm:ss after an hour) and speaks it.
                 TVPlayerStatusPill(
-                    label: String(localized: "REC \(Duration.seconds(viewModel.timeline.recordingDuration).formatted(.time(pattern: .minuteSecond)))", comment: "Apple TV player: the live channel is being recorded; the placeholder is how long, as in 12:34."),
+                    label: String(localized: "REC \(PlayerTime.format(viewModel.timeline.recordingDuration))", comment: "Apple TV player: the live channel is being recorded; the placeholder is how long, as in 12:34."),
                     systemImage: "record.circle.fill",
                     tint: Theme.recording
                 )
                 .accessibilityLabel(Text("Recording"))
+                .accessibilityValue(Text(PlayerTime.spoken(viewModel.timeline.recordingDuration)))
             }
         }
     }

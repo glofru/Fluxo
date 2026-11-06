@@ -184,6 +184,12 @@ final class AVPlayerViewModel {
     private(set) var playbackState: PlaybackState = .idle
     /// Last error reported by the stream engine or AVPlayer for the current channel.
     private(set) var streamError: String?
+    /// The error of the player item that failed (`playbackState` is `.failed` with its localized description), so a
+    /// screen can tell what happened by its domain and code: the description is in the device's language. Nil when
+    /// the failure came from the engine (its reasons are FFmpeg's) or from anything else.
+    var itemFailureError: NSError? {
+        itemFailure == nil ? nil : itemFailureNSError
+    }
     /// The current item is a live stream with a time-shift (DVR) window.
     private(set) var isTimeShiftAvailable = false
     private(set) var canSeek = false
@@ -285,6 +291,9 @@ final class AVPlayerViewModel {
     private var didReachEnd = false
     @ObservationIgnored
     private var itemFailure: String?
+    /// The error behind `itemFailure` (AVFoundation's, for a stream AVPlayer plays itself).
+    @ObservationIgnored
+    private var itemFailureNSError: NSError?
     @ObservationIgnored
     private var pendingRestoreCompletion: ((Bool) -> Void)?
     @ObservationIgnored
@@ -1037,6 +1046,7 @@ final class AVPlayerViewModel {
         streamURL = nil
         itemCancellables.removeAll()
         itemFailure = nil
+        itemFailureNSError = nil
         didReachEnd = false
         itemRecoveryAttempts = 0
         pendingResumePosition = nil
@@ -1085,6 +1095,7 @@ final class AVPlayerViewModel {
         sampledBufferedEnd = nil
         didReachEnd = false
         itemFailure = nil
+        itemFailureNSError = nil
 
         item.publisher(for: \.status)
             .receive(on: DispatchQueue.main)
@@ -1194,6 +1205,7 @@ final class AVPlayerViewModel {
         }
         logger.error("Player item failed: \(message, privacy: .public)")
         itemFailure = message
+        itemFailureNSError = error.map { $0 as NSError }
         streamError = message
         refreshPlaybackState()
     }

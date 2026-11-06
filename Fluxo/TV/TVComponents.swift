@@ -78,6 +78,16 @@ enum TVText {
         }
     }
 
+    /// For VoiceOver: "Channel 12", the number of a channel in its playlist (the guide's and the rows' key).
+    static func spokenChannelNumber(_ number: Int) -> String {
+        String(localized: "Channel \(EpisodeFormat.number(number))", comment: "VoiceOver: the channel number of the playlist, as in 'Channel 12'.")
+    }
+
+    /// For VoiceOver: "BBC One, Channel 12", a channel's name and number (its name alone without a number).
+    static func spokenChannel(_ item: ChannelItem) -> String {
+        TextParts.spoken([item.displayName, item.number.map(spokenChannelNumber)])
+    }
+
     /// The VoiceOver hint of a recording.
     static let playsRecordingHint = LocalizedStringResource("Plays the recording", comment: "VoiceOver hint of a recording in the list.")
     static let opensSeriesHint = LocalizedStringResource("TV.hint.series", defaultValue: "Shows the seasons and episodes", comment: "VoiceOver hint of a series card on Apple TV: selecting it opens the page of the series.")

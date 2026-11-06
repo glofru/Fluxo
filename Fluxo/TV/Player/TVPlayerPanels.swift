@@ -213,7 +213,7 @@ private struct TVPlayerChannelCard: View {
             }
             .buttonStyle(.card)
             .disabled(!isEnabled && !isCurrent)
-            .accessibilityLabel(Text(TextParts.line([title, subtitle(nowNext)])))
+            .accessibilityLabel(Text(spokenLabel(nowNext)))
             .accessibilityValue(isCurrent ? Text("Now Playing") : Text(verbatim: ""))
             .accessibilityHint(isCurrent ? Text(verbatim: "") : Text(TVText.playsHint(for: item)))
         }
@@ -224,9 +224,17 @@ private struct TVPlayerChannelCard: View {
             return TextParts.line([EpisodeFormat.code(ref), ref.episodeTitle])
         }
         if let number = item.number {
-            return TextParts.line([String(number), item.displayName])
+            return TextParts.line([EpisodeFormat.number(number), item.displayName])
         }
         return item.displayName
+    }
+
+    /// For VoiceOver: "Season 1, episode 2, Encore, Orbit", or "BBC One, Channel 12, Evening News".
+    private func spokenLabel(_ nowNext: NowNext?) -> String {
+        if let ref = item.series {
+            return TextParts.spoken([EpisodeFormat.spokenCode(ref), ref.episodeTitle, ref.seriesTitle])
+        }
+        return TextParts.spoken([TVText.spokenChannel(item), nowNext?.current?.title])
     }
 
     private func subtitle(_ nowNext: NowNext?) -> String? {
@@ -358,8 +366,20 @@ private struct TVPlayerProgrammeCard: View {
         .accessibilityElement(children: .combine)
         .accessibilityRemoveTraits(action == nil ? .isButton : [])
         .accessibilityHint(action.map(hint) ?? Text(verbatim: ""))
-        .accessibilityLabel(Text(TextParts.line([programme.title, programme.isOnAir(at: now) ? String(localized: "On now") : GuideFormat.timeRange(programme)])))
+        .accessibilityLabel(Text(spokenLabel))
         .accessibilityValue(epg.reminders.isScheduled(programme) ? Text("Reminder set") : Text(verbatim: ""))
+    }
+
+    /// For VoiceOver: "Evening News, On now, 40 min left", or "Weather, 21:00–21:10".
+    private var spokenLabel: String {
+        guard programme.isOnAir(at: now) else {
+            return TextParts.spoken([programme.title, GuideFormat.timeRange(programme)])
+        }
+        return TextParts.spoken([
+            programme.title,
+            String(localized: "On now", comment: "Status of a programme that is airing now, shown on its own: on a reminder row and as the reason of a suggestion (next to 'Starts soon'). Capitalize it like a label."),
+            GuideFormat.remaining(programme, at: now)
+        ])
     }
 
     private func card(action: Action?) -> some View {
@@ -367,7 +387,7 @@ private struct TVPlayerProgrammeCard: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 if isOnAir {
-                    Text("Now")
+                    Text(String(localized: "TV.player.guide.nowBadge", defaultValue: "Now", comment: "Apple TV player, Guide tab: badge on the card of the programme on air now (shown in capitals). Keep it very short."))
                         .font(.caption.weight(.heavy))
                         .textCase(.uppercase)
                         .padding(.horizontal, 10)
@@ -482,7 +502,7 @@ struct TVChannelInterstitial: View {
                             .clipShape(.rect(cornerRadius: 24, style: .continuous))
                             .shadow(color: .black.opacity(0.5), radius: 30, y: 12)
                         VStack(spacing: 10) {
-                            Text(item.number.map { TextParts.line([String($0), item.displayName]) } ?? item.displayName)
+                            Text(item.number.map { TextParts.line([EpisodeFormat.number($0), item.displayName]) } ?? item.displayName)
                                 .font(.title2.bold())
                                 .multilineTextAlignment(.center)
                             if let current = nowNext?.current {
@@ -503,6 +523,13 @@ struct TVChannelInterstitial: View {
                     .padding(80)
                     .frame(maxWidth: 1_200)
                     .accessibilityElement(children: .combine)
+                    // Spoken, not the lines as shown: "Channel 12", no separators or direction isolates.
+                    .accessibilityLabel(Text(TextParts.spoken([
+                        TVText.spokenChannel(item),
+                        nowNext?.current?.title,
+                        nowNext?.current.map(GuideFormat.timeRange),
+                        nowNext?.current == nil ? item.groupName : nil
+                    ])))
                 }
             } else {
                 Label(isRecording ? String(localized: "Stop recording to switch channel.") : String(localized: "No other channels in this category.", comment: "Apple TV player, Channels tab (and the channel change card): the category has no other channel."), systemImage: isRecording ? "record.circle" : "tv.slash")

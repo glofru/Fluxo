@@ -1089,7 +1089,7 @@ struct TVProgrammeScreen: View {
                         }
                     }
                     if !programme.categories.isEmpty {
-                        Text(programme.categories.joined(separator: " · "))
+                        Text(TextParts.line(programme.categories))
                             .font(.caption)
                             .foregroundStyle(Theme.secondaryText)
                             .lineLimit(2)

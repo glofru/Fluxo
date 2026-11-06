@@ -33,6 +33,17 @@ enum TextParts {
         parts.compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: clauseSeparator)
     }
 
+    /// "Sport, News": a list shown inside a line that has separators of its own (such as the · of AVKit's line of
+    /// details), joined with the comma of the language. Each part is isolated, as in `line(_:)`. Nil and empty parts
+    /// are left out.
+    static func list(_ parts: [String?]) -> String {
+        let parts = parts.compactMap { $0 }.filter { !$0.isEmpty }
+        guard parts.count > 1 else {
+            return parts.first ?? ""
+        }
+        return parts.map(isolated).joined(separator: clauseSeparator)
+    }
+
     /// "On now: Evening News, 40 min left. Next at 21:00: Weather": spoken parts that are each a sentence
     /// without its final full stop. Nil and empty parts are left out.
     static func sentences(_ parts: [String?]) -> String {
@@ -49,7 +60,7 @@ enum TextParts {
     }
 
     private static var clauseSeparator: String {
-        String(localized: "TextParts.clauseSeparator", defaultValue: ", ", comment: "VoiceOver: separator between the parts of a spoken description, such as 'Evening News, BBC One, 20:00–21:30'. Use the comma of your language, with the spacing it needs.")
+        String(localized: "TextParts.clauseSeparator", defaultValue: ", ", comment: "Separator between the parts of a spoken description (VoiceOver), such as 'Evening News, BBC One, 20:00–21:30', and of a short list shown on screen, such as 'Sport, News'. Use the comma of your language, with the spacing it needs.")
     }
 
     private static var sentenceSeparator: String {

@@ -213,7 +213,7 @@ struct TVSearchScreen: View {
     /// categories after it, as tiles.
     @ViewBuilder
     private var smartShelves: some View {
-        let understood = results.smartChips.joined(separator: " · ")
+        let understood = TextParts.line(results.smartChips)
         if !results.smartProgrammes.isEmpty || !results.smartChannels.isEmpty {
             TVShelf(title: String(localized: "Smart Results"), subtitle: understood.isEmpty ? nil : understood, systemImage: "sparkles") {
                 ForEach(results.smartProgrammes) { result in

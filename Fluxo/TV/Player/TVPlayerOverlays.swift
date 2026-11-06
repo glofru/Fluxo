@@ -70,6 +70,13 @@ struct TVPlayerPreroll: View {
         .ignoresSafeArea()
         .foregroundStyle(.white)
         .accessibilityElement(children: .combine)
+        // Spoken, not the lines as shown: "Channel 12", no separators or direction isolates.
+        .accessibilityLabel(Text(TextParts.spoken([
+            TVPlayerTitle.spokenTitle(of: viewModel),
+            nowNext?.current?.title,
+            nowNext?.current.map(GuideFormat.timeRange),
+            (viewModel.playbackState == .playing ? AVPlayerViewModel.PlaybackState.buffering : viewModel.playbackState).label
+        ])))
     }
 }
 
@@ -87,7 +94,23 @@ enum TVPlayerTitle {
             return TextParts.line([ref.seriesTitle, EpisodeFormat.code(ref)])
         }
         if item.kind == .live, let number = item.number {
-            return TextParts.line([String(number), item.displayName])
+            return TextParts.line([EpisodeFormat.number(number), item.displayName])
+        }
+        return item.displayName
+    }
+
+    /// The title and the line under it, for VoiceOver: "BBC One, Channel 12", "Orbit, Season 1, episode 2, Encore", a
+    /// movie's name, a recording's name and when it was made.
+    static func spokenTitle(of viewModel: AVPlayerViewModel) -> String {
+        guard let item = viewModel.currentItem else {
+            return TextParts.spoken([viewModel.currentChannel?.name, recording(of: viewModel).map(recordedLine)])
+        }
+        if let ref = item.series {
+            // The episode's own title only: an untitled one is not read "Season 1, episode 2, Episode 2".
+            return TextParts.spoken([ref.seriesTitle, EpisodeFormat.spokenCode(ref), ref.episodeTitle])
+        }
+        if item.kind == .live {
+            return TVText.spokenChannel(item)
         }
         return item.displayName
     }
@@ -183,6 +206,8 @@ struct TVPlayerFailureView: View {
 
     let viewModel: AVPlayerViewModel
     let message: String
+    /// The player item's error when `message` is its description (a stream AVPlayer plays itself).
+    let error: NSError?
 
     @FocusState private var focus: Focus?
 
@@ -254,14 +279,14 @@ struct TVPlayerFailureView: View {
         return viewModel.zapper?.neighbor(of: item, offset: 1) != nil
     }
 
-    /// What the engine's or AVFoundation's reason means, in plain words, for the failures a server commonly causes
-    /// (the reason, from FFmpeg or the system, is in English and stays under it as a detail); nil for any other.
+    /// What the reason means, in plain words, for the failures a server commonly causes; nil for any other. The reason
+    /// stays under it as a detail: FFmpeg's (the engine), in English, or AVFoundation's, in the device's language.
     private var explanation: String? {
         guard !viewModel.isWaitingForNetwork else {
             // Already in plain words (offline).
             return nil
         }
-        return TVPlayerFailureText.explanation(for: message)
+        return TVPlayerFailureText.explanation(for: message, error: error)
     }
 
     private var title: String {
@@ -276,29 +301,129 @@ struct TVPlayerFailureView: View {
 /// Plain words for the technical reason of a failure.
 enum TVPlayerFailureText {
 
-    /// A sentence for a reason that names a common server or network failure; nil for any other.
-    static func explanation(for reason: String) -> String? {
+    /// The common server and network failures.
+    enum Cause: Equatable {
+        case refused
+        case timedOut
+        case hostNotFound
+        case forbidden
+        case notFound
+        case serverError
+
+        var explanation: String {
+            switch self {
+            case .refused:
+                String(localized: "The server isn’t accepting connections. Check that it’s running, then try again.", comment: "Apple TV player, failure screen: the stream's server refused the connection (it is down or the address is wrong). The technical reason shows under it.")
+            case .timedOut:
+                String(localized: "The server didn’t respond in time. Try again in a moment.", comment: "Apple TV player, failure screen: the stream's server did not answer. The technical reason shows under it.")
+            case .hostNotFound:
+                String(localized: "The server couldn’t be found. Check the playlist’s address and your network.", comment: "Apple TV player, failure screen: the host name of the stream's server does not resolve. The technical reason shows under it.")
+            case .forbidden:
+                String(localized: "The server refused access to this stream. Check your playlist’s account.", comment: "Apple TV player, failure screen: the stream's server answered 401 or 403 (the subscription or credentials). The technical reason shows under it.")
+            case .notFound:
+                String(localized: "The server doesn’t have this stream. The playlist may be out of date.", comment: "Apple TV player, failure screen: the stream's server answered 404. The technical reason shows under it.")
+            case .serverError:
+                String(localized: "The server has a problem right now. Try again later.", comment: "Apple TV player, failure screen: the stream's server answered with a 5xx error. The technical reason shows under it.")
+            }
+        }
+    }
+
+    /// A sentence for a failure a server commonly causes; nil for any other.
+    static func explanation(for reason: String, error: NSError?) -> String? {
+        cause(of: reason, error: error)?.explanation
+    }
+
+    /// What caused the failure: by the error's domain and code (its description is localized), or, for the engine's
+    /// reasons (`error` is nil), by the English words of FFmpeg.
+    static func cause(of reason: String, error: NSError?) -> Cause? {
+        if let error {
+            return cause(of: error)
+        }
+        return cause(ofEngineReason: reason)
+    }
+
+    /// The cause named by the error or by one of the errors under it (AVFoundation's error wraps CoreMedia's or the
+    /// URL loading system's).
+    static func cause(of error: NSError) -> Cause? {
+        var next: NSError? = error
+        var depth = 0
+        while let current = next, depth < 8 {
+            if let cause = cause(domain: current.domain, code: current.code) {
+                return cause
+            }
+            next = current.userInfo[NSUnderlyingErrorKey] as? NSError
+            depth += 1
+        }
+        return nil
+    }
+
+    /// CoreMedia's codes for HTTP answers of an HLS server (they are not in the SDK's headers; AVFoundation reports
+    /// them as -12938 "HTTP 404: File Not Found", -12660 "HTTP 403: Forbidden" and -12937 "Authentication Error").
+    private static let coreMediaErrorDomain = "CoreMediaErrorDomain"
+    private static let coreMediaHTTPNotFound = -12938
+    private static let coreMediaHTTPForbidden = -12660
+    private static let coreMediaAuthenticationFailed = -12937
+
+    private static func cause(domain: String, code: Int) -> Cause? {
+        switch domain {
+        case NSURLErrorDomain:
+            switch code {
+            case NSURLErrorCannotConnectToHost:
+                return .refused
+            case NSURLErrorTimedOut:
+                return .timedOut
+            case NSURLErrorCannotFindHost, NSURLErrorDNSLookupFailed:
+                return .hostNotFound
+            case NSURLErrorUserAuthenticationRequired, NSURLErrorUserCancelledAuthentication:
+                // A 401 the player could not answer with credentials.
+                return .forbidden
+            case NSURLErrorFileDoesNotExist:
+                // How AVFoundation reports a 404 for the HLS playlist itself (its segments' are CoreMedia's -12938).
+                return .notFound
+            case NSURLErrorBadServerResponse:
+                // The URL loading system's "500 Server Error".
+                return .serverError
+            default:
+                return nil
+            }
+        case coreMediaErrorDomain:
+            switch code {
+            case coreMediaHTTPNotFound:
+                return .notFound
+            case coreMediaHTTPForbidden, coreMediaAuthenticationFailed:
+                return .forbidden
+            default:
+                return nil
+            }
+        default:
+            return nil
+        }
+    }
+
+    /// The engine's reasons are FFmpeg's error strings, always in English ("Connection refused", "Server returned 404
+    /// Not Found", …).
+    static func cause(ofEngineReason reason: String) -> Cause? {
         let reason = reason.lowercased()
         func mentions(_ parts: String...) -> Bool {
             parts.contains { reason.contains($0) }
         }
-        if mentions("connection refused", "could not connect to the server") {
-            return String(localized: "The server isn’t accepting connections. Check that it’s running, then try again.", comment: "Apple TV player, failure screen: the stream's server refused the connection (it is down or the address is wrong). The technical reason shows under it.")
+        if mentions("connection refused") {
+            return .refused
         }
         if mentions("timed out", "timeout") {
-            return String(localized: "The server didn’t respond in time. Try again in a moment.", comment: "Apple TV player, failure screen: the stream's server did not answer. The technical reason shows under it.")
+            return .timedOut
         }
-        if mentions("failed to resolve", "name or service not known", "nodename nor servname", "server with the specified hostname could not be found") {
-            return String(localized: "The server couldn’t be found. Check the playlist’s address and your network.", comment: "Apple TV player, failure screen: the host name of the stream's server does not resolve. The technical reason shows under it.")
+        if mentions("failed to resolve", "name or service not known", "nodename nor servname") {
+            return .hostNotFound
         }
         if mentions("server returned 401", "server returned 403", "unauthorized", "forbidden", "access denied") {
-            return String(localized: "The server refused access to this stream. Check your playlist’s account.", comment: "Apple TV player, failure screen: the stream's server answered 401 or 403 (the subscription or credentials). The technical reason shows under it.")
+            return .forbidden
         }
         if mentions("server returned 404", "404 not found") {
-            return String(localized: "The server doesn’t have this stream. The playlist may be out of date.", comment: "Apple TV player, failure screen: the stream's server answered 404. The technical reason shows under it.")
+            return .notFound
         }
         if mentions("server returned 5", "internal server error", "bad gateway", "service unavailable") {
-            return String(localized: "The server has a problem right now. Try again later.", comment: "Apple TV player, failure screen: the stream's server answered with a 5xx error. The technical reason shows under it.")
+            return .serverError
         }
         return nil
     }
@@ -502,7 +627,7 @@ struct TVChannelBanner: View {
             TVLandscapeArtwork(item: item, size: CGSize(width: 192, height: 108))
                 .clipShape(.rect(cornerRadius: 14, style: .continuous))
             VStack(alignment: .leading, spacing: 6) {
-                Text(item.number.map { TextParts.line([String($0), item.displayName]) } ?? item.displayName)
+                Text(item.number.map { TextParts.line([EpisodeFormat.number($0), item.displayName]) } ?? item.displayName)
                     .font(.headline)
                     .lineLimit(1)
                 if let current = nowNext?.current {
@@ -542,6 +667,13 @@ struct TVChannelBanner: View {
         .foregroundStyle(.white)
         .environment(\.colorScheme, .dark)
         .accessibilityElement(children: .combine)
+        // Spoken, not the lines as shown: "Channel 12", no separators or direction isolates.
+        .accessibilityLabel(Text(TextParts.spoken([
+            TVText.spokenChannel(item),
+            nowNext?.current?.title,
+            nowNext?.current.map(GuideFormat.timeRange),
+            nowNext?.current == nil ? item.groupName : nil
+        ])))
     }
 }
 
