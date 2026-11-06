@@ -1018,12 +1018,7 @@ refresh (`BGAppRefreshTask`) runs on tvOS too.
   first channel, the Add Playlist of an empty page, or Add Playlists from iCloud next to it on the welcome screen when
   iCloud has playlists of the user's other devices); the system brings the focus back to the card or programme that
   opened a player, a sheet or a pushed page.
-- **Player** (`TVPlayerView`): `AVPlayerViewController` on the app's single `AVPlayer`, so the transport bar, the
-  info panel, audio and subtitles and the Siri Remote work as in the TV app; live streams show their live edge and
-  time-shift window. HLS plays directly, raw MPEG-TS and the other formats through the remux engine on 127.0.0.1, as
-  on iPhone. Until the first frame (and after a failure) the channel and the player's state are shown. Menu closes
-  the player and stops playback (there is no mini player on Apple TV); Picture in Picture is off until the TV player
-  handles it (the app's own `PlayerSurface` drives none on tvOS).
+- **Player** (`TVPlayerView`, `TV/Player`): the system's `AVPlayerViewController`, see "The TV player" below.
 - **Icon**: Icon Composer has no tvOS rendition (checked with Xcode 27.2: `AppIcon.icon` gives the iPhone, iPad and
   Mac icons only), so `Design/Icon/render_tvos_assets.swift` draws the layers of `AppIcon.icon` (the brand gradient,
   the three stream bands, the play glyph) into the layered "App Icon & Top Shelf Image" brand assets: Back, Middle
@@ -1098,7 +1093,7 @@ Simulator runtime and in the built app's `Metadata.appintents`, and what Fluxo d
 | Assistant schemas (`AppSchema`, `@AppIntent(schema:)`) | **Unavailable on tvOS** (`@available(tvOS, unavailable)`): no free-form requests through Apple Intelligence; `AppSchemaAdoption.swift` stays iOS / macOS / visionOS |
 | `OpenIntent`, `PlayVideoIntent` and `ShowInAppSearchResultsIntent` (tvOS 17.2) | Play Channel, Play by Name ("Play … in Fluxo" with any words), Search in Fluxo (types the words into the Search tab) |
 | Predictions (`PredictableIntent`, `AppIntent.donate()`) | Play Channel is donated whenever a channel starts, as on iPhone. `NSUserActivity.isEligibleForPrediction` and `persistentIdentifier` are unavailable on tvOS (not used) |
-| On-screen awareness: `View.appEntityIdentifier(_:)` (tvOS 18.4), `MPNowPlayingInfoPropertyAppEntityIdentifiers` (tvOS 27) | The TV player names the channel on screen, and the Now Playing entry names it too. Harmless and ready for later: on-screen awareness is an Apple Intelligence feature, which Apple TV does not have, so today nothing reads them. "Add this channel to my Fluxo favorites" and "Record this in Fluxo" act on the channel that plays (else the one watched last) by themselves |
+| On-screen awareness: `View.appEntityIdentifier(_:)` (tvOS 18.4), `MPNowPlayingInfoPropertyAppEntityIdentifiers` (tvOS 27) | The TV player names the channel on screen. Its Now Playing entry is AVKit's own on Apple TV (see "The TV player"), which carries no app entity, so `MPNowPlayingInfoPropertyAppEntityIdentifiers` is not set there. Harmless and ready for later: on-screen awareness is an Apple Intelligence feature, which Apple TV does not have, so today nothing reads them. "Add this channel to my Fluxo favorites" and "Record this in Fluxo" act on the channel that plays (else the one watched last) by themselves |
 | `SiriTipView` (tvOS 16), `ShortcutsLink` | `SiriTipView` is in the SDK but drew nothing in the tvOS 27.2 Simulator; `ShortcutsLink` is not in the tvOS SDK (no Shortcuts app). Settings › Siri and Voice Search lists what to say instead |
 | Spotlight: `CSSearchableIndex`, `IndexedEntity` | **Unavailable on tvOS** (`API_UNAVAILABLE(tvos)`; the CoreSpotlight cross-import of App Intents is not in the tvOS SDK): the system search of Apple TV never lists app content. `PlatformFeatures.spotlightIndexing` is off |
 | Foundation Models | No on-device model on tvOS: Smart Results use the rules of `SmartSearch` |
@@ -1139,6 +1134,109 @@ name and password). The identifier is keyed with a secret of the installation, s
 resolve on this one: links are for the Top Shelf and the system of this Apple TV. A link opened from outside the system
 (`xcrun simctl openurl`) first shows the system's "Open in “Fluxo”?".
 
+### The TV player
+
+`AVPlayerViewController` on the app's single `AVPlayer`, for every route: HLS that AVPlayer plays directly, the remux
+engine's on-demand and live HLS on 127.0.0.1 (raw MPEG-TS, Matroska and the other formats), the time-shift window of
+live channels, recordings. The transport bar, the clickpad and the Siri Remote work as in the TV app; the shared
+`AVPlayerViewModel` does the rest (routing, reconnection, time shift, recording, watch progress and resume).
+`TVSystemPlayer` owns the controller and is its delegate; `TVPlayerView` describes what it shows besides the video
+(`TVPlayerChrome`, applied when it changes):
+
+- **Seeking**: the transport bar seeks AVPlayer itself (a click on the left or right of the clickpad skips 10 s, a
+  scrub is committed with a click). Its delegate hears of every seek first
+  (`playerViewController(_:timeToSeekAfterUserNavigatedFrom:to:)`): the engine is told where playback goes before
+  AVPlayer asks for the segment there (`fluxo_remux_note_seek`, as for the app's own seeks), and `PlayerSeeker` follows
+  the seek (`followSystemSeek(to:)`) with the recovery of a seek that does not play (again from the key frame before
+  the target, then a new item or the engine) and its latency log.
+- **Info panel** (a swipe down): the system's Info tab, from the item's `externalMetadata`. AVKit shows the
+  subtitle as its headline (the title only when there is no subtitle), and over the transport bar the subtitle as a
+  small line above a large title. So the title names the show and the subtitle what of it plays, as in the TV app:
+  a live channel is "2 · Channel" over the programme on now ("Quiz Night · 8:00–9:00 PM · S4 E9", the headline of
+  the Info tab, with its description, what is next and its genre; written again when the programme on air changes;
+  the channel alone without a guide), an episode "Orbit" over "S1 E2 · Encore" (the series also in the Info tab's
+  line of details, as its genre, since the tab does not show the title), a movie its name, a recording its
+  name with when it was recorded as its description; the logo or poster is the artwork.
+  Its actions are Start Over (movies, episodes, recordings) and Add to / Remove from Favorites. Tabs
+  (`TVPlayerPanels.swift`): **Guide** (live channels with a TV guide: now, with its progress and the time left (behind the live edge, the picture's
+  position brighter over the broadcast's), and
+  what follows; selecting a programme still to come sets or removes its reminder, selecting the one on now goes back
+  live when playback is behind the broadcast, or plays it from its start when the time-shift window reaches back
+  that far; with neither, selecting it does nothing, but it still takes the focus, so the focus stays on it after
+  Go Live), **Channels** (the channels of the
+  category, with what each shows now and the one playing marked; selecting one switches to it, not while recording)
+  and **Episodes** (the series' episodes).
+- **Channel up / down**: the delegate's channel skipping (the channel buttons of TV remotes): AVKit shows
+  `TVChannelInterstitial` (the channel's logo, number and name, what is on) until the next or previous channel of the
+  category plays (8 s at most). A channel switched to inside the player shows its banner (logo, number, name, now
+  with its progress and time left, next) at the top left for 5 s while the transport bar is hidden.
+- **Contextual actions** (over the video, bottom right; they take the focus, so Select presses them and the info
+  panel does not open while one shows): Go Live more than 10 s behind the live edge of a time-shifted channel, for
+  8 s once it plays behind with the transport bar hidden (once until the bar shows again or playback catches up, so
+  the stalls of a flaky stream do not bring it back; not while paused, and the Guide tab's programme on now goes
+  live at any time); Next Episode during the end credits of an episode (the last
+  3 %, at most a minute, of one longer than 5 minutes); Try Again after a seek that could not play.
+- **Transport bar**: Record / Stop Recording (live channels through the engine; a REC capsule with the duration shows
+  at the top right while the bar is hidden) and Picture (Fit to Screen / Fill Screen), next to the system's Audio
+  and Subtitles menus. Those list the item's AVMediaSelection groups, which include the renditions the engine writes
+  (extra audio tracks, text subtitles, CEA-608 captions, see "Audio tracks and subtitles"); a choice there is
+  remembered like one in the iPhone menu (`MediaSelectionController.systemPlayerDidSelect`).
+- **Before the first picture** (until a first frame of the channel's item is ready, `AVPlayerViewController.isReadyForDisplay`
+  counted per transition by `TVSystemPlayer.readyForDisplayCount`, since AVKit reports "not ready" and "ready" for an
+  item replaced in the player a few milliseconds apart; and in any case once it has played 3 s: audio only)
+  the channel (logo, number and name, the programme on now; an episode as its series and
+  code with its title, a recording with when it was recorded) and the player's state show around the only spinner
+  on screen (`TVPlayerPreroll` covers the system player, whose own indicator stays hidden under it). **Failures** say
+  what went wrong ("Can't Play “…”", the reason in plain words for the usual server failures (refused, timed out,
+  unknown host, 401/403, 404, 5xx: `TVPlayerFailureText`) over the technical one in small type, a warning sign or,
+  offline, a Wi-Fi sign) with Try Again and Close (Liquid Glass buttons, readable unfocused);
+  on a live channel also Next Channel, and up and down change the channel there as on the video.
+  A server that refuses the connection fails in about 4 s, not 20: on Apple TV the engine opens the input with one
+  connection per attempt (`StreamRemuxer.Configuration.quickOpen`, `FluxoRemuxConfig.quick_open`; its own retries
+  for a busy server, 0.5, 1 and 2 s apart, stay, and FFmpeg's reconnection on network errors is turned on once the
+  input is open), where FFmpeg's HTTP layer would retry each attempt for 4 s by itself. iPhone, iPad and Mac keep
+  the retries; **the end of a movie or recording** shows Play Again and
+  Close; **the end of an episode** with a next one shows it (poster, series, code and title) with a 10 s countdown
+  ring, Play Now and Cancel (nothing starts by itself with VoiceOver or Switch Control on); a live broadcast that
+  stopped is a failure with Try Again. These take the focus: the transport bar is off while they show, so the
+  clickpad drives their buttons. Reconnecting… shows at the top right while the bar is hidden.
+- **Picture in Picture**: the system's (the transport bar's button). The controller is kept outside SwiftUI, so the
+  player screen closes and the video plays on in the corner while the app is browsed; a channel picked meanwhile
+  plays there; Full Screen opens the player again, closing the PiP window stops playback. Not verified yet: the
+  tvOS Simulator has no Picture in Picture (`isPictureInPictureSupported()` is false there, so the button does not
+  show), so these paths need a check on an Apple TV. Menu closes the player and stops playback otherwise, as in the
+  TV app.
+- **Now Playing**: AVKit publishes it for the controller (from `externalMetadata`, with the elapsed time, duration
+  and live state) and answers the remote commands; `NowPlayingController` does nothing on tvOS
+  (`updatesNowPlayingInfoCenter` does not exist there, and two writers fight). The Siri app entity of the channel is
+  not attached to Now Playing on Apple TV for that reason.
+- **Screensaver**: the display stays awake while the video plays on screen (`playerViewDidAppear()` on the player's
+  container, `PlaybackEnergyProfile`), and the screensaver may start while it is paused, as in the TV app. The app's
+  own `PlayerSurface` layer keeps no hold on the player on tvOS (one video output).
+- **Accessibility**: the system's controls are VoiceOver's own; the cards of the tabs are one element each (channel
+  and programme, Now Playing / Reminder set as values); failures, the end of a video, seeks that could not play and
+  recordings are announced by `PlayerAnnouncements` as on iPhone, favorites changes and the next episode by the TV
+  player.
+
+Seek latency in the tvOS Simulator (Apple TV 4K, the transport bar's seek replayed by the harness: `tv-seek:` asks the
+delegate and seeks AVPlayer exactly, as AVKit does; `tv-skip:` is the clickpad's skip; timed from the seek until it
+plays at the target with frames that keep up with the clock, loopback test server; on a heavily loaded Mac, so upper
+bounds):
+
+| Route | Scrub (`tv-seek:`) | Skip ±10 s (`tv-skip:`) |
+|---|---|---|
+| AVPlayer, MP4 on demand | 0.10–0.16 s | 0.10–0.11 s |
+| Engine, MPEG-TS on demand | 0.11–0.17 s | 0.16–0.17 s |
+| Engine, Matroska on demand (two audio tracks, subtitles) | 0.11–0.15 s | 0.12–0.16 s |
+| AVPlayer, live HLS | | 0.06–0.12 s |
+| Engine, live MPEG-TS, time-shift window | 0.11–0.12 s | 0.07–0.12 s |
+| Recording (local MP4) | 0.16 s | 0.10 s (−5 s) |
+
+Every seek played at its target (the seeker logs "Seek to … playing at … after …" for each, within 0.2 s) with the
+picture keeping up with the clock (video lag 0.03–0.04 s, no frozen frames) and no stall. One run made while the Mac
+was far overloaded (load average above 100, screenshots after every step) left direct MP4 seeks buffering without
+frames; the same seeks run again were all as above.
+
 ### Trying it
 
 ```sh
@@ -1146,6 +1244,9 @@ Tools/Simulator/build.sh --platform tvos
 Tools/Simulator/test-stream.sh start
 Tools/Simulator/run.sh --device "Apple TV 4K (4th generation)" --clone fluxo-mykey-tv-1 --step-shots \
     --route "home;focus:Sky Sport F1;player:Test Pattern (MPEG-TS);wait:8;probe-playback"
+# The TV player: the guide and channel tabs, recording, transport-bar seeks, channel up and its interstice.
+Tools/Simulator/run.sh --device "Apple TV 4K (4th generation)" --clone fluxo-mykey-tv-1 --step-shots \
+    --route "seed-guide;player:Test Pattern (MPEG-TS);wait:5;tv-panel:guide;tv-panel-close;tv-panel:channels;tv-panel-close;record:start;wait:4;record:stop;tv-skip:-10;pause;resume;tv-zap:next,hold;tv-zap-close;tv-zap:previous"
 ```
 
 See "Apple TV" in `Tools/Simulator/README.md` for the harness on tvOS, and `topshelf-tests.sh` there for the Top

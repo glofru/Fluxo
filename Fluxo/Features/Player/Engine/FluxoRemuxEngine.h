@@ -167,6 +167,12 @@ typedef struct FluxoRemuxConfig {
     /// The first segment produced is the one at that time, so the player does not wait for the first segment of
     /// the movie before it can seek. 0 starts at the beginning.
     double start_time;
+    /// Non-zero: while the input is first opened, each of the engine's attempts makes a single connection (FFmpeg's
+    /// HTTP layer does not retry a refused or failed connection by itself, 0 + 1 + 3 s per attempt), so an
+    /// unreachable server fails in about 4 s instead of 20 s. The engine's own retries (a busy server) and, once the
+    /// input is open, FFmpeg's reconnection on network errors inside a connection are the same as without it.
+    /// Zero keeps FFmpeg's retries at the first open too.
+    int32_t quick_open;
     /// HLS output description.
     FluxoRemuxHLSOptions hls;
 } FluxoRemuxConfig;

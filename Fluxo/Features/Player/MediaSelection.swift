@@ -300,6 +300,37 @@ final class MediaSelectionController {
         refreshSelection()
     }
 
+    #if os(tvOS)
+    /// The Audio or Subtitles menu of the system player (Apple TV's transport bar) selected `option` in `group` of the
+    /// item itself. It is remembered like a choice in the app's own menu: the next channel, movie or episode with a
+    /// track in that language starts with it, and a decoding failure right after an audio change drops the
+    /// remembered audio for this content (`playbackFailed(_:)`).
+    func systemPlayerDidSelect(_ option: AVMediaSelectionOption?, in group: AVMediaSelectionGroup) {
+        guard item != nil else {
+            return
+        }
+        if group.options.contains(where: { $0.mediaType == .audio }) {
+            guard let option else {
+                return
+            }
+            lastAudioSwitch = Date()
+            TrackPreferences.rememberAudio(option)
+            if let contentKey {
+                audioPreferenceFailed.remove(contentKey)
+            }
+            applyAudioCriteria()
+        } else if group.options.contains(where: { $0.hasMediaCharacteristic(.legible) }) {
+            subtitlesChosenByUser = true
+            if let option, !option.hasMediaCharacteristic(.containsOnlyForcedSubtitles) {
+                TrackPreferences.rememberSubtitles(option)
+            } else {
+                TrackPreferences.rememberSubtitlesOff()
+            }
+        }
+        refreshSelection()
+    }
+    #endif
+
     // MARK: - Loading
 
     private func load(_ item: AVPlayerItem) async {

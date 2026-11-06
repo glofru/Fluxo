@@ -192,6 +192,12 @@ first that contains the text.
 | `player-controls:<show\|hide>` | Shows the player's controls and keeps them on screen until `player-controls:hide` (screenshots of the controls, the status bar); `hide` hides them like a tap on the video. |
 | `overscroll:<points>` | Shows Home as if pulled down by that many points (the billboard stretches over the gap); `overscroll:0` resets it. |
 | `pip` | Starts Picture in Picture once the item allows it. |
+| `pause`, `resume` | Pauses playback (on Apple TV the transport bar then shows, for screenshots of it), plays again. |
+| `record:<start\|stop>`, `play-recording` | Starts recording the live channel that plays (once the engine can, 15 s at most) or stops it; plays the newest recording once it is converted. |
+| `tv-seek:<seconds\|percent%>` | Apple TV: a seek of the system player's transport bar (a scrub committed with a click), made as AVKit makes it: it asks its delegate (`timeToSeekAfterUserNavigatedFrom`), then seeks AVPlayer itself, exactly. Then the check of `seek:`, with the latency. |
+| `tv-skip:<seconds>` | Apple TV: the clickpad's skip (10 s left or right), from where playback is, the same way; then the same check. |
+| `tv-zap:<next\|previous>[,hold]`, `tv-zap-close` | Apple TV: channel up / down as the system player asks for it (the channel buttons of TV remotes): the interstice of the channel it goes to until that channel plays, as AVKit shows it, then the switch and its banner; `hold` keeps the interstice until `tv-zap-close`. |
+| `tv-panel:<guide\|channels\|episodes>`, `tv-panel-close` | Apple TV: a tab of the player's info panel (the content of the real tab, on a panel drawn like the system's), until `tv-panel-close`: the swipe down that opens the real panel cannot be scripted. |
 | `cast:<device>` | Switches to the simulated Chromecast receiver (`Living Room TV`, `Bedroom`, `Kitchen Speaker`) and connects to it; what plays is cast. |
 | `cast-picker`, `stop-casting` | The Cast device picker; ends the Cast session (the channel plays on the device again). |
 | `add-playlist`, `edit-playlist:<name>`, `delete-playlist:<name>` | The Add / Edit Playlist sheet; the delete confirmation (nothing is deleted). |

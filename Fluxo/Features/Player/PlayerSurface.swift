@@ -100,14 +100,14 @@ final class PlayerSurface: NSObject {
             guard rendersVideo != oldValue else {
                 return
             }
-            videoView.playerLayer.player = rendersVideo ? player : nil
+            videoView.playerLayer.player = rendersVideo && Self.drawsVideo ? player : nil
         }
     }
 
     init(player: AVPlayer) {
         self.player = player
         let view = PlayerLayerView(frame: .zero)
-        view.playerLayer.player = player
+        view.playerLayer.player = Self.drawsVideo ? player : nil
         view.playerLayer.videoGravity = .resizeAspect
         videoView = view
 
@@ -130,6 +130,17 @@ final class PlayerSurface: NSObject {
                 }
             }
         }
+    }
+
+    /// The layer draws the video on iPhone, iPad and Mac. On Apple TV the system's player (`TVPlayerView`) draws it in
+    /// its own layer and this one is never on screen: it keeps no hold on the player there, so AVPlayer feeds one
+    /// video output, not a second one off screen.
+    private static var drawsVideo: Bool {
+        #if os(tvOS)
+        false
+        #else
+        true
+        #endif
     }
 
     /// The app starts Picture in Picture from its own controls, with this layer, on iPhone, iPad and Mac. On Apple TV

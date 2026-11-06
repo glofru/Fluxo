@@ -179,6 +179,37 @@ final class PlayerSeeker {
         }
     }
 
+    /// The system's player seeks AVPlayer itself to `seconds` (the transport bar of Apple TV: the clickpad's skips,
+    /// a scrub committed with a click): the seeker follows that seek as one of its own, without seeking again. The
+    /// target, the loading state, the latency log and the recovery of a seek that does not play (`recover()`: again
+    /// from the key frame before the target, then `onStuck`) are those of the app's seeks, and `onWillSeek` tells the
+    /// engine where playback goes before AVPlayer asks for the segment there. Call it just before the system seeks
+    /// (`AVPlayerViewControllerDelegate.playerViewController(_:timeToSeekAfterUserNavigatedFrom:to:)`).
+    func followSystemSeek(to seconds: TimeInterval) {
+        guard seconds.isFinite, let item = player.currentItem else {
+            return
+        }
+        if self.item !== item {
+            reset()
+            self.item = item
+        }
+        // The system's seek replaces whatever the seeker was doing: its seek in flight completes as replaced.
+        pendingTask?.cancel()
+        pendingTask = nil
+        pending = nil
+        inFlight = nil
+        inFlightGeneration += 1
+        lastIssue = nil
+        target = max(0, seconds)
+        phase = .seeking
+        recoveryStep = 0
+        stuckRecoveryStep = 0
+        droppedCount = 0
+        startedAt = .now
+        onWillSeek?(max(0, seconds))
+        watch(generation: inFlightGeneration)
+    }
+
     /// Forgets the seeks of the current item (a new item, or playback stopped).
     func reset() {
         pendingTask?.cancel()

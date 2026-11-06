@@ -106,6 +106,9 @@ final class StreamRemuxer {
         var maxReconnectAttempts: Int = 0
         /// On-demand inputs: where the player starts (a resume), so the engine produces that segment first.
         var startTime: TimeInterval = 0
+        /// The first open of the input makes one connection per attempt of the engine (`FluxoRemuxConfig.quick_open`):
+        /// an unreachable server fails in about 4 s instead of 20 s.
+        var quickOpen = false
         var userAgent: String?
 
         var filePrefix: String {
@@ -466,6 +469,7 @@ final class StreamRemuxer {
                             config.max_reconnect_attempts = Int32(clamping: configuration.maxReconnectAttempts)
                             config.read_ahead_duration = configuration.readAheadDuration
                             config.start_time = configuration.startTime
+                            config.quick_open = configuration.quickOpen ? 1 : 0
                             config.hls.playlist_path = playlistPointer
                             config.hls.segment_path_prefix = prefixPointer
                             config.hls.segment_duration = configuration.segmentDuration

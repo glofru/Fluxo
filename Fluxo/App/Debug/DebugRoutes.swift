@@ -640,6 +640,119 @@ enum DebugRoutes {
         DebugRoute("probe-tracks[:<a|v|av>]", "Checks that what plays has enabled audio and / or video tracks (default both) and logs their formats.") { context, argument in
             try await DebugPlaybackProbe.checkTracks(context.player, expecting: argument.isEmpty ? "av" : argument, route: "probe-tracks")
         },
+        DebugRoute("tv-seek:<seconds|percent%>", "Apple TV: seeks like the system player's transport bar (a scrub committed with a click: it asks its delegate, then seeks AVPlayer itself, exactly), then checks that playback continues there with video frames and logs the latency.") { context, argument in
+            guard let target = DebugRoutes.position(argument, in: context.player) else {
+                throw DebugRouteError.invalidArgument("tv-seek", argument)
+            }
+            #if os(tvOS)
+            TVSystemPlayer.shared.debugNavigate(to: target)
+            try await DebugPlaybackProbe.check(context.player, near: target, route: "tv-seek:\(argument)")
+            #else
+            throw DebugRouteError.unsupported("tv-seek")
+            #endif
+        },
+        DebugRoute("tv-skip:<seconds>", "Apple TV: a skip of the transport bar (a click on the left or right of the clickpad: 10 s), from where playback is, then the same check.") { context, argument in
+            guard let seconds = Double(argument) else {
+                throw DebugRouteError.invalidArgument("tv-skip", argument)
+            }
+            #if os(tvOS)
+            let target = max(0, context.player.player.currentTime().seconds + seconds)
+            TVSystemPlayer.shared.debugNavigate(to: target)
+            try await DebugPlaybackProbe.check(context.player, near: target, route: "tv-skip:\(argument)")
+            #else
+            throw DebugRouteError.unsupported("tv-skip")
+            #endif
+        },
+        DebugRoute("tv-zap:<next|previous>[,hold]", "Apple TV: channel up / down as the system player asks for it (a TV remote's channel buttons): the interstice of the channel it goes to until that channel plays, as AVKit shows it, then the switch (its banner); with hold the interstice stays until tv-zap-close (screenshots of it).") { context, argument in
+            let offsets = ["next": 1, "up": 1, "previous": -1, "down": -1]
+            let parts = argument.lowercased().split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+            guard let first = parts.first, let offset = offsets[first], parts.count == 1 || parts.last == "hold" else {
+                throw DebugRouteError.invalidArgument("tv-zap", argument)
+            }
+            #if os(tvOS)
+            let holds = parts.count == 2
+            let player = TVSystemPlayer.shared
+            var isDone = false
+            guard let interstitial = player.debugZap(by: offset, completion: { _ in isDone = true }) else {
+                throw DebugRouteError.check("tv-zap: no channel to switch to (not a live channel of a playlist, or recording)")
+            }
+            interstitial.modalPresentationStyle = .fullScreen
+            player.container.present(interstitial, animated: true)
+            if holds {
+                try? await Task.sleep(for: .milliseconds(600))
+            } else {
+                await context.wait(timeout: 10) { isDone }
+                interstitial.dismiss(animated: true)
+                try? await Task.sleep(for: .milliseconds(800))
+            }
+            #else
+            _ = offset
+            throw DebugRouteError.unsupported("tv-zap")
+            #endif
+        },
+        DebugRoute("tv-panel:<guide|channels|episodes>", "Apple TV: a tab of the player's info panel, drawn as the system lays it out over the video (the Siri Remote's swipe down cannot be scripted), until tv-panel-close.") { _, argument in
+            #if os(tvOS)
+            guard let tab = TVPlayerChrome.Tab(rawValue: argument.lowercased()) else {
+                throw DebugRouteError.invalidArgument("tv-panel", argument)
+            }
+            guard let panel = TVSystemPlayer.shared.debugPanel(tab) else {
+                throw DebugRouteError.check("tv-panel: the player is not on screen")
+            }
+            TVSystemPlayer.shared.container.present(panel, animated: true)
+            try? await Task.sleep(for: .seconds(2))
+            #else
+            throw DebugRouteError.unsupported("tv-panel")
+            #endif
+        },
+        DebugRoute("tv-panel-close", "Apple TV: closes the panel of tv-panel.") { _, _ in
+            #if os(tvOS)
+            TVSystemPlayer.shared.container.presentedViewController?.dismiss(animated: true)
+            try? await Task.sleep(for: .milliseconds(600))
+            #else
+            throw DebugRouteError.unsupported("tv-panel-close")
+            #endif
+        },
+        DebugRoute("tv-zap-close", "Apple TV: closes the channel interstice of tv-zap.") { _, _ in
+            #if os(tvOS)
+            TVSystemPlayer.shared.container.presentedViewController?.dismiss(animated: true)
+            try? await Task.sleep(for: .milliseconds(600))
+            #else
+            throw DebugRouteError.unsupported("tv-zap-close")
+            #endif
+        },
+        DebugRoute("pause", "Pauses playback (Apple TV: the transport bar then shows).") { context, _ in
+            context.player.pause()
+            try? await Task.sleep(for: .milliseconds(800))
+            #if os(tvOS)
+            DebugLaunchOptions.logger.notice("TV player: \(TVSystemPlayer.shared.debugSummary, privacy: .public)")
+            #endif
+        },
+        DebugRoute("resume", "Resumes playback.") { context, _ in
+            context.player.play()
+        },
+        DebugRoute("record:<start|stop>", "Starts or stops recording the live channel that plays (through the engine).") { context, argument in
+            switch argument.lowercased() {
+            case "start":
+                await context.wait(timeout: 15) { context.player.canRecord }
+                context.player.startRecording()
+                await context.wait(timeout: 5) { context.player.isRecording }
+            case "stop":
+                context.player.stopRecording()
+                await context.wait(timeout: 10) { !context.player.isRecording }
+            default:
+                throw DebugRouteError.invalidArgument("record", argument)
+            }
+        },
+        DebugRoute("play-recording", "Plays the newest recording full screen, as its row in the library does (once its conversion to MP4 is done, 30 s at most).") { context, _ in
+            let recordings = context.player.recordings
+            await context.wait(timeout: 30) { recordings.recordings.contains { !$0.isFinalizing && !$0.isRecording } }
+            guard let recording = recordings.recordings.filter({ !$0.isFinalizing && !$0.isRecording }).max(by: { $0.createdOn < $1.createdOn }) else {
+                throw DebugRouteError.check("play-recording: no recording")
+            }
+            await context.prepareForPlayback()
+            context.player.playRecording(recording)
+            await context.wait(timeout: 5) { context.player.isPresented }
+        },
         DebugRoute("pip", "Starts Picture in Picture once the playing item allows it.") { context, _ in
             await context.wait { context.player.isPictureInPicturePossible }
             if !context.player.isPictureInPictureActive {

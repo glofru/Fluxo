@@ -326,6 +326,9 @@ struct FluxoRemuxSession {
     int64_t io_timeout_us;
     int is_live;
     int max_reconnect_attempts;
+    // FluxoRemuxConfig.quick_open, and whether the first open of the input is in progress.
+    int quick_open;
+    int is_first_open;
 
     FluxoRemuxEventCallback callback;
     void *context;
@@ -728,6 +731,23 @@ static int fluxo_is_http_url(const char *url) {
     return url != NULL && (strncmp(url, "http://", 7) == 0 || strncmp(url, "https://", 8) == 0);
 }
 
+// After a quick first open (FluxoRemuxConfig.quick_open): FFmpeg's HTTP layer reconnects on network errors inside
+// the open connection again, and so do the later connections of an on-demand input, as without quick_open.
+// An HLS input opened by FFmpeg's own hls demuxer is not affected either way: it opens its playlist reloads and
+// segments with the options ffio_copy_url_options copies (headers, user agent, cookies, proxy, referer, rw_timeout,
+// icy; FFmpeg 9.0.2), never the reconnect ones, so its segments never had them, with or without quick_open.
+static void fluxo_enable_network_reconnect(FluxoRemuxSession *session) {
+    if (session->input_io != NULL) {
+        av_dict_set(&session->input_io->options, "reconnect_on_network_error", "1", 0);
+        if (session->input_io->inner != NULL) {
+            av_opt_set(session->input_io->inner, "reconnect_on_network_error", "1", AV_OPT_SEARCH_CHILDREN);
+        }
+    } else if (session->input != NULL && session->input->pb != NULL) {
+        // The AVIOContext of the http protocol; its child is the protocol's context, which has the option.
+        av_opt_set(session->input->pb, "reconnect_on_network_error", "1", AV_OPT_SEARCH_CHILDREN);
+    }
+}
+
 static int fluxo_open_input(FluxoRemuxSession *session) {
     AVFormatContext *input = avformat_alloc_context();
     if (input == NULL) {
@@ -750,7 +770,10 @@ static int fluxo_open_input(FluxoRemuxSession *session) {
         // on-demand inputs are reopened by the engine itself (fluxo_vod_recover).
         av_dict_set(&options, "reconnect_streamed", "1", 0);
     }
-    av_dict_set(&options, "reconnect_on_network_error", "1", 0);
+    // Not during a quick first open (FluxoRemuxConfig.quick_open): the engine's attempts are the retries there, and
+    // the option is turned on once the input is open (fluxo_enable_network_reconnect).
+    int quick = session->quick_open && session->is_first_open;
+    av_dict_set(&options, "reconnect_on_network_error", quick ? "0" : "1", 0);
     av_dict_set(&options, "reconnect_delay_max", "4", 0);
     if (session->user_agent != NULL) {
         av_dict_set(&options, "user_agent", session->user_agent, 0);
@@ -782,6 +805,9 @@ static int fluxo_open_input(FluxoRemuxSession *session) {
     }
     session->input = input;
     session->input_io = io;
+    if (quick) {
+        fluxo_enable_network_reconnect(session);
+    }
 
     ret = avformat_find_stream_info(input, NULL);
     if (ret < 0) {
@@ -4450,6 +4476,7 @@ static void *fluxo_thread_main(void *arg) {
     const char *stage = "Unable to open the stream";
     // Set when a live input could not be reconnected: always a failure, even if the last error was EOF.
     int reconnect_failed = 0;
+    session->is_first_open = 1;
     int ret = fluxo_open_input(session);
     // A missing protocol (e.g. srt://, which needs libsrt) is not a transient error: no retry. One quick retry
     // otherwise: IPTV servers often refuse the very first connection of a burst. Accounts limited to one
@@ -4466,6 +4493,7 @@ static void *fluxo_thread_main(void *arg) {
             ret = fluxo_open_input(session);
         }
     }
+    session->is_first_open = 0;
     int planned = 0;
     if (ret >= 0) {
         int64_t start = session->input->start_time;
@@ -4592,6 +4620,7 @@ FluxoRemuxSession *fluxo_remux_create(const FluxoRemuxConfig *config, FluxoRemux
     session->io_timeout_us = config->io_timeout_us > 0 ? config->io_timeout_us : FLUXO_DEFAULT_IO_TIMEOUT_US;
     session->is_live = config->is_live != 0;
     session->max_reconnect_attempts = config->max_reconnect_attempts == 0 ? FLUXO_DEFAULT_RECONNECT_ATTEMPTS : config->max_reconnect_attempts;
+    session->quick_open = config->quick_open != 0;
     session->callback = callback;
     session->context = context;
     session->state = FluxoRemuxStateIdle;

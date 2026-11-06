@@ -471,6 +471,16 @@ final class AVPlayerViewModel {
         guard currentChannel != nil else {
             return
         }
+        #if os(tvOS)
+        if isPictureInPictureActive {
+            // The system player's Picture in Picture (`TVSystemPlayer`): the app cannot stop it, and it stays active
+            // while it runs, so the screen opens at once, as when its Full Screen asks for it
+            // (`restoreFromSystemPictureInPicture()`). Not verified on a device: the Simulator has no PiP on tvOS.
+            presentationSourceID = nil
+            isPresented = true
+            return
+        }
+        #endif
         if isPictureInPictureActive {
             surface.stopPictureInPicture()
             // AVKit normally asks to restore the screen at once; present it anyway if it does not.
@@ -792,6 +802,93 @@ final class AVPlayerViewModel {
         applyEnergyProfile()
     }
 
+    #if os(tvOS)
+    // MARK: - Apple TV's system player
+    //
+    // On Apple TV the player screen is `AVPlayerViewController` (`TVPlayerView`): its transport bar seeks AVPlayer
+    // itself and it runs Picture in Picture itself. These hooks keep the app's model in step with it.
+
+    /// The transport bar is about to seek to `seconds` (a skip with the clickpad, a scrub committed with a click).
+    /// The seeker follows that seek (the engine is told where playback goes before AVPlayer asks for the segment
+    /// there, and a seek that does not play is recovered like the app's own). Returns where to seek.
+    func systemPlayerWillSeek(from oldSeconds: TimeInterval, to seconds: TimeInterval) -> TimeInterval {
+        guard !isCasting, seconds.isFinite, player.currentItem != nil else {
+            return seconds
+        }
+        logger.info("System player seeks from \(oldSeconds, format: .fixed(precision: 1)) s to \(seconds, format: .fixed(precision: 1)) s")
+        if didReachEnd, seconds < oldSeconds {
+            didReachEnd = false
+            refreshPlaybackState()
+        }
+        if pendingResumePosition != nil {
+            // A new item is still starting (a stuck seek's recovery, the engine taking a movie over): it starts where
+            // the viewer went now, not where the older seek went.
+            pendingResumePosition = seconds
+            pendingResumeContinuesRecovery = false
+        }
+        seeker.followSystemSeek(to: seconds)
+        return seconds
+    }
+
+    /// The system player's Picture in Picture started or stopped. While it runs the player screen is closed (the
+    /// video plays in the corner over the app) and playback goes on; `restoreFromSystemPictureInPicture()` opens it
+    /// again.
+    func systemPictureInPictureDidChange(_ isActive: Bool) {
+        guard isPictureInPictureActive != isActive else {
+            return
+        }
+        logger.info("Picture in Picture active (system player): \(isActive, privacy: .public)")
+        isPictureInPictureActive = isActive
+        applyEnergyProfile()
+        if isActive {
+            isPresented = false
+        }
+    }
+
+    /// Picture in Picture asks for the full-screen player again ("Full Screen" in its menu).
+    func restoreFromSystemPictureInPicture() -> Bool {
+        guard currentChannel != nil else {
+            return false
+        }
+        isPresented = true
+        return true
+    }
+
+    /// The player screen closed (Menu on the Siri Remote, or Close): playback stops, as in the TV app, unless it goes
+    /// on in Picture in Picture.
+    func playerScreenDidClose() {
+        guard !isPictureInPictureActive else {
+            return
+        }
+        stop()
+    }
+
+    /// Where a live stream with a time-shift window is behind its live edge, in seconds (0 at the edge).
+    var timeBehindLiveEdge: TimeInterval {
+        isTimeShiftAvailable && !timeline.isAtLiveEdge ? timeline.timeBehindLive : 0
+    }
+
+    /// The time-shift window of a live stream reaches back to `date` (the start of the programme on air).
+    func canWatchLive(from date: Date) -> Bool {
+        guard !isCasting, isTimeShiftAvailable else {
+            return false
+        }
+        let reach = timeline.seekableEnd - timeline.liveLatency - timeline.seekableStart
+        return Date.now.timeIntervalSince(date) <= reach
+    }
+
+    /// Plays a time-shifted live stream from `date` (the start of the programme on air: Watch from the Start in the
+    /// Guide tab of the info panel), when its window reaches back that far.
+    func watchLive(from date: Date) {
+        guard canWatchLive(from: date), let item = player.currentItem, let range = seekableRange(of: item) else {
+            return
+        }
+        let liveEdge = range.end - liveOffset(of: item)
+        seek(to: max(range.start, liveEdge - Date.now.timeIntervalSince(date)))
+        player.play()
+    }
+    #endif
+
     /// Called when the app becomes active again. iOS may have reclaimed the loopback server socket
     /// while the app was suspended; start it again if a remuxed stream needs it.
     func sceneDidBecomeActive() {
@@ -861,6 +958,11 @@ final class AVPlayerViewModel {
                 name: "\(channel.id.uuidString.prefix(8))-\(UUID().uuidString.prefix(8))",
                 isLive: isLive
             )
+            #if os(tvOS)
+            // The TV player covers the screen until the first frame: a server that refuses the connection says so in
+            // seconds there, with Try Again, instead of after FFmpeg's own retries.
+            configuration.quickOpen = true
+            #endif
             if isLive {
                 configuration.maxWindowDuration = PlayerPreferences.timeShiftDuration
                 configuration.maxWindowBytes = Self.diskBudget(for: outputDirectory, maximum: PlayerPreferences.timeShiftBytes)

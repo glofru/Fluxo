@@ -7,6 +7,11 @@
 //
 //  The player draws its own controls on an AVPlayerLayer, so nothing does this automatically.
 //
+//  Apple TV is the exception: its player is the system's `AVPlayerViewController` (`TVPlayerView`), which publishes
+//  Now Playing itself (from the item's `externalMetadata`, with the right elapsed time, duration and live state) and
+//  answers the remote commands of the Siri Remote and Control Center for its player (`updatesNowPlayingInfoCenter`
+//  does not exist on tvOS). A second writer would fight it, so this controller does nothing there.
+//
 
 import AppIntents
 import Foundation
@@ -27,7 +32,19 @@ final class NowPlayingController {
 
     private var registrations: [(command: MPRemoteCommand, target: Any)] = []
 
+    /// False on Apple TV, where the system player owns Now Playing and the remote commands (see the file comment).
+    static var isEnabled: Bool {
+        #if os(tvOS)
+        false
+        #else
+        true
+        #endif
+    }
+
     func register(_ commands: Commands) {
+        guard Self.isEnabled else {
+            return
+        }
         unregister()
         let center = MPRemoteCommandCenter.shared()
         add(center.playCommand, commands.play)
@@ -46,6 +63,9 @@ final class NowPlayingController {
     ///   macOS 27 the entry names its `ChannelEntity`, so Siri knows what plays ("Add this to my favorites",
     ///   "What's on this channel?") even when the player is not on screen.
     func update(title: String, item: ChannelItem? = nil, isLive: Bool, elapsed: TimeInterval, duration: TimeInterval, isPlaying: Bool, canSeek: Bool, canZap: Bool) {
+        guard Self.isEnabled else {
+            return
+        }
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: title,
             MPNowPlayingInfoPropertyIsLiveStream: isLive,
@@ -75,6 +95,9 @@ final class NowPlayingController {
     }
 
     func clear() {
+        guard Self.isEnabled else {
+            return
+        }
         let center = MPNowPlayingInfoCenter.default()
         center.nowPlayingInfo = nil
         #if os(macOS)

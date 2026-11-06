@@ -15713,7 +15713,7 @@
       }
     },
     "Add to Favorites" : {
-      "comment" : "Button / Shortcuts action name / VoiceOver label — channel card, player side panel (iPad, Mac), Siri and Shortcuts.",
+      "comment" : "Button / Shortcuts action name / VoiceOver label — channel card, player side panel (iPad, Mac), Siri and Shortcuts.\nApple TV player, info panel button.",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -16115,6 +16115,9 @@
           }
         }
       }
+    },
+    "Added to Favorites" : {
+      "comment" : "VoiceOver, Apple TV player: the channel or video was added to the favorites."
     },
     "Adds a channel to your favorites, or removes it if it is one." : {
       "comment" : "Shortcuts action description — Siri and Shortcuts.",
@@ -21527,6 +21530,12 @@
         }
       }
     },
+    "Can’t Play This" : {
+      "comment" : "Apple TV player: title of the screen shown when a stream without a name cannot be played."
+    },
+    "Can’t Play “%@”" : {
+      "comment" : "Apple TV player: title of the screen shown when a channel or video cannot be played; the placeholder is its name."
+    },
     "Captions" : {
       "comment" : "Voice Control name of the Audio and Subtitles button.",
       "localizations" : {
@@ -23360,7 +23369,7 @@
       }
     },
     "Channels" : {
-      "comment" : "Title or segment: the list of TV channels.",
+      "comment" : "Title or segment: the list of TV channels.\nApple TV player, info panel tab: the other channels of the category.",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -36480,7 +36489,7 @@
       }
     },
     "Episodes" : {
-      "comment" : "Call to action of a featured series card (macOS): opens the series page.\nFavorites section: single episodes of series that are favorites.",
+      "comment" : "Call to action of a featured series card (macOS): opens the series page.\nFavorites section: single episodes of series that are favorites.\nApple TV player, info panel tab: the episodes of the series.",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -37999,7 +38008,7 @@
       }
     },
     "Fill Screen" : {
-      "comment" : "Button — video player screen.",
+      "comment" : "Button — video player screen.\nApple TV player, Picture menu: zooms the picture to fill the TV, cutting its edges.",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -39008,6 +39017,9 @@
         }
       }
     },
+    "Finished" : {
+      "comment" : "Apple TV player: the movie, episode or recording played to its end."
+    },
     "Finishing %lld channels…" : {
       "comment" : "Playlist import progress while the channels are saved.",
       "localizations" : {
@@ -39463,7 +39475,7 @@
       }
     },
     "Fit to Screen" : {
-      "comment" : "Button — video player screen.",
+      "comment" : "Button — video player screen.\nApple TV player, Picture menu: shows the whole picture, with black bars when its shape differs from the TV's.",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -41839,6 +41851,9 @@
         }
       }
     },
+    "From the Start" : {
+      "comment" : "Apple TV player, Guide tab: on the card of the programme on now, selecting it plays the programme from its start (time-shifted live channels)."
+    },
     "From the TV guide" : {
       "comment" : "Text — Home page, On Now row.",
       "localizations" : {
@@ -42749,7 +42764,7 @@
       }
     },
     "Go Live" : {
-      "comment" : "Text / VoiceOver label / button — video player screen, menu bar and keyboard commands.",
+      "comment" : "Text / VoiceOver label / button — video player screen, menu bar and keyboard commands.\nApple TV player, button over the video of a time-shifted live channel: jumps to the live broadcast.",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -43153,7 +43168,7 @@
       }
     },
     "Guide" : {
-      "comment" : "Short name of the TV guide (tab, button, side panel segment).",
+      "comment" : "Short name of the TV guide (tab, button, side panel segment).\nApple TV player, info panel tab: what is on the channel now and next.",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -53757,7 +53772,7 @@
       }
     },
     "Next Episode" : {
-      "comment" : "Title of the prompt shown when an episode ends: the next episode of the series follows.",
+      "comment" : "Title of the prompt shown when an episode ends: the next episode of the series follows.\nApple TV player, button over the video during the end credits of an episode: plays the next one.",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -53858,7 +53873,7 @@
       }
     },
     "Next at %@: %@" : {
-      "comment" : "VoiceOver description of a channel's next programme; the placeholders are its start time and title.",
+      "comment" : "VoiceOver description of a channel's next programme; the placeholders are its start time and title.\nApple TV player, info panel: the programme after the one on now; the placeholders are its start time and title.",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -56639,6 +56654,12 @@
           }
         }
       }
+    },
+    "No other channels in this category." : {
+      "comment" : "Apple TV player, Channels tab (and the channel change card): the category has no other channel."
+    },
+    "No other episodes." : {
+      "comment" : "Apple TV player, Episodes tab: the series has no other episode."
     },
     "No playlists yet" : {
       "comment" : "Text — Mac sidebar.",
@@ -64569,6 +64590,9 @@
         }
       }
     },
+    "Picture" : {
+      "comment" : "Apple TV player, transport bar menu: how the picture fits the screen."
+    },
     "Picture in Picture" : {
       "comment" : "Text / VoiceOver label / tooltip — Settings, video player screen, menu bar and keyboard commands.",
       "localizations" : {
@@ -69170,6 +69194,9 @@
         }
       }
     },
+    "Plays the next channel of the category" : {
+      "comment" : "VoiceOver hint of Next Channel on the Apple TV player's failure screen of a live channel."
+    },
     "Plays the next episode" : {
       "comment" : "VoiceOver hint of a Continue Watching card whose next episode is up next.",
       "localizations" : {
@@ -69270,6 +69297,9 @@
           }
         }
       }
+    },
+    "Plays the programme from its start" : {
+      "comment" : "VoiceOver hint of the programme on now in the Apple TV player's Guide tab, when the channel's time-shift window reaches its start."
     },
     "Plays the recording" : {
       "comment" : "VoiceOver hint of a recording in the list.",
@@ -70484,7 +70514,7 @@
       }
     },
     "REC %@" : {
-      "comment" : "Recording badge in the player: REC, then the recording time, as in REC 1:23. Keep REC very short.",
+      "comment" : "Recording badge in the player: REC, then the recording time, as in REC 1:23. Keep REC very short.\nApple TV player: the live channel is being recorded; the placeholder is how long, as in 12:34.",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -71443,7 +71473,7 @@
       }
     },
     "Record" : {
-      "comment" : "Button (verb): start recording the live channel.",
+      "comment" : "Button (verb): start recording the live channel.\nApple TV player, transport bar button: starts recording the live channel.",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -71643,6 +71673,9 @@
           }
         }
       }
+    },
+    "Recorded %@" : {
+      "comment" : "Apple TV player: when a recording that plays was made (under its title on the loading screen, its description in the info panel); the placeholder is the date and time, as in 'Nov 5, 2026 at 8:15 PM'."
     },
     "Recording" : {
       "comment" : "Siri and Shortcuts confirmation title when the channel has no name.\nTitle of the alert that shows a recording error.",
@@ -75382,7 +75415,7 @@
       }
     },
     "Remove from Favorites" : {
-      "comment" : "Button / VoiceOver label — accessibility, channel card, Favorites screen.",
+      "comment" : "Button / VoiceOver label — accessibility, channel card, Favorites screen.\nApple TV player, info panel button.",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -75785,6 +75818,9 @@
         }
       }
     },
+    "Removed from Favorites" : {
+      "comment" : "VoiceOver, Apple TV player: the channel or video was removed from the favorites."
+    },
     "Removed from the device to free up space" : {
       "comment" : "Status of a download whose file the system deleted (storage was low).",
       "localizations" : {
@@ -75986,6 +76022,9 @@
           }
         }
       }
+    },
+    "Removes the reminder" : {
+      "comment" : "VoiceOver hint of a programme still to come in the Apple TV player's Guide tab, when its reminder is set."
     },
     "Removes your playlists, guides, favorites, history and settings from iCloud and turns sync off. Nothing is removed from your devices." : {
       "comment" : "iCloud privacy page: what Delete iCloud Data does.",
@@ -77602,6 +77641,9 @@
           }
         }
       }
+    },
+    "Returns to the live broadcast" : {
+      "comment" : "VoiceOver hint of the programme on now in the Apple TV player's Guide tab, when playback is behind the live broadcast."
     },
     "S%@" : {
       "comment" : "Short season label of a TV programme, as in 'S1'. Keep it very short.",
@@ -82814,6 +82856,9 @@
         }
       }
     },
+    "Sets a reminder" : {
+      "comment" : "VoiceOver hint of a programme still to come in the Apple TV player's Guide tab."
+    },
     "Settings" : {
       "comment" : "The app's settings (tab, menu command, screen title).",
       "localizations" : {
@@ -87913,6 +87958,9 @@
         }
       }
     },
+    "Start Over" : {
+      "comment" : "Apple TV player, info panel button: plays the movie or episode from the beginning."
+    },
     "Start Picture in Picture automatically" : {
       "comment" : "Label (text with an icon) — Settings.",
       "localizations" : {
@@ -89888,7 +89936,7 @@
       }
     },
     "Stop Recording" : {
-      "comment" : "Voice Control / Full Keyboard Access alternative name / text / VoiceOver label — video player screen, Siri and Shortcuts, menu bar and keyboard commands.",
+      "comment" : "Voice Control / Full Keyboard Access alternative name / text / VoiceOver label — video player screen, Siri and Shortcuts, menu bar and keyboard commands.\nApple TV player, transport bar button: stops recording the live channel.",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -104714,6 +104762,9 @@
         }
       }
     },
+    "The broadcast ended." : {
+      "comment" : "Apple TV player: a live channel stopped sending video."
+    },
     "The device can't be reached. Check that it's on the same Wi-Fi network as this device." : {
       "comment" : "Text — Chromecast (Google Cast).",
       "localizations" : {
@@ -107238,6 +107289,24 @@
           }
         }
       }
+    },
+    "The server couldn’t be found. Check the playlist’s address and your network." : {
+      "comment" : "Apple TV player, failure screen: the host name of the stream's server does not resolve. The technical reason shows under it."
+    },
+    "The server didn’t respond in time. Try again in a moment." : {
+      "comment" : "Apple TV player, failure screen: the stream's server did not answer. The technical reason shows under it."
+    },
+    "The server doesn’t have this stream. The playlist may be out of date." : {
+      "comment" : "Apple TV player, failure screen: the stream's server answered 404. The technical reason shows under it."
+    },
+    "The server has a problem right now. Try again later." : {
+      "comment" : "Apple TV player, failure screen: the stream's server answered with a 5xx error. The technical reason shows under it."
+    },
+    "The server isn’t accepting connections. Check that it’s running, then try again." : {
+      "comment" : "Apple TV player, failure screen: the stream's server refused the connection (it is down or the address is wrong). The technical reason shows under it."
+    },
+    "The server refused access to this stream. Check your playlist’s account." : {
+      "comment" : "Apple TV player, failure screen: the stream's server answered 401 or 403 (the subscription or credentials). The technical reason shows under it."
     },
     "The server responded with HTTP %@ (%@)." : {
       "comment" : "Download error; the placeholders are the HTTP status code, such as 404, and its system description, such as 'not found'.",
@@ -112209,7 +112278,7 @@
       }
     },
     "Try Again" : {
-      "comment" : "Button — video player screen, Add / Edit Playlist form.",
+      "comment" : "Button — video player screen, Add / Edit Playlist form.\nApple TV player, button over the video after a seek that could not play: seeks there again.",
       "localizations" : {
         "ar" : {
           "stringUnit" : {

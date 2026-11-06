@@ -94,7 +94,7 @@ struct TVContentView: View {
             }
         }
         // The system player, full screen. Menu on the Siri Remote (or the TV remote's Back) closes it: playback
-        // stops, as in the TV app (there is no mini player on Apple TV).
+        // stops, as in the TV app (there is no mini player on Apple TV), unless it goes on in Picture in Picture.
         .fullScreenCover(isPresented: isPlayerPresented, onDismiss: playerDidDismiss) {
             TVPlayerView(viewModel: viewModel)
                 // On-screen awareness: Siri knows the channel on screen ("Add this to my favorites in Fluxo").
@@ -158,10 +158,10 @@ struct TVContentView: View {
         }
     }
 
-    /// The player's cover is gone: playback stops (Apple TV has no mini player), and the tab Siri or a link opened
-    /// behind it is kept while tvOS gives the focus back.
+    /// The player's cover is gone: playback stops (Apple TV has no mini player) unless it goes on in Picture in
+    /// Picture, and the tab Siri or a link opened behind it is kept while tvOS gives the focus back.
     private func playerDidDismiss() {
-        viewModel.stop()
+        viewModel.playerScreenDidClose()
         navigation.coverDidDismiss(keepingFor: AppServices.keptTabDuration)
     }
 }
