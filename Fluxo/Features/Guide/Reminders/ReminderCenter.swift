@@ -222,6 +222,12 @@ final class ReminderCenter {
         authorization = await delivery.authorizationStatus()
     }
 
+    /// Whether scheduling a reminder would first ask for permission (system notifications that were never allowed
+    /// or refused). Never on Apple TV, whose reminders are the app's own alerts (`InAppReminderAlerts`).
+    func needsPermissionPrompt() async -> Bool {
+        await delivery.authorizationStatus() == .notDetermined
+    }
+
     // MARK: - Private
 
     private func requestAuthorizationIfNeeded() async -> Bool {

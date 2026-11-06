@@ -38,7 +38,7 @@ extension RecordingIntent: DebugServicesInjectable {}
 @MainActor
 enum DebugIntentRoutes {
 
-    static let all: [DebugRoute] = coreRoutes + visualRoutes
+    static let all: [DebugRoute] = coreRoutes + visualRoutes + DebugLinkRoutes.all
 
     private static let coreRoutes: [DebugRoute] = [
         DebugRoute("intent:<action>[:<words>]", "Runs an App Intent in process (actions: \(actions.keys.sorted().joined(separator: ", "))); writes the outcome to Status/intents.log.") { _, argument in

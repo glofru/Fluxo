@@ -95,8 +95,15 @@ struct TVContentView: View {
         }
         // The system player, full screen. Menu on the Siri Remote (or the TV remote's Back) closes it: playback
         // stops, as in the TV app (there is no mini player on Apple TV).
-        .fullScreenCover(isPresented: isPlayerPresented, onDismiss: viewModel.stop) {
+        .fullScreenCover(isPresented: isPlayerPresented, onDismiss: playerDidDismiss) {
             TVPlayerView(viewModel: viewModel)
+                // On-screen awareness: Siri knows the channel on screen ("Add this to my favorites in Fluxo").
+                .appEntityIdentifier(viewModel.currentItem.flatMap(ChannelEntity.entityIdentifier(for:)))
+        }
+        // Siri or a link opened a tab while the player (or a link's alert) covered the tab bar: the focus given back
+        // as it goes away must not select the tab it had before (`AppNavigation.keepTab(for:)`).
+        .onChange(of: navigation.tab) {
+            navigation.tabDidChange()
         }
         .reminderAlert(epg.reminders)
         .playlistManagement()
@@ -142,10 +149,20 @@ struct TVContentView: View {
         Binding {
             viewModel.isPresented
         } set: { isPresented in
-            if !isPresented {
+            // The cover also sets this when the model closed it (Siri, a link): only Menu finds it still presented.
+            if !isPresented, viewModel.isPresented {
+                // Menu: the viewer is the one moving now, nothing is kept for them.
+                navigation.releaseKeptTab()
                 viewModel.closePlayer()
             }
         }
+    }
+
+    /// The player's cover is gone: playback stops (Apple TV has no mini player), and the tab Siri or a link opened
+    /// behind it is kept while tvOS gives the focus back.
+    private func playerDidDismiss() {
+        viewModel.stop()
+        navigation.coverDidDismiss(keepingFor: AppServices.keptTabDuration)
     }
 }
 

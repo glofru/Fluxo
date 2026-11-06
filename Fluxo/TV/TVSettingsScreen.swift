@@ -5,7 +5,7 @@
 //  The Settings tab of Apple TV, laid out like the system's Settings app: the app's mark and the library at a
 //  glance on the leading side, the settings as a list on the other: playlists (add, refresh, edit, delete, which
 //  ones Home shows), iCloud sync (`CloudSyncSettingsSection`), TV guide sources (add, turn on or off, refresh, delete; reminders), playback, audio and
-//  subtitles, the watch history, recordings and the version.
+//  subtitles, the watch history, recordings, Siri and Voice Search (`TVSiriScreen`) and the version.
 //
 //  Addresses are typed in the shared Add Playlist and Add Guide Source sheets: their text fields bring up the tvOS
 //  keyboard, dictation, and the Continuity Keyboard on a nearby iPhone or iPad (a notification offers it), which is
@@ -29,6 +29,7 @@ struct TVSettingsScreen: View {
     @Environment(PlaylistImportCenter.self) private var importCenter
     @Environment(EPGStore.self) private var epg
     @Environment(ChannelLibrary.self) private var library
+    @Environment(AppNavigation.self) private var navigation
     @State private var showsAddSource = false
     @State private var confirmation: Confirmation?
     @State private var path: [TVSettingsRoute] = []
@@ -63,13 +64,25 @@ struct TVSettingsScreen: View {
                     }
                 case .cloudPrivacy:
                     CloudSyncPrivacyView(isModal: false)
+                case .siri:
+                    TVSiriScreen()
                 }
+            }
+        }
+        // Open Screen (Siri, a fluxo:// link): Settings from its root.
+        .onChange(of: navigation.rootRequest) { _, request in
+            if request?.tab == .settings {
+                path = []
             }
         }
         #if DEBUG
         // Debug harness (`cloud-privacy`): the page as the row pushes it.
         .onReceive(NotificationCenter.default.publisher(for: .fluxoDebugCloudPrivacy)) { _ in
             path = [.cloudPrivacy]
+        }
+        // Debug harness (`settings-siri`): Siri and Voice Search, as its row pushes it.
+        .onReceive(NotificationCenter.default.publisher(for: .fluxoDebugSiriPage)) { _ in
+            path = [.siri]
         }
         #endif
         .sheet(isPresented: $showsAddSource) {
@@ -155,6 +168,15 @@ struct TVSettingsScreen: View {
                 Text("Recordings")
             } footer: {
                 Text(String(localized: "TV.settings.recordings.footer", defaultValue: "Apple TV keeps recordings in its cache: tvOS may delete them when it runs out of space.", comment: "Apple TV Settings, Recordings footer: tvOS may delete recordings when the Apple TV runs out of space."))
+            }
+            Section {
+                NavigationLink(value: TVSettingsRoute.siri) {
+                    Label(TVSiriScreen.title, systemImage: "mic.fill")
+                }
+            } header: {
+                Text("Siri")
+            } footer: {
+                Text(String(localized: "TV.settings.siri.footer", defaultValue: "What to say to Siri for Fluxo, and how to search by voice with the Siri Remote.", comment: "Apple TV Settings, footer of the Siri section."))
             }
             Section("About") {
                 LabeledContent(String(localized: "TV.settings.version", defaultValue: "Version", comment: "Apple TV Settings: the app's version number."), value: SettingsViewModel.appVersion)
@@ -264,6 +286,8 @@ enum TVSettingsRoute: Hashable {
     case guideSource(UUID)
     /// iCloud › What's Synced and Privacy (`CloudSyncPrivacyView`).
     case cloudPrivacy
+    /// Siri and Voice Search (`TVSiriScreen`).
+    case siri
 }
 
 /// The app's mark, its version and the library at a glance (the leading side of Settings).

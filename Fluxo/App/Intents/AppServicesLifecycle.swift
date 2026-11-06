@@ -24,6 +24,10 @@ private struct AppServicesLifecycle: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            #if os(tvOS)
+            // Apple TV: the fluxo:// links (`FluxoLink`) do what the intents of the same name do.
+            .fluxoLinks(services)
+            #endif
             .task {
                 // After launch work (guide, imports) has had its turn.
                 services.spotlight.scheduleUpdate(after: .seconds(5))

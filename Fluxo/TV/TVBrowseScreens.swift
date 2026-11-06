@@ -50,6 +50,7 @@ struct TVKindScreen: View {
     @Query(sort: \Playlist.createdOn) private var playlists: [Playlist]
     @AppStorage(PlaylistSelection.storageKey) private var selectionRawValue = ""
     @Environment(\.modelContext) private var modelContext
+    @Environment(AppNavigation.self) private var navigation
     @State private var path = NavigationPath()
     @State private var groupCount: Int?
 
@@ -62,6 +63,12 @@ struct TVKindScreen: View {
             NavigationStack(path: $path) {
                 content
                     .tvDestinations()
+            }
+            // Open Screen (Siri, a fluxo:// link): the tab from its root.
+            .onChange(of: navigation.rootRequest) { _, request in
+                if kind != .live, request?.tab == (kind == .series ? AppNavigation.Tab.series : AppNavigation.Tab.movies) {
+                    path = NavigationPath()
+                }
             }
         } else {
             content

@@ -1001,12 +1001,14 @@ refresh (`BGAppRefreshTask`) runs on tvOS too.
   (long press deletes one), on `AppNavigation.libraryPath`.
 - **Search** (`TVSearchScreen`): the system search field and keyboard (dictation with the Siri Remote's microphone,
   the Continuity Keyboard of an iPhone), results as shelves: live channels, programmes of the guide, movies and series
-  (a series named exactly as typed first). Before typing: what was watched last and the favorites.
+  (a series named exactly as typed first). Before typing: what was watched last and the favorites. A sentence (what
+  people say to the remote: "football tonight", "italian news channels", "films tomorrow") also gets Smart Results
+  first; see "Siri, voice search and links" below.
 - **Settings** (`TVSettingsScreen`): laid out like the system's Settings, the app's mark and the library at a glance on
   one side and a list on the other: playlists (each with refresh, edit and delete; Add Playlist; which playlists the
   pages show), TV guide sources (on or off, refresh, delete; add; refresh all; reminder lead time), the time-shift
-  buffer, audio and subtitle languages (the shared `TrackSettingsSection`), Clear Watch History, the recordings and the
-  version; every choice opens its own list. iCloud (the shared `CloudSyncSettingsSection`, after the playlists, with
+  buffer, audio and subtitle languages (the shared `TrackSettingsSection`), Clear Watch History, the recordings, Siri and
+  Voice Search (`TVSiriScreen`, below) and the version; every choice opens its own list. iCloud (the shared `CloudSyncSettingsSection`, after the playlists, with
   the same plain row symbols): the switch, the status, Playlists in iCloud, Sync Now, and What's Synced and Privacy
   (a page of focusable lines the remote scrolls through, and Delete iCloud Data). Addresses are typed in the shared Add Playlist and Add Guide Source sheets,
   whose text fields bring up the tvOS keyboard, dictation and the Continuity Keyboard on a nearby iPhone or iPad; on
@@ -1069,13 +1071,69 @@ Play/Pause plays it (a series where the viewer left off). Without a playlist tvO
   `fluxo://open?playlist=<UUID>&series=<key>` (`TopShelfLink`; the scheme is registered in `Info-tvOS.plist` only).
   Channels are named by their App Intents identifier (`ChannelEntityID`: the playlist and a keyed digest of the stream
   URL), never by the URL, which often carries the account's user name and password; the snapshot holds no URL either.
-  A link to something no longer in the playlists says so ("Not Available").
+  A link to something no longer in the playlists says so ("Not Available"), in the one alert of every link
+  (`AppNavigation.linkFailure`, shown by `TVLinkHandler`): Siri or the next link take it down and keep the tab they
+  open. A Top Shelf link is a request like Siri's: it takes down an earlier link's alert, and a series page opened
+  over the player keeps Home against the focus the player gives back (`AppNavigation.keepTab(for:)`).
 - **Target**: a plain app extension (`com.apple.product-type.app-extension`, as Xcode 27.2's TV Top Shelf Extension
   template makes it), which links with `_NSExtensionMain`; the legacy TV App Extension type sets `_TVExtensionMain`,
   with which the extension exits before the provider is created in the tvOS 27.2 Simulator. Its version and build
   (`MARKETING_VERSION`, `CURRENT_PROJECT_VERSION`) are the project's, shared with the app, as the App Store requires.
 - **Accessibility**: tvOS reads each item's title, so the titles say what the image shows ("Orbit · S1 E2", "Quiz
   Night · Rai 1 HD"); they keep the direction isolates of the app's lines only when a right-to-left script needs them. On Now items have no expiration date: tvOS would show the time left in place of the title.
+
+### Siri, voice search and links
+
+What the tvOS 27.2 SDK offers third-party apps, checked in its headers and `.swiftinterface` files, in the tvOS 27.2
+Simulator runtime and in the built app's `Metadata.appintents`, and what Fluxo does with it:
+
+| Capability | On Apple TV |
+|---|---|
+| App Intents, `AppDependencyManager`, entities and queries (tvOS 16) | The same intents as on iPhone, in the app's process: Play Channel, Play by Name, Continue Watching, Pause / Resume / Stop, Recording, the favorites, Search in Fluxo, Find Channels, Suggestions, What's On, Search TV Guide, Show Channel Schedule, Set Reminder, Open Screen. 19 intents, 2 entities and the 10 App Shortcuts are in the tvOS build's `Metadata.appintents` (Visual Intelligence is not in the tvOS SDK). Differences: Show Channel Schedule opens the Live TV guide at the channel's row (the TV has no schedule sheet); Open Screen also opens Movies, Series and Settings ("Live TV" is a name of the guide) and does not offer Downloads (Apple TV keeps none, so the choice is not in its list); Set Reminder no longer asks for notification permission (the TV's reminders are the app's own alerts) and says they show while Fluxo is open; opening a screen stops what plays, as Menu does (there is no mini player). When the player (or a link's alert) goes away, tvOS gives the focus back to what had it before, and a tab-bar item that takes the focus selects its tab: the tab that Siri or a link opened behind it is kept for 2 seconds after the cover is gone (`AppNavigation.keepTab(for:)`, undone once at most; never after Menu or OK, where the viewer is the one moving) |
+| App Shortcuts (`AppShortcutsProvider`, tvOS 16), `updateAppShortcutParameters()` | Registered with their phrases in 16 languages; the channel names are refreshed as on iPhone. Xcode 27.2 runs the `AppIntentsSSUTraining` step (the `root.ssu.yaml` Siri uses to match phrases that are said a little differently) for iOS and not for tvOS, so on Apple TV say the phrases as written. The tvOS 27.2 runtime has the Siri plug-in that runs App Shortcuts (`SiriLinkFlowPlugin`) and `linkd`; the Simulator has no Siri, so the phrases must be tried on a device |
+| Assistant schemas (`AppSchema`, `@AppIntent(schema:)`) | **Unavailable on tvOS** (`@available(tvOS, unavailable)`): no free-form requests through Apple Intelligence; `AppSchemaAdoption.swift` stays iOS / macOS / visionOS |
+| `OpenIntent`, `PlayVideoIntent` and `ShowInAppSearchResultsIntent` (tvOS 17.2) | Play Channel, Play by Name ("Play … in Fluxo" with any words), Search in Fluxo (types the words into the Search tab) |
+| Predictions (`PredictableIntent`, `AppIntent.donate()`) | Play Channel is donated whenever a channel starts, as on iPhone. `NSUserActivity.isEligibleForPrediction` and `persistentIdentifier` are unavailable on tvOS (not used) |
+| On-screen awareness: `View.appEntityIdentifier(_:)` (tvOS 18.4), `MPNowPlayingInfoPropertyAppEntityIdentifiers` (tvOS 27) | The TV player names the channel on screen, and the Now Playing entry names it too. Harmless and ready for later: on-screen awareness is an Apple Intelligence feature, which Apple TV does not have, so today nothing reads them. "Add this channel to my Fluxo favorites" and "Record this in Fluxo" act on the channel that plays (else the one watched last) by themselves |
+| `SiriTipView` (tvOS 16), `ShortcutsLink` | `SiriTipView` is in the SDK but drew nothing in the tvOS 27.2 Simulator; `ShortcutsLink` is not in the tvOS SDK (no Shortcuts app). Settings › Siri and Voice Search lists what to say instead |
+| Spotlight: `CSSearchableIndex`, `IndexedEntity` | **Unavailable on tvOS** (`API_UNAVAILABLE(tvos)`; the CoreSpotlight cross-import of App Intents is not in the tvOS SDK): the system search of Apple TV never lists app content. `PlatformFeatures.spotlightIndexing` is off |
+| Foundation Models | No on-device model on tvOS: Smart Results use the rules of `SmartSearch` |
+| Handoff (`NSUserActivity.isEligibleForHandoff`, tvOS 10 in the SDK) | **Not a Handoff device**: Apple TV neither advertises nor receives Handoff (Continuity's Handoff is iPhone, iPad, Mac, Apple Watch and Vision Pro), so "Continue on Apple TV" from an iPhone cannot be a Handoff. What does it: iCloud sync carries the resume position (published within seconds of a pause or stop on the iPhone, see "iCloud sync"), then "Continue watching in Fluxo", the Continue Watching shelf or the Top Shelf resume it on the TV; AirPlay from the iPhone's player puts the iPhone's playback itself on the TV |
+| The TV app (Up Next, "Watch Now", universal search, "Play … " and "What should I watch?" without the app name, single sign-on) | **Needs Apple's video partner programme**: Apple ingests a catalogue and availability feed from the provider and grants the entitlement; it is not open to an app that plays the user's own playlists. `VideoSubscriberAccount` is in the SDK for TV-provider sign-in only. A request without "Fluxo" goes to the TV app or Music |
+| SiriKit media intents (`INPlayMediaIntent`, `INSearchForMediaIntent`, tvOS 14) | Not used: they need an Intents extension and Siri treats them as audio requests |
+| URL schemes | `fluxo://` is registered in `Info-tvOS.plist` only; `FluxoLink`, its handler and their debug routes are compiled for tvOS only (iPhone, iPad and Mac do not handle these links) |
+
+**Voice search** (`TVSearchScreen`). In Search, holding the microphone button of the Siri Remote dictates into the
+system search field (as does the Continuity Keyboard of an iPhone). What is said is often a sentence rather than a
+name, so a search of two or more words with a time, a kind, a country or "like …", or one the name search finds nothing
+for, also gets **Smart Results** first: the words as understood in the shelf's title, as said ("Football · Tonight",
+"News · Italy · Live TV", "Movies · Tomorrow"; not the synonyms and translations searched with them), then the
+programmes of the guide and the channels, movies and series they match (a series opens its page, as on iPhone, rather
+than playing the episode that happened to match), then the matching categories as tiles. The regular results show at
+once and Smart Results join them above when their plan has run (a search the name search finds nothing for waits for
+them instead, with "Searching for …" in place of the previous words' shelves, rather than saying "No Results" first). What Smart Results show is left out of the regular shelves below them, so
+nothing is listed twice. "Search Fluxo" (Siri) and `fluxo://search?q=…` type their words into the same field.
+
+**Siri and Voice Search** (`TVSiriScreen`, Settings): the phrases (Play, Continue Watching, What's On, Search, Open the TV
+Guide, Record this, Add to Favorites, Set a Reminder) with what each does, and how to search by voice; every line is
+focusable (on a white platter with dark text when focused, as the system's Settings rows, kept clear of the screen's overscan-safe edge), so the remote walks through
+the page and VoiceOver reads each line.
+
+**Links** (`App/Links/FluxoLink.swift`, opened by `TVLinkHandler` through the same `AppServices` calls as the intents
+of the same name, so a link and Siri leave the app in the same state):
+
+| Link | Opens |
+|---|---|
+| `fluxo://open?screen=<home\|guide\|search\|movies\|series\|library\|favorites\|history\|recordings\|settings>` | A screen, from its root (as Open Screen: Live TV, Movies, Series and Settings pop their own stacks through `AppNavigation.rootRequest`) |
+| `fluxo://search?q=<words>` | Search with the words typed in (as Search in Fluxo; at most 200 characters) |
+| `fluxo://guide[?channel=<ChannelEntity id>]` | The TV guide, at a live channel's row (as Show Channel Schedule); a channel that is gone shows "Channel Not Available" over the guide at now (over Live TV's channels without a guide). Whatever opens a screen next (Siri, another link, even to the same tab) takes the alert down first, and an alert still to come for an earlier link is dropped |
+| `fluxo://continue` | Continue Watching (as the intent): the movie or episode with a saved position watched last, else the channel watched last; "Nothing to Continue" when nothing was watched |
+| `fluxo://play?channel=…`, `fluxo://play?playlist=…&series=…`, `fluxo://open?playlist=…&series=…` | The Top Shelf's links (`TopShelfLink`, its own handler): never parsed as `FluxoLink`s, so every URL is opened once. Their "Not Available" is the same alert as the links above, and they count as requests the same way |
+
+Channels are named by their `ChannelEntity` identifier, never by their stream URL (which can carry the account's user
+name and password). The identifier is keyed with a secret of the installation, so a link made on another device does not
+resolve on this one: links are for the Top Shelf and the system of this Apple TV. A link opened from outside the system
+(`xcrun simctl openurl`) first shows the system's "Open in “Fluxo”?".
 
 ### Trying it
 
@@ -1231,7 +1289,7 @@ active). Settings › Apple Intelligence has a switch for the features and expla
 
 **Siri, Shortcuts and Spotlight** (`App/Intents`). `FluxoApp` registers `AppServices` (player, library, guide,
 navigation, intelligence) with `AppDependencyManager`; intents run in the app's process and get it with
-`@Dependency`, on iOS and macOS.
+`@Dependency`, on iOS, macOS and tvOS (see "Siri, voice search and links" under "Apple TV" for what Apple TV offers).
 
 - Entities: `ChannelEntity` (it stands for playlist + stream URL, so it survives playlist refreshes; the system only
   sees an opaque identifier, `ChannelEntityID`: the playlist UUID and a keyed HMAC of the URL, since stream URLs

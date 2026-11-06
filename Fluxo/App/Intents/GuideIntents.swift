@@ -7,7 +7,6 @@
 
 import AppIntents
 import Foundation
-import UserNotifications
 
 /// "What's on Sky Sport F1?" (now and next), or, without a channel, what the favorite channels show now.
 struct WhatsOnIntent: AppIntent {
@@ -154,7 +153,7 @@ struct SetReminderIntent: AppIntent {
         }
         let reminders = services.epg.reminders
         if !reminders.isScheduled(programme) {
-            if await UNUserNotificationCenter.current().notificationSettings().authorizationStatus == .notDetermined {
+            if await reminders.needsPermissionPrompt() {
                 try await continueInForeground(alwaysConfirm: false)
             }
             guard await reminders.schedule(programme, on: program.channel.item) else {
@@ -163,9 +162,16 @@ struct SetReminderIntent: AppIntent {
             }
         }
         let lead = ReminderCenter.leadMinutes
+        #if os(tvOS)
+        // Apple TV shows reminders itself, as an alert over the app (tvOS notifications cannot show text).
+        let dialog: IntentDialog = lead > 0
+            ? "OK, Fluxo will remind you \(lead) minutes before \(programme.title) starts, while it's open."
+            : "OK, Fluxo will remind you when \(programme.title) starts, while it's open."
+        #else
         let dialog: IntentDialog = lead > 0
             ? "OK, I'll remind you \(lead) minutes before \(programme.title) starts."
             : "OK, I'll remind you when \(programme.title) starts."
+        #endif
         return .result(
             dialog: dialog,
             view: ConfirmationSnippetView(systemImage: "bell.fill", title: programme.title, subtitle: TextParts.line([program.channel.name, GuideFormat.dayAndTime(programme)]))
@@ -181,15 +187,43 @@ enum FluxoDestination: String, AppEnum {
     case favorites
     case history
     case recordings
-    /// The offline downloads (in the Library tab on iOS; the Downloads item of the Mac sidebar).
+    #if !os(tvOS)
+    /// The offline downloads (in the Library tab on iOS; the Downloads item of the Mac sidebar). Not on Apple TV,
+    /// which keeps no downloads (`PlatformFeatures.offlineDownloads`): Siri does not offer a screen that is not there.
     case downloads
+    #endif
     /// The Library tab (favorites, recently watched and recordings; on the Mac, its Recordings item).
     case library
+    #if os(tvOS)
+    /// Apple TV: the Movies tab.
+    case movies
+    /// Apple TV: the Series tab.
+    case series
+    /// Apple TV: the Settings tab.
+    case settings
+    #endif
 
     static var typeDisplayRepresentation: TypeDisplayRepresentation {
         "Fluxo Screen"
     }
 
+    // A literal for each platform: the App Intents metadata is read from it at build time, so it cannot be computed.
+    #if os(tvOS)
+    static var caseDisplayRepresentations: [FluxoDestination: DisplayRepresentation] {
+        [
+            .home: DisplayRepresentation(title: "Home", image: .init(systemName: "play.tv")),
+            .guide: DisplayRepresentation(title: "TV Guide", image: .init(systemName: "calendar.day.timeline.left"), synonyms: ["Live TV", "Guide", "EPG", "Programme Guide", "Program Guide", "Schedule"]),
+            .search: DisplayRepresentation(title: "Search", image: .init(systemName: "magnifyingglass")),
+            .favorites: DisplayRepresentation(title: "Favorites", image: .init(systemName: "star"), synonyms: ["Favourites"]),
+            .history: DisplayRepresentation(title: "Recently Watched", image: .init(systemName: "clock"), synonyms: ["History", "Continue Watching"]),
+            .recordings: DisplayRepresentation(title: "Recordings", image: .init(systemName: "film.stack")),
+            .library: DisplayRepresentation(title: "Library", image: .init(systemName: "rectangle.stack")),
+            .movies: DisplayRepresentation(title: "Movies", image: .init(systemName: "film"), synonyms: ["Films"]),
+            .series: DisplayRepresentation(title: "Series", image: .init(systemName: "square.stack"), synonyms: ["TV Shows", "Shows"]),
+            .settings: DisplayRepresentation(title: "Settings", image: .init(systemName: "gear")),
+        ]
+    }
+    #else
     static var caseDisplayRepresentations: [FluxoDestination: DisplayRepresentation] {
         [
             .home: DisplayRepresentation(title: "Home", image: .init(systemName: "play.tv")),
@@ -202,6 +236,7 @@ enum FluxoDestination: String, AppEnum {
             .library: DisplayRepresentation(title: "Library", image: .init(systemName: "rectangle.stack")),
         ]
     }
+    #endif
 
     var destination: AppNavigation.Destination {
         switch self {
@@ -217,10 +252,19 @@ enum FluxoDestination: String, AppEnum {
             return .history
         case .recordings:
             return .recordings
-        case .downloads:
-            return .downloads
         case .library:
             return .library
+        #if os(tvOS)
+        case .movies:
+            return .movies
+        case .series:
+            return .series
+        case .settings:
+            return .settings
+        #else
+        case .downloads:
+            return .downloads
+        #endif
         }
     }
 }
@@ -229,7 +273,11 @@ enum FluxoDestination: String, AppEnum {
 struct OpenFluxoIntent: OpenIntent {
 
     static let title: LocalizedStringResource = "Open Screen"
+    #if os(tvOS)
+    static let description = IntentDescription("Opens the TV guide, search, movies, series, favorites, recently watched, recordings or settings.", categoryName: "Navigation")
+    #else
     static let description = IntentDescription("Opens the TV guide, search, favorites, recently watched, downloads or recordings.", categoryName: "Navigation")
+    #endif
 
     @Parameter(title: "Screen", requestValueDialog: "Which screen?")
     var target: FluxoDestination

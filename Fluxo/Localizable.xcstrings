@@ -35004,6 +35004,9 @@
         }
       }
     },
+    "Films" : {
+
+    },
     "Filter" : {
       "comment" : "Menu that filters the TV guide.",
       "localizations" : {
@@ -54983,6 +54986,19 @@
         }
       }
     },
+    "OK, Fluxo will remind you %lld minutes before %@ starts, while it's open." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "OK, Fluxo will remind you %1$lld minutes before %2$@ starts, while it's open."
+          }
+        }
+      }
+    },
+    "OK, Fluxo will remind you when %@ starts, while it's open." : {
+
+    },
     "OK, I'll remind you %lld minutes before %@ starts." : {
       "comment" : "Siri and Shortcuts text (dialog or error) — Siri and Shortcuts. %1$ is a number (lead); %2$ is a programme title.",
       "localizations" : {
@@ -58109,6 +58125,9 @@
           }
         }
       }
+    },
+    "Opens the TV guide, search, movies, series, favorites, recently watched, recordings or settings." : {
+      "comment" : "Description of the Open Screen action on Apple TV (Siri)."
     },
     "Options" : {
       "comment" : "Menu with more options.",
@@ -79756,6 +79775,9 @@
         }
       }
     },
+    "Shows" : {
+
+    },
     "Shows the channel's TV guide" : {
       "comment" : "VoiceOver hint of what is on now in the player's top bar: a tap shows the channel's guide.",
       "localizations" : {
@@ -80468,6 +80490,9 @@
           }
         }
       }
+    },
+    "Siri" : {
+
     },
     "Siri & Shortcuts" : {
       "comment" : "Title of a Settings section about Siri phrases and the Shortcuts app. Use the name Apple uses in your language.",
@@ -87005,6 +87030,9 @@
         }
       }
     },
+    "TV Shows" : {
+
+    },
     "TV guides you added, and whether they're on" : {
       "comment" : "iCloud privacy page: an item of the list of what iCloud sync stores."
     },
@@ -87320,6 +87348,66 @@
         }
       }
     },
+    "TV.link.nothingWatched.message" : {
+      "comment" : "Apple TV: message of the alert when a link asks to continue watching but nothing was watched yet.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Movies and episodes you start watching show up in Continue Watching."
+          }
+        }
+      }
+    },
+    "TV.link.nothingWatched.title" : {
+      "comment" : "Apple TV: title of the alert when a link asks to continue watching but nothing was watched yet.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Nothing to Continue"
+          }
+        }
+      }
+    },
+    "TV.link.unavailable.message" : {
+      "comment" : "Apple TV: message of the alert when a link opens the TV guide at a channel that is no longer in the playlists; the guide opens at now instead.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "It's no longer in your playlists. The TV guide shows what's on now."
+          }
+        }
+      }
+    },
+    "TV.link.unavailable.noGuide.message" : {
+      "comment" : "Apple TV: message of the alert when a link opens a channel that is no longer in the playlists and there is no TV guide; the Live TV tab opens instead.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "It's no longer in your playlists. Live TV shows the channels you have."
+          }
+        }
+      }
+    },
+    "TV.link.unavailable.title" : {
+      "comment" : "Apple TV: title of the alert when a link opens the TV guide at a channel that is no longer in the playlists.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Channel Not Available"
+          }
+        }
+      }
+    },
     "TV.live.channels" : {
       "comment" : "Apple TV Live TV: the live channels by category.",
       "extractionState" : "extracted_with_value",
@@ -87560,6 +87648,18 @@
         }
       }
     },
+    "TV.search.pending" : {
+      "comment" : "Apple TV Search: Smart Results are being looked for (the name search found nothing yet); the placeholder is the text.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Searching for “%@”…"
+          }
+        }
+      }
+    },
     "TV.search.programmes" : {
       "comment" : "Apple TV Search: the shelf of the matching programmes of the TV guide.",
       "extractionState" : "extracted_with_value",
@@ -87692,6 +87792,18 @@
         }
       }
     },
+    "TV.settings.siri.footer" : {
+      "comment" : "Apple TV Settings, footer of the Siri section.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "What to say to Siri for Fluxo, and how to search by voice with the Siri Remote."
+          }
+        }
+      }
+    },
     "TV.settings.source.failed" : {
       "comment" : "Apple TV Settings: a TV guide source whose last refresh failed.",
       "extractionState" : "extracted_with_value",
@@ -87724,6 +87836,186 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "Version"
+          }
+        }
+      }
+    },
+    "TV.siri.continue.detail" : {
+      "comment" : "Apple TV, Settings › Siri: what the Continue Watching phrase does. Watch progress follows the user through iCloud sync; with no movie or episode in progress, the last watched channel plays.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The movie or episode you were watching, where you left it, even if you started it on your iPhone, iPad or Mac (with iCloud sync on). Otherwise, the channel you watched last."
+          }
+        }
+      }
+    },
+    "TV.siri.favorite.detail" : {
+      "comment" : "Apple TV, Settings › Siri: what the Add to Favorites phrase adds (the playing channel, else the last watched one).",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The channel that plays, or the one you watched last."
+          }
+        }
+      }
+    },
+    "TV.siri.favorite.phrase" : {
+      "comment" : "Apple TV, Settings › Siri: a Siri phrase; translate it as the Add to Favorites phrase people say to Siri in this language, keeping “Fluxo”.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "“Add this channel to my Fluxo favorites”"
+          }
+        }
+      }
+    },
+    "TV.siri.open.detail" : {
+      "comment" : "Apple TV, Settings › Siri: the other screens the Open Screen phrase opens (the names of the app's tabs and pages).",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Also Movies, Series, Library, Favorites, Recordings and Settings."
+          }
+        }
+      }
+    },
+    "TV.siri.record.detail" : {
+      "comment" : "Apple TV, Settings › Siri: what the Recording phrase does. Translate the phrase in quotes as the Stop Recording phrase of this language.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The live channel that plays. Say “Stop recording in Fluxo” to save it."
+          }
+        }
+      }
+    },
+    "TV.siri.record.phrase" : {
+      "comment" : "Apple TV, Settings › Siri: a Siri phrase; translate it as the Recording phrase people say to Siri in this language (“Record this in Fluxo”), keeping “Fluxo”.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "“Record this in Fluxo”"
+          }
+        }
+      }
+    },
+    "TV.siri.reminder.detail" : {
+      "comment" : "Apple TV, Settings › Siri: what the Set Reminder phrase does. On Apple TV reminders are alerts shown by the app while it is open.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Siri asks which one. Fluxo reminds you shortly before it starts, while it's open."
+          }
+        }
+      }
+    },
+    "TV.siri.reminder.phrase" : {
+      "comment" : "Apple TV, Settings › Siri: a Siri phrase; translate it as the Set Reminder phrase people say to Siri in this language, keeping “Fluxo”.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "“Remind me about a show in Fluxo”"
+          }
+        }
+      }
+    },
+    "TV.siri.say.footer" : {
+      "comment" : "Apple TV, Settings › Siri: footer of the list of Siri phrases.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Always say “Fluxo”, in the language Siri speaks. Siri learns more channel names as you add favorites and watch channels."
+          }
+        }
+      }
+    },
+    "TV.siri.say.header" : {
+      "comment" : "Apple TV, Settings › Siri: header of the list of Siri phrases.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Say to Siri"
+          }
+        }
+      }
+    },
+    "TV.siri.subtitle" : {
+      "comment" : "Apple TV, Settings › Siri: how to talk to Siri with the Siri Remote.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Hold the microphone button on the Siri Remote, say what you want, then let go."
+          }
+        }
+      }
+    },
+    "TV.siri.title" : {
+      "comment" : "Apple TV Settings: the page about Siri and voice search (also the name of its row in Settings).",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Siri and Voice Search"
+          }
+        }
+      }
+    },
+    "TV.siri.voiceSearch.detail" : {
+      "comment" : "Apple TV, Settings › Siri: what can be said to the app's Search. Translate the examples in quotes as searches people say in this language.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Say a channel, a film or a series, or a sentence such as “football tonight” or “italian news channels”: Fluxo shows what matches."
+          }
+        }
+      }
+    },
+    "TV.siri.voiceSearch.header" : {
+      "comment" : "Apple TV, Settings › Siri: header of the section about voice search in the app.",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Search with Your Voice"
+          }
+        }
+      }
+    },
+    "TV.siri.voiceSearch.title" : {
+      "comment" : "Apple TV, Settings › Siri: how to search by voice in the app (the microphone button of the Siri Remote, while the Search tab's keyboard shows).",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Hold the microphone button in Search"
           }
         }
       }

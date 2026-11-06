@@ -50,6 +50,16 @@ final class AppServices {
     /// player already on screen stays in its window; otherwise it opens in the main window used last.
     func play(_ item: ChannelItem) {
         let windowID = player.isPresented ? nil : windows.preferredMainWindowID
+        #if os(tvOS)
+        // The player is presented over the alert of a link that failed, which would then be under it. (A player
+        // on screen stays: the tab under it does not change.)
+        let hadAlert = navigation.linkFailure != nil
+        navigation.noteRequest()
+        navigation.linkFailure = nil
+        if hadAlert {
+            navigation.keepTab(for: Self.keptTabDuration)
+        }
+        #endif
         if windowID != nil {
             // The player opens under a sheet of the window: a channel schedule shown by an earlier request would
             // hide it.
@@ -59,18 +69,45 @@ final class AppServices {
     }
 
     /// Shows a screen of the main window used last. A full-screen player gets out of the way (playback continues
-    /// in the mini player), since it would cover the screen.
+    /// in the mini player), since it would cover the screen. Apple TV has no mini player: closing its player stops
+    /// playback, as the Menu button does.
     func reveal(_ destination: AppNavigation.Destination) {
+        #if os(tvOS)
+        let isCovered = beginTVRequest()
+        #endif
         // As the close button does: into Picture in Picture when the user chose it, else the mini player.
         player.closePlayer()
         dismissSheets()
         navigation.show(destination)
+        #if os(tvOS)
+        if isCovered {
+            navigation.keepTab(for: Self.keptTabDuration)
+        }
+        #endif
     }
 
-    /// Closes the sheet an earlier request may have left open over the main window (a channel schedule), so what
-    /// the next request shows is not hidden behind it. Recordings are a screen of the Library tab, not a sheet.
+    #if os(tvOS)
+    /// Apple TV: notes a request that changes the screen, and returns whether the player or a link's alert covers
+    /// the tab bar now. Taking either down gives the focus back to what had it before; when that was an item of the
+    /// tab bar, it would select its tab again over the one the request opens (`AppNavigation.keepTab(for:)`).
+    func beginTVRequest() -> Bool {
+        navigation.noteRequest()
+        return player.isPresented || navigation.linkFailure != nil
+    }
+
+    /// How long a tab opened behind the player or an alert is kept (from the moment the player's cover is gone,
+    /// `TVContentView`): the focus comes back within about a second.
+    static let keptTabDuration: Duration = .seconds(2)
+    #endif
+
+    /// Closes the sheet an earlier request may have left open over the main window (a channel schedule; on Apple TV,
+    /// the alert of a link that failed), so what the next request shows is not hidden behind it. Recordings are a
+    /// screen of the Library tab, not a sheet.
     private func dismissSheets() {
         navigation.scheduleChannel = nil
+        #if os(tvOS)
+        navigation.linkFailure = nil
+        #endif
     }
 
     /// Search with `term` typed in.
@@ -79,10 +116,16 @@ final class AppServices {
         navigation.searchText = term
     }
 
-    /// The schedule of a live channel (today and the next days from the guide), over the current screen.
+    /// The schedule of a live channel (today and the next days from the guide), over the current screen. Apple TV
+    /// has no schedule sheet: its TV guide grid opens at the channel's row instead, where the remote moves along the
+    /// channel's programmes (and each one has Remind Me).
     func showSchedule(of item: ChannelItem) {
+        #if os(tvOS)
+        showInGuide(item)
+        #else
         player.closePlayer()
         navigation.scheduleChannel = item
+        #endif
     }
 
     /// Donates "Play <channel>" to the system after a channel starts, however it was started (an intent run by Siri

@@ -95,6 +95,12 @@ struct TVGuideScreen: View {
             }
         }
         #endif
+        // Open Screen (Siri, a fluxo:// link): Live TV from its root.
+        .onChange(of: navigation.rootRequest) { _, request in
+            if request?.tab == .guide {
+                path = NavigationPath()
+            }
+        }
         .onChange(of: navigation.guideFocus, initial: true) { _, focus in
             // Show in TV Guide: the grid, at the channel.
             if focus != nil {

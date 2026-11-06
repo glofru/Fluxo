@@ -45,6 +45,14 @@ final class AppNavigation {
         case recordings
         /// The offline downloads: listed in the Library tab (iOS); the Downloads item of the macOS sidebar.
         case downloads
+        #if os(tvOS)
+        /// Apple TV: the Movies tab.
+        case movies
+        /// Apple TV: the Series tab.
+        case series
+        /// Apple TV: the Settings tab.
+        case settings
+        #endif
     }
 
     var tab: Tab = .home
@@ -71,6 +79,75 @@ final class AppNavigation {
     var searchText = ""
     /// The live channel whose schedule (today's programmes from the TV guide) is shown in a sheet.
     var scheduleChannel: ChannelItem?
+    #if os(tvOS)
+    /// Apple TV: what a fluxo:// link could not do, shown in an alert (`TVLinkHandler`). Whatever opens a screen
+    /// next (Siri, another link) clears it with the other sheets (`AppServices.reveal`), so it never stays over the
+    /// screen that follows.
+    var linkFailure: AppServices.LinkOutcome?
+
+    /// Apple TV: a request to show a tab from its root, for the tabs whose stack belongs to their screen (Live TV,
+    /// Movies, Series and Settings pop it when it is for them). Each request is new.
+    struct RootRequest: Equatable {
+        let tab: Tab
+        let id = UUID()
+    }
+
+    /// Apple TV: the last `show(_:)`, for the screens that keep their own stack.
+    var rootRequest: RootRequest?
+
+    /// Apple TV: counts the requests (Siri, a link) that changed the screen, so a link's alert that comes a moment
+    /// after its screen opened is not shown over what a later request opened (`TVLinkHandler`).
+    @ObservationIgnored private(set) var requestCount = 0
+
+    /// Apple TV: the tab a request opened while the player or an alert covered the tab bar, and until when it is
+    /// kept (see `keepTab(for:)`).
+    @ObservationIgnored private var keptTab: (tab: Tab, until: ContinuousClock.Instant)?
+
+    /// Apple TV: a request (Siri, a link) is changing the screen.
+    func noteRequest() {
+        requestCount &+= 1
+    }
+
+    /// Apple TV: keeps the selected tab against focus restoration for `duration`. When a full-screen cover (the
+    /// player) or an alert goes away, tvOS gives the focus back to what had it before; when that was an item of the
+    /// tab bar, focusing it selects its tab again, which would undo the tab a request just opened behind the
+    /// cover. The first other tab selected within `duration` is undone once (`tabDidChange()`); after that, or
+    /// after `duration`, the tab bar is the viewer's again. Only for a cover or alert taken down by a request: never
+    /// after Menu or OK, where the viewer is the one moving.
+    func keepTab(for duration: Duration) {
+        keptTab = (tab, .now + duration)
+    }
+
+    /// Apple TV: the player's cover finished going away; the focus is given back now, so the kept tab (if any) is
+    /// kept from now on for `duration`.
+    func coverDidDismiss(keepingFor duration: Duration) {
+        guard let kept = keptTab, ContinuousClock.now < kept.until else {
+            return
+        }
+        keptTab = (kept.tab, max(kept.until, .now + duration))
+    }
+
+    /// Apple TV: the viewer took a cover down themselves (Menu): nothing is kept.
+    func releaseKeptTab() {
+        keptTab = nil
+    }
+
+    /// Apple TV: the selected tab changed (`TVContentView`); undoes it once when it was focus restoration taking
+    /// back the tab a request opened (see `keepTab(for:)`).
+    func tabDidChange() {
+        guard let kept = keptTab else {
+            return
+        }
+        guard ContinuousClock.now < kept.until else {
+            keptTab = nil
+            return
+        }
+        if tab != kept.tab {
+            keptTab = nil
+            tab = kept.tab
+        }
+    }
+    #endif
     /// A channel the TV guide is to show (scrolled to now and to its row, highlighted), e.g. Full Guide in the
     /// player; the guide clears it once it has (see `showInGuide(_:)`).
     var guideFocus: GuideFocus?
@@ -153,7 +230,18 @@ final class AppNavigation {
         case .history:
             tab = .library
             libraryPath = NavigationPath([ChannelRoute.history(playlistIDs: nil)])
+        #if os(tvOS)
+        case .movies:
+            tab = .movies
+        case .series:
+            tab = .series
+        case .settings:
+            tab = .settings
+        #endif
         }
+        #if os(tvOS)
+        rootRequest = RootRequest(tab: tab)
+        #endif
         #endif
     }
 

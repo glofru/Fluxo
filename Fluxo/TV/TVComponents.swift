@@ -213,29 +213,37 @@ struct TVChannelCard: View {
     let item: ChannelItem
     /// The second line, when it is not what is on now (a live channel) or the category.
     var subtitle: String?
-    /// An episode opens the page of its series rather than playing.
+    /// An episode opens the page of its series rather than playing. The card is then the series': its title, "Series"
+    /// under it (not the episode that happened to be found) and no episode progress.
     var opensSeries = false
 
     @Environment(\.playChannel) private var playChannel
     @Environment(ChannelLibrary.self) private var library
 
+    private var showsSeries: Bool {
+        opensSeries && item.series != nil
+    }
+
     var body: some View {
-        let progress = library.watchProgress(for: item)
+        let progress = showsSeries ? nil : library.watchProgress(for: item)
         NowNextReader(item: item) { nowNext in
             TimelineView(.everyMinute) { context in
                 let current = nowNext?.current.flatMap { $0.isOnAir(at: context.date) ? $0 : nil }
+                let title = item.series?.seriesTitle ?? item.displayName
                 TVCard(
                     size: TVLayout.landscapeCard,
                     action: action,
-                    focusName: item.displayName,
-                    accessibilityLabel: Text(TextParts.spoken([item.displayName, current?.title, subtitle ?? item.groupName])),
-                    accessibilityHint: Text(opensSeries && item.series != nil ? TVText.opensSeriesHint : TVText.playsHint)
+                    focusName: showsSeries ? title : item.displayName,
+                    accessibilityLabel: Text(showsSeries
+                        ? TextParts.spoken([title, ChannelContentKind.series.title, subtitle])
+                        : TextParts.spoken([item.displayName, current?.title, subtitle ?? item.groupName])),
+                    accessibilityHint: Text(showsSeries ? TVText.opensSeriesHint : TVText.playsHint)
                 ) {
                     TVLandscapeArtwork(item: item)
                 } caption: { isFocused in
                     TVCardCaption(
-                        title: item.series?.seriesTitle ?? item.displayName,
-                        subtitle: current?.title ?? subtitle ?? item.episodeLine ?? ChannelCandidate.displayGroup(item.groupName),
+                        title: title,
+                        subtitle: current?.title ?? subtitle ?? (showsSeries ? ChannelContentKind.series.title : item.episodeLine) ?? ChannelCandidate.displayGroup(item.groupName),
                         progress: current.map { $0.progress(at: context.date) } ?? progress?.fraction,
                         isFocused: isFocused,
                         showsLiveBadge: current != nil,

@@ -13,7 +13,9 @@
 //  macOS 27, while Fluxo runs from iOS 26.1 and macOS 26 and an intent cannot exist twice (each entity has one
 //  `OpenIntent`, and an app has at most ten App Shortcuts). The macro only adds an availability-gated extension;
 //  the extensions below are exactly what it generates, so the intents are unchanged on iOS 26 and adopt the schema
-//  on iOS 27 (the build's `Metadata.appintents` lists them under the schema).
+//  on iOS 27 (the build's `Metadata.appintents` lists them under the schema). The tvOS 27.2 SDK marks the schemas
+//  unavailable on tvOS, so Apple TV has no schema adoption: there, Siri reaches the intents through their App Shortcut
+//  phrases.
 //
 
 import AppIntents
