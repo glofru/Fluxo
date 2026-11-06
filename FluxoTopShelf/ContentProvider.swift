@@ -9,7 +9,9 @@
 //  Everything comes from the snapshot the app writes (`TopShelfSnapshot`, `TopShelfPublisher` in the app): the
 //  extension reads one small JSON file and points at images the app already drew, so it starts fast, needs no
 //  network and never opens the library. Without a snapshot (the app was never opened, or it has no playlist) it
-//  returns nothing and tvOS shows the static Top Shelf image of the app's asset catalog.
+//  returns nothing and tvOS shows the static Top Shelf image of the app's asset catalog. Only the row titles are the
+//  extension's own strings (`Localizable.xcstrings` of this folder): they follow the language of the Apple TV, also
+//  when the app has not run since it was changed.
 //
 
 import Foundation
@@ -42,10 +44,23 @@ enum TopShelfContentBuilder {
                 return nil
             }
             let collection = TVTopShelfItemCollection(items: items)
-            collection.title = section.title
+            collection.title = title(of: section)
             return collection
         }
         return sections.isEmpty ? nil : TVTopShelfSectionedContent(sections: sections)
+    }
+
+    /// The row's title in the language the Apple TV uses now (the extension's own strings): the snapshot's title is
+    /// in the language the app last ran in, and the app may not have run since the language was changed.
+    private static func title(of section: TopShelfSnapshot.Section) -> String {
+        switch section.kind {
+        case .continueWatching:
+            String(localized: "Continue Watching", comment: "Top Shelf of the Apple TV Home Screen: the row of the movies, episodes and channels watched recently.")
+        case .favorites:
+            String(localized: "Favorites", comment: "Top Shelf of the Apple TV Home Screen: the row of the favorite channels, movies and series.")
+        case .onNow:
+            String(localized: "On Now", comment: "Top Shelf of the Apple TV Home Screen: the row of what the favorite channels show now.")
+        }
     }
 
     private static func item(_ entry: TopShelfSnapshot.Item, imagesDirectory: URL, now: Date, fileManager: FileManager) -> TVTopShelfSectionedItem? {

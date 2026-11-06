@@ -144,7 +144,7 @@ private struct TVCategoryStrip: View {
                     TVCategoryTile(group: GroupItem(group))
                 }
                 if count > groups.count {
-                    TVSeeAllCard(route: .categories(importIDs: scope.importIDs, kind: kind), count: nil, size: TVCategoryTile.size, focusName: "see-all-categories")
+                    TVSeeAllCard(route: .categories(importIDs: scope.importIDs, kind: kind), size: TVCategoryTile.size, focusName: "see-all-categories")
                 }
             }
         }
@@ -162,7 +162,7 @@ struct TVCategoryTile: View {
             size: Self.size,
             action: .open(group.route),
             focusName: group.displayName,
-            accessibilityLabel: Text(TextParts.spoken([group.displayName, String(localized: "\(group.itemCount) channels")])),
+            accessibilityLabel: Text(TextParts.spoken([group.displayName, CategoryCard.countText(group)])),
             accessibilityHint: Text(TVText.opensCategoryHint)
         ) {
             ZStack(alignment: .bottomLeading) {
@@ -285,7 +285,7 @@ struct TVCategoryScreen: View {
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 24) {
                 HStack(alignment: .bottom) {
-                    TVPageTitle(title: title, subtitle: group.map { String(localized: "\($0.itemCount) channels") })
+                    TVPageTitle(title: title, subtitle: group.map(CategoryCard.countText))
                     Spacer()
                     Picker(selection: $orderRawValue) {
                         ForEach(ChannelSortOrder.allCases.filter { $0 != .mostWatched }) { order in

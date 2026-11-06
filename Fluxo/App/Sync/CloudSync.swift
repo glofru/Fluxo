@@ -245,7 +245,7 @@ final class CloudSync {
                 try await transport.sendChanges()
                 try await transport.fetchChanges()
             } catch {
-                lastError = error.localizedDescription
+                report(error)
             }
             hasFetched = true
             isSyncing = false
@@ -633,6 +633,15 @@ extension CloudSync: CloudSyncTransportEvents {
     }
 
     func transportDidFail(_ error: Error) {
-        lastError = error.localizedDescription
+        report(error)
+    }
+
+    /// Shows `error` in the status row, in the user's language (CloudKit's own descriptions are often English
+    /// developer text), and logs what CloudKit said.
+    private func report(_ error: Error) {
+        // The domain, code and description only: the full error can carry the records (playlist addresses).
+        let nsError = error as NSError
+        Self.logger.error("Sync failed: \(nsError.domain, privacy: .public) \(nsError.code, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        lastError = CloudSyncErrorText.message(for: error)
     }
 }

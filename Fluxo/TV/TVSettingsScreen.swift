@@ -174,7 +174,7 @@ struct TVSettingsScreen: View {
                     Label(TVSiriScreen.title, systemImage: "mic.fill")
                 }
             } header: {
-                Text("Siri")
+                Text("Siri", comment: "Apple TV Settings: header of the Siri section. Use the name Apple uses for Siri in your language.")
             } footer: {
                 Text(String(localized: "TV.settings.siri.footer", defaultValue: "What to say to Siri for Fluxo, and how to search by voice with the Siri Remote.", comment: "Apple TV Settings, footer of the Siri section."))
             }
@@ -253,7 +253,7 @@ struct TVSettingsScreen: View {
             Button {
                 epg.refreshAll()
             } label: {
-                Label(epg.isRefreshing ? String(localized: "Refreshing…") : String(localized: "Refresh Guide Now"), systemImage: "arrow.clockwise")
+                Label(epg.isRefreshing ? String(localized: "Refreshing…", comment: "Apple TV Settings, TV guide sources: the Refresh Guide Now button while the guides are being refreshed.") : String(localized: "Refresh Guide Now"), systemImage: "arrow.clockwise")
             }
             .disabled(epg.visibleSources(sources).isEmpty || epg.isRefreshing)
             Picker(selection: $leadMinutes) {

@@ -134,6 +134,21 @@ struct TVSeriesScreen: View {
         .accessibilityHidden(true)
     }
 
+    /// "Mark Season 2 as Watched", or "Mark Specials as Unwatched" for season 0: a key each, so that every language
+    /// can make the words agree with the season (a season's name in the middle of a sentence cannot).
+    private static func markSeasonTitle(_ season: Int, watched: Bool) -> String {
+        switch (season == 0, watched) {
+        case (true, true):
+            String(localized: "TV.series.markSpecialsWatched", defaultValue: "Mark Specials as Watched", comment: "Apple TV, series page: marks every special of a series (its season 0, the Specials) as watched.")
+        case (true, false):
+            String(localized: "TV.series.markSpecialsUnwatched", defaultValue: "Mark Specials as Unwatched", comment: "Apple TV, series page: marks every special of a series (its season 0, the Specials) as not watched.")
+        case (false, true):
+            String(localized: "TV.series.markSeasonNumberWatched", defaultValue: "Mark Season \(EpisodeFormat.number(season)) as Watched", comment: "Apple TV, series page: marks every episode of a season as watched; the placeholder is the season number, as in 'Season 2'.")
+        case (false, false):
+            String(localized: "TV.series.markSeasonNumberUnwatched", defaultValue: "Mark Season \(EpisodeFormat.number(season)) as Unwatched", comment: "Apple TV, series page: marks every episode of a season as not watched; the placeholder is the season number, as in 'Season 2'.")
+        }
+    }
+
     private func header(series: SeriesItem, nextUp: SeriesNextUp?, season: Int?, state: SeriesWatchState?) -> some View {
         let isFavorite = library.series.isFavorite(series)
         let seasonEpisodes = season.flatMap { episodes?.episodes(inSeason: $0) } ?? []
@@ -195,7 +210,7 @@ struct TVSeriesScreen: View {
                             Button {
                                 library.series.setWatched(!isSeasonWatched, for: seasonEpisodes)
                             } label: {
-                                Label(isSeasonWatched ? String(localized: "TV.series.markSeasonUnwatched", defaultValue: "Mark \(EpisodeFormat.seasonTitle(season)) as Unwatched", comment: "Apple TV, series page: marks every episode of a season as not watched; the placeholder is the season, such as 'Season 2'.") : String(localized: "TV.series.markSeasonWatched", defaultValue: "Mark \(EpisodeFormat.seasonTitle(season)) as Watched", comment: "Apple TV, series page: marks every episode of a season as watched; the placeholder is the season, such as 'Season 2'."), systemImage: isSeasonWatched ? "eye.slash" : "checkmark.circle")
+                                Label(Self.markSeasonTitle(season, watched: !isSeasonWatched), systemImage: isSeasonWatched ? "eye.slash" : "checkmark.circle")
                                     .font(.headline)
                                     .labelStyle(.iconOnly)
                             }

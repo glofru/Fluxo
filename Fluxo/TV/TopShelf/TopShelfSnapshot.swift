@@ -36,7 +36,8 @@ struct TopShelfSnapshot: Codable, Sendable, Equatable {
         }
 
         var kind: Kind
-        /// Localized by the app, in the language it ran in (the extension has no strings of its own).
+        /// Localized by the app, in the language it ran in. The extension shows its own title for the kind instead
+        /// (in the language of the Apple TV now, which can have changed since); this one stays in the format.
         var title: String
         var items: [Item]
     }

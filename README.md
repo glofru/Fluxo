@@ -1049,6 +1049,8 @@ Play/Pause plays it (a series where the viewer left off). Without a playlist tvO
   dependency and the Embed Foundation Extensions phase are filtered to tvOS, so the iPhone, iPad and Mac builds never
   build it) reads one small JSON file and points at finished images. It never opens the SwiftData store (a second
   process on the SQLite file, possibly in the middle of a migration or an import) and never goes on the network.
+  Its only strings are the three row titles (`FluxoTopShelf/Localizable.xcstrings`, the translations of the app's
+  catalog): they follow the language of the Apple TV, also when the app has not run since it was changed.
 - **The snapshot** (`TopShelfSnapshot`, compiled into both targets) is written by the app (`TopShelfPublisher`) to
   `Library/Caches/TopShelf` of the App Group `group.dev.watermelon.Fluxo` (`Fluxo-tvOS.entitlements`,
   `FluxoTopShelf.entitlements`; `Fluxo-tvOS.entitlements` also keeps the iCloud keys of `Fluxo.entitlements`, and the
@@ -1062,7 +1064,9 @@ Play/Pause plays it (a series where the viewer left off). Without a playlist tvO
 - **Images** are drawn by the app (`TopShelfArtwork`) with the look of its cards: a channel's logo on a graphite tile
   (on a light tile when the logo is dark lettering on a transparent background, which would vanish on graphite), a
   poster in front of a blurred copy of itself and clear of the progress bar tvOS draws, the initials of the name on
-  its color without artwork, and the LIVE badge in On Now. They are cached by a digest of what they show and the
+  its color without artwork, and the LIVE badge in On Now. They are drawn in the direction of the app's language
+  (`ImageRenderer` lays out left to right unless told: in Arabic the badge is in the top right corner, as on the
+  On Now cards, and its letters are not spaced apart). They are cached by a digest of what they show and the
   language (a logo that changes makes a new file) and the ones the snapshot no longer uses are deleted. Only drawn
   artwork is cached under its digest: while a logo or poster cannot be loaded (its host is down, or the publish was
   cancelled) the initials tile is written under the digest of the art without artwork, and the next publish tries
@@ -1686,7 +1690,8 @@ with the test streams. Manual checks before a release, on a device:
 
 English is the development language. The project lists Spanish, French, German, Italian, Portuguese
 (Brazil), Dutch, Polish, Russian, Turkish, Arabic, Hindi, Indonesian, Japanese, Korean and Chinese
-(Simplified, Traditional) in its known regions. All text is in three String Catalogs in `Fluxo/`:
+(Simplified, Traditional) in its known regions. The app's text is in three String Catalogs in `Fluxo/`, and the
+Top Shelf extension has its own (`FluxoTopShelf/Localizable.xcstrings`: the titles of its rows):
 
 - `Localizable.xcstrings`: the interface on iOS and macOS, menu commands, VoiceOver text, errors, the
   notifications of reminders, and the App Intents strings (action names and descriptions, parameters,
@@ -1720,6 +1725,9 @@ Rules the code follows:
   its languages, a recording without a channel
   name keeps no title ("Recording from <date>" when shown), and the recordings folder is always
   `Recordings`. Pending reminder notifications are rewritten when the language or the time format changes.
+- The iCloud status row never shows CloudKit's descriptions, which are often English developer text
+  ("Server Rejected Request"): `CloudSyncErrorText` says what happened (offline, iCloud busy, storage full, signed
+  out, or "Couldn't sync"), and the raw error goes to the log.
 - The messages of the C remux engine are English; `EngineMessage.localized` (`StreamRemuxer.swift`)
   translates the part that says what failed and keeps FFmpeg's technical reason.
 - The suggestions of Apple Intelligence are written in the language of the interface

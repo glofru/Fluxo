@@ -696,7 +696,7 @@ struct TVGroupShelf: View {
                     }
                 }
                 if group.itemCount > channels.count {
-                    TVSeeAllCard(route: group.route, count: group.itemCount, size: group.kind == .live ? TVLayout.landscapeCard : TVLayout.posterCard, focusName: "see-all-\(group.name)")
+                    TVSeeAllCard(route: group.route, group: group, size: group.kind == .live ? TVLayout.landscapeCard : TVLayout.posterCard, focusName: "see-all-\(group.name)")
                 }
             }
         }

@@ -26,7 +26,8 @@ struct TopShelfArt: Hashable, Sendable {
     /// change of language (the LIVE badge, the initials).
     var fileStem: String {
         var hasher = StableHasher()
-        hasher.combine("v4")
+        // v5: drawn in the direction of the language (the LIVE badge in the top right corner in Arabic).
+        hasher.combine("v5")
         hasher.combine(logo ?? "")
         hasher.combine(name)
         hasher.combine(String(kind.rawValue))
@@ -199,6 +200,20 @@ struct TopShelfArtworkView: View {
     /// A dark logo on a transparent background: drawn on a light tile.
     var isDarkLogo = false
 
+    /// The language the app runs in, which the images are drawn in. `ImageRenderer` lays out left to right unless
+    /// told otherwise: the badge goes to the leading corner of the language, as on the app's On Now cards.
+    private static let language = Locale.Language(identifier: Bundle.main.preferredLocalizations.first ?? "en")
+
+    private static var layoutDirection: LayoutDirection {
+        language.characterDirection == .rightToLeft ? .rightToLeft : .leftToRight
+    }
+
+    /// Letter spacing only for scripts of separate letters: it pulls apart the joined letters of Arabic and the
+    /// headline of Devanagari, and adds nothing to Chinese, Japanese or Korean.
+    private static var badgeTracking: CGFloat {
+        language.script.map { [.latin, .cyrillic].contains($0) } == true ? 0.6 : 0
+    }
+
     /// Where a logo fits: the share of the card the app's landscape cards give it.
     static func logoBox(in size: CGSize) -> CGSize {
         CGSize(width: size.width * 0.62, height: size.height * 0.56)
@@ -221,7 +236,7 @@ struct TopShelfArtworkView: View {
             if art.isLive {
                 Text("LIVE")
                     .font(.system(size: size.height * 0.075, weight: .heavy))
-                    .tracking(0.6)
+                    .tracking(Self.badgeTracking)
                     .lineLimit(1)
                     .fixedSize()
                     .foregroundStyle(.white)
@@ -233,6 +248,7 @@ struct TopShelfArtworkView: View {
         }
         .clipped()
         .environment(\.colorScheme, .dark)
+        .environment(\.layoutDirection, Self.layoutDirection)
     }
 
     private func logo(_ image: CGImage) -> some View {

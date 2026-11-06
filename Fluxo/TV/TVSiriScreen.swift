@@ -87,7 +87,7 @@ struct TVSiriScreen: View {
                     debugName: "siri-favorite"
                 )
                 TVSiriLine(
-                    Text(String(localized: "TV.siri.reminder.phrase", defaultValue: "“Remind me about a show in Fluxo”", comment: "Apple TV, Settings › Siri: a Siri phrase; translate it as the Set Reminder phrase people say to Siri in this language, keeping “Fluxo”.")),
+                    Text(String(localized: "TV.siri.reminder.phrase", defaultValue: "“Remind me about a show in Fluxo”", comment: "Apple TV, Settings › Siri: a Siri phrase; translate it as one of the Set Reminder phrases of this language in AppShortcuts.xcstrings without ${program} (such as “Set a reminder in Fluxo”), so that Siri knows it, keeping “Fluxo”.")),
                     detail: Text(String(localized: "TV.siri.reminder.detail", defaultValue: "Siri asks which one. Fluxo reminds you shortly before it starts, while it's open.", comment: "Apple TV, Settings › Siri: what the Set Reminder phrase does. On Apple TV reminders are alerts shown by the app while it is open.")),
                     systemImage: "bell.badge",
                     debugName: "siri-reminder"

@@ -190,14 +190,15 @@ private struct ReminderAlertModifier: ViewModifier {
                 },
                 presenting: reminder
             ) { _ in
-                Button(String(localized: "Watch", comment: "Button of a programme reminder on Apple TV: plays the channel of the programme that is about to start.")) {
+                Button(String(localized: "Watch", comment: "Button (verb): play the channel. Also the button of a programme reminder (a notification, or the alert on Apple TV): plays the channel of the programme that is about to start.")) {
                     reminders.openDueReminder()
                 }
                 Button(String(localized: "Not Now", comment: "Button of a programme reminder on Apple TV: closes the reminder without playing the channel."), role: .cancel) {
                     reminders.dismissDueReminder()
                 }
             } message: { reminder in
-                Text(TextParts.sentences([reminder.channelName, reminder.body]))
+                // Worded when it shows: the time left then, not the lead time it was set with.
+                Text(TextParts.sentences([reminder.channelName, reminder.body(at: .now)]))
             }
     }
 }

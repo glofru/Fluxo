@@ -783,7 +783,7 @@ private struct TVGuideRow: View {
         }
         .buttonStyle(TVGuideCellStyle(kind: .channel))
         .focused(focus, equals: .channel(channel.id))
-        .accessibilityLabel(Text(TextParts.spoken([channel.item.displayName, channel.item.number.map { String(localized: "Channel \($0)") }])))
+        .accessibilityLabel(Text(TextParts.spoken([channel.item.displayName, channel.item.number.map { String(localized: "Channel \($0.formatted(.number.grouping(.never)))", comment: "VoiceOver: the channel number of the playlist, as in 'Channel 12'.") }])))
         .accessibilityHint(Text(TVText.playsHint))
     }
 
@@ -1000,7 +1000,7 @@ struct TVProgrammeScreen: View {
                     artwork
                     if !upNext.isEmpty {
                         VStack(alignment: .leading, spacing: 14) {
-                            Text("Up Next on \(channel.displayName)")
+                            Text("Up Next on \(channel.displayName)", comment: "Apple TV, a programme of the TV guide shown full screen: header of the programmes that follow on the channel; the placeholder is the channel name.")
                                 .font(.headline)
                                 .accessibilityAddTraits(.isHeader)
                             ForEach(upNext) { next in
@@ -1016,7 +1016,7 @@ struct TVProgrammeScreen: View {
                         if isOnAir {
                             LiveBadge()
                         }
-                        Text(TextParts.line([channel.displayName, channel.number.map { String(localized: "Channel \($0)") }]))
+                        Text(TextParts.line([channel.displayName, channel.number.map { String(localized: "Channel \($0.formatted(.number.grouping(.never)))", comment: "The channel number of the playlist, as in 'Channel 12'.") }]))
                             .font(.callout.weight(.semibold))
                             .foregroundStyle(.tint)
                     }

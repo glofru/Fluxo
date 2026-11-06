@@ -28,6 +28,19 @@ struct ReminderAlert: Identifiable, Equatable, Sendable {
     var body: String {
         ReminderCenter.body(start: start, leadMinutes: ReminderCenter.leadMinutes)
     }
+
+    /// The body of an alert the app draws when it shows it (Apple TV), from the time left at `now`: the reminder
+    /// can show later than its lead time (it was set inside it, or the app was suspended when it was due), so
+    /// "Starts in 3 minutes, at 20:15.", "Starting now (20:15)." or "Started at 20:15.".
+    func body(at now: Date) -> String {
+        let secondsLeft = start.timeIntervalSince(now)
+        if secondsLeft <= -60 {
+            let time = start.formatted(date: .omitted, time: .shortened)
+            return String(localized: "Started at \(time).", comment: "Programme reminder on Apple TV, shown after the programme started (the app was not running when it was due); the placeholder is the start time, as in 20:15.")
+        }
+        let minutesLeft = max(0, Int((secondsLeft / 60).rounded(.up)))
+        return ReminderCenter.body(start: start, leadMinutes: min(minutesLeft, ReminderCenter.leadMinutes))
+    }
 }
 
 extension ReminderAlert {

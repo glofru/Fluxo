@@ -557,17 +557,23 @@ struct TVSectionTitle: View {
 /// The card at the end of a shelf that opens all of it (a category's grid, the history).
 struct TVSeeAllCard: View {
     let route: ChannelRoute
-    /// How many there are in all; nil when unknown.
-    var count: Int?
+    /// The category the shelf shows, for its count ("See All, 42 movies"); nil when the count is not shown.
+    var group: GroupItem?
     var size: CGSize = TVLayout.landscapeCard
     var focusName: String?
+
+    /// How many there are in all; nil when unknown.
+    private var count: Int? {
+        group?.itemCount
+    }
 
     var body: some View {
         TVCard(
             size: size,
             action: .open(route),
             focusName: focusName,
-            accessibilityLabel: Text(count.map { String(localized: "See All, \($0) channels") } ?? String(localized: TVText.seeAll)),
+            // The noun of the category's kind (channels, movies, series and episodes), as the category cards say it.
+            accessibilityLabel: Text(TextParts.spoken([String(localized: TVText.seeAll), group.map(CategoryCard.countText)])),
             accessibilityHint: Text(TVText.opensCategoryHint)
         ) {
             ZStack {
