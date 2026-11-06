@@ -265,6 +265,8 @@ final class EPGStore {
         guard deletingSourceIDs.insert(sourceID).inserted else {
             return
         }
+        // iCloud sync deletes a guide on the other devices only when it was deleted on purpose (`SyncDeletionJournal`).
+        SyncDeletionJournal.noteDeleted(sourceID)
         let runningRefresh = cancelRefresh(of: sourceID)
         let name = sourceName(sourceID)
         Task { [weak self, importer] in
@@ -274,6 +276,8 @@ final class EPGStore {
                 removed = try await importer.removeSource(sourceID)
             } catch {
                 Self.logger.error("Could not delete a guide source: \(error.localizedDescription, privacy: .public)")
+                // The source stays: not a deletion for sync.
+                SyncDeletionJournal.withdraw(sourceID)
                 self?.deletingSourceIDs.remove(sourceID)
                 self?.failure = Failure(kind: .deletion, sourceName: name, message: error.localizedDescription)
                 return

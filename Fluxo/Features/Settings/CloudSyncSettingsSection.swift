@@ -15,6 +15,7 @@ struct CloudSyncSettingsSection: View {
     #if os(macOS)
     @State private var showsPrivacy = false
     #endif
+    @State private var confirmsSyncKept = false
     #if DEBUG
     @FocusState private var debugFocus: String?
     #endif
@@ -32,7 +33,8 @@ struct CloudSyncSettingsSection: View {
 
     private var section: some View {
         Section {
-            Toggle(isOn: Binding(get: { sync.isEnabled }, set: { sync.setEnabled($0) })) {
+            // Off when this build cannot sync (the switch is then disabled): it never claims a sync that cannot run.
+            Toggle(isOn: Binding(get: { sync.isEnabled && sync.isConfigured }, set: { sync.setEnabled($0) })) {
                 #if os(tvOS)
                 // As the other rows of the Apple TV Settings: a plain symbol, no tile.
                 Label {
@@ -81,6 +83,62 @@ struct CloudSyncSettingsSection: View {
                     rowTitle(Text("Sync Now", comment: "Settings › iCloud: button that syncs with iCloud at once."), systemImage: "arrow.triangle.2.circlepath.icloud")
                 }
                 .disabled(sync.isSyncing || sync.availability != .available)
+
+                // Reads the whole cloud again and brings back what this device lost (never deletes anything).
+                Button {
+                    sync.restoreFromICloud()
+                } label: {
+                    LabeledContent {
+                        if sync.isRestoring {
+                            Text("Restoring…", comment: "Settings › iCloud: shown while Restore from iCloud runs.")
+                        } else if sync.restorableCount > 0 {
+                            Text("\(sync.restorableCount) to restore", comment: "Settings › iCloud: how many playlists, guides, favorites or watched items this device lost that iCloud still has; the row restores them.")
+                        } else if let message = sync.restoreMessage {
+                            Text(message)
+                        }
+                    } label: {
+                        rowTitle(Text("Restore from iCloud", comment: "Settings › iCloud: button that brings back, from iCloud, what this device lost (playlists, favorites, history)."), systemImage: "arrow.counterclockwise.icloud")
+                    }
+                }
+                .disabled(sync.isSyncing || sync.isRestoring || sync.availability != .available)
+                .accessibilityHint(Text("Brings back from iCloud the playlists, favorites and history missing on this device. Nothing is deleted.", comment: "VoiceOver hint of Settings › iCloud › Restore from iCloud."))
+                #if DEBUG
+                .focused($debugFocus, equals: "restore")
+                #endif
+
+                // Playlists and guides another device deleted while this one still had them: kept here only (they
+                // and what is added to them here do not reach the other devices) until the user syncs them again.
+                if sync.keptOnDeviceCount > 0 {
+                    Button {
+                        confirmsSyncKept = true
+                    } label: {
+                        LabeledContent {
+                            Text("\(sync.keptOnDeviceCount) kept on this device", comment: "Settings › iCloud › Deleted on Other Devices: how many playlists or TV guides another device deleted that this device kept (they are not synced); the row offers to sync them again.")
+                        } label: {
+                            rowTitle(Text("Deleted on Other Devices", comment: "Settings › iCloud: row for playlists or TV guides deleted on another device that this device kept; it offers to sync them again."), systemImage: "icloud.and.arrow.up")
+                        }
+                    }
+                    .disabled(sync.availability != .available)
+                    .accessibilityHint(Text("Syncs them again, to add them back on your other devices.", comment: "VoiceOver hint of Settings › iCloud › Deleted on Other Devices."))
+                    #if DEBUG
+                    .focused($debugFocus, equals: "kept")
+                    #endif
+                    .alert(
+                        Text("Add Back to Your Other Devices?", comment: "Title of the question of Settings › iCloud › Deleted on Other Devices: sync the playlists this device kept again?"),
+                        isPresented: $confirmsSyncKept
+                    ) {
+                        Button {
+                            sync.syncKeptAgain()
+                        } label: {
+                            Text("Sync Again", comment: "Button of the Deleted on Other Devices question: syncs the kept playlists and TV guides again, so they come back on the other devices.")
+                        }
+                        Button(role: .cancel) {} label: {
+                            Text("Not Now", comment: "Button of the Deleted on Other Devices question: they stay on this device only.")
+                        }
+                    } message: {
+                        Text("\(sync.keptOnDeviceCount) playlists or TV guides were deleted on another device, but this device kept them. Sync them again to add them back on your other devices, with their favorites and watch history.", comment: "Message of the Deleted on Other Devices question; the placeholder is how many playlists or TV guides (one: 1 playlist or TV guide was deleted on another device, but this device kept it).")
+                    }
+                }
             }
 
             privacyRow
@@ -103,7 +161,12 @@ struct CloudSyncSettingsSection: View {
         #endif
         #if DEBUG
         .onReceive(NotificationCenter.default.publisher(for: .fluxoDebugCloudFocus)) { notification in
-            debugFocus = notification.object as? String
+            // `kept-ask`: the question of Deleted on Other Devices, as selecting the row asks it.
+            if notification.object as? String == "kept-ask" {
+                confirmsSyncKept = true
+            } else {
+                debugFocus = notification.object as? String
+            }
         }
         #endif
     }

@@ -11,9 +11,121 @@
 import SwiftUI
 
 extension View {
-    /// Presents the iCloud playlist sheet when `CloudSync` offers it. Apply once, at the root of the window.
+    /// Presents the iCloud playlist sheet when `CloudSync` offers it, and the questions sync asks once (turn sync
+    /// on, restore a lost library, confirm a mass removal; `CloudSync.Prompt`). Apply once, at the root of the window.
     func cloudPlaylistImport() -> some View {
         modifier(CloudPlaylistImportPresenter())
+            .modifier(CloudSyncPromptPresenter())
+    }
+}
+
+/// The questions of `CloudSync.Prompt`, as system alerts: on Apple TV they take the screen with large focusable
+/// buttons, the first one focused, and Menu picks the cancel button (Not Now); VoiceOver reads the title and message.
+private struct CloudSyncPromptPresenter: ViewModifier {
+    @Environment(CloudSync.self) private var sync: CloudSync?
+
+    func body(content: Content) -> some View {
+        if let sync {
+            content
+                .alert(
+                    title(sync.prompt),
+                    // Every button answers; nothing else closes the alert (the buttons clear `prompt`).
+                    isPresented: Binding(get: { sync.prompt != nil }, set: { _ in }),
+                    presenting: sync.prompt
+                ) { prompt in
+                    actions(prompt, sync: sync)
+                } message: { prompt in
+                    message(prompt)
+                }
+                // A question that waited for the player, the Add Playlist sheet or the iCloud playlists sheet is
+                // asked as soon as they close. (`mayPresentImportOffer` reads the player and the playlist actions,
+                // which are observable: this view is updated when they change.)
+                .onChange(of: sync.mayPresentImportOffer() && !sync.isImportSheetPresented) { _, mayAsk in
+                    if mayAsk {
+                        sync.updatePrompt()
+                    }
+                }
+        } else {
+            content
+        }
+    }
+
+    private func title(_ prompt: CloudSync.Prompt?) -> Text {
+        switch prompt {
+        case .turnOn, nil:
+            Text("Sync Your Library with iCloud?", comment: "Title of the question asked once to a user who updates the app with playlists on the device: turn on iCloud sync?")
+        case .restoreLibrary(let playlists) where playlists == 0:
+            Text("Restore Your TV Guides from iCloud?", comment: "Title of the question asked when TV guides this device had are missing (its library was reset) but iCloud still has them.")
+        case .restoreLibrary:
+            Text("Restore Your Playlists from iCloud?", comment: "Title of the question asked when playlists this device had are missing (its library was reset) but iCloud still has them.")
+        case .confirmRemovals(_, let history) where history == 0:
+            Text("Remove Favorites from All Your Devices?", comment: "Title of the question asked when many favorites vanished from this device at once: remove them from the user's other devices too?")
+        case .confirmRemovals(let favorites, _) where favorites == 0:
+            Text("Remove Watch History from All Your Devices?", comment: "Title of the question asked when much of the watch history vanished from this device at once: remove it from the user's other devices too?")
+        case .confirmRemovals:
+            Text("Remove from All Your Devices?", comment: "Title of the question asked when many favorites and watched items vanished from this device at once: remove them from the user's other devices too?")
+        }
+    }
+
+    @ViewBuilder
+    private func actions(_ prompt: CloudSync.Prompt, sync: CloudSync) -> some View {
+        switch prompt {
+        case .turnOn:
+            Button {
+                sync.answerSyncChoice(turnOn: true)
+            } label: {
+                Text("Turn On iCloud Sync", comment: "Button of the turn-on-sync question: turns iCloud sync on for this device.")
+            }
+            Button(role: .cancel) {
+                sync.answerSyncChoice(turnOn: false)
+            } label: {
+                Text("Not Now", comment: "Button of the turn-on-sync question: keeps sync off (Settings › iCloud can turn it on later).")
+            }
+        case .restoreLibrary:
+            Button {
+                sync.restoreLostLibrary()
+            } label: {
+                Text("Restore", comment: "Button of the restore question: adds back, from iCloud, the playlists and guides this device lost.")
+            }
+            Button(role: .cancel) {
+                sync.postponeRestore()
+            } label: {
+                Text("Not Now", comment: "Button of the restore question: nothing is restored now (Settings › iCloud can restore later); nothing is deleted.")
+            }
+        case .confirmRemovals:
+            Button {
+                sync.resolveHeldRemovals(remove: false)
+            } label: {
+                Text("Restore Them", comment: "Button of the mass-removal question: brings the missing favorites and watched items back from iCloud.")
+            }
+            Button(role: .destructive) {
+                sync.resolveHeldRemovals(remove: true)
+            } label: {
+                Text("Remove Everywhere", comment: "Button of the mass-removal question: removes the missing favorites and watched items from the user's other devices too.")
+            }
+            Button(role: .cancel) {
+                sync.postponeHeldRemovals()
+            } label: {
+                Text("Not Now", comment: "Button of the mass-removal question: decides later; nothing is removed from the other devices meanwhile.")
+            }
+        }
+    }
+
+    private func message(_ prompt: CloudSync.Prompt) -> Text {
+        switch prompt {
+        case .turnOn:
+            Text("Keep your playlists, TV guides, favorites and watch progress the same on all your devices. Playlist addresses are encrypted before they leave this device. You can change this in Settings.", comment: "Message of the question asked once to a user who updates the app with playlists on the device: what iCloud sync does and how addresses are protected.")
+        case .restoreLibrary(let playlists) where playlists == 0:
+            Text("TV guides that were on this device are missing, but they're still in iCloud and on your other devices. Nothing was deleted from them.", comment: "Message of the restore question when only TV guides are missing.")
+        case .restoreLibrary(let playlists):
+            Text("\(playlists) playlists that were on this device are missing, but they're still in iCloud and on your other devices. Restore them with their favorites, watch history and TV guides?", comment: "Message of the restore question; the placeholder is how many playlists are missing (one: 1 playlist that was on this device is missing).")
+        case .confirmRemovals(let favorites, let history) where history == 0:
+            Text("\(favorites) favorites are missing on this device at once. If you removed them, remove them from your other devices too. If not, restore them from iCloud.", comment: "Message of the mass-removal question when only favorites vanished; the placeholder is how many (always 3 or more).")
+        case .confirmRemovals(let favorites, let history) where favorites == 0:
+            Text("\(history) watched items are missing from the history on this device at once. If you cleared them, clear them on your other devices too. If not, restore them from iCloud.", comment: "Message of the mass-removal question when only watch history vanished; the placeholder is how many watched items (always 3 or more).")
+        case .confirmRemovals(let favorites, let history):
+            Text("\(favorites + history) favorites and watched items are missing on this device at once. If you removed them, remove them from your other devices too. If not, restore them from iCloud.", comment: "Message of the mass-removal question; the placeholder is how many favorites and watched items vanished (always 3 or more).")
+        }
     }
 }
 

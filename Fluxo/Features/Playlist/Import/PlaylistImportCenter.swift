@@ -141,6 +141,9 @@ final class PlaylistImportCenter {
     func delete(_ playlist: Playlist) {
         let uuid = playlist.uuid
         let name = playlist.name
+        // Before the row goes: iCloud sync deletes a playlist on the other devices only when it was deleted on
+        // purpose, never when it is merely missing (an emptied store).
+        SyncDeletionJournal.noteDeleted(uuid)
         let pending = running[uuid]?.task
         pending?.cancel()
         Task { [weak self, importer] in
@@ -149,6 +152,8 @@ final class PlaylistImportCenter {
                 try await importer.deletePlaylist(uuid: uuid)
                 self?.onPlaylistDeleted?(uuid)
             } catch {
+                // The playlist stays: not a deletion for sync.
+                SyncDeletionJournal.withdraw(uuid)
                 self?.failure = Failure(playlistName: name, message: error.localizedDescription)
             }
         }

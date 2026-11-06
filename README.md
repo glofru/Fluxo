@@ -251,6 +251,65 @@ user's other devices as soon as it finds them ("Your Playlists from iCloud").
   Home says "Looking for your playlists in iCloud…" meanwhile. Typing an address remains possible: on Apple TV the URL field uses the URL keyboard, so the Continuity
   Keyboard on a nearby iPhone or iPad gets it too, and Add Playlist explains both ways. No local web server or QR-code
   form is used: nothing listens on the network for this.
+- **Data safety** (`CloudSyncReconciler`): sync never lets an empty, recreated or stale library empty the other
+  devices.
+  - **Baseline first**: a device publishes and applies nothing before it has read the whole cloud once
+    (`SyncLedger.hasBaseline`): a new device, a ledger that was lost or could not be read, another account. The first
+    fetch reads the zone from the start (`CloudSyncTransport.forgetFetchPosition`, an engine without a saved state),
+    as the engine state may have outlived the ledger; only a fetch that `CKSyncEngine.fetchChanges()` reports as
+    finished without an error, and whose zone read did not fail, counts. Then the baseline pass matches the library
+    with iCloud (same address = same playlist; `SyncLedger.hasMatchedBaseline`), item by item:
+    - favorites and watch progress both sides have are decided by their own date (when it was favorited, last
+      watched), whichever device turned sync on first: a movie watched yesterday on the iPad keeps its position over
+      the same movie watched a week ago on the iPhone;
+    - playlists, guides and settings both sides have take iCloud's value, so a stale copy cannot override a rename
+      made elsewhere. The trade-off: a rename made on this device while it was offline and that never reached
+      iCloud is lost when its ledger is lost too (the playlist takes iCloud's name);
+    - a playlist or guide deleted on another device that this device still has stays here, as a row of this device
+      only (`SyncLedger.keptDespiteDeletion`): it is not deleted here (this device may never have synced it) and not
+      brought back on the others. Editing or deleting it here ends that (an edit publishes it again, as the newer
+      action). One added here after the deletion (`createdOn` later than the deletion) is the newer action and
+      syncs. Settings › iCloud shows such items ("Deleted on Other Devices", "N kept on this device"): Sync Again
+      (`CloudSync.syncKeptAgain`) publishes them again, as the newer action, with the favorites and history added
+      to them here meanwhile;
+    - what only this device has is published.
+  - **Deletions by intent only**: a playlist or guide source is deleted on the other devices only when the user
+    deleted it here: `PlaylistImportCenter.delete` and `EPGStore.deleteSource` write it to `SyncDeletionJournal` (in
+    the defaults, before the row goes, so a playlist or guide deleted while sync is off or just before a quit is still
+    deleted elsewhere), and the reconciler folds the journal. A deletion that fails withdraws its entry
+    (`SyncDeletionJournal.withdraw`), so the row it left is never deleted elsewhere if the store is lost later; the
+    journal keeps the newest 200 entries (a device with sync off never folds it), and one dropped is the safe way: the
+    item is merely gone for sync. Clear History counts for a day (`clearedHistoryLifetime`): a history cleared longer
+    before sync runs (sync off, turned on later) is a held mass removal, and the user is asked. One that is merely gone (the store recreated by `ModelContainerFactory` after it
+    could not be opened, a migration that lost rows, a purge) stays in iCloud and on the other devices and waits for
+    the user (`SyncLedger.awaitingRestore`); its favorites and history are never published as removals. The same
+    playlist added again by hand takes its old record back (no duplicate), and its favorites return.
+  - **Mass removals are held**: when favorites, or the watch history, of playlists still on the device vanish in
+    large numbers in one pass (3 or more and at least half of what the device had, `SyncMassDeletionPolicy`), the
+    removals are not published (`SyncLedger.heldDeletions`) until the user answers. Clear History is the user saying
+    so (`SyncDeletionJournal.noteHistoryCleared`), and removing one or two favorites in a row syncs at once.
+  - **Only known records**: a deletion is published only for an item this device compared before (`lastSeenLocal`),
+    never for one it never had.
+  - **Questions** (`CloudSync.Prompt`, system alerts presented by `cloudPlaylistImport()`, never over the player or a
+    sheet in use, and asked as soon as it closes; the root of the window cannot present an alert over another sheet
+    or popover, e.g. Settings on iPhone, so while the key window shows one the question waits and is checked again
+    every 2 s, `CloudSync.windowIsCovered`): "Restore Your Playlists from iCloud?" when playlists are awaiting
+    a restore (Restore adds them back through the import pipeline, with the progress sheet, their favorites, history
+    and guides; Not Now is final for those playlists, which stay in Settings › iCloud › Playlists in iCloud, until
+    they are restored: lost again, they are asked about again); "Remove Favorites (Watch History)
+    from All Your Devices?" for held removals (Restore Them, the default; Remove Everywhere, destructive; Not Now asks
+    again at the next launch, and nothing is removed elsewhere meanwhile).
+  - **One engine at a time**: CloudKit forbids two `CKSyncEngine`s on the same database in production
+    (`CKSyncEngine.Configuration.database`). `CloudKitSyncTransport` runs every change of its engine on a
+    `SerialTaskQueue` (start, stop, `forgetFetchPosition`, Delete iCloud Data), in the order asked for: the running
+    engine is detached and `cancelOperations()` is awaited before the next one is created, and sends and fetches wait
+    for the queue. Events of an engine that is no longer current are ignored, except the change tags of a send that
+    completed after its cancellation (cancellation is asynchronous), which stay true for the server.
+  - **Restore from iCloud** (Settings › iCloud): folds the user's own changes, then reads the whole cloud again,
+    brings back the favorites, history and settings missing here (held removals included), and opens the iCloud
+    playlists sheet, all checked, for the playlists of iCloud this device does not have. It deletes nothing and
+    overwrites nothing that is on the device. The row says how many items wait ("3 to restore"), and "Everything in
+    iCloud is on this device" when nothing was missing.
 - **Sync off**: turning it off on a device stops sending and receiving there; the ledger stays, so when it is turned
   on again the changes made meanwhile on both sides are merged (a playlist deleted meanwhile is deleted on the other
   devices then).
@@ -259,8 +318,8 @@ user's other devices as soon as it finds them ("Your Playlists from iCloud").
   meanwhile on the other devices); the transport remembers the iCloud user record, and another Apple Account (signed in
   directly, or after a sign-out) gets this device's library as new. When the user deletes the data from iCloud's
   storage settings, sync turns off. Settings › iCloud has the switch
-  (on by default, per device), the status (synced when, Syncing…, Sign in to iCloud, not available in this build), Sync
-  Now, Playlists in iCloud, and What's Synced and Privacy, which has Delete iCloud Data (deletes the zone; every device's
+  (per device; shown off, and disabled, in a build that cannot sync), the status (synced when, Syncing…, Sign in to iCloud, not available in this build), Sync
+  Now, Playlists in iCloud, Restore from iCloud, and What's Synced and Privacy, which has Delete iCloud Data (deletes the zone; every device's
   library stays). Delete iCloud Data reports success only when CloudKit confirms the zone deletion
   (`sentDatabaseChanges.deletedZoneIDs`); otherwise it says so, leaves sync as it was and withdraws the pending
   deletion, so it cannot run later over data uploaded again. With sync off it uses an engine that only sends (it never
@@ -286,8 +345,24 @@ who guesses a provider's host and an account's user name and password could test
 A keyed hash (HMAC with a random per-account key kept in an encrypted field) would remove that; it needs a key
 agreed by every device before the first record is named, and is left for a later version (see `SyncIdentity`).
 
-Sync is on by default, also for users who update with playlists already on the device: their playlists start
-syncing to their private iCloud database at the first launch of this version. Mention it in the release notes.
+**Not done yet** (backlog): tombstones (deletion records) are never removed from iCloud, so the zone keeps one small
+record per deleted playlist, guide, favorite or watched item; removing them safely needs every device to have seen
+them (a device away longer would otherwise publish its copy as new). Record names are the unsalted SHA-256 above.
+The footer of Settings › iCloud names "iPhone, iPad, Mac and Apple TV" on every platform, and the Mac cannot sync in
+the ad hoc build: to reword in the next translation sweep, with the new sync strings (English only for now).
+
+**The default.** A new install syncs (`sync.enabled` is set on at the first launch of a build that can sync): a new
+Apple TV then offers the playlists of the user's iPhone. A user who updates with a library already on the device
+(playlists, guides they added, favorites or history) is asked once, after the iCloud account is known to be
+available and never over the player: "Sync Your Library with iCloud?" (in three short sentences, readable from the
+couch: what syncs, that addresses are encrypted first, and that Settings can change it; why addresses are sensitive
+is left to What's Synced and Privacy), Turn On iCloud Sync or Not Now. Until
+the answer nothing is uploaded; Not Now (also Menu on the Siri Remote) keeps sync off for good, and the switch in
+Settings › iCloud answers the question too. A build that cannot sync (unsigned, the ad hoc Mac build) asks nothing and
+shows the switch off. Release notes (they do not name the Mac: its ad hoc signed build cannot sync yet, see
+"Capabilities and signing"): "iCloud sync keeps your playlists, TV guides, favorites and progress the same on
+iPhone, iPad and Apple TV. If you already have playlists, Fluxo asks before syncing them; addresses are encrypted
+before they leave your device."
 
 ### Capabilities and signing
 
@@ -332,7 +407,19 @@ behind; deletion with its bookmarks and no resurrection by a returning device; r
 on with history on both devices; a relaunch that sends nothing; another account; and 200 random edits on three devices
 that must converge; a save refused for good (iCloud storage full) that arrives once there is space; a change queued
 just before the app was quit, sent at the next launch; a refused change that another device overrode, not sent again;
-and idle passes that do not write the ledger. In the app, `-FluxoDebugCloud memory|<folder>` replaces CloudKit with the simulated cloud (a folder
+and idle passes that do not write the ledger. Data safety: a recreated (empty) store that deletes nothing anywhere and
+is restored on request; a store recreated with an unsent rename (the rename is still sent); a lost ledger whose stale
+copy overrides and deletes nothing; turning sync on with history on both devices, in both orders (the older device
+first too); a playlist deleted elsewhere while the device's ledger was lost (kept here, not brought back there); a
+device that never synced and sends nothing; favorites and history vanishing in
+large numbers (held, then restored or removed once confirmed), while a few removals, Clear History and playlists
+deleted one by one sync at once; a rename against a deletion on two offline devices (the later wins, nothing else is
+lost); the same playlist added again by hand after the store was lost (no duplicate, its favorites return); a guide
+gone without a deletion; Restore from iCloud; a playlist kept despite its deletion elsewhere, listed and synced again
+with its favorites; a deletion that failed (withdrawn from the journal, so a later lost store deletes nothing); the
+journal's capacity (an entry dropped deletes nothing); Clear History made days before sync runs (held); and the
+engine life of `CloudKitSyncTransport` on its `SerialTaskQueue` (start, stop and Restore in quick succession never run
+two engines). Each guard is checked: with it disabled, these scenarios fail. In the app, `-FluxoDebugCloud memory|<folder>` replaces CloudKit with the simulated cloud (a folder
 that two simulator clones share lets them sync with each other), see "iCloud sync" in `Tools/Simulator/README.md`.
 
 ## Offline downloads

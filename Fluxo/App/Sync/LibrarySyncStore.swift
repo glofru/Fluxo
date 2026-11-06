@@ -50,6 +50,10 @@ final class LibrarySyncStore: CloudSyncLocalStore {
     /// A playlist of another device was added here and its import started.
     var playlistImportStarted: (_ recordName: String, _ playlistID: UUID, _ task: Task<PlaylistImportSummary, Error>) -> Void = { _, _, _ in }
 
+    /// Synced playlists and guide sources that still exist but can no longer sync (an address that is not
+    /// `http(s)` any more): found by the last snapshot, reported as deleted (`deletionIntents()`).
+    private var unsyncableLinkedIDs: Set<UUID> = []
+
     private let context: ModelContext
     private let importCenter: PlaylistImportCenter
     private let library: ChannelLibrary
@@ -79,8 +83,18 @@ final class LibrarySyncStore: CloudSyncLocalStore {
 
     func snapshot(identity: inout SyncIdentityResolver) throws -> [SyncRecordID: SyncPayload] {
         var result: [SyncRecordID: SyncPayload] = [:]
+        let allPlaylists = try context.fetch(FetchDescriptor<Playlist>(sortBy: [SortDescriptor(\.createdOn)]))
+        let allSources = try context.fetch(FetchDescriptor<EPGSource>(sortBy: [SortDescriptor(\.addedOn)]))
+        identity.setPresent(playlists: Set(allPlaylists.map(\.uuid)), guideSources: Set(allSources.map(\.uuid)))
+        var unsyncable: Set<UUID> = []
 
-        for playlist in try context.fetch(FetchDescriptor<Playlist>(sortBy: [SortDescriptor(\.createdOn)])) where Self.isSyncable(playlist.url) {
+        for playlist in allPlaylists {
+            guard Self.isSyncable(playlist.url) else {
+                if identity.linkedPlaylistName(localID: playlist.uuid) != nil {
+                    unsyncable.insert(playlist.uuid)
+                }
+                continue
+            }
             // A playlist added here is published once its first import worked (a failed one is deleted again).
             guard identity.linkedPlaylistName(localID: playlist.uuid) != nil || playlist.currentImportID != nil else {
                 continue
@@ -89,8 +103,11 @@ final class LibrarySyncStore: CloudSyncLocalStore {
             result[SyncRecordID(.playlist, name)] = .playlist(PlaylistPayload(name: playlist.name, url: playlist.url, createdOn: playlist.createdOn.syncRounded))
         }
 
-        for source in try context.fetch(FetchDescriptor<EPGSource>(sortBy: [SortDescriptor(\.addedOn)])) {
+        for source in allSources {
             guard source.isUserAdded, !epg.deletingSourceIDs.contains(source.uuid), Self.isSyncable(source.url) else {
+                if identity.links.guideSourceName(forLocalID: source.uuid) != nil, !epg.deletingSourceIDs.contains(source.uuid) {
+                    unsyncable.insert(source.uuid)
+                }
                 continue
             }
             let name = identity.guideSourceName(localID: source.uuid, url: source.url)
@@ -153,7 +170,20 @@ final class LibrarySyncStore: CloudSyncLocalStore {
                 result[SyncRecordID(.preference, preference.key)] = .preference(value)
             }
         }
+        unsyncableLinkedIDs = unsyncable
         return result
+    }
+
+    // MARK: - Deletion intents
+
+    func deletionIntents() -> SyncDeletionIntents {
+        var intents = SyncDeletionJournal.intents(in: defaults)
+        intents.localIDs.formUnion(unsyncableLinkedIDs)
+        return intents
+    }
+
+    func forgetDeletionIntents(_ intents: SyncDeletionIntents) {
+        SyncDeletionJournal.forget(intents, in: defaults)
     }
 
     private func preferenceValue(_ preference: SyncedPreference) -> PreferenceValue? {

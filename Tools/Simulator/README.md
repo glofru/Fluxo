@@ -135,9 +135,19 @@ first that contains the text.
 | `cloud-reject-saves:<on\|off>` | The simulated cloud refuses every save as CloudKit does when iCloud storage is full (not retried; Settings › iCloud shows the error); `off` accepts them again, and the next `cloud-sync` sends what was refused. |
 | `cloud-add:<all\|name,…>` | Adds playlists from iCloud as Add in the sheet does (the others are left out). |
 | `cloud-wait-imports` | Waits (60 s at most) until the playlists added from iCloud are imported. |
-| `cloud-focus:<name\|add\|not-now\|done\|sync-toggle\|privacy\|welcome-add\|welcome-icloud>` | Apple TV: focuses a row or button of the sheet, of Settings › iCloud or of the welcome screen (Add Playlist, Add Playlists from iCloud), for screenshots of the focused state. |
+| `cloud-focus:<name\|add\|not-now\|done\|sync-toggle\|restore\|kept\|kept-ask\|privacy\|welcome-add\|welcome-icloud>` | Apple TV: focuses a row or button of the sheet, of Settings › iCloud or of the welcome screen (Add Playlist, Add Playlists from iCloud), for screenshots of the focused state; `kept-ask` asks the Deleted on Other Devices question. |
 | `cloud-privacy` | Shows What's Synced and Privacy as a sheet (full screen on Apple TV). |
-| `cloud-log` | Writes the sync state (records with hosts only, links, imports) to `Status/cloud.log`. |
+| `cloud-log` | Writes the sync state (records with hosts only, links, imports, baseline, awaiting restore, held removals) to `Status/cloud.log`. |
+| `cloud-favorite:<channel,…>` | Adds channels to the favorites by name (for the mass-removal checks). |
+| `cloud-ask` | Asks "Sync Your Library with iCloud?", the question a device updated with a library asks once. |
+| `cloud-lose-library` | Empties the library as a store recreated after it could not be opened does (nothing is journaled as deleted) and syncs: "Restore Your Playlists from iCloud?" must show, and the cloud must keep everything (`cloud-expect-no-deletions`). |
+| `cloud-lose-favorites` | Every favorite vanishes at once, playlists stay: the removals are held and "Remove Favorites from All Your Devices?" shows. |
+| `cloud-answer:<primary\|remove\|cancel>` | Answers the sync question on screen: its first button (Turn On, Restore, Restore Them), Remove Everywhere, or Not Now. |
+| `cloud-restore` | Settings › iCloud › Restore from iCloud. |
+| `cloud-expect-no-deletions` | Fails the step if the simulated cloud holds a deletion record. |
+| `cloud-deleted-elsewhere:<playlist>` | Another device deletes the playlist while this one is away and loses its ledger: this device keeps it, and Settings › iCloud shows "Deleted on Other Devices" (needs `-FluxoDebugCloud`). |
+| `cloud-sync-kept` | Sync Again in that row's question: the kept playlists come back on the other devices. |
+| `cloud-expect-live:<playlist>` | Fails the step unless the simulated cloud has the playlist as a live record (after `cloud-sync-kept`). |
 | `tab:<home\|guide\|library\|settings\|search\|playlist name>` | A tab (iOS, tvOS; playlists are iPad sidebar entries). Apple TV also has `movies`, `series` and `live` (the Live TV tab, the same as `guide`). |
 | `focus:<name>` | Apple TV: moves the focus on the page shown, for screenshots of the focused state: the card of a channel, movie, series or programme (its exact name), `hero` (the hero's Play), `play`, `favorite`, `season:<n>`, `episode:<S1 E2>` (series page), `guide-now`, `guide-later`, `guide-channel`, `programme:<channel>` (TV guide), `programme-watch`, `programme-record` (a programme's sheet), `see-all-<group>`, `open-guide`, `siri-play`, `siri-continue`, `siri-whats-on`, `siri-search`, `siri-open`, `siri-record`, `siri-favorite`, `siri-reminder`, `siri-voice-search` (Settings › Siri and Voice Search). Cards inside lazy shelves must be on screen: bring them in with `home-section:` first. |
 | `guide` | The TV Guide (the Guide tab on iOS, the sidebar item on macOS). |
@@ -391,6 +401,22 @@ Tools/Simulator/run.sh --device "Apple TV 4K (4th generation)" --clone fluxo-myk
 # The first-run sheet alone, with three playlists of "another device" (in memory).
 Tools/Simulator/run.sh --clone fluxo-mykey-tv-1 --seed none --step-shots --route "wait:4;cloud-focus:Sports Pack;cloud-not-now;settings;cloud-focus:sync-toggle" \
     -- -FluxoDebugCloud memory -FluxoDebugCloudSeed "Living Room=http://127.0.0.1:18091/living-room.m3u;Sports Pack=http://127.0.0.1:18091/sports.m3u"
+```
+
+Data safety: an emptied store must delete nothing in iCloud and offer a restore; vanished favorites are held until
+the user answers (serve the playlists on 127.0.0.1 as above):
+
+```sh
+Tools/Simulator/run.sh --device "Apple TV 4K (4th generation)" --clone fluxo-mykey-tv-1 --seed none --step-shots \
+    --route "wait:4;cloud-add:all;cloud-wait-imports;cloud-done;cloud-sync;wait:3;cloud-lose-library;cloud-expect-no-deletions;cloud-answer:primary;cloud-wait-imports;cloud-done;cloud-ask" \
+    -- -FluxoDebugCloud memory -FluxoDebugCloudSeed "Living Room=http://127.0.0.1:18091/living-room.m3u" -FluxoDebugAppearance dark
+Tools/Simulator/run.sh --clone fluxo-mykey-tv-1 --seed none --step-shots \
+    --route "wait:4;cloud-add:all;cloud-wait-imports;cloud-done;cloud-favorite:Rai 1,Rai 2,BBC One,CNN;cloud-sync;wait:4;cloud-lose-favorites;cloud-expect-no-deletions;cloud-answer:cancel;settings;cloud-focus:restore;cloud-restore" \
+    -- -FluxoDebugCloud memory -FluxoDebugCloudSeed "Living Room=http://127.0.0.1:18091/living-room.m3u"
+# A playlist deleted on another device while this one was away: kept here only, listed in Settings, synced again.
+Tools/Simulator/run.sh --clone fluxo-mykey-tv-1 --seed none --step-shots \
+    --route "wait:4;cloud-add:all;cloud-wait-imports;cloud-done;cloud-sync;wait:3;cloud-deleted-elsewhere:Living Room;settings;cloud-focus:kept;cloud-sync-kept;cloud-expect-live:Living Room" \
+    -- -FluxoDebugCloud memory -FluxoDebugCloudSeed "Living Room=http://127.0.0.1:18091/living-room.m3u"
 ```
 
 The offer must stay closed once it was closed without Add, whatever syncs afterwards:

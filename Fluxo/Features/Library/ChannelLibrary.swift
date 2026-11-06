@@ -322,6 +322,9 @@ final class ChannelLibrary {
     }
 
     func clearHistory() {
+        // iCloud sync then removes the whole history from the other devices too (a history that vanishes without
+        // Clear History is held for the user to confirm, `SyncMassDeletionPolicy`).
+        SyncDeletionJournal.noteHistoryCleared()
         do {
             for bookmark in try context.fetch(HomeQueries.recents(playlistIDs: nil, limit: Self.historyLimit * 2)) {
                 bookmark.lastWatchedAt = nil

@@ -12,6 +12,11 @@ import Foundation
 import Observation
 import os
 import SwiftData
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 @MainActor
 @Observable
@@ -25,6 +30,9 @@ final class CloudSync {
     static let declinedPlaylistsKey = "sync.declinedPlaylists"
     static let offerDismissedKey = "sync.importOfferDismissed"
     static let deviceIDKey = "sync.deviceID"
+    /// Record names of lost playlists and guides whose restore the user put off (the prompt does not come back for
+    /// them; Settings › iCloud still offers them).
+    static let restoreDeclinedKey = "sync.restoreDeclined"
 
     /// The Info.plist key that names the CloudKit container; empty in builds that are not signed with the iCloud
     /// entitlement (unsigned command-line builds, the ad hoc signed Mac build), which then cannot sync.
@@ -70,6 +78,9 @@ final class CloudSync {
     private(set) var lastError: String?
     /// Whether the cloud was read once since launch (the import sheet waits for it).
     private(set) var hasFetched = false
+    /// Turning sync on: the transport forgets its fetch position (when the ledger needs a baseline), then starts.
+    @ObservationIgnored
+    private var transportStartup: Task<Void, Never>?
     /// Playlists in iCloud this device does not have, oldest first.
     private(set) var cloudPlaylists: [CloudPlaylist] = []
     /// Playlists this device added from iCloud during this launch, by record name.
@@ -83,6 +94,41 @@ final class CloudSync {
     }
 
     private(set) var importSession: ImportSession?
+
+    /// A question sync asks once, as an alert over the window (`cloudPlaylistImport()` presents it).
+    enum Prompt: Equatable, Identifiable {
+        /// A device that had a library before this version: turn sync on? (New installs sync by default.)
+        case turnOn
+        /// Playlists or guides this device had are gone without being deleted (an emptied store); iCloud has them.
+        /// `playlists` is how many playlists (0: only TV guides).
+        case restoreLibrary(playlists: Int)
+        /// Favorites or history vanished in large numbers at once: remove them everywhere, or restore them? (How
+        /// many favorites, and how many watched items.)
+        case confirmRemovals(favorites: Int, history: Int)
+
+        var id: String {
+            switch self {
+            case .turnOn: "turn-on"
+            case .restoreLibrary: "restore"
+            case .confirmRemovals: "removals"
+            }
+        }
+    }
+
+    /// The question on screen, if any.
+    private(set) var prompt: Prompt?
+    /// The user has not said yet whether this device syncs: it had a library before sync existed, and sync stays off
+    /// until the user answers (`Prompt.turnOn`).
+    private(set) var needsSyncChoice = false
+    /// Lost playlists and guides that iCloud still has, and held removals: what Restore from iCloud brings back.
+    private(set) var restorableCount = 0
+    /// Playlists and guides deleted on another device that this device kept: on this device only until the user
+    /// syncs them again (Settings › iCloud, `syncKeptAgain()`).
+    private(set) var keptOnDeviceCount = 0
+    /// Restore from iCloud is running.
+    private(set) var isRestoring = false
+    /// The outcome of the last Restore from iCloud, for Settings.
+    private(set) var restoreMessage: String?
     /// The "Your Playlists from iCloud" sheet.
     var isImportSheetPresented = false
     /// What's Synced and Privacy as a sheet over the window (the debug harness, `cloud-privacy`).
@@ -118,6 +164,12 @@ final class CloudSync {
     private var passGeneration = 0
     @ObservationIgnored
     private var isStarted = false
+    /// Prompts put off during this launch (Not Now): asked again at the next launch.
+    @ObservationIgnored
+    private var postponedPrompts: Set<String> = []
+    /// A question waits for the window to be uncovered (`windowIsCovered`): asked again shortly.
+    @ObservationIgnored
+    private var promptRetry: Task<Void, Never>?
     /// The synced settings at the last check, to tell their changes from other writes to the defaults.
     @ObservationIgnored
     private var preferenceValues: [String] = []
@@ -141,13 +193,25 @@ final class CloudSync {
             deviceID = UUID().uuidString
             defaults.set(deviceID, forKey: Self.deviceIDKey)
         }
-        isEnabled = defaults.object(forKey: Self.enabledKey) as? Bool ?? true
-
         let store = LibrarySyncStore(container: container, importCenter: importCenter, library: library, epg: epg)
         context = container.mainContext
         self.library = library
         let directory = Self.directory
         let transport = Self.makeTransport(directory: directory)
+        if let stored = defaults.object(forKey: Self.enabledKey) as? Bool {
+            isEnabled = stored
+        } else if Self.hasLibrary(container.mainContext) {
+            // An update to the version with sync, on a device that has playlists: nothing is uploaded before the
+            // user says so (asked once, `Prompt.turnOn`). A build that cannot sync asks nothing.
+            isEnabled = false
+            needsSyncChoice = transport != nil
+        } else {
+            // A new install: syncing is the point (a new Apple TV gets the playlists of the user's iPhone).
+            isEnabled = true
+            if transport != nil {
+                defaults.set(true, forKey: Self.enabledKey)
+            }
+        }
         self.store = store
         self.transport = transport
         reconciler = CloudSyncReconciler(deviceID: deviceID, store: store, storage: FileSyncLedgerStorage(url: directory.appendingPathComponent("ledger.json")))
@@ -213,11 +277,16 @@ final class CloudSync {
     // MARK: - Actions
 
     func setEnabled(_ enabled: Bool) {
+        // The switch answers the first-run question too.
+        needsSyncChoice = false
+        if prompt == .turnOn {
+            prompt = nil
+        }
+        UserDefaults.fluxo.set(enabled, forKey: Self.enabledKey)
         guard enabled != isEnabled else {
             return
         }
         isEnabled = enabled
-        UserDefaults.fluxo.set(enabled, forKey: Self.enabledKey)
         if enabled {
             startTransport()
         } else {
@@ -235,26 +304,40 @@ final class CloudSync {
         }
         isSyncing = true
         Task {
-            await reconciler.localStateMayHaveChanged()
-            // Changes the cloud has not confirmed: refused for good (iCloud storage full), cancelled, or queued
-            // just before the app was quit.
-            transport.recordsChanged(reconciler.unsentRecordIDs)
-            // A refused save reports itself while it is sent (`transportDidFail`): cleared first, not after.
-            lastError = nil
-            do {
-                try await transport.sendChanges()
-                try await transport.fetchChanges()
-            } catch {
-                report(error)
-            }
-            hasFetched = true
+            await sendAndFetch(transport)
             isSyncing = false
             await refreshAvailability()
             refreshCloudPlaylists()
         }
     }
 
+    private func sendAndFetch(_ transport: CloudSyncTransport) async {
+        await transportStartup?.value
+        await reconciler.localStateMayHaveChanged()
+        // Changes the cloud has not confirmed: refused for good (iCloud storage full), cancelled, or queued just
+        // before the app was quit.
+        transport.recordsChanged(reconciler.unsentRecordIDs)
+        // A refused save reports itself while it is sent (`transportDidFail`): cleared first, not after.
+        lastError = nil
+        do {
+            try await transport.sendChanges()
+            try await transport.fetchChanges()
+        } catch {
+            report(error)
+        }
+        hasFetched = true
+    }
+
     func sceneDidBecomeActive() {
+        guard isEnabled else {
+            // The first-run question may have waited for the player to close, or for an iCloud account.
+            if needsSyncChoice {
+                Task {
+                    await refreshAvailability()
+                }
+            }
+            return
+        }
         syncNow()
     }
 
@@ -265,6 +348,7 @@ final class CloudSync {
         }
         cancelPendingPass()
         Task {
+            await transportStartup?.value
             await reconciler.localStateMayHaveChanged()
             transport.recordsChanged(reconciler.unsentRecordIDs)
             try? await transport.sendChanges()
@@ -279,7 +363,102 @@ final class CloudSync {
         UserDefaults.fluxo.set(true, forKey: Self.acceptsCloudPlaylistsKey)
         UserDefaults.fluxo.set(Array(declined).sorted(), forKey: Self.declinedPlaylistsKey)
         Task {
-            await reconciler.localStateMayHaveChanged()
+            // Playlists this device lost are restored with their guides, favorites and history.
+            await reconciler.restore(playlists: names)
+        }
+    }
+
+    // MARK: - Questions and recovery
+
+    /// The first-run question: sync this device's library with iCloud, or not (Settings › iCloud can change it).
+    func answerSyncChoice(turnOn: Bool) {
+        prompt = nil
+        setEnabled(turnOn)
+    }
+
+    /// Restore in the lost-library question: the playlists and guides this device lost come back from iCloud, with
+    /// their favorites and history; the sheet shows the progress of each playlist.
+    func restoreLostLibrary() {
+        prompt = nil
+        let names = Set(reconciler.recordsAwaitingRestore.filter { $0.id.kind == .playlist }.map(\.id.name))
+        let rows = cloudPlaylists.filter { names.contains($0.id) }
+        let defaults = UserDefaults.fluxo
+        defaults.set(true, forKey: Self.acceptsCloudPlaylistsKey)
+        defaults.set(Array(declinedPlaylists.subtracting(names)).sorted(), forKey: Self.declinedPlaylistsKey)
+        if !rows.isEmpty {
+            importSession = ImportSession(playlists: rows, chosen: names)
+        }
+        Task {
+            await reconciler.restore()
+            if !rows.isEmpty, mayPresentImportOffer() {
+                isImportSheetPresented = true
+            }
+        }
+    }
+
+    /// Not Now in the lost-library question: it does not come back for these playlists; Settings › iCloud (Playlists
+    /// in iCloud, Restore from iCloud) and the empty Home still offer them.
+    func postponeRestore() {
+        prompt = nil
+        let names = Set(reconciler.recordsAwaitingRestore.map(\.id.recordName))
+        let declined = Set(UserDefaults.fluxo.stringArray(forKey: Self.restoreDeclinedKey) ?? []).union(names)
+        UserDefaults.fluxo.set(Array(declined).sorted(), forKey: Self.restoreDeclinedKey)
+    }
+
+    /// The answer to the mass-removal question: restore the favorites and history here (`remove` false), or remove
+    /// them from every device.
+    func resolveHeldRemovals(remove: Bool) {
+        prompt = nil
+        Task {
+            if remove {
+                await reconciler.confirmHeldDeletions()
+            } else {
+                await reconciler.restoreHeldDeletions()
+            }
+        }
+    }
+
+    /// Not Now in the mass-removal question: nothing is removed elsewhere; asked again at the next launch.
+    func postponeHeldRemovals() {
+        prompt = nil
+        postponedPrompts.insert(Prompt.confirmRemovals(favorites: 0, history: 0).id)
+    }
+
+    /// Settings › iCloud › Restore from iCloud: reads the whole cloud again, brings back the favorites, history and
+    /// settings this device lost, and lists the playlists of iCloud it does not have (all checked) to add them.
+    /// Nothing of the cloud is deleted, and nothing of this device is overwritten but what is missing.
+    func restoreFromICloud() {
+        guard isEnabled, let transport, !isRestoring else {
+            return
+        }
+        isRestoring = true
+        restoreMessage = nil
+        Task {
+            await reconciler.prepareFullRestore()
+            // Returns once the running engine is cancelled and a new one reads from the start (never two at once).
+            await transport.forgetFetchPosition()
+            await sendAndFetch(transport)
+            refreshCloudPlaylists()
+            if !cloudPlaylists.isEmpty {
+                importSession = nil
+                isImportSheetPresented = true
+            } else if lastError == nil {
+                restoreMessage = String(localized: "Everything in iCloud is on this device", comment: "Settings › iCloud: Restore from iCloud finished and found nothing missing on this device.")
+            }
+            isRestoring = false
+        }
+    }
+
+    /// Settings › iCloud › Kept on This Device › Sync Again: the playlists and guides deleted on another device that
+    /// this device kept are synced again, so they come back on the user's other devices (with their favorites and
+    /// history).
+    func syncKeptAgain() {
+        guard isEnabled, transport != nil else {
+            return
+        }
+        Task {
+            await reconciler.syncKeptAgain()
+            refreshCloudPlaylists()
         }
     }
 
@@ -335,7 +514,20 @@ final class CloudSync {
             availability = .notConfigured
             return
         }
-        transport.start()
+        // A new, lost or reset ledger: the first fetch reads everything, not only what changed since the engine last
+        // fetched (its state may have outlived the ledger). Sends and fetches wait for this (`sendAndFetch`).
+        let readsFromStart = reconciler.needsBaseline
+        let previous = transportStartup
+        transportStartup = Task {
+            await previous?.value
+            if readsFromStart {
+                await transport.forgetFetchPosition()
+            }
+            // Turned off again meanwhile: its `stop()` already ran.
+            if isEnabled {
+                transport.start()
+            }
+        }
         Task {
             await refreshAvailability()
         }
@@ -351,6 +543,7 @@ final class CloudSync {
             switch await cloudKit.accountStatus() {
             case .available:
                 availability = .available
+                updatePrompt()
             case .noAccount:
                 availability = .noAccount
             case .restricted:
@@ -364,6 +557,7 @@ final class CloudSync {
             }
         } else {
             availability = .available
+            updatePrompt()
         }
     }
 
@@ -484,8 +678,110 @@ final class CloudSync {
         }
         .sorted { $0.createdOn < $1.createdOn }
         lastSyncedOn = reconciler.ledger.lastSyncedOn ?? lastSyncedOn
+        let restorable = reconciler.recordsAwaitingRestore
+        restorableCount = restorable.count + reconciler.heldDeletionIDs.count
+        keptOnDeviceCount = reconciler.keptDespiteDeletionIDs.count
+        _ = prunedRestoreDeclined(restorable)
         ledgerRevision += 1
         offerImportIfAppropriate()
+        updatePrompt()
+    }
+
+    /// Asks the question that applies, one at a time, never over the player, the Add Playlist sheet or the iCloud
+    /// playlists sheet: the first-run choice, then a lost library, then a mass removal.
+    func updatePrompt() {
+        guard prompt == nil, !isImportSheetPresented, mayPresentImportOffer(), let next = promptToAsk() else {
+            return
+        }
+        guard !Self.windowIsCovered else {
+            // The alert is presented at the root of the window, which cannot present it over a sheet or popover
+            // (Settings on iPhone, a share sheet): asked once the window is uncovered.
+            if promptRetry == nil {
+                promptRetry = Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(2))
+                    guard !Task.isCancelled, let self else {
+                        return
+                    }
+                    self.promptRetry = nil
+                    self.updatePrompt()
+                }
+            }
+            return
+        }
+        promptRetry?.cancel()
+        promptRetry = nil
+        prompt = next
+    }
+
+    /// The question that applies now, if any (`updatePrompt`).
+    private func promptToAsk() -> Prompt? {
+        if needsSyncChoice {
+            return isConfigured && availability == .available ? .turnOn : nil
+        }
+        guard isEnabled, isConfigured else {
+            return nil
+        }
+        let restorable = reconciler.recordsAwaitingRestore
+        let declined = prunedRestoreDeclined(restorable)
+        let awaiting = restorable.filter { !declined.contains($0.id.recordName) }
+        if !awaiting.isEmpty {
+            return .restoreLibrary(playlists: awaiting.filter { $0.id.kind == .playlist }.count)
+        }
+        let held = reconciler.heldDeletionIDs
+        if !held.isEmpty, !postponedPrompts.contains(Prompt.confirmRemovals(favorites: 0, history: 0).id) {
+            let favorites = held.filter { $0.kind == .channelFavorite || $0.kind == .seriesFavorite }.count
+            return .confirmRemovals(favorites: favorites, history: held.count - favorites)
+        }
+        return nil
+    }
+
+    /// Whether the key window shows a sheet, popover or other modal presentation (not an alert, and not one being
+    /// dismissed) that the root of the window cannot present a question over.
+    private static var windowIsCovered: Bool {
+        #if canImport(UIKit)
+        for scene in UIApplication.shared.connectedScenes {
+            guard let scene = scene as? UIWindowScene, scene.activationState == .foregroundActive else {
+                continue
+            }
+            for window in scene.windows where window.isKeyWindow {
+                if let presented = window.rootViewController?.presentedViewController,
+                   !(presented is UIAlertController), !presented.isBeingDismissed {
+                    return true
+                }
+            }
+        }
+        return false
+        #elseif canImport(AppKit)
+        return NSApp.keyWindow?.attachedSheet != nil || NSApp.modalWindow != nil
+        #else
+        return false
+        #endif
+    }
+
+    /// The restores the user put off that still apply: one restored since (or gone from iCloud) is forgotten, so
+    /// the question comes back if it is lost again.
+    private func prunedRestoreDeclined(_ restorable: [SyncRecord]) -> Set<String> {
+        let defaults = UserDefaults.fluxo
+        let stored = Set(defaults.stringArray(forKey: Self.restoreDeclinedKey) ?? [])
+        let pruned = stored.intersection(restorable.map(\.id.recordName))
+        if pruned != stored {
+            defaults.set(Array(pruned).sorted(), forKey: Self.restoreDeclinedKey)
+        }
+        return pruned
+    }
+
+    /// Whether the store has anything a user made (playlists, guides, favorites or history of channels or series).
+    private static func hasLibrary(_ context: ModelContext) -> Bool {
+        if ((try? context.fetchCount(FetchDescriptor<Playlist>())) ?? 0) > 0 {
+            return true
+        }
+        if ((try? context.fetchCount(FetchDescriptor<EPGSource>(predicate: #Predicate { $0.playlistID == nil }))) ?? 0) > 0 {
+            return true
+        }
+        if ((try? context.fetchCount(FetchDescriptor<ChannelBookmark>())) ?? 0) > 0 {
+            return true
+        }
+        return ((try? context.fetchCount(FetchDescriptor<SeriesBookmark>())) ?? 0) > 0
     }
 
     /// The automatic "Your Playlists from iCloud" offer: on a device that has no playlist (a new Apple TV), once,
@@ -555,11 +851,66 @@ extension CloudSync {
         transport
     }
 
+    /// `cloud-ask`: the first-run question, as a device updated with a library would ask it.
+    func debugAskSyncChoice() {
+        prompt = nil
+        needsSyncChoice = true
+        updatePrompt()
+    }
+
+    /// `cloud-lose-library`: empties the store the way a store recreated after it could not be opened does (no
+    /// deletion goes through the app, so nothing is journaled), then compares it with the ledger.
+    func debugLoseLibrary() async throws {
+        try context.delete(model: ChannelBookmark.self)
+        try context.delete(model: SeriesBookmark.self)
+        for source in try context.fetch(FetchDescriptor<EPGSource>(predicate: #Predicate { $0.playlistID == nil })) {
+            context.delete(source)
+        }
+        for playlist in try context.fetch(FetchDescriptor<Playlist>()) {
+            context.delete(playlist)
+        }
+        try context.save()
+        library.reloadFromStore()
+        await reconciler.localStateMayHaveChanged()
+    }
+
+    /// `cloud-deleted-elsewhere:<playlist>`: another device deletes the playlist while this one is away and loses its
+    /// ledger; at its next sync this device keeps the playlist (`keptDespiteDeletion`), and Settings › iCloud says so.
+    func debugDeleteElsewhereWhileAway(_ playlistName: String) async throws {
+        guard let simulated = transport as? SimulatedCloudTransport else {
+            throw DebugRouteError.unsupported("cloud-deleted-elsewhere needs -FluxoDebugCloud")
+        }
+        guard let playlist = try context.fetch(FetchDescriptor<Playlist>()).first(where: { $0.name.localizedCaseInsensitiveCompare(playlistName) == .orderedSame }),
+              let recordName = reconciler.ledger.links.playlistName(forLocalID: playlist.uuid) else {
+            throw DebugRouteError.notFound("synced playlist", playlistName)
+        }
+        _ = simulated.backend.save(SyncRecord(id: SyncRecordID(.playlist, recordName), payload: nil, modifiedAt: Date.now.syncRounded, deviceID: "debug-other-device"))
+        reconciler.resetSyncState()
+        await transport?.forgetFetchPosition()
+        syncNow()
+    }
+
+    /// `cloud-lose-favorites`: every favorite vanishes at once (the playlists stay), without the user removing them.
+    func debugLoseFavorites() async throws {
+        for bookmark in try context.fetch(FetchDescriptor<ChannelBookmark>(predicate: #Predicate { $0.isFavorite == true })) {
+            bookmark.isFavorite = false
+            bookmark.favoritedOn = nil
+        }
+        for bookmark in try context.fetch(FetchDescriptor<SeriesBookmark>(predicate: #Predicate { $0.isFavorite == true })) {
+            bookmark.isFavorite = false
+            bookmark.favoritedOn = nil
+        }
+        try context.save()
+        library.reloadFromStore()
+        await reconciler.localStateMayHaveChanged()
+    }
+
     /// The records (addresses reduced to their host), links and imports, for `cloud-log`.
     var debugDescription: String {
         var lines = [
             "enabled: \(isEnabled) availability: \(availability) accepts: \(acceptsCloudPlaylists) fetched: \(hasFetched) sheet: \(isImportSheetPresented) offerDismissed: \(UserDefaults.fluxo.bool(forKey: Self.offerDismissedKey))",
             "local passes: \(debugCounters.localPasses) coalesced progress saves: \(debugCounters.coalescedProgressSaves) unsent: \(reconciler.unsentRecordIDs.count)",
+            "baseline: \(!reconciler.needsBaseline) needs choice: \(needsSyncChoice) prompt: \(prompt?.id ?? "-") awaiting restore: \(reconciler.recordsAwaitingRestore.count) held removals: \(reconciler.heldDeletionIDs.count)",
         ]
         for record in reconciler.ledger.records.values.sorted(by: { $0.id < $1.id }) {
             let summary: String
@@ -622,6 +973,13 @@ extension CloudSync: CloudSyncTransportEvents {
             setEnabled(false)
             cloudPlaylists = []
         }
+    }
+
+    func transportDidFinishFetching() async {
+        guard isEnabled else {
+            return
+        }
+        await reconciler.fetchDidFinish()
     }
 
     func transportDidSend(_ sent: [SyncRecordID: Date]) {

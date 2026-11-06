@@ -5,6 +5,9 @@
 //  An in-memory library with the behavior of `LibrarySyncStore` (Fluxo/App/Sync/LibrarySyncStore.swift) that matters
 //  to sync: playlists are published once imported, favorites and progress belong to a synced playlist, a playlist of
 //  another device waits for the user's go-ahead, deleting a playlist deletes its bookmarks, settings are plain values.
+//  The user's deletions go through the app's own `SyncDeletionJournal`, in defaults of this device only;
+//  `loseEverything()` and the other `lose…` methods empty the library without a word, as a store recreated after it
+//  could not be opened does.
 //
 
 import Foundation
@@ -50,10 +53,29 @@ final class FakeLibrary: CloudSyncLocalStore {
     var acceptsCloudPlaylists = true
     var declined: Set<String> = []
     var clock: () -> Date
+    /// The defaults `SyncDeletionJournal` keeps this device's deletions in (removed when the check ends).
+    let defaults: UserDefaults
+    static private(set) var suiteNames: [String] = []
 
     init(label: String, clock: @escaping () -> Date) {
         self.label = label
         self.clock = clock
+        let suite = "dev.watermelon.Fluxo.SyncCheck.\(label).\(UUID().uuidString)"
+        Self.suiteNames.append(suite)
+        defaults = UserDefaults(suiteName: suite)!
+    }
+
+    /// Removes the defaults of every fake library.
+    static func removeDefaults() {
+        for suite in suiteNames {
+            UserDefaults.standard.removePersistentDomain(forName: suite)
+        }
+        suiteNames = []
+    }
+
+    /// What the journal holds now.
+    var journal: SyncDeletionIntents {
+        SyncDeletionJournal.intents(in: defaults, now: clock())
     }
 
     // MARK: User actions
@@ -69,9 +91,77 @@ final class FakeLibrary: CloudSyncLocalStore {
         playlists.first { $0.value.name == name }?.key
     }
 
+    /// The user deletes a playlist (Delete Playlist), as `PlaylistImportCenter.delete` does.
     func deletePlaylist(_ id: UUID) {
+        SyncDeletionJournal.noteDeleted(id, in: defaults)
+        removePlaylist(id)
+    }
+
+    /// The user deletes a playlist, and the deletion fails (the store refuses the save): the row stays, and
+    /// `PlaylistImportCenter.delete` withdraws the journal entry.
+    func failToDeletePlaylist(_ id: UUID) {
+        SyncDeletionJournal.noteDeleted(id, in: defaults)
+        SyncDeletionJournal.withdraw(id, in: defaults)
+    }
+
+    /// The user deletes a guide.
+    func deleteGuide(_ id: UUID) {
+        SyncDeletionJournal.noteDeleted(id, in: defaults)
+        guides[id] = nil
+    }
+
+    /// Clear History.
+    func clearHistory() {
+        SyncDeletionJournal.noteHistoryCleared(in: defaults, now: clock())
+        for key in bookmarks.keys {
+            bookmarks[key]?.lastWatchedAt = nil
+            bookmarks[key]?.resumePosition = 0
+            if bookmarks[key]?.isFavorite == false {
+                bookmarks[key] = nil
+            }
+        }
+    }
+
+    /// The store could not be opened and was recreated empty (the settings, in the defaults, stay).
+    func loseEverything() {
+        playlists = [:]
+        guides = [:]
+        bookmarks = [:]
+    }
+
+    /// The favorites vanish (playlists stay), without the user removing them.
+    func loseFavorites() {
+        for key in bookmarks.keys {
+            bookmarks[key]?.isFavorite = false
+            bookmarks[key]?.favoritedOn = nil
+            if bookmarks[key]?.lastWatchedAt == nil {
+                bookmarks[key] = nil
+            }
+        }
+    }
+
+    /// The watch history vanishes (playlists and favorites stay), without Clear History.
+    func loseHistory() {
+        for key in bookmarks.keys {
+            bookmarks[key]?.lastWatchedAt = nil
+            bookmarks[key]?.resumePosition = 0
+            if bookmarks[key]?.isFavorite == false {
+                bookmarks[key] = nil
+            }
+        }
+    }
+
+    private func removePlaylist(_ id: UUID) {
         playlists[id] = nil
         bookmarks = bookmarks.filter { $0.value.playlistID != id }
+    }
+
+    var favoriteCount: Int {
+        bookmarks.values.filter(\.isFavorite).count
+    }
+
+    var historyCount: Int {
+        bookmarks.values.filter { $0.lastWatchedAt != nil }.count
     }
 
     static func channelURL(_ channel: String) -> URL {
@@ -119,6 +209,7 @@ final class FakeLibrary: CloudSyncLocalStore {
 
     func snapshot(identity: inout SyncIdentityResolver) throws -> [SyncRecordID: SyncPayload] {
         var result: [SyncRecordID: SyncPayload] = [:]
+        identity.setPresent(playlists: Set(playlists.keys), guideSources: Set(guides.keys))
         for (id, playlist) in playlists.sorted(by: { $0.value.createdOn < $1.value.createdOn }) {
             guard identity.linkedPlaylistName(localID: id) != nil || playlist.isImported else {
                 continue
@@ -173,6 +264,7 @@ final class FakeLibrary: CloudSyncLocalStore {
                 }
             case nil where record.id.kind == .playlist:
                 if let local = links.playlists[name] {
+                    // As `LibrarySyncStore` does: through the app's own deletion, which journals it.
                     deletePlaylist(local)
                 }
                 links.playlists[name] = nil
@@ -189,7 +281,7 @@ final class FakeLibrary: CloudSyncLocalStore {
                 }
             case nil where record.id.kind == .guideSource:
                 if let local = links.guideSources[name] {
-                    guides[local] = nil
+                    deleteGuide(local)
                 }
                 links.guideSources[name] = nil
             case .channelFavorite(let favorite):
@@ -241,6 +333,14 @@ final class FakeLibrary: CloudSyncLocalStore {
             }
         }
         return deferred
+    }
+
+    func deletionIntents() -> SyncDeletionIntents {
+        journal
+    }
+
+    func forgetDeletionIntents(_ intents: SyncDeletionIntents) {
+        SyncDeletionJournal.forget(intents, in: defaults)
     }
 
     /// The import of playlists added from another device finishes.

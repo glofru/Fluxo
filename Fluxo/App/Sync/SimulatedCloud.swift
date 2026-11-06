@@ -112,6 +112,9 @@ final class SimulatedCloudTransport: CloudSyncTransport {
     /// The server refuses every save with an error the engine does not retry (CloudKit's `quotaExceeded`: iCloud
     /// storage is full): the changes are dropped from the queue, as CKSyncEngine drops them.
     var rejectsSaves = false
+    /// Fetches fail partway (`Tools/SyncCheck`): this many records are delivered, then the fetch throws, as a
+    /// CKSyncEngine fetch that fails after some batches does. nil: fetches succeed.
+    var fetchFailsAfter: Int?
 
     /// Simulated error of a refused save.
     struct RejectedSave: LocalizedError {
@@ -163,11 +166,24 @@ final class SimulatedCloudTransport: CloudSyncTransport {
             return
         }
         let (records, sequence) = backend.records(after: sequence)
+        if let limit = fetchFailsAfter {
+            // The position is not saved: the next fetch reads these again.
+            let partial = Array(records.prefix(limit))
+            if !partial.isEmpty {
+                await events?.transportDidFetch(partial)
+            }
+            throw URLError(.networkConnectionLost)
+        }
         self.sequence = sequence
         if !records.isEmpty {
             await events?.transportDidFetch(records)
         }
         events?.transportDidSend([:])
+        await events?.transportDidFinishFetching()
+    }
+
+    func forgetFetchPosition() async {
+        sequence = 0
     }
 
     func sendChanges() async throws {

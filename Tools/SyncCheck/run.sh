@@ -18,6 +18,8 @@ xcrun swiftc -O -swift-version 5 -D DEBUG -o "$OUT/bin/sync-check" \
     "$SRC/CloudSyncRecords.swift" \
     "$SRC/CloudSyncReconciler.swift" \
     "$SRC/SimulatedCloud.swift" \
+    "$SRC/SerialTaskQueue.swift" \
+    "$SRC/SyncDeletionJournal.swift" \
     "$HERE/FakeLibrary.swift" \
     "$HERE/main.swift" 2> "$OUT/build.log" || { cat "$OUT/build.log"; exit 1; }
 "$OUT/bin/sync-check"

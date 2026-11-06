@@ -22,7 +22,9 @@ enum ModelContainerFactory {
     ///
     /// If an existing store cannot be opened with the current schema (e.g. a pre-release layout that lightweight
     /// migration cannot map), it is moved aside and a fresh store is created instead of crashing at launch.
-    /// Playlist content can always be downloaded again.
+    /// Playlist content can always be downloaded again. iCloud sync sees the empty store as a library that was lost,
+    /// not deleted: nothing is deleted on the user's other devices, and it offers to restore it from iCloud
+    /// (`CloudSyncReconciler`, "Data safety" in the README).
     static func make() -> ModelContainer {
         #if DEBUG
         if let demo = DebugGuideDemo.makeContainerIfRequested() {

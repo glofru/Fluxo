@@ -7954,6 +7954,75 @@
         }
       }
     },
+    "%lld favorites and watched items are missing on this device at once. If you removed them, remove them from your other devices too. If not, restore them from iCloud." : {
+      "comment" : "Message of the mass-removal question; the placeholder is how many favorites and watched items vanished (always 3 or more).",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld favorites and watched items are missing on this device at once. If you removed them, remove them from your other devices too. If not, restore them from iCloud."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld favorites and watched items are missing on this device at once. If you removed them, remove them from your other devices too. If not, restore them from iCloud."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld favorites are missing on this device at once. If you removed them, remove them from your other devices too. If not, restore them from iCloud." : {
+      "comment" : "Message of the mass-removal question when only favorites vanished; the placeholder is how many (always 3 or more).",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld favorites are missing on this device at once. If you removed them, remove them from your other devices too. If not, restore them from iCloud."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld favorites are missing on this device at once. If you removed them, remove them from your other devices too. If not, restore them from iCloud."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld kept on this device" : {
+      "comment" : "Settings › iCloud › Deleted on Other Devices: how many playlists or TV guides another device deleted that this device kept (they are not synced); the row offers to sync them again.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld kept on this device"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld kept on this device"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%lld movies" : {
       "comment" : "A number of movies, on the card of a movie category.",
       "localizations" : {
@@ -9228,6 +9297,52 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$lld/%2$lld 個頻道"
+          }
+        }
+      }
+    },
+    "%lld playlists or TV guides were deleted on another device, but this device kept them. Sync them again to add them back on your other devices, with their favorites and watch history." : {
+      "comment" : "Message of the Deleted on Other Devices question; the placeholder is how many playlists or TV guides (one: 1 playlist or TV guide was deleted on another device, but this device kept it).",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "1 playlist or TV guide was deleted on another device, but this device kept it. Sync it again to add it back on your other devices, with its favorites and watch history."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld playlists or TV guides were deleted on another device, but this device kept them. Sync them again to add them back on your other devices, with their favorites and watch history."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld playlists that were on this device are missing, but they're still in iCloud and on your other devices. Restore them with their favorites, watch history and TV guides?" : {
+      "comment" : "Message of the restore question; the placeholder is how many playlists are missing (one: 1 playlist that was on this device is missing).",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "1 playlist that was on this device is missing, but it's still in iCloud and on your other devices. Restore it with its favorites, watch history and TV guides?"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld playlists that were on this device are missing, but they're still in iCloud and on your other devices. Restore them with their favorites, watch history and TV guides?"
+                }
+              }
+            }
           }
         }
       }
@@ -12932,6 +13047,52 @@
         }
       }
     },
+    "%lld to restore" : {
+      "comment" : "Settings › iCloud: how many playlists, guides, favorites or watched items this device lost that iCloud still has; the row restores them.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld to restore"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld to restore"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld watched items are missing from the history on this device at once. If you cleared them, clear them on your other devices too. If not, restore them from iCloud." : {
+      "comment" : "Message of the mass-removal question when only watch history vanished; the placeholder is how many watched items (always 3 or more).",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld watched items are missing from the history on this device at once. If you cleared them, clear them on your other devices too. If not, restore them from iCloud."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld watched items are missing from the history on this device at once. If you cleared them, clear them on your other devices too. If not, restore them from iCloud."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "-%@" : {
       "comment" : "Time remaining in the player, as in -12:34.",
       "shouldTranslate" : false
@@ -15307,6 +15468,9 @@
           }
         }
       }
+    },
+    "Add Back to Your Other Devices?" : {
+      "comment" : "Title of the question of Settings › iCloud › Deleted on Other Devices: sync the playlists this device kept again?"
     },
     "Add a playlist in Fluxo first." : {
       "comment" : "Siri and Shortcuts text (dialog or error) — Siri and Shortcuts.",
@@ -19711,6 +19875,9 @@
           }
         }
       }
+    },
+    "Brings back from iCloud the playlists, favorites and history missing on this device. Nothing is deleted." : {
+      "comment" : "VoiceOver hint of Settings › iCloud › Restore from iCloud."
     },
     "Browse Channels" : {
       "comment" : "Label (text with an icon) — Favorites screen.",
@@ -32154,6 +32321,9 @@
         }
       }
     },
+    "Deleted on Other Devices" : {
+      "comment" : "Settings › iCloud: row for playlists or TV guides deleted on another device that this device kept; it offers to sync them again."
+    },
     "Delete…" : {
       "comment" : "Button — TV guide sources (Settings).",
       "localizations" : {
@@ -36689,6 +36859,9 @@
           }
         }
       }
+    },
+    "Everything in iCloud is on this device" : {
+      "comment" : "Settings › iCloud: Restore from iCloud finished and found nothing missing on this device."
     },
     "Everything runs on this device. What you watch and search is never sent anywhere." : {
       "comment" : "Text — Apple Intelligence features.",
@@ -46962,6 +47135,9 @@
           }
         }
       }
+    },
+    "Keep your playlists, TV guides, favorites and watch progress the same on all your devices. Playlist addresses are encrypted before they leave this device. You can change this in Settings." : {
+      "comment" : "Message of the question asked once to a user who updates the app with playlists on the device: what iCloud sync does and how addresses are protected."
     },
     "LIVE" : {
       "comment" : "Badge on a live channel or programme. Uppercase; keep it very short.",
@@ -57268,7 +57444,7 @@
       }
     },
     "Not Now" : {
-      "comment" : "Button of a programme reminder on Apple TV: closes the reminder without playing the channel.\nButton of the iCloud playlists sheet: closes it without adding playlists.",
+      "comment" : "Button of a programme reminder on Apple TV: closes the reminder without playing the channel.\nButton of the iCloud playlists sheet: closes it without adding playlists.\nButton of the turn-on-sync question: keeps sync off (Settings › iCloud can turn it on later).\nButton of the restore question: nothing is restored now (Settings › iCloud can restore later); nothing is deleted.\nButton of the mass-removal question: decides later; nothing is removed from the other devices meanwhile.\nButton of the Deleted on Other Devices question: they stay on this device only.",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -75316,6 +75492,18 @@
         }
       }
     },
+    "Remove Everywhere" : {
+      "comment" : "Button of the mass-removal question: removes the missing favorites and watched items from the user's other devices too."
+    },
+    "Remove Favorites from All Your Devices?" : {
+      "comment" : "Title of the question asked when many favorites vanished from this device at once: remove them from the user's other devices too?"
+    },
+    "Remove Watch History from All Your Devices?" : {
+      "comment" : "Title of the question asked when much of the watch history vanished from this device at once: remove it from the user's other devices too?"
+    },
+    "Remove from All Your Devices?" : {
+      "comment" : "Title of the question asked when many favorites and watched items vanished from this device at once: remove them from the user's other devices too?"
+    },
     "Remove from Favorites" : {
       "comment" : "Button / VoiceOver label — accessibility, channel card, Favorites screen.\nApple TV player, info panel button.",
       "localizations" : {
@@ -76129,6 +76317,24 @@
           }
         }
       }
+    },
+    "Restore" : {
+      "comment" : "Button of the restore question: adds back, from iCloud, the playlists and guides this device lost."
+    },
+    "Restore Them" : {
+      "comment" : "Button of the mass-removal question: brings the missing favorites and watched items back from iCloud."
+    },
+    "Restore Your Playlists from iCloud?" : {
+      "comment" : "Title of the question asked when playlists this device had are missing (its library was reset) but iCloud still has them."
+    },
+    "Restore Your TV Guides from iCloud?" : {
+      "comment" : "Title of the question asked when TV guides this device had are missing (its library was reset) but iCloud still has them."
+    },
+    "Restore from iCloud" : {
+      "comment" : "Settings › iCloud: button that brings back, from iCloud, what this device lost (playlists, favorites, history)."
+    },
+    "Restoring…" : {
+      "comment" : "Settings › iCloud: shown while Restore from iCloud runs."
     },
     "Results" : {
       "comment" : "Section header: search results.",
@@ -92668,6 +92874,9 @@
         }
       }
     },
+    "Sync Again" : {
+      "comment" : "Button of the Deleted on Other Devices question: syncs the kept playlists and TV guides again, so they come back on the other devices."
+    },
     "Sync Now" : {
       "comment" : "Settings › iCloud: button that syncs with iCloud at once.",
       "localizations" : {
@@ -92768,6 +92977,9 @@
           }
         }
       }
+    },
+    "Sync Your Library with iCloud?" : {
+      "comment" : "Title of the question asked once to a user who updates the app with playlists on the device: turn on iCloud sync?"
     },
     "Sync with iCloud" : {
       "comment" : "Settings › iCloud: the switch that turns iCloud sync on or off.",
@@ -93071,6 +93283,9 @@
           }
         }
       }
+    },
+    "Syncs them again, to add them back on your other devices." : {
+      "comment" : "VoiceOver hint of Settings › iCloud › Deleted on Other Devices."
     },
     "TV" : {
       "comment" : "Shortcuts search keyword of Play Channel (television).",
@@ -93576,6 +93791,9 @@
           }
         }
       }
+    },
+    "TV guides that were on this device are missing, but they're still in iCloud and on your other devices. Nothing was deleted from them." : {
+      "comment" : "Message of the restore question when only TV guides are missing."
     },
     "TV guides you added, and whether they're on" : {
       "comment" : "iCloud privacy page: an item of the list of what iCloud sync stores.",
@@ -112366,6 +112584,9 @@
           }
         }
       }
+    },
+    "Turn On iCloud Sync" : {
+      "comment" : "Button of the turn-on-sync question: turns iCloud sync on for this device."
     },
     "Turn it on from your iPhone or iPad (Settings › your name › iCloud › Advanced Data Protection) or your Mac (System Settings › your name › iCloud › Advanced Data Protection)." : {
       "comment" : "iCloud privacy page on Apple TV: Advanced Data Protection is turned on from another device. Use the names the Settings app (iPhone, iPad) and System Settings (Mac) show in this language.",
