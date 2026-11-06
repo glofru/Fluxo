@@ -10,7 +10,7 @@ import AppIntents
 import Foundation
 
 /// Plays a channel. As an `OpenIntent` on `ChannelEntity`, it is also what opening a channel from Spotlight does.
-/// From iOS 27 and macOS 27 it adopts the system `open` schema (see `AppSchemaAdoption.swift`).
+/// On iOS and from macOS 27 it adopts the system `open` schema (see `AppSchemaAdoption.swift`).
 struct PlayChannelIntent: OpenIntent, PredictableIntent {
 
     static let title: LocalizedStringResource = "Play Channel"

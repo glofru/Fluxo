@@ -9,6 +9,7 @@
 #if DEBUG
 import AVFoundation
 import CoreGraphics
+import CoreVideo
 import Foundation
 import SwiftData
 
@@ -141,48 +142,39 @@ enum DebugRecordingFactory {
             AVVideoWidthKey: width,
             AVVideoHeightKey: height,
         ])
-        input.expectsMediaDataInRealTime = false
-        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-            kCVPixelBufferWidthKey as String: width,
-            kCVPixelBufferHeightKey as String: height,
-        ])
-        writer.add(input)
-        guard writer.startWriting() else {
-            throw writer.error ?? CocoaError(.fileWriteUnknown)
-        }
+        let receiver = writer.inputPixelBufferReceiver(for: input, pixelBufferAttributes: CVPixelBufferCreationAttributes(
+            pixelFormatType: CVPixelFormatType(rawValue: kCVPixelFormatType_32BGRA),
+            size: CVImageSize(width: width, height: height)
+        ))
+        try writer.start()
         writer.startSession(atSourceTime: .zero)
 
         let frameCount = Int(fps) * seconds
         let (red, green, blue) = rgb(hue: hue)
         for frame in 0..<frameCount {
-            while !input.isReadyForMoreMediaData {
-                try await Task.sleep(for: .milliseconds(5))
-            }
-            guard let pool = adaptor.pixelBufferPool else {
+            guard let pool = receiver.pixelBufferPool else {
                 throw writer.error ?? CocoaError(.fileWriteUnknown)
             }
-            var buffer: CVPixelBuffer?
-            CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
-            guard let buffer else {
-                throw CocoaError(.fileWriteUnknown)
+            let mutableBuffer = try pool.makeMutablePixelBuffer()
+            mutableBuffer.withUnsafeBuffer { buffer in
+                CVPixelBufferLockBaseAddress(buffer, [])
+                if let context = CGContext(
+                    data: CVPixelBufferGetBaseAddress(buffer), width: width, height: height, bitsPerComponent: 8,
+                    bytesPerRow: CVPixelBufferGetBytesPerRow(buffer), space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
+                ) {
+                    context.setFillColor(red: red, green: green, blue: blue, alpha: 1)
+                    context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+                    let progress = CGFloat(frame) / CGFloat(frameCount)
+                    context.setFillColor(red: 1, green: 1, blue: 1, alpha: 0.85)
+                    context.fill(CGRect(x: progress * CGFloat(width - 24), y: 0, width: 24, height: CGFloat(height)))
+                }
+                CVPixelBufferUnlockBaseAddress(buffer, [])
             }
-            CVPixelBufferLockBaseAddress(buffer, [])
-            if let context = CGContext(
-                data: CVPixelBufferGetBaseAddress(buffer), width: width, height: height, bitsPerComponent: 8,
-                bytesPerRow: CVPixelBufferGetBytesPerRow(buffer), space: CGColorSpaceCreateDeviceRGB(),
-                bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
-            ) {
-                context.setFillColor(red: red, green: green, blue: blue, alpha: 1)
-                context.fill(CGRect(x: 0, y: 0, width: width, height: height))
-                let progress = CGFloat(frame) / CGFloat(frameCount)
-                context.setFillColor(red: 1, green: 1, blue: 1, alpha: 0.85)
-                context.fill(CGRect(x: progress * CGFloat(width - 24), y: 0, width: 24, height: CGFloat(height)))
-            }
-            CVPixelBufferUnlockBaseAddress(buffer, [])
-            adaptor.append(buffer, withPresentationTime: CMTime(value: CMTimeValue(frame), timescale: fps))
+            // Waits until the input is ready for more media data.
+            try await receiver.append(CVReadOnlyPixelBuffer(mutableBuffer), with: CMTime(value: CMTimeValue(frame), timescale: fps))
         }
-        input.markAsFinished()
+        receiver.finish()
         await writer.finishWriting()
         if writer.status != .completed {
             throw writer.error ?? CocoaError(.fileWriteUnknown)

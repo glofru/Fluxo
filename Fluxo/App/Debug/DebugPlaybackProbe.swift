@@ -168,7 +168,7 @@ enum DebugPlaybackProbe {
         guard probedItem !== item else {
             return
         }
-        let output = AVPlayerItemVideoOutput(pixelBufferAttributes: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
+        let output = AVPlayerItemVideoOutput(pixelBufferAttributes: CVPixelBufferAttributes(pixelFormatTypes: [CVPixelFormatType(rawValue: kCVPixelFormatType_32BGRA)]))
         item.add(output)
         probedItem = item
         self.output = output
@@ -187,11 +187,11 @@ enum DebugPlaybackProbe {
             // No new frame since the last one: the picture still shows that one.
             return latestFrame
         }
-        var display = CMTime.invalid
-        guard let buffer = output.copyPixelBuffer(forItemTime: time, itemTimeForDisplay: &display) else {
+        let (pixelBuffer, display) = output.pixelBufferAndDisplayTime(forItemTime: time)
+        guard let pixelBuffer else {
             return latestFrame
         }
-        let frame = (time: display.isNumeric ? display.seconds : time.seconds, brightness: brightness(of: buffer))
+        let frame = (time: display.isNumeric ? display.seconds : time.seconds, brightness: pixelBuffer.withUnsafeBuffer { brightness(of: $0) })
         latestFrame = frame
         return frame
     }

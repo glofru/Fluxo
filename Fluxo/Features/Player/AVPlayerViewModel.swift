@@ -2174,8 +2174,21 @@ final class AVPlayerViewModel {
         #endif
     }
 
+    /// Resumes playback when the system recommends it after an interruption (a call, Siri, another app's audio).
     private func observeAudioSession() {
-        #if !os(macOS)
+        #if os(iOS)
+        NotificationCenter.default.publisher(for: AVAudioSession.resumptionRecommendationNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] notification in
+                guard let context = notification.userInfo?[AVAudioSession.resumptionContextKey] as? AVAudioSession.ResumptionContext,
+                      context.recommendation == .shouldResume else {
+                    return
+                }
+                self?.play()
+            }
+            .store(in: &cancellables)
+        #elseif os(tvOS)
+        // tvOS 26 has only the interruption notification (the resumption recommendation is tvOS 27).
         NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] notification in

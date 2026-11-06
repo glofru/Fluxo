@@ -25,15 +25,35 @@ enum EPGBackgroundRefresh {
     private static let logger = Logger(subsystem: "dev.watermelon.Fluxo", category: "EPGBackgroundRefresh")
 
     static func schedule() {
-        #if !os(macOS)
-        let request = BGAppRefreshTaskRequest(identifier: taskIdentifier)
-        request.earliestBeginDate = Date(timeIntervalSinceNow: interval)
+        #if os(iOS)
+        // The submission completes asynchronously and is not to be made on the main thread.
+        Task.detached(priority: .utility) {
+            do {
+                try await BGTaskScheduler.shared.submitTaskRequest(makeRequest())
+            } catch {
+                logNotScheduled(error)
+            }
+        }
+        #elseif os(tvOS)
+        // tvOS 26 has only the synchronous submission (the asynchronous one is tvOS 27).
         do {
-            try BGTaskScheduler.shared.submit(request)
+            try BGTaskScheduler.shared.submit(makeRequest())
         } catch {
-            // Fails in the Simulator and when Background App Refresh is off: the guide refreshes at launch then.
-            logger.info("Guide refresh not scheduled: \(error.localizedDescription, privacy: .public)")
+            logNotScheduled(error)
         }
         #endif
     }
+
+    #if !os(macOS)
+    private static func makeRequest() -> BGAppRefreshTaskRequest {
+        let request = BGAppRefreshTaskRequest(identifier: taskIdentifier)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: interval)
+        return request
+    }
+
+    private static func logNotScheduled(_ error: any Error) {
+        // Fails in the Simulator and when Background App Refresh is off: the guide refreshes at launch then.
+        logger.info("Guide refresh not scheduled: \(error.localizedDescription, privacy: .public)")
+    }
+    #endif
 }

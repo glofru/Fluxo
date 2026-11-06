@@ -2,7 +2,7 @@
 //  VisualSearchIntents.swift
 //  Fluxo
 //
-//  Visual Intelligence (Apple Intelligence; iOS 26 and macOS 27): point the camera at a TV, a poster or a
+//  Visual Intelligence (Apple Intelligence; iOS 27 and macOS 27): point the camera at a TV, a poster or a
 //  programme listing, or take a screenshot, then tap Search, and Fluxo's results appear with the system's. The
 //  system hands over a `SemanticContentDescriptor` (the labels it recognized and the pixels); Fluxo reads the
 //  text in the image on this device (a channel logo, a programme title) and returns the channels that match:
@@ -18,7 +18,7 @@ import Vision
 import VisualIntelligence
 
 /// The channels for what Visual Intelligence sees.
-@available(iOS 26.0, macOS 27.0, *)
+@available(macOS 27.0, *)
 struct ChannelVisualSearchQuery: IntentValueQuery {
 
     @Dependency
@@ -34,7 +34,7 @@ struct ChannelVisualSearchQuery: IntentValueQuery {
 
 /// "More results" of Visual Intelligence: Fluxo's search with the most prominent text of the image (else the
 /// first label it recognized).
-@available(iOS 26.0, macOS 27.0, *)
+@available(macOS 27.0, *)
 @AppIntent(schema: .visualIntelligence.semanticContentSearch)
 struct VisualSearchInFluxoIntent {
 
@@ -168,7 +168,7 @@ extension AppServices {
 }
 
 #if canImport(VisualIntelligence)
-@available(iOS 26.0, macOS 27.0, *)
+@available(macOS 27.0, *)
 extension VisualSearchTerms {
 
     /// Reads the text of `descriptor`'s image; `customWords` (channel names) help the recognizer with names that

@@ -81,7 +81,7 @@ struct AddFavoriteIntent: AppIntent {
     }
 }
 
-/// Opens Search with a query (the system "search in app" intent). From iOS 27 and macOS 27 it adopts the system
+/// Opens Search with a query (the system "search in app" intent). On iOS and from macOS 27 it adopts the system
 /// `searchInApp` schema (see `AppSchemaAdoption.swift`).
 struct SearchInFluxoIntent: ShowInAppSearchResultsIntent {
 

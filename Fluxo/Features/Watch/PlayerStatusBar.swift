@@ -59,24 +59,11 @@ extension View {
 private struct PlayerStatusBarModifier: ViewModifier {
     let style: PlayerStatusBarStyle
 
-    #if os(iOS)
-    /// The app's appearance (the player's subtree is dark, the view that hosts it is not).
-    @Environment(\.colorScheme) private var colorScheme
-    #endif
-
     func body(content: Content) -> some View {
         #if os(iOS)
-        if #available(iOS 27.0, *) {
-            content
-                .toolbarVisibility(style == .hidden ? .hidden : .automatic, for: .statusBar)
-                .toolbarColorScheme(style == .overVideo ? .dark : nil, for: .statusBar)
-        } else {
-            // iOS 26 has no SwiftUI way to choose the status bar's style (`ToolbarPlacement.statusBar` is iOS 27),
-            // so over the video it shows only in dark mode, where the default style is light content, and stays
-            // hidden otherwise rather than risking dark text on the video.
-            content
-                .statusBarHidden(style == .hidden || (style == .overVideo && colorScheme != .dark))
-        }
+        content
+            .toolbarVisibility(style == .hidden ? .hidden : .automatic, for: .statusBar)
+            .toolbarColorScheme(style == .overVideo ? .dark : nil, for: .statusBar)
         #else
         content
         #endif

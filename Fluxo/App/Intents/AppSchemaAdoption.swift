@@ -10,22 +10,23 @@
 //  and `searchInApp` (show search results in the app) schemas Fluxo adopts.
 //
 //  `@AppIntent(schema: .system.open)` cannot be written on these types: the schema values exist from iOS 27 and
-//  macOS 27, while Fluxo runs from iOS 26.1 and macOS 26 and an intent cannot exist twice (each entity has one
-//  `OpenIntent`, and an app has at most ten App Shortcuts). The macro only adds an availability-gated extension;
-//  the extensions below are exactly what it generates, so the intents are unchanged on iOS 26 and adopt the schema
-//  on iOS 27 (the build's `Metadata.appintents` lists them under the schema). The tvOS 27.2 SDK marks the schemas
+//  macOS 27, and while Fluxo needs iOS 27 it still runs from macOS 26, and an intent cannot exist twice (each entity
+//  has one `OpenIntent`, and an app has at most ten App Shortcuts). The macro only adds an availability-gated
+//  extension; the extensions below are what it generates (without the iOS gate, which the iOS 27 deployment target
+//  makes always true), so the intents are unchanged on macOS 26 and adopt the schema on iOS and on macOS 27 (the
+//  build's `Metadata.appintents` lists them under the schema). The tvOS 27.2 SDK marks the schemas
 //  unavailable on tvOS, so Apple TV has no schema adoption: there, Siri reaches the intents through their App Shortcut
 //  phrases.
 //
 
 import AppIntents
 
-@available(iOS 27.0, macOS 27.0, visionOS 27.0, *)
+@available(macOS 27.0, visionOS 27.0, *)
 extension PlayChannelIntent: AssistantSchemaIntent {
     static let __appSchemaIntent = "system.open"
 }
 
-@available(iOS 27.0, macOS 27.0, visionOS 27.0, *)
+@available(macOS 27.0, visionOS 27.0, *)
 extension SearchInFluxoIntent: AssistantSchemaIntent {
     static let __appSchemaIntent = "system.searchInApp"
 }

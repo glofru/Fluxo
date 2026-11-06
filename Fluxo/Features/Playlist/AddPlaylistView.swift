@@ -239,7 +239,7 @@ struct AddPlaylistView: View {
         #if !os(tvOS)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                // iOS 26 draws the cancel role as a glass close button.
+                // The cancel role draws as a glass close button (Liquid Glass).
                 Button(role: .cancel) {
                     // Cancelling stops the download and removes everything imported so far.
                     importTask?.cancel()

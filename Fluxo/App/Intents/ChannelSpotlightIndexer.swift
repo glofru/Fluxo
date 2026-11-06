@@ -108,8 +108,9 @@ final class ChannelSpotlightIndexer {
 }
 
 #if !os(tvOS)
-/// iOS 27: Spotlight can ask the app to index its channels again (after a restore, or when the index was reset).
-@available(iOS 27.0, macOS 27.0, visionOS 27.0, *)
+/// Spotlight can ask the app to index its channels again (after a restore, or when the index was reset): always on
+/// iOS, from macOS 27.
+@available(macOS 27.0, visionOS 27.0, *)
 extension ChannelEntityQuery: IndexedEntityQuery {
 
     func reindexEntities(for identifiers: [ChannelEntity.ID], indexDescription: CSSearchableIndexDescription) async throws {

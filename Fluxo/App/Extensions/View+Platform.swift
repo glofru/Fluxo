@@ -97,7 +97,7 @@ extension View {
         #endif
     }
 
-    /// Soft scroll edge effect under the floating glass toolbar (iOS 26 / macOS 26).
+    /// Soft scroll edge effect under the floating glass toolbar.
     @ViewBuilder
     func softScrollEdge() -> some View {
         self.scrollEdgeEffectStyle(.soft, for: .top)

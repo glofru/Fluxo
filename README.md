@@ -4,9 +4,13 @@ Fluxo is a SwiftUI IPTV / M3U player for iOS, macOS and tvOS (see "Apple TV").
 
 ## Building
 
-Open `Fluxo.xcodeproj` in Xcode 26 or later and run the `Fluxo` scheme.
-The app needs iOS 26.1 / macOS 26 (iOS 26.1 is the first release that can hide the tab bar accessory, so
-the mini player shows only while something plays).
+Open `Fluxo.xcodeproj` in Xcode 27 or later and run the `Fluxo` scheme.
+
+**Requirements**: iOS and iPadOS 27 or later (`IPHONEOS_DEPLOYMENT_TARGET = 27.0`), macOS 26 or later and tvOS 26 or
+later. On iPhone and iPad the app uses the iOS 27 APIs directly, with no code paths for older releases: the player's
+status bar (`ToolbarPlacement.statusBar`), the App Intents schemas, Spotlight's `IndexedEntityQuery` and the Now
+Playing entity (see "Apple Intelligence and Siri"). The Mac and Apple TV builds keep their availability
+checks for what comes with macOS 27 and tvOS 27, and the foldable iPhone's hinge APIs stay behind iOS 27.1.
 
 Live streams go through a small C remux engine
 (`Fluxo/Features/Player/Engine`) built on FFmpeg's libavformat, libavcodec
@@ -59,7 +63,9 @@ internal `avpriv_*` / `ff_*` symbols), for iOS (arm64), the iOS Simulator (arm64
 (arm64, x86_64: macOS 26 still runs on Intel Macs, and Xcode builds universal Release apps), tvOS (arm64) and the
 tvOS Simulator (arm64, x86_64), with the same components and configure flags on every platform.
 The public headers are in `Vendor/FFmpeg/include`, and `Vendor/FFmpeg/BUILD_INFO.txt` lists the
-exact configuration. The iOS slice is about 8 MB.
+exact configuration. The iOS slice is about 8 MB. The slices are built for iOS, macOS and tvOS 26.0 (`IOS_MIN`,
+`MACOS_MIN`, `TVOS_MIN` in the script); an iOS 27 app embeds the iOS 26.0 slices as they are, so the framework was not
+rebuilt when the app moved to iOS 27 (a later rebuild can raise `IOS_MIN` to 27.0).
 
 - **What is in it**: everything is disabled except what the engine reaches:
   - demuxers: MPEG-TS (and M2TS), HLS, MP4 / MOV / 3GP, FLV, Matroska / WebM, AVI, ASF (WMV), Ogg, MPEG-PS (VOB),
@@ -1557,9 +1563,9 @@ navigation, intelligence) with `AppDependencyManager`; intents run in the app's 
 | Capability | In Fluxo |
 |---|---|
 | App Shortcuts (`AppShortcutsProvider`): phrases that work without setup, at most ten shortcuts, each phrase with the app name; parameters only from an `AppEnum` or from the entities given to `updateAppShortcutParameters()` | Ten shortcuts. The channel parameter knows the favorites, the watch history and the first live channels of each playlist (up to 80), with spoken-name synonyms; refreshed at launch and, when these names change, after the favorites change or a channel starts (each refresh makes the system query the app again) |
-| Assistant schemas, `@AppIntent(schema:)` (iOS 27 `AppSchema`), so Siri with Apple Intelligence understands an intent without a fixed phrase. Domains: assistant, audio (music, podcasts, audiobooks, radio), books, browser, calendar, camera, clock, files, journal, mail, maps, messages, notes, phone, photos, presentation, reader, reminders, spreadsheet, system, visualIntelligence, whiteboard, wordProcessor. **There is no video or TV domain** | `system.open` on Play Channel and `system.searchInApp` on Search in Fluxo (from iOS / macOS 27; `AppSchemaAdoption.swift` writes the extension the macro generates, since the macro cannot gate one conformance of a type that exists from iOS 26). `visualIntelligence.semanticContentSearch` (iOS 26, macOS 27) |
+| Assistant schemas, `@AppIntent(schema:)` (iOS 27 `AppSchema`), so Siri with Apple Intelligence understands an intent without a fixed phrase. Domains: assistant, audio (music, podcasts, audiobooks, radio), books, browser, calendar, camera, clock, files, journal, mail, maps, messages, notes, phone, photos, presentation, reader, reminders, spreadsheet, system, visualIntelligence, whiteboard, wordProcessor. **There is no video or TV domain** | `system.open` on Play Channel and `system.searchInApp` on Search in Fluxo (on iOS, and from macOS 27; `AppSchemaAdoption.swift` writes the extension the macro generates, since the macro cannot gate one conformance of a type that exists from macOS 26). `visualIntelligence.semanticContentSearch` (iOS, macOS 27) |
 | System intent protocols: `OpenIntent`, `PlayVideoIntent`, `ShowInAppSearchResultsIntent`, `AudioPlaybackIntent` … | Play Channel, Play by Name, Search in Fluxo |
-| Spotlight: `IndexedEntity`, `CSSearchableIndex.indexAppEntities`, iOS 27 `IndexedEntityQuery` (Spotlight asks the app to index again) | Channels, with alternate names; `IndexedEntityQuery` from iOS 27 |
+| Spotlight: `IndexedEntity`, `CSSearchableIndex.indexAppEntities`, iOS 27 `IndexedEntityQuery` (Spotlight asks the app to index again) | Channels, with alternate names; `IndexedEntityQuery` on iOS and from macOS 27 |
 | On-screen awareness: `View.appEntityIdentifier(_:)`, iOS 27 `MPNowPlayingInfoPropertyAppEntityIdentifiers` | The player view, and the Now Playing entry (so "this channel" works with the player closed) |
 | Predictions and donations: `PredictableIntent`, `AppIntent.donate()` | Play Channel is donated whenever a channel starts (from the app, Siri or Shortcuts), so Siri can suggest the channel watched at that time of day |
 | Visual Intelligence: `IntentValueQuery` over `SemanticContentDescriptor`, the `semanticContentSearch` schema | Camera or screenshot → Search → Fluxo's channels: the text in the image is read on the device (Vision, with channel names as custom words) and matched to channel names and guide titles, then the labels to guide categories (`VisualSearchIntents.swift`) |
@@ -1614,7 +1620,7 @@ navigation, intelligence) with `AppDependencyManager`; intents run in the app's 
 
 **Steps on a device**
 
-1. iPhone, iPad or Mac on iOS / iPadOS / macOS 27 (26 for everything but the schemas and the Now Playing entity)
+1. iPhone or iPad on iOS / iPadOS 27, or a Mac on macOS 27 (macOS 26 for everything but the schemas and the Now Playing entity)
    with Apple Intelligence for the Siri AI part (iPhone 15 Pro or later, iPad or Mac with M1 or later).
 2. Install Fluxo and open it once, with a playlist imported. Wait a few seconds: the phrases and Spotlight are
    updated after launch. Mark a few favorites: Siri learns those first.
@@ -1774,8 +1780,7 @@ plain surfaces or small materials.
 - **Tab bar**: a native `TabView` with Home, Guide, Library, Settings and a `.search` role tab. It
   minimizes while scrolling down (`tabBarMinimizeBehavior(.onScrollDown)`).
 - **Mini player** (`PlayerBottomAccessory` in `App/ContentView.swift`): the
-  `tabViewBottomAccessory`, shown only while something plays (on iOS 26.1+ through
-  `isEnabled:`; iOS 26.0 cannot hide it and shows "Not Playing"). It reads
+  `tabViewBottomAccessory`, shown only while something plays (through `isEnabled:`). It reads
   `tabViewBottomAccessoryPlacement`: expanded, it shows the artwork, the title, a status line
   (LIVE and group, recording with a pulsing symbol, PiP, buffering), play / pause and close;
   inline (next to the minimized tab bar), only the artwork, the title and play / pause.
@@ -1798,7 +1803,7 @@ plain surfaces or small materials.
   when the stream is time-shifted (`glassEffectID`). PiP, AirPlay and the menu share one capsule.
 - **Sheets**: Add / Edit Playlist and Recordings (the player's) use `.medium` / `.large` detents; their forms
   hide the grouped background so the sheet's glass shows at partial height, and they use the
-  iOS 26 `.cancel` / `.close` / `.confirm` button roles.
+  `.cancel` / `.close` / `.confirm` button roles.
 - **Motion and accessibility**: symbol transitions (`contentTransition(.symbolEffect(.replace))`)
   for play / pause, PiP and favorites, `.pulse` for recording and `.variableColor` for LIVE,
   haptics for play / pause, Go Live, chip selection and favorites. With Reduce Motion the glass

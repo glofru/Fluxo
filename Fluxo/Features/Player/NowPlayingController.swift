@@ -59,9 +59,9 @@ final class NowPlayingController {
     /// Updates the Now Playing entry. Call it when the channel, the state or the seekability changes;
     /// the system extrapolates the elapsed time from the rate in between.
     ///
-    /// - Parameter item: the library channel that plays (nil for a stream outside the library). From iOS 27 and
-    ///   macOS 27 the entry names its `ChannelEntity`, so Siri knows what plays ("Add this to my favorites",
-    ///   "What's on this channel?") even when the player is not on screen.
+    /// - Parameter item: the library channel that plays (nil for a stream outside the library). The entry names its
+    ///   `ChannelEntity` (always on iOS, from macOS 27 and tvOS 27), so Siri knows what plays ("Add this to my
+    ///   favorites", "What's on this channel?") even when the player is not on screen.
     func update(title: String, item: ChannelItem? = nil, isLive: Bool, elapsed: TimeInterval, duration: TimeInterval, isPlaying: Bool, canSeek: Bool, canZap: Bool) {
         guard Self.isEnabled else {
             return
@@ -75,7 +75,7 @@ final class NowPlayingController {
         if !isLive && duration > 0 {
             info[MPMediaItemPropertyPlaybackDuration] = duration
         }
-        if #available(iOS 27.0, macOS 27.0, tvOS 27.0, *),
+        if #available(macOS 27.0, tvOS 27.0, *),
            let identifier = item.flatMap(ChannelEntity.entityIdentifier(for:)).flatMap(MPAppEntityIdentifier.init(entityIdentifier:)) {
             info[MPNowPlayingInfoPropertyAppEntityIdentifiers] = [identifier]
         }
