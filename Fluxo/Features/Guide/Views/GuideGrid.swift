@@ -162,7 +162,8 @@ struct GuideGrid: View {
             keepsFocusedRow = true
         }
         let y = keepsFocusedRow && (!position.isPositionedByUser || animated) ? focusedRowOffset() : nil
-        let apply = {
+        // Main-actor isolated, so it may also be sent to the main queue.
+        let apply: @MainActor () -> Void = {
             if let y {
                 position.scrollTo(x: x, y: y)
             } else {

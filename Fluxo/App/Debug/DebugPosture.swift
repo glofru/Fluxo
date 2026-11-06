@@ -21,6 +21,7 @@
 
 #if DEBUG && os(iOS)
 import Observation
+import os
 import SwiftUI
 
 @MainActor

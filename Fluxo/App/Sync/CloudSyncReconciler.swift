@@ -192,7 +192,7 @@ struct SyncLedger: Codable, Equatable {
         case hasMatchedBaseline, keptDespiteDeletion
     }
 
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         version = try container.decode(Int.self, forKey: .version)
         records = try container.decode([String: SyncRecord].self, forKey: .records)
@@ -296,7 +296,7 @@ enum CloudAccountChange: Sendable, Equatable {
 /// The cloud side: CloudKit (`CloudKitSyncTransport`), or a simulated cloud in Debug builds and `Tools/SyncCheck`.
 @MainActor
 protocol CloudSyncTransport: AnyObject {
-    var events: CloudSyncTransportEvents? { get set }
+    var events: (any CloudSyncTransportEvents)? { get set }
     func start()
     func stop()
     /// These records changed in the ledger: send them (the transport reads them with `transportRecord(for:)` when
@@ -323,7 +323,7 @@ protocol CloudSyncTransportEvents: AnyObject {
     func transportDidSend(_ sent: [SyncRecordID: Date])
     /// A fetch read everything up to now (after its `transportDidFetch`).
     func transportDidFinishFetching() async
-    func transportDidFail(_ error: Error)
+    func transportDidFail(_ error: any Error)
 }
 
 // MARK: - Reconciler
@@ -346,8 +346,8 @@ final class CloudSyncReconciler {
     private static let logger = Logger(subsystem: "dev.watermelon.Fluxo", category: "CloudSync")
 
     let deviceID: String
-    private let store: CloudSyncLocalStore
-    private let storage: SyncLedgerStorage
+    private let store: any CloudSyncLocalStore
+    private let storage: any SyncLedgerStorage
     private let clock: () -> Date
     private let policy: SyncMassDeletionPolicy
     private(set) var ledger: SyncLedger
@@ -369,7 +369,7 @@ final class CloudSyncReconciler {
     /// Called after every pass.
     var onPassFinished: (() -> Void)?
 
-    init(deviceID: String, store: CloudSyncLocalStore, storage: SyncLedgerStorage, policy: SyncMassDeletionPolicy = SyncMassDeletionPolicy(), clock: @escaping () -> Date = Date.init) {
+    init(deviceID: String, store: any CloudSyncLocalStore, storage: any SyncLedgerStorage, policy: SyncMassDeletionPolicy = SyncMassDeletionPolicy(), clock: @escaping () -> Date = Date.init) {
         self.deviceID = deviceID
         self.store = store
         self.storage = storage

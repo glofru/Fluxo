@@ -11,11 +11,16 @@ ROOT="$(cd "$HERE/../.." && pwd)"
 CHANNELS="${CHANNELS:-50000}"
 OUT="${OUT:-$(mktemp -d /tmp/fluxo-home-queries.XXXXXX)}"
 
-xcrun swiftc -O -swift-version 5 -parse-as-library -o "$OUT/check" \
+source "$ROOT/Tools/swift-language.sh"
+xcrun swiftc -O "${FLUXO_SWIFT_LANGUAGE[@]}" -parse-as-library -o "$OUT/check" \
     "$ROOT/Fluxo/Features/Playlist/Playlist.swift" \
     "$ROOT/Fluxo/Features/Playlist/ChannelContentKind.swift" \
     "$ROOT/Fluxo/Features/Library/ChannelBookmark.swift" \
     "$ROOT/Fluxo/Features/Library/ChannelLibrary.swift" \
+    "$ROOT/Fluxo/App/Sync/SyncDeletionJournal.swift" \
+    "$ROOT/Fluxo/App/Sync/CloudSyncRecords.swift" \
+    "$ROOT/Fluxo/App/Sync/CloudSyncReconciler.swift" \
+    "$ROOT/Fluxo/App/Extensions/UserDefaults+Fluxo.swift" \
     "$ROOT/Fluxo/Features/Library/ChannelZapper.swift" \
     "$ROOT/Fluxo/Features/Home/HomeQueries.swift" \
     "$ROOT/Fluxo/Features/Search/SearchMatcher.swift" \

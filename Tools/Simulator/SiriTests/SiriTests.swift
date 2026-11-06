@@ -13,6 +13,8 @@
 
 import XCTest
 
+// XCUIApplication and the elements it finds are main-actor isolated: the tests run on the main actor.
+@MainActor
 final class SiriTests: XCTestCase {
 
     let out = ProcessInfo.processInfo.environment["FLUXO_SHOTS"] ?? "/tmp/fluxo-shots/siri-tests"
@@ -20,7 +22,8 @@ final class SiriTests: XCTestCase {
     let shortcuts = XCUIApplication(bundleIdentifier: "com.apple.shortcuts")
     let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
 
-    override func setUp() {
+    // The asynchronous setUp: unlike the synchronous one, it runs on the main actor like the tests.
+    override func setUp() async throws {
         continueAfterFailure = true
         // Favorites, history and a guide: what the phrases, Spotlight and "What's On" use.
         fluxo.launchArguments = ["-FluxoDebugStore", "memory", "-FluxoDebugSeed", "sample", "-FluxoDebugRoute", "seed-guide;mini-player:Rai 1 HD;wait:2;stop;spotlight-reindex"]

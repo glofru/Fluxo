@@ -6,8 +6,10 @@
 //
 
 import FlyingFox
+import FlyingSocks
 import Foundation
 import OSLog
+import Synchronization
 
 private let logger = Logger(subsystem: "dev.watermelon.Fluxo", category: "HTTPServer")
 
@@ -24,7 +26,7 @@ final class SimpleHTTPServer {
 
     /// Called for every file request with its name, before the file is read. Returns false when the file
     /// will not exist (the server answers 404 at once).
-    typealias FileProvider = @Sendable (String) async -> Bool
+    typealias FileProvider = @Sendable @concurrent (String) async -> Bool
     nonisolated static let host = "127.0.0.1"
     /// Debug builds can use another port (`-FluxoDebugLoopbackPort <port>`): simulators share the Mac's loopback
     /// interface, so two of them playing at the same time would otherwise take the port from each other. The
@@ -145,7 +147,7 @@ final class SimpleHTTPServer {
         }
     }
 
-    private nonisolated static func response(for request: HTTPRequest, root: URL, provider: FileProvider?) async -> HTTPResponse {
+    @concurrent private nonisolated static func response(for request: HTTPRequest, root: URL, provider: FileProvider?) async -> HTTPResponse {
         // Only flat file names are served: no directories and no path traversal.
         let fileName = String(request.path.drop(while: { $0 == "/" }))
         guard !fileName.isEmpty,
@@ -191,19 +193,18 @@ final class SimpleHTTPServer {
 }
 
 /// The file provider of the session being served, shared with the request handlers.
-private final class ProviderBox: @unchecked Sendable {
-    private let lock = NSLock()
-    private var provider: SimpleHTTPServer.FileProvider?
+private final class ProviderBox: Sendable {
+    private let provider = Mutex<SimpleHTTPServer.FileProvider?>(nil)
 
     func set(_ provider: SimpleHTTPServer.FileProvider?) {
-        lock.withLock {
-            self.provider = provider
+        self.provider.withLock {
+            $0 = provider
         }
     }
 
     func get() -> SimpleHTTPServer.FileProvider? {
-        lock.withLock {
-            provider
+        provider.withLock {
+            $0
         }
     }
 }

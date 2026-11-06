@@ -7,6 +7,7 @@
 
 import SwiftData
 import SwiftUI
+import UserNotifications
 
 /// The programmes the user asked to be reminded of, soonest first: watch the channel, or delete the reminder.
 struct RemindersView: View {

@@ -52,6 +52,56 @@ The SwiftData schema is the list in `Fluxo/App/Database/ModelRegistry.swift`; ad
 types there. `.swiftlint.yml` configures [SwiftLint](https://github.com/realm/SwiftLint) for
 manual runs (`swiftlint lint`); it is not part of the build.
 
+### Swift
+
+Every Swift target builds in the **Swift 6 language mode** (`SWIFT_VERSION = 6.0`): the app, the Top Shelf extension
+and the UI test bundles of `Tools/Simulator`. It is the newest mode of the Swift 6.4 compiler in Xcode 27.2 (the
+compiler accepts 4, 4.2, 5 and 6), so concurrency checking is complete and a possible data race is a compile error, not
+a warning. The build has no warnings, and it should stay that way.
+
+Four upcoming features of the next language mode are on as well (project-level `SWIFT_UPCOMING_FEATURE_*` settings,
+so every target gets them):
+
+- **`NonisolatedNonsendingByDefault`**: an async function that is not isolated to an actor runs on the actor of its
+  caller instead of the global executor (`nonisolated(nonsending)`), so calling it does not send its arguments to
+  another isolation domain. The functions that must not run on their caller's actor are marked `@concurrent`, which is
+  how every such function ran before the change: SwiftData fetches on a background `ModelContext`, file, image and
+  network work, the loopback server's request handler, the App Intents queries, the recommenders. A new async function
+  that does real work off the main actor needs `@concurrent` too; one that only awaits other async calls does not.
+  Closures given to `Task.detached`, task groups and the SDK keep running where they did.
+- **`InferIsolatedConformances`**: a conformance of a main-actor type is isolated to the main actor, so delegates that
+  the SDKs call on the main thread (Picture in Picture, the Apple TV player, the Cast SDK's listeners) are plain
+  main-actor classes. `nonisolated` marks a conformance that must not be isolated (`CKSyncEngineDelegate`, which is
+  `Sendable`).
+- **`ExistentialAny`** (`any` is written out) and **`MemberImportVisibility`** (each file imports the modules whose
+  members it uses).
+
+Deliberately not adopted:
+
+- **Default actor isolation stays `nonisolated`** (not `MainActor`). Much of the app runs off the main actor on
+  purpose (the playlist and guide imports, the search index, downloads, the image loader, sync, the engine's threads),
+  and its UI types and view models are already explicitly `@MainActor`. Main-actor by default would move every
+  unannotated type to the main actor and need `nonisolated` on hundreds of declarations, for no safety gain.
+- **`InternalImportsByDefault`**: the app module has no public API, so it would change nothing.
+- **`StrictMemorySafety`** (opt-in, not part of a language mode): it would flag every call into the C engine and
+  FFmpeg, which are unsafe pointer code by nature, without making them safer.
+- Xcode's **Approachable Concurrency** setting is not set: in the Swift 6 mode it only turns on the two concurrency
+  features above, which are set explicitly instead.
+
+Rules that keep it correct:
+
+- **Callbacks from Objective-C or C code** (`MPRemoteCommand` handlers, Core Spotlight queries, notifications a
+  framework may post on another queue, the remux engine's callback) are `@Sendable` closures, or `@convention(c)`
+  functions, that move to the main actor themselves. A closure written in main-actor code is isolated to the main
+  actor, and when a framework that does not mark the closure `Sendable` calls it on another queue, Swift 6 stops the
+  app at its actor check (`dispatch_assert_queue`). `.receive(on: DispatchQueue.main)` before `.sink` keeps a Combine
+  subscriber on the main queue.
+- **`@unchecked Sendable`** only with a comment that says what makes the type safe (a lock, a single owning queue, a
+  thread-safe class the SDK does not mark `Sendable`); `nonisolated(unsafe)` and `@preconcurrency` likewise. The app
+  has no `@preconcurrency` import.
+- The tools that compile app sources with `swiftc` (`Tools/*Check`, the benchmarks, `VODCheck`) use the same language
+  settings: `Tools/swift-language.sh`, which follows these build settings.
+
 ### FFmpeg
 
 `Vendor/FFmpeg/FFmpeg.xcframework` is a minimal FFmpeg 9.0.2 built from the official release

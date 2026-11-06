@@ -99,9 +99,9 @@ final class DirectoryCloudBackend: SimulatedCloudBackend {
 /// when it syncs; with `automaticallySyncs`, a change is sent at once and the server is polled while the app runs.
 @MainActor
 final class SimulatedCloudTransport: CloudSyncTransport {
-    weak var events: CloudSyncTransportEvents?
+    weak var events: (any CloudSyncTransportEvents)?
 
-    let backend: SimulatedCloudBackend
+    let backend: any SimulatedCloudBackend
     private var pending: Set<SyncRecordID> = []
     private var sequence = 0
     private var isStarted = false
@@ -123,7 +123,7 @@ final class SimulatedCloudTransport: CloudSyncTransport {
         }
     }
 
-    init(backend: SimulatedCloudBackend, automaticallySyncs: Bool = false) {
+    init(backend: any SimulatedCloudBackend, automaticallySyncs: Bool = false) {
         self.backend = backend
         self.automaticallySyncs = automaticallySyncs
     }

@@ -12,6 +12,7 @@
 
 #if DEBUG
 import Foundation
+import os
 
 @MainActor
 enum DebugLinkRoutes {

@@ -66,7 +66,7 @@ final class PowerMonitor {
     @ObservationIgnored
     private var observers: [UUID: @MainActor () -> Void] = [:]
     @ObservationIgnored
-    private var notificationTokens: [NSObjectProtocol] = []
+    private var notificationTokens: [any NSObjectProtocol] = []
     @ObservationIgnored
     private var isStarted = false
 

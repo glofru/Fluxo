@@ -21,16 +21,17 @@
 
 #if DEBUG
 import Foundation
+import os
 
 enum DebugCloud {
 
     /// The simulated transport of `-FluxoDebugCloud`, nil without it.
     @MainActor
-    static func makeTransport() -> CloudSyncTransport? {
+    static func makeTransport() -> (any CloudSyncTransport)? {
         guard let value = DebugLaunchOptions.current.cloud else {
             return nil
         }
-        let backend: SimulatedCloudBackend
+        let backend: any SimulatedCloudBackend
         if value.lowercased() == "memory" {
             backend = MemoryCloudBackend()
         } else {
@@ -43,7 +44,7 @@ enum DebugCloud {
 
     /// `-FluxoDebugCloudSeed`: playlist records of another device (a record the cloud already has is kept).
     @MainActor
-    private static func seed(_ backend: SimulatedCloudBackend) {
+    private static func seed(_ backend: any SimulatedCloudBackend) {
         guard let value = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)["FluxoDebugCloudSeed"] as? String else {
             return
         }

@@ -144,13 +144,13 @@ extension PlaybackRoute {
 extension PlaybackRoute {
 
     /// `engineReason(video:audio:)` for the tracks of `asset` (a movie AVPlayer opened, or a downloaded file).
-    nonisolated static func engineReason(for asset: AVAsset) async -> String? {
+    @concurrent nonisolated static func engineReason(for asset: AVURLAsset) async -> String? {
         async let video = directTracks(of: asset, mediaType: .video)
         async let audio = directTracks(of: asset, mediaType: .audio)
         return engineReason(video: await video, audio: await audio)
     }
 
-    private nonisolated static func directTracks(of asset: AVAsset, mediaType: AVMediaType) async -> [DirectTrack] {
+    @concurrent private nonisolated static func directTracks(of asset: AVURLAsset, mediaType: AVMediaType) async -> [DirectTrack] {
         guard let tracks = try? await asset.loadTracks(withMediaType: mediaType) else {
             return []
         }

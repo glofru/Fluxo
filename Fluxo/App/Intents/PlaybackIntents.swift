@@ -8,6 +8,7 @@
 
 import AppIntents
 import Foundation
+import SwiftUI
 
 /// Plays a channel. As an `OpenIntent` on `ChannelEntity`, it is also what opening a channel from Spotlight does.
 /// On iOS and from macOS 27 it adopts the system `open` schema (see `AppSchemaAdoption.swift`).

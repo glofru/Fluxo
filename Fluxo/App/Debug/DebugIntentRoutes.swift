@@ -19,6 +19,7 @@ import CoreGraphics
 import CoreSpotlight
 import CoreText
 import Foundation
+import os
 import Synchronization
 
 /// The intents and queries whose `services` the harness sets.
@@ -40,90 +41,95 @@ enum DebugIntentRoutes {
 
     static let all: [DebugRoute] = coreRoutes + visualRoutes + DebugLinkRoutes.all
 
-    private static let coreRoutes: [DebugRoute] = [
-        DebugRoute("intent:<action>[:<words>]", "Runs an App Intent in process (actions: \(actions.keys.sorted().joined(separator: ", "))); writes the outcome to Status/intents.log.") { _, argument in
-            let parts = argument.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
-            let name = String(parts[0]).trimmingCharacters(in: .whitespaces).lowercased()
-            let words = parts.count > 1 ? String(parts[1]).trimmingCharacters(in: .whitespaces) : ""
-            guard let action = actions[name] else {
-                throw DebugRouteError.invalidArgument("intent", argument)
-            }
-            let services = try services()
-            do {
-                let outcome = try await action(words)
-                report("intent \(name) \"\(words)\" → \(outcome) \(playerState(services))")
-            } catch {
-                report("intent \(name) \"\(words)\" → error: \(message(for: error)) \(playerState(services))")
-            }
-        },
-        DebugRoute("siri-resolve:<words>", "Resolves spoken words to a channel like \"Play … in Fluxo\" (PlayByNameIntent).") { _, argument in
-            let services = try services()
-            if let resolution = await services.resolveChannel(argument) {
-                report("resolve \"\(argument)\" → \(resolution.item.displayName) [\(resolution.reason)] number=\(resolution.item.number.map(String.init) ?? "-")")
-            } else {
-                report("resolve \"\(argument)\" → nothing")
-            }
-        },
-        DebugRoute("siri-resolve-check", "Checks the channel-number rules (\"channel 5\" is a number, \"BBC 9\" is not) and, on the sample library, that names it lacks do not resolve to another channel.") { _, _ in
-            let services = try services()
-            var failures: [String] = []
-            func expect(_ condition: Bool, _ what: String) {
-                if !condition {
-                    failures.append(what)
+    // Computed, not a stored `static let`: the Swift 6.4 compiler rejects this array as the initializer of a stored
+    // property of the main actor ("default argument cannot be both main actor-isolated and @concurrent"), as it
+    // mixes main-actor code with calls into `@concurrent` code. `all` keeps the routes once.
+    private static var coreRoutes: [DebugRoute] {
+        [
+            DebugRoute("intent:<action>[:<words>]", "Runs an App Intent in process (actions: \(actions.keys.sorted().joined(separator: ", "))); writes the outcome to Status/intents.log.") { _, argument in
+                let parts = argument.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+                let name = String(parts[0]).trimmingCharacters(in: .whitespaces).lowercased()
+                let words = parts.count > 1 ? String(parts[1]).trimmingCharacters(in: .whitespaces) : ""
+                guard let action = actions[name] else {
+                    throw DebugRouteError.invalidArgument("intent", argument)
                 }
-            }
-            let numbers: [(String, Int?)] = [
-                ("5", 5), ("#5", 5), ("channel 5", 5), ("Channel number 7", 7), ("canale 105", 105), ("canale numero 3", 3),
-                ("chaîne 2", 2), ("Kanal 4", 4), ("kanał 6", 6), ("n°5", 5), ("No. 9", 9), ("5チャンネル", 5), ("第5频道", 5),
-                ("5번 채널", 5), ("канал 3", 3), ("قناة ٥", 5),
-                ("BBC 9", nil), ("Eurosport 7", nil), ("Rai 4", nil), ("Sky Sport 24", nil), ("F1", nil), ("20:45", nil),
-                ("channel 0", nil), ("the 5 o'clock show", nil),
-            ]
-            for (term, expected) in numbers {
-                let digits = ChannelResolver.digitsForNumberWords(term)
-                expect(ChannelResolver.channelNumber(in: digits) == expected, "channelNumber(\"\(term)\") = \(ChannelResolver.channelNumber(in: digits).map(String.init) ?? "nil"), expected \(expected.map(String.init) ?? "nil")")
-            }
-            expect(ChannelResolver.channelNumber(in: ChannelResolver.digitsForNumberWords("channel four")) == 4, "\"channel four\" is number 4")
-            expect(ChannelResolver.channelNumber(in: ChannelResolver.digitsForNumberWords("BBC Four")) == nil, "\"BBC Four\" is not a number")
-            let names: [(String, String, Bool)] = [
-                ("Eurosport 7", "Eurosport 1", false), ("Eurosport 2", "Eurosport 2 HD", true), ("sky sport f 1", "Sky Sport F1", true),
-                ("Rai 4", "Rai 14", false), ("Rai Uno", "Rai 1 HD", true), ("Rai 1", "Rai Uno", true), ("Sky Cinema", "Sky Cinema Uno", true),
-            ]
-            for (term, name, expected) in names {
-                let has = ChannelResolver.hasNumbers(of: ChannelResolver.digitsForNumberWords(term), inName: name)
-                expect(has == expected, "hasNumbers(\"\(term)\", \"\(name)\") = \(has)")
-            }
-            // On the sample library (Eurosport 1 and 2, no BBC): names it lacks find nothing.
-            for term in ["BBC 9", "Eurosport 7", "Rai 9", "BBC Four"] {
-                if let resolution = await services.resolveChannel(term) {
-                    failures.append("resolve \"\(term)\" → \(resolution.item.displayName) [\(resolution.reason)], expected nothing")
+                let services = try services()
+                do {
+                    let outcome = try await action(words)
+                    report("intent \(name) \"\(words)\" → \(outcome) \(playerState(services))")
+                } catch {
+                    report("intent \(name) \"\(words)\" → error: \(message(for: error)) \(playerState(services))")
                 }
-                let query = ChannelEntityQuery()
-                query.services = services
-                let entities = try await query.entities(matching: term)
-                expect(entities.allSatisfy { ChannelResolver.hasNumbers(of: ChannelResolver.digitsForNumberWords(term), inName: $0.name) }, "entities(matching: \"\(term)\") offers \(entities.map(\.name))")
-            }
-            report(failures.isEmpty ? "siri-resolve-check: ok" : "siri-resolve-check: \(failures.count) failed\n  " + failures.joined(separator: "\n  "))
-        },
-        DebugRoute("siri-names", "Lists the channels Siri knows by name for the phrases (suggested entities) with their synonyms.") { _, _ in
-            let services = try services()
-            let entities = try await ChannelEntityQuery.parameterSuggestions(container: services.container)
-            let lines = entities.map { entity in
-                let synonyms = entity.displayRepresentation.synonyms.map { String(localized: $0) }
-                return "  \(entity.name) [\(entity.kind.rawValue)] synonyms: \(synonyms.joined(separator: " | "))"
-            }
-            report("siri-names: \(entities.count) channels\n" + lines.joined(separator: "\n"))
-        },
-        DebugRoute("spotlight-search:<words>", "Searches the app's own Spotlight entries (checks that channels were indexed).") { _, argument in
-            let titles = try await spotlightTitles(matching: argument)
-            report("spotlight \"\(argument)\" → \(titles.count) items: \(titles.prefix(20).joined(separator: ", "))")
-        },
-        DebugRoute("spotlight-reindex", "Indexes the favorites and recently watched channels in Spotlight now, timing each call.") { _, _ in
-            let services = try services()
-            let entities = try await ChannelEntityQuery.suggestions(container: services.container, limit: ChannelSpotlightIndexer.limit)
-            report("spotlight-reindex: \(entities.count) channels: " + (await timed { try await ChannelSpotlightIndexer.replaceIndex(with: entities) }))
-        },
-    ]
+            },
+            DebugRoute("siri-resolve:<words>", "Resolves spoken words to a channel like \"Play … in Fluxo\" (PlayByNameIntent).") { _, argument in
+                let services = try services()
+                if let resolution = await services.resolveChannel(argument) {
+                    report("resolve \"\(argument)\" → \(resolution.item.displayName) [\(resolution.reason)] number=\(resolution.item.number.map(String.init) ?? "-")")
+                } else {
+                    report("resolve \"\(argument)\" → nothing")
+                }
+            },
+            DebugRoute("siri-resolve-check", "Checks the channel-number rules (\"channel 5\" is a number, \"BBC 9\" is not) and, on the sample library, that names it lacks do not resolve to another channel.") { _, _ in
+                let services = try services()
+                var failures: [String] = []
+                func expect(_ condition: Bool, _ what: String) {
+                    if !condition {
+                        failures.append(what)
+                    }
+                }
+                let numbers: [(String, Int?)] = [
+                    ("5", 5), ("#5", 5), ("channel 5", 5), ("Channel number 7", 7), ("canale 105", 105), ("canale numero 3", 3),
+                    ("chaîne 2", 2), ("Kanal 4", 4), ("kanał 6", 6), ("n°5", 5), ("No. 9", 9), ("5チャンネル", 5), ("第5频道", 5),
+                    ("5번 채널", 5), ("канал 3", 3), ("قناة ٥", 5),
+                    ("BBC 9", nil), ("Eurosport 7", nil), ("Rai 4", nil), ("Sky Sport 24", nil), ("F1", nil), ("20:45", nil),
+                    ("channel 0", nil), ("the 5 o'clock show", nil),
+                ]
+                for (term, expected) in numbers {
+                    let digits = ChannelResolver.digitsForNumberWords(term)
+                    expect(ChannelResolver.channelNumber(in: digits) == expected, "channelNumber(\"\(term)\") = \(ChannelResolver.channelNumber(in: digits).map(String.init) ?? "nil"), expected \(expected.map(String.init) ?? "nil")")
+                }
+                expect(ChannelResolver.channelNumber(in: ChannelResolver.digitsForNumberWords("channel four")) == 4, "\"channel four\" is number 4")
+                expect(ChannelResolver.channelNumber(in: ChannelResolver.digitsForNumberWords("BBC Four")) == nil, "\"BBC Four\" is not a number")
+                let names: [(String, String, Bool)] = [
+                    ("Eurosport 7", "Eurosport 1", false), ("Eurosport 2", "Eurosport 2 HD", true), ("sky sport f 1", "Sky Sport F1", true),
+                    ("Rai 4", "Rai 14", false), ("Rai Uno", "Rai 1 HD", true), ("Rai 1", "Rai Uno", true), ("Sky Cinema", "Sky Cinema Uno", true),
+                ]
+                for (term, name, expected) in names {
+                    let has = ChannelResolver.hasNumbers(of: ChannelResolver.digitsForNumberWords(term), inName: name)
+                    expect(has == expected, "hasNumbers(\"\(term)\", \"\(name)\") = \(has)")
+                }
+                // On the sample library (Eurosport 1 and 2, no BBC): names it lacks find nothing.
+                for term in ["BBC 9", "Eurosport 7", "Rai 9", "BBC Four"] {
+                    if let resolution = await services.resolveChannel(term) {
+                        failures.append("resolve \"\(term)\" → \(resolution.item.displayName) [\(resolution.reason)], expected nothing")
+                    }
+                    let query = ChannelEntityQuery()
+                    query.services = services
+                    let entities = try await query.entities(matching: term)
+                    expect(entities.allSatisfy { ChannelResolver.hasNumbers(of: ChannelResolver.digitsForNumberWords(term), inName: $0.name) }, "entities(matching: \"\(term)\") offers \(entities.map(\.name))")
+                }
+                report(failures.isEmpty ? "siri-resolve-check: ok" : "siri-resolve-check: \(failures.count) failed\n  " + failures.joined(separator: "\n  "))
+            },
+            DebugRoute("siri-names", "Lists the channels Siri knows by name for the phrases (suggested entities) with their synonyms.") { _, _ in
+                let services = try services()
+                let entities = try await ChannelEntityQuery.parameterSuggestions(container: services.container)
+                let lines = entities.map { entity in
+                    let synonyms = entity.displayRepresentation.synonyms.map { String(localized: $0) }
+                    return "  \(entity.name) [\(entity.kind.rawValue)] synonyms: \(synonyms.joined(separator: " | "))"
+                }
+                report("siri-names: \(entities.count) channels\n" + lines.joined(separator: "\n"))
+            },
+            DebugRoute("spotlight-search:<words>", "Searches the app's own Spotlight entries (checks that channels were indexed).") { _, argument in
+                let titles = try await spotlightTitles(matching: argument)
+                report("spotlight \"\(argument)\" → \(titles.count) items: \(titles.prefix(20).joined(separator: ", "))")
+            },
+            DebugRoute("spotlight-reindex", "Indexes the favorites and recently watched channels in Spotlight now, timing each call.") { _, _ in
+                let services = try services()
+                let entities = try await ChannelEntityQuery.suggestions(container: services.container, limit: ChannelSpotlightIndexer.limit)
+                report("spotlight-reindex: \(entities.count) channels: " + (await timed { try await ChannelSpotlightIndexer.replaceIndex(with: entities) }))
+            },
+        ]
+    }
 
     /// Visual Intelligence's search (the matching and the text recognition; the system's side is not in the
     /// Simulator).
@@ -160,7 +166,11 @@ enum DebugIntentRoutes {
         for (index, text) in texts.enumerated() {
             let fontSize: CGFloat = index == 0 ? 96 : 44
             let font = CTFontCreateWithName("Helvetica-Bold" as CFString, fontSize, nil)
-            let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: CGColor(red: 1, green: 1, blue: 1, alpha: 1)]
+            // Core Text's own keys: the same on every platform, without UIKit or AppKit.
+            let attributes: [NSAttributedString.Key: Any] = [
+                NSAttributedString.Key(kCTFontAttributeName as String): font,
+                NSAttributedString.Key(kCTForegroundColorAttributeName as String): CGColor(red: 1, green: 1, blue: 1, alpha: 1),
+            ]
             let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attributes))
             context.textPosition = CGPoint(x: 60, y: y)
             CTLineDraw(line, context)
@@ -289,7 +299,7 @@ enum DebugIntentRoutes {
     }
 
     /// Runs `operation` and says how long it took, or that it did not return within `limit`.
-    private static func timed(limit: Duration = .seconds(15), _ operation: @escaping @Sendable () async throws -> Void) async -> String {
+    private static func timed(limit: Duration = .seconds(15), _ operation: @escaping @Sendable @concurrent () async throws -> Void) async -> String {
         let clock = ContinuousClock()
         let start = clock.now
         let done = Mutex(false)
@@ -394,7 +404,7 @@ enum DebugIntentRoutes {
         return key
     }
 
-    private static func message(for error: Error) -> String {
+    private static func message(for error: any Error) -> String {
         if let error = error as? FluxoIntentError {
             return String(localized: error.localizedStringResource)
         }
@@ -419,16 +429,18 @@ enum DebugIntentRoutes {
         let found = Mutex<[String]>([])
         let finished = Mutex(false)
         return try await withCheckedThrowingContinuation { continuation in
-            let finish: @Sendable (Result<[String], Error>) -> Void = { result in
+            let finish: @Sendable (Result<[String], any Error>) -> Void = { result in
                 if finished.withLock({ wasFinished in defer { wasFinished = true }; return !wasFinished }) {
                     continuation.resume(with: result)
                 }
             }
-            query.foundItemsHandler = { items in
+            // `@Sendable`, so not isolated to the main actor: Core Spotlight calls these on its own queue (and does not
+            // mark them `Sendable`), where a main-actor closure would stop at Swift's actor check.
+            query.foundItemsHandler = { @Sendable items in
                 let titles = items.compactMap(\.attributeSet.title)
                 found.withLock { $0.append(contentsOf: titles) }
             }
-            query.completionHandler = { error in
+            query.completionHandler = { @Sendable error in
                 if let error {
                     finish(.failure(error))
                 } else {

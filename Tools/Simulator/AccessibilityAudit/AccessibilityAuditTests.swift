@@ -15,6 +15,8 @@
 
 import XCTest
 
+// XCUIApplication and the elements it finds are main-actor isolated: the tests run on the main actor.
+@MainActor
 final class AccessibilityAuditTests: XCTestCase {
 
     let environment = ProcessInfo.processInfo.environment

@@ -32,7 +32,7 @@ protocol CastBackendDelegate: AnyObject {
 /// The Cast protocol behind `CastController`.
 @MainActor
 protocol CastBackend: AnyObject {
-    var delegate: CastBackendDelegate? { get set }
+    var delegate: (any CastBackendDelegate)? { get set }
     func startDiscovery()
     func stopDiscovery()
     /// Active scanning finds devices faster but costs battery: Google recommends it only while the device
@@ -111,13 +111,13 @@ final class CastController {
     var onEvent: ((Event) -> Void)?
 
     @ObservationIgnored
-    private var backend: CastBackend?
+    private var backend: (any CastBackend)?
     @ObservationIgnored
     private var pendingDeviceID: String?
 
     static let discoveryEnabledKey = "cast.discoveryEnabled"
 
-    init(backend: CastBackend?) {
+    init(backend: (any CastBackend)?) {
         self.backend = backend
         hasEnabledDiscovery = UserDefaults.fluxo.bool(forKey: Self.discoveryEnabledKey)
         backend?.delegate = self

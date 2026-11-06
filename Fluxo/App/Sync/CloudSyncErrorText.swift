@@ -15,7 +15,7 @@ import Foundation
 enum CloudSyncErrorText {
 
     /// The status line for `error`, in the user's language.
-    static func message(for error: Error) -> String {
+    static func message(for error: any Error) -> String {
         if let error = error as? CKError {
             return message(for: error)
         }
@@ -24,7 +24,7 @@ enum CloudSyncErrorText {
         }
         // The app's own errors (`CloudKitSyncTransport.QuotaExceededError`, `ZoneDeletionError`, the simulated
         // cloud's): localized where they are made.
-        if let description = (error as? LocalizedError)?.errorDescription, !description.isEmpty {
+        if let description = (error as? any LocalizedError)?.errorDescription, !description.isEmpty {
             return description
         }
         return generic

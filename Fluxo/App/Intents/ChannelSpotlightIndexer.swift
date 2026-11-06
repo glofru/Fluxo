@@ -90,7 +90,7 @@ final class ChannelSpotlightIndexer {
     /// bulk delete that completes late could remove the entries indexed after it: so there is no bulk cleanup of
     /// what earlier builds indexed. Those builds started every update with the call that does not return, so on
     /// iOS 27 they indexed nothing; and iOS 27 asks the app for a full index when it needs one (`IndexedEntityQuery`).
-    nonisolated static func replaceIndex(with entities: [ChannelEntity]) async throws {
+    @concurrent nonisolated static func replaceIndex(with entities: [ChannelEntity]) async throws {
         #if !os(tvOS)
         let index = CSSearchableIndex.default()
         let defaults = UserDefaults.fluxo
@@ -113,14 +113,14 @@ final class ChannelSpotlightIndexer {
 @available(macOS 27.0, visionOS 27.0, *)
 extension ChannelEntityQuery: IndexedEntityQuery {
 
-    func reindexEntities(for identifiers: [ChannelEntity.ID], indexDescription: CSSearchableIndexDescription) async throws {
+    @concurrent func reindexEntities(for identifiers: [ChannelEntity.ID], indexDescription: CSSearchableIndexDescription) async throws {
         let entities = try await entities(for: identifiers)
         if !entities.isEmpty {
             try await CSSearchableIndex.default().indexAppEntities(entities)
         }
     }
 
-    func reindexAllEntities(indexDescription: CSSearchableIndexDescription) async throws {
+    @concurrent func reindexAllEntities(indexDescription: CSSearchableIndexDescription) async throws {
         let entities = try await Self.suggestions(container: services.container, limit: ChannelSpotlightIndexer.limit)
         try await ChannelSpotlightIndexer.replaceIndex(with: entities)
     }

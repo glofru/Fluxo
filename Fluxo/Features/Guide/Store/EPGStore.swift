@@ -99,7 +99,7 @@ final class EPGStore {
     private var refreshTask: Task<Void, Never>?
     /// The refresh running now, so one source can be cancelled without stopping the queue.
     @ObservationIgnored
-    private var currentRefresh: (sourceID: UUID, task: Task<EPGRefreshSummary, Error>)?
+    private var currentRefresh: (sourceID: UUID, task: Task<EPGRefreshSummary, any Error>)?
     @ObservationIgnored
     private var reportsFailures: Set<UUID> = []
     /// Sources asked for again while their refresh ran: it may have read the playlist channels before they
@@ -385,7 +385,7 @@ final class EPGStore {
 
     /// Cancels the refresh of a source, queued or running. Returns the running one, to await its end.
     @discardableResult
-    private func cancelRefresh(of sourceID: UUID) -> Task<EPGRefreshSummary, Error>? {
+    private func cancelRefresh(of sourceID: UUID) -> Task<EPGRefreshSummary, any Error>? {
         refreshQueue.removeAll { $0 == sourceID }
         pendingReruns.remove(sourceID)
         reportsFailures.remove(sourceID)

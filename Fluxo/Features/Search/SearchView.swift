@@ -274,7 +274,7 @@ enum ChannelSearch {
     /// Token search over the in-memory index (see `ChannelSearchIndex` and `SearchMatcher`): every word of
     /// the query must match a word of the name, in any order, with typos allowed for longer words; the best
     /// matches come first.
-    static func run(_ request: Request, container: ModelContainer) async -> Results {
+    @concurrent static func run(_ request: Request, container: ModelContainer) async -> Results {
         let hits = await ChannelSearchIndex.shared.searchCollapsingSeries(
             request.term,
             importIDs: request.importIDs,

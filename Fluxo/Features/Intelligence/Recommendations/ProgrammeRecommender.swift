@@ -154,10 +154,10 @@ enum ProgrammeRecommender {
 
     // MARK: - Apple Intelligence
 
-    static func personalize(
+    @concurrent static func personalize(
         ranked: [ProgrammeCandidate],
         profile: TasteProfile,
-        search: @escaping @Sendable (String) async -> [ProgrammeCandidate],
+        search: @escaping @Sendable @concurrent (String) async -> [ProgrammeCandidate],
         now: Date = .now
     ) async throws -> [ProgrammeRecommendation] {
         #if os(tvOS)
@@ -275,9 +275,9 @@ struct SearchGuideTool: Tool {
 
     let registry: CandidateRegistry<ProgrammeCandidate>
     let now: Date
-    let search: @Sendable (String) async -> [ProgrammeCandidate]
+    let search: @Sendable @concurrent (String) async -> [ProgrammeCandidate]
 
-    func call(arguments: Arguments) async throws -> String {
+    @concurrent func call(arguments: Arguments) async throws -> String {
         guard registry.beginToolCall() else {
             return "No more searches. Choose from the programmes you have."
         }

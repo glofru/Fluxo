@@ -327,7 +327,7 @@ actor EPGImporter {
     }
 
     /// The guide URLs of a playlist's `#EXTM3U` header, reading only the start of the file. nil on failure.
-    static func headerGuideURLs(of playlistURL: URL) async -> [String]? {
+    @concurrent static func headerGuideURLs(of playlistURL: URL) async -> [String]? {
         var request = URLRequest(url: playlistURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
         request.setValue("bytes=0-65535", forHTTPHeaderField: "Range")
         do {
@@ -676,7 +676,7 @@ actor EPGImporter {
         }
     }
 
-    private func recordFailure(sourceID: UUID, error: Error) {
+    private func recordFailure(sourceID: UUID, error: any Error) {
         do {
             let context = makeContext()
             guard let source = try context.fetch(EPGQueries.source(uuid: sourceID)).first else {
@@ -729,6 +729,10 @@ actor EPGImporter {
 
 /// One parse of a guide file on a utility queue: XMLParser reads synchronously, so it gets a thread of its own
 /// instead of blocking the cooperative pool. Rows are written in batches, each in a fresh `ModelContext`.
+///
+/// Unchecked `Sendable`: the job is handed to that queue once (`run()`), and the parse state (the batches, `result`)
+/// is only touched there, by the parser's callbacks on the parsing thread. The only state another thread reaches is
+/// `cancellation`, behind its lock.
 private final class EPGParseJob: @unchecked Sendable {
 
     struct Result: Sendable {
@@ -781,7 +785,7 @@ private final class EPGParseJob: @unchecked Sendable {
         self.progress = progress
     }
 
-    func run() async throws -> Result {
+    @concurrent func run() async throws -> Result {
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Result, Error>) in
                 DispatchQueue.global(qos: .utility).async {
@@ -813,7 +817,7 @@ private final class EPGParseJob: @unchecked Sendable {
             throw error
         }
 
-        var storeError: Error?
+        var storeError: (any Error)?
         let wanted = wanted
         let parser = XMLTVParser(
             window: window,

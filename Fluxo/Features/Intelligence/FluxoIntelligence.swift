@@ -221,7 +221,7 @@ enum OnDeviceModel {
     /// Makes sure short generated texts are in the app's language. The small on-device model sometimes answers
     /// in English when the prompt is English and the names in it are not; such texts are then translated in one
     /// request (they are a few short lines). Returns the input when it is already right or the translation fails.
-    static func localized(_ texts: [String]) async -> [String] {
+    @concurrent static func localized(_ texts: [String]) async -> [String] {
         #if os(tvOS)
         return texts
         #else
@@ -263,7 +263,7 @@ enum OnDeviceModel {
 
     /// Runs `operation`, giving up after `seconds` (the on-device model can be slow on a busy device; the
     /// feature then keeps its fallback result).
-    static func withTimeout<T: Sendable>(seconds: Double, _ operation: @escaping @Sendable () async throws -> T) async throws -> T {
+    @concurrent static func withTimeout<T: Sendable>(seconds: Double, _ operation: @escaping @Sendable @concurrent () async throws -> T) async throws -> T {
         try await withThrowingTaskGroup(of: T.self) { group in
             group.addTask {
                 try await operation()

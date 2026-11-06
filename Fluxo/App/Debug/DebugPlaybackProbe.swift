@@ -11,6 +11,7 @@
 #if DEBUG
 import AVFoundation
 import CoreVideo
+import os
 
 @MainActor
 enum DebugPlaybackProbe {

@@ -5,6 +5,7 @@
 //  Created by Gianluca Lofrumento on 2026-11-02.
 //
 
+import Combine
 import SwiftData
 import SwiftUI
 

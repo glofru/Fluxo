@@ -8,6 +8,7 @@
 //  `CloudSyncReconciler` over a `LibrarySyncStore` and a transport (CloudKit). See "iCloud sync" in the README.
 //
 
+import CloudKit
 import Foundation
 import Observation
 import os
@@ -150,13 +151,13 @@ final class CloudSync {
     static let progressPublishDelay: Duration = .seconds(300)
 
     @ObservationIgnored
-    private let transport: CloudSyncTransport?
+    private let transport: (any CloudSyncTransport)?
     @ObservationIgnored
     private let reconciler: CloudSyncReconciler
     @ObservationIgnored
     private let store: LibrarySyncStore
     @ObservationIgnored
-    private var observers: [NSObjectProtocol] = []
+    private var observers: [any NSObjectProtocol] = []
     @ObservationIgnored
     private let context: ModelContext
     @ObservationIgnored
@@ -312,7 +313,7 @@ final class CloudSync {
         }
     }
 
-    private func sendAndFetch(_ transport: CloudSyncTransport) async {
+    private func sendAndFetch(_ transport: any CloudSyncTransport) async {
         await transportStartup?.value
         await reconciler.localStateMayHaveChanged()
         // Changes the cloud has not confirmed: refused for good (iCloud storage full), cancelled, or queued just
@@ -817,7 +818,7 @@ final class CloudSync {
         isImportSheetPresented = true
     }
 
-    private func track(name: String, playlistID: UUID, task: Task<PlaylistImportSummary, Error>) {
+    private func track(name: String, playlistID: UUID, task: Task<PlaylistImportSummary, any Error>) {
         imports[name] = PlaylistImport(playlistID: playlistID, phase: .importing)
         Task { [weak self] in
             let result = await task.result
@@ -844,7 +845,7 @@ final class CloudSync {
         return support.appendingPathComponent("CloudSync", isDirectory: true)
     }
 
-    private static func makeTransport(directory: URL) -> CloudSyncTransport? {
+    private static func makeTransport(directory: URL) -> (any CloudSyncTransport)? {
         #if DEBUG
         if let simulated = DebugCloud.makeTransport() {
             return simulated
@@ -865,7 +866,7 @@ final class CloudSync {
 #if DEBUG
 extension CloudSync {
     /// The transport, for the debug routes (`cloud-reject-saves`).
-    var debugTransport: CloudSyncTransport? {
+    var debugTransport: (any CloudSyncTransport)? {
         transport
     }
 
@@ -1008,13 +1009,13 @@ extension CloudSync: CloudSyncTransportEvents {
         }
     }
 
-    func transportDidFail(_ error: Error) {
+    func transportDidFail(_ error: any Error) {
         report(error)
     }
 
     /// Shows `error` in the status row, in the user's language (CloudKit's own descriptions are often English
     /// developer text), and logs what CloudKit said.
-    private func report(_ error: Error) {
+    private func report(_ error: any Error) {
         // The domain, code and description only: the full error can carry the records (playlist addresses).
         let nsError = error as NSError
         Self.logger.error("Sync failed: \(nsError.domain, privacy: .public) \(nsError.code, privacy: .public): \(error.localizedDescription, privacy: .public)")

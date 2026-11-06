@@ -17,7 +17,7 @@ final class InflatingInputStream: InputStream {
 
     private let file: InputStream
     private var status: Stream.Status = .notOpen
-    private var error: Error?
+    private var error: (any Error)?
 
     private var zStream = z_stream()
     private var isInflating = false
@@ -81,7 +81,7 @@ final class InflatingInputStream: InputStream {
         status
     }
 
-    override var streamError: Error? {
+    override var streamError: (any Error)? {
         error
     }
 
@@ -224,7 +224,7 @@ final class InflatingInputStream: InputStream {
         return produced
     }
 
-    private func fail(_ error: Error) {
+    private func fail(_ error: any Error) {
         self.error = error
         status = .error
     }

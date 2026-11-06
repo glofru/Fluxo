@@ -13,6 +13,7 @@
 
 #if DEBUG
 import AVFoundation
+import os
 import SwiftData
 import SwiftUI
 
@@ -801,7 +802,8 @@ enum DebugRoutes {
                 throw DebugRouteError.invalidArgument("orientation", argument)
             }
             for scene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }) {
-                scene.requestGeometryUpdate(.iOS(interfaceOrientations: mask)) { error in
+                // `@Sendable`: UIKit does not say on which queue it reports the error.
+                scene.requestGeometryUpdate(.iOS(interfaceOrientations: mask)) { @Sendable error in
                     DebugLaunchOptions.logger.error("Rotation failed: \(error.localizedDescription, privacy: .public)")
                 }
             }

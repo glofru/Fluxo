@@ -35,7 +35,7 @@ final class SeriesLibrary {
     @ObservationIgnored
     private let context: ModelContext
     @ObservationIgnored
-    private var indexObserver: NSObjectProtocol?
+    private var indexObserver: (any NSObjectProtocol)?
     @ObservationIgnored
     private var requestedSummaries: Set<String> = []
     @ObservationIgnored

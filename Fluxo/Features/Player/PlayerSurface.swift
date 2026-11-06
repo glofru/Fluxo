@@ -80,7 +80,7 @@ final class PlayerSurface: NSObject {
     var onRestoreUserInterface: ((@escaping (Bool) -> Void) -> Void)?
 
     /// Called on the main thread when Picture in Picture fails to start.
-    var onPictureInPictureError: ((Error) -> Void)?
+    var onPictureInPictureError: ((any Error) -> Void)?
 
     /// True while Picture in Picture runs.
     private(set) var isPictureInPictureActive = false
@@ -259,7 +259,8 @@ final class PlayerSurface: NSObject {
     #endif
 }
 
-extension PlayerSurface: @preconcurrency AVPictureInPictureControllerDelegate {
+// AVKit calls the delegate of its Picture in Picture controller on the main thread.
+extension PlayerSurface: @MainActor AVPictureInPictureControllerDelegate {
 
     func pictureInPictureControllerDidStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
         isPictureInPictureActive = true
@@ -277,7 +278,7 @@ extension PlayerSurface: @preconcurrency AVPictureInPictureControllerDelegate {
         onPictureInPictureActiveChange?(false)
     }
 
-    func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
+    func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, failedToStartPictureInPictureWithError error: any Error) {
         onPictureInPictureError?(error)
     }
 

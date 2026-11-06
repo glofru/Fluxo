@@ -122,7 +122,7 @@ final class DownloadCenter {
     /// A conversion found the video encoder unavailable (the app in the background): conversions start again once
     /// the app is active.
     @ObservationIgnored private var conversionsWaitForActiveApp = false
-    @ObservationIgnored private var activeObserver: NSObjectProtocol?
+    @ObservationIgnored private var activeObserver: (any NSObjectProtocol)?
     @ObservationIgnored private var isStarted = false
     /// The transfers that survived a relaunch were matched with their records: the queue may start transfers.
     @ObservationIgnored private var isReady = false

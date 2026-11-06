@@ -117,7 +117,7 @@ final class CategoryChannelsModel {
 
     // MARK: - Background fetches
 
-    private nonisolated static func fetchPage(_ request: Request, offset: Int, container: ModelContainer) async -> [ChannelItem] {
+    @concurrent private nonisolated static func fetchPage(_ request: Request, offset: Int, container: ModelContainer) async -> [ChannelItem] {
         await Task.detached(priority: .userInitiated) {
             let context = ModelContext(container)
             let descriptor: FetchDescriptor<PlaylistChannel>
@@ -131,7 +131,7 @@ final class CategoryChannelsModel {
     }
 
     /// Reads only the names of the whole category in A–Z order and notes where each letter starts.
-    private nonisolated static func fetchLetters(_ request: Request, container: ModelContainer) async -> [LetterOffset] {
+    @concurrent private nonisolated static func fetchLetters(_ request: Request, container: ModelContainer) async -> [LetterOffset] {
         await Task.detached(priority: .utility) {
             let context = ModelContext(container)
             var descriptor = HomeQueries.channels(importID: request.importID, groupName: request.groupName, order: .name, limit: 0)
@@ -144,7 +144,7 @@ final class CategoryChannelsModel {
         }.value
     }
 
-    private nonisolated static func fetchMostWatched(_ request: Request, container: ModelContainer) async -> [ChannelItem] {
+    @concurrent private nonisolated static func fetchMostWatched(_ request: Request, container: ModelContainer) async -> [ChannelItem] {
         await Task.detached(priority: .userInitiated) {
             let context = ModelContext(container)
             // Episodes of one series count once (the series is listed as one card).

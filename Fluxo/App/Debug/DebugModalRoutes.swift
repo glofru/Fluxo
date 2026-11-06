@@ -13,7 +13,10 @@
 //
 
 #if DEBUG
+import AVFoundation
+import CoreMedia
 import Foundation
+import os
 import SwiftData
 
 @MainActor

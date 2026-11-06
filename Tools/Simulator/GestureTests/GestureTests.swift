@@ -18,6 +18,8 @@
 import UIKit
 import XCTest
 
+// XCUIApplication and the elements it finds are main-actor isolated: the tests run on the main actor.
+@MainActor
 final class GestureTests: XCTestCase {
 
     let out = ProcessInfo.processInfo.environment["FLUXO_SHOTS"] ?? "/tmp/fluxo-shots/gesture-tests"
@@ -44,7 +46,7 @@ final class GestureTests: XCTestCase {
 
     /// The player's record of the last drag (Debug builds with the harness): samples, the largest offset, the
     /// largest gap between the offset and the finger's translation, and the current offset.
-    func dragProbe(_ app: XCUIApplication, file: StaticString = #file, line: UInt = #line) -> [String: Double] {
+    func dragProbe(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) -> [String: Double] {
         let probe = app.descendants(matching: .any)["player.dragProbe"]
         XCTAssertTrue(probe.waitForExistence(timeout: 3), "the drag probe exists", file: file, line: line)
         let value = probe.value as? String ?? ""
@@ -60,7 +62,7 @@ final class GestureTests: XCTestCase {
 
     /// Waits until the player is on screen (or gone). Uses the drag probe, which exists exactly while the player
     /// is presented, rather than a button: the controls hide after a few seconds without interaction.
-    func waitPlayerOpen(_ app: XCUIApplication, _ open: Bool, timeout: TimeInterval = 8, file: StaticString = #file, line: UInt = #line) {
+    func waitPlayerOpen(_ app: XCUIApplication, _ open: Bool, timeout: TimeInterval = 8, file: StaticString = #filePath, line: UInt = #line) {
         let predicate = NSPredicate(format: open ? "exists == true AND value BEGINSWITH 'visible=1'" : "exists == false OR value BEGINSWITH 'visible=0'")
         let expectation = XCTNSPredicateExpectation(predicate: predicate, object: app.descendants(matching: .any)["player.dragProbe"])
         let probe = app.descendants(matching: .any)["player.dragProbe"]
@@ -70,7 +72,7 @@ final class GestureTests: XCTestCase {
 
     /// Waits until the player is on screen and its opening animation is over: a tap during the animation lands
     /// where the button will be, not where it is drawn yet.
-    func waitPlayerSettled(_ app: XCUIApplication, timeout: TimeInterval = 8, file: StaticString = #file, line: UInt = #line) {
+    func waitPlayerSettled(_ app: XCUIApplication, timeout: TimeInterval = 8, file: StaticString = #filePath, line: UInt = #line) {
         waitPlayerOpen(app, true, timeout: timeout, file: file, line: line)
         sleep(1)
     }
@@ -660,7 +662,7 @@ final class GestureTests: XCTestCase {
     // MARK: - Deleting a TV guide
 
     /// The row of the guide `add-guide-source` adds ("Debug Guide"), scrolled into view.
-    func debugGuideRow(_ app: XCUIApplication, file: StaticString = #file, line: UInt = #line) -> XCUIElement {
+    func debugGuideRow(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) -> XCUIElement {
         let row = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Debug Guide'")).firstMatch
         // Seeding the guide takes a few seconds; the row exists once it is stored and scrolled near (lists are lazy).
         let deadline = Date().addingTimeInterval(60)
@@ -679,7 +681,7 @@ final class GestureTests: XCTestCase {
     }
 
     /// Confirms the deletion, then checks that the app is still running and the row went away.
-    func confirmGuideDeletion(_ app: XCUIApplication, shotName: String, file: StaticString = #file, line: UInt = #line) {
+    func confirmGuideDeletion(_ app: XCUIApplication, shotName: String, file: StaticString = #filePath, line: UInt = #line) {
         let confirm = app.buttons["Delete Guide Source"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 5), "the delete confirmation", file: file, line: line)
         shot("\(shotName)-1-confirm")
@@ -692,7 +694,7 @@ final class GestureTests: XCTestCase {
     }
 
     /// The app keeps working after the deletion: the Guide tab and Home render (from Settings).
-    func checkGuideAndHomeAfterDeletion(_ app: XCUIApplication, shotName: String, file: StaticString = #file, line: UInt = #line) {
+    func checkGuideAndHomeAfterDeletion(_ app: XCUIApplication, shotName: String, file: StaticString = #filePath, line: UInt = #line) {
         scrollToTop(app)
         tabButton(app, "Guide").tap()
         sleep(2)
@@ -761,7 +763,7 @@ final class GestureTests: XCTestCase {
     }
 
     /// Opens the player's Audio and Subtitles menu (showing the controls first).
-    func openTracksMenu(_ app: XCUIApplication, file: StaticString = #file, line: UInt = #line) {
+    func openTracksMenu(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
         let button = app.buttons["player.mediaSelection"]
         if !button.exists || !button.isHittable {
             app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35)).tap()

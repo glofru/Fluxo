@@ -8,6 +8,7 @@
 #if DEBUG
 import AVFoundation
 import Foundation
+import os
 
 enum DebugPowerRoutes {
 

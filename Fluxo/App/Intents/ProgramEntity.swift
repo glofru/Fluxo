@@ -79,7 +79,7 @@ struct ProgramEntityQuery: EntityStringQuery {
     @Dependency
     var services: AppServices
 
-    func entities(for identifiers: [ProgramEntity.ID]) async throws -> [ProgramEntity] {
+    @concurrent func entities(for identifiers: [ProgramEntity.ID]) async throws -> [ProgramEntity] {
         let container = services.container
         let names = ChannelEntityQuery.playlistNames(container)
         return identifiers.compactMap { identifier in

@@ -59,7 +59,7 @@ enum DownloadManager {
 
         let task = session.dataTask(with: request)
         let handler = DownloadTaskHandler(highWaterMark: highWaterMark, lowWaterMark: lowWaterMark)
-        let base = AsyncThrowingStream<DownloadChunk, Error> { continuation in
+        let base = AsyncThrowingStream<DownloadChunk, any Error> { continuation in
             handler.continuation = continuation
             continuation.onTermination = { termination in
                 if case .cancelled = termination {
@@ -78,7 +78,7 @@ enum DownloadManager {
 struct DownloadStream: AsyncSequence {
     typealias Element = DownloadChunk
 
-    fileprivate let base: AsyncThrowingStream<DownloadChunk, Error>
+    fileprivate let base: AsyncThrowingStream<DownloadChunk, any Error>
     fileprivate let handler: DownloadTaskHandler
 
     /// The HTTP response, once it arrived (before the first chunk).
@@ -91,16 +91,16 @@ struct DownloadStream: AsyncSequence {
     }
 
     struct Iterator: AsyncIteratorProtocol {
-        fileprivate var base: AsyncThrowingStream<DownloadChunk, Error>.AsyncIterator
+        fileprivate var base: AsyncThrowingStream<DownloadChunk, any Error>.AsyncIterator
         fileprivate let handler: DownloadTaskHandler
         private var pendingBytes = 0
 
-        fileprivate init(base: AsyncThrowingStream<DownloadChunk, Error>.AsyncIterator, handler: DownloadTaskHandler) {
+        fileprivate init(base: AsyncThrowingStream<DownloadChunk, any Error>.AsyncIterator, handler: DownloadTaskHandler) {
             self.base = base
             self.handler = handler
         }
 
-        mutating func next() async throws -> DownloadChunk? {
+        @concurrent mutating func next() async throws -> DownloadChunk? {
             if pendingBytes > 0 {
                 handler.consumed(pendingBytes)
                 pendingBytes = 0
@@ -124,7 +124,7 @@ private final class DownloadTaskHandler: NSObject, URLSessionDataDelegate, @unch
     private var isFinished = false
     private var receivedResponse: HTTPURLResponse?
 
-    var continuation: AsyncThrowingStream<DownloadChunk, Error>.Continuation?
+    var continuation: AsyncThrowingStream<DownloadChunk, any Error>.Continuation?
     weak var task: URLSessionDataTask?
 
     init(highWaterMark: Int, lowWaterMark: Int) {
@@ -189,11 +189,11 @@ private final class DownloadTaskHandler: NSObject, URLSessionDataDelegate, @unch
         }
     }
 
-    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?) {
         finish(throwing: error)
     }
 
-    private func finish(throwing error: Error?) {
+    private func finish(throwing error: (any Error)?) {
         lock.lock()
         let continuation = isFinished ? nil : self.continuation
         isFinished = true

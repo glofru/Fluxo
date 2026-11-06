@@ -11,7 +11,7 @@
 //
 
 #if os(iOS) && canImport(GoogleCast)
-@preconcurrency import GoogleCast
+import GoogleCast
 import OSLog
 
 private let logger = Logger(subsystem: "dev.watermelon.Fluxo", category: "Cast")
@@ -19,7 +19,7 @@ private let logger = Logger(subsystem: "dev.watermelon.Fluxo", category: "Cast")
 @MainActor
 final class GoogleCastBackend: CastBackend {
 
-    weak var delegate: CastBackendDelegate?
+    weak var delegate: (any CastBackendDelegate)?
 
     private let context: GCKCastContext
     private let listener = Listener()
@@ -187,7 +187,7 @@ final class GoogleCastBackend: CastBackend {
         publishMediaStatus()
     }
 
-    fileprivate func sessionDidEnd(error: Error?) {
+    fileprivate func sessionDidEnd(error: (any Error)?) {
         logger.info("Cast session ended\(error.map { ": \($0.localizedDescription)" } ?? "", privacy: .public)")
         observe(nil)
         delegate?.castBackendDidDisconnect(error: error.map(Self.failure(for:)).flatMap { $0.kind == .cancelled ? nil : $0 })
@@ -195,7 +195,7 @@ final class GoogleCastBackend: CastBackend {
         failPendingLoads()
     }
 
-    fileprivate func sessionDidFailToStart(error: Error) {
+    fileprivate func sessionDidFailToStart(error: any Error) {
         logger.error("Cast session failed to start: \(error.localizedDescription, privacy: .public)")
         observe(nil)
         delegate?.castBackendDidFailToConnect(error: Self.failure(for: error))
@@ -314,7 +314,7 @@ final class GoogleCastBackend: CastBackend {
         }
     }
 
-    nonisolated fileprivate static func failure(for error: Error) -> CastFailure {
+    nonisolated fileprivate static func failure(for error: any Error) -> CastFailure {
         let nsError = error as NSError
         guard nsError.domain == kGCKErrorDomain, let code = GCKErrorCode(rawValue: nsError.code) else {
             return CastFailure(kind: .connection, message: error.localizedDescription)
@@ -344,75 +344,75 @@ final class GoogleCastBackend: CastBackend {
 
 // MARK: - SDK delegates
 
-/// Receives the SDK's listener calls (main thread) and forwards them to the backend.
+/// Receives the SDK's listener calls and forwards them to the backend. The SDK calls its listeners on the main thread,
+/// so the class is main-actor isolated and so are its conformances (inferred isolated conformances): a call on another
+/// thread would stop at the actor check of the Objective-C entry point instead of racing.
+@MainActor
 private final class Listener: NSObject, GCKDiscoveryManagerListener, GCKSessionManagerListener, GCKRemoteMediaClientListener {
     weak var owner: GoogleCastBackend?
 
-    private func onMain(_ body: @MainActor (GoogleCastBackend) -> Void) {
-        MainActor.assumeIsolated {
-            if let owner {
-                body(owner)
-            }
+    private func withOwner(_ body: (GoogleCastBackend) -> Void) {
+        if let owner {
+            body(owner)
         }
     }
 
     // Discovery
 
     func didUpdateDeviceList() {
-        onMain { $0.publishDevices() }
+        withOwner { $0.publishDevices() }
     }
 
     // Session
 
     func sessionManager(_ sessionManager: GCKSessionManager, willStart session: GCKSession) {
-        onMain { $0.sessionWillStart(session) }
+        withOwner { $0.sessionWillStart(session) }
     }
 
     func sessionManager(_ sessionManager: GCKSessionManager, didStart session: GCKSession) {
-        onMain { $0.sessionDidStart(session, resumed: false) }
+        withOwner { $0.sessionDidStart(session, resumed: false) }
     }
 
     func sessionManager(_ sessionManager: GCKSessionManager, didResumeSession session: GCKSession) {
-        onMain { $0.sessionDidStart(session, resumed: true) }
+        withOwner { $0.sessionDidStart(session, resumed: true) }
     }
 
     func sessionManager(_ sessionManager: GCKSessionManager, didEnd session: GCKSession, withError error: (any Error)?) {
-        onMain { $0.sessionDidEnd(error: error) }
+        withOwner { $0.sessionDidEnd(error: error) }
     }
 
     func sessionManager(_ sessionManager: GCKSessionManager, didFailToStart session: GCKSession, withError error: any Error) {
-        onMain { $0.sessionDidFailToStart(error: error) }
+        withOwner { $0.sessionDidFailToStart(error: error) }
     }
 
     func sessionManager(_ sessionManager: GCKSessionManager, didSuspend session: GCKSession, with reason: GCKConnectionSuspendReason) {
-        onMain { $0.sessionDidSuspend() }
+        withOwner { $0.sessionDidSuspend() }
     }
 
     func sessionManager(_ sessionManager: GCKSessionManager, session: GCKSession, didReceiveDeviceVolume volume: Float, muted: Bool) {
-        onMain { $0.volumeDidChange(volume, muted: muted) }
+        withOwner { $0.volumeDidChange(volume, muted: muted) }
     }
 
     // Media
 
     func remoteMediaClient(_ client: GCKRemoteMediaClient, didUpdate mediaStatus: GCKMediaStatus?) {
-        onMain { $0.publishMediaStatus() }
+        withOwner { $0.publishMediaStatus() }
     }
 }
 
-/// Completes one load request.
+/// Completes one load request. The SDK calls request delegates on the main thread (see `Listener`).
+@MainActor
 private final class LoadObserver: NSObject, GCKRequestDelegate {
-    private var completion: (@MainActor (Result<Void, CastFailure>) -> Void)?
+    private var completion: ((Result<Void, CastFailure>) -> Void)?
 
-    init(completion: @escaping @MainActor (Result<Void, CastFailure>) -> Void) {
+    init(completion: @escaping (Result<Void, CastFailure>) -> Void) {
         self.completion = completion
     }
 
     func finish(_ result: Result<Void, CastFailure>) {
-        MainActor.assumeIsolated {
-            let completion = self.completion
-            self.completion = nil
-            completion?(result)
-        }
+        let completion = self.completion
+        self.completion = nil
+        completion?(result)
     }
 
     func requestDidComplete(_ request: GCKRequest) {

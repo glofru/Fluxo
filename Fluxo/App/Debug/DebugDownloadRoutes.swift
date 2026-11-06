@@ -9,7 +9,9 @@
 
 #if DEBUG
 import Foundation
+import os
 import SwiftData
+import SwiftUI
 
 enum DebugDownloadRoutes {
 

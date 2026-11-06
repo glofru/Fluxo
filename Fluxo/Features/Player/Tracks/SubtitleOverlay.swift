@@ -38,7 +38,7 @@ final class CaptionStyle {
     private(set) var windowCornerRadius: CGFloat = 0
     private(set) var edge: Edge = .none
 
-    @ObservationIgnored private var observer: NSObjectProtocol?
+    @ObservationIgnored private var observer: (any NSObjectProtocol)?
 
     static let shared = CaptionStyle()
 

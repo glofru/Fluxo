@@ -36,7 +36,7 @@ final class ProgrammeSummarizer {
 
     /// Streams the summary of `programme`: each element is the text so far. Finishes at once with the cached
     /// summary when there is one; throws when the model fails.
-    func summarize(_ programme: GuideProgramme) -> AsyncThrowingStream<String, Error> {
+    func summarize(_ programme: GuideProgramme) -> AsyncThrowingStream<String, any Error> {
         let key = key(for: programme)
         if let cached = cache[key] {
             return AsyncThrowingStream { continuation in

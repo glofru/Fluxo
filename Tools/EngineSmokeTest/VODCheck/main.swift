@@ -43,7 +43,7 @@ final class Check {
     /// The app's seek coordinator (SCENARIO=stress, see Stress.swift).
     lazy var seeker = PlayerSeeker(player: player)
     let frames = FrameWatcher()
-    var jumpObserver: NSObjectProtocol?
+    var jumpObserver: (any NSObjectProtocol)?
     var bufferObserver: Any?
     /// AVPlayerViewModel.sampledBufferedEnd.
     var sampledBufferedEnd: Double?
@@ -701,21 +701,33 @@ final class Check {
 }
 
 /// Subtitle cues AVPlayer delivers. The test subtitles say when they start ("Cue at 125 s").
+///
+/// Main-actor isolated: the legible output calls its delegate on the main queue (`setDelegate(cues, queue: .main)`),
+/// where `Check` reads the cues. The delegate protocol is `Sendable`, so its conformance cannot be isolated: the method
+/// is `nonisolated` and asserts that it runs on the main actor.
+@MainActor
 final class CueCollector: NSObject, AVPlayerItemLegibleOutputPushDelegate {
     var expectsCues = false
     var cues: [(expected: Double, shown: Double)] = []
 
-    func legibleOutput(_ output: AVPlayerItemLegibleOutput, didOutputAttributedStrings strings: [NSAttributedString],
-                       nativeSampleBuffers nativeSamples: [Any], forItemTime itemTime: CMTime) {
-        for string in strings {
-            let text = string.string
+    nonisolated func legibleOutput(_ output: AVPlayerItemLegibleOutput, didOutputAttributedStrings strings: [NSAttributedString],
+                                   nativeSampleBuffers nativeSamples: [Any], forItemTime itemTime: CMTime) {
+        let texts = strings.map(\.string)
+        let seconds = itemTime.seconds
+        MainActor.assumeIsolated {
+            collect(texts, at: seconds)
+        }
+    }
+
+    private func collect(_ texts: [String], at itemSeconds: Double) {
+        for text in texts {
             guard let range = text.range(of: "Cue at "), let seconds = Double(text[range.upperBound...].prefix { $0.isNumber }) else {
                 continue
             }
             // Each cue is reported when it starts (a cue repeated in the next segment is not shown again).
-            if !cues.contains(where: { $0.expected == seconds && abs($0.shown - itemTime.seconds) < 1 }) {
-                cues.append((seconds, itemTime.seconds))
-                print(String(format: "[cue] %.0f s shown at %.2f s", seconds, itemTime.seconds))
+            if !cues.contains(where: { $0.expected == seconds && abs($0.shown - itemSeconds) < 1 }) {
+                cues.append((seconds, itemSeconds))
+                print(String(format: "[cue] %.0f s shown at %.2f s", seconds, itemSeconds))
             }
         }
     }

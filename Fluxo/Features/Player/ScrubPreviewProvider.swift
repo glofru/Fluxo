@@ -154,7 +154,7 @@ final class ScrubPreviewProvider {
             }
             wanted = nil
             do {
-                let (frame, actual) = try await generator.image(at: CMTime(seconds: time, preferredTimescale: 600))
+                let (frame, actual) = try await generator.imageOnCallerActor(at: CMTime(seconds: time, preferredTimescale: 600))
                 guard !Task.isCancelled, isActive, self.generation == generation else {
                     return
                 }
@@ -186,6 +186,24 @@ final class ScrubPreviewProvider {
         cache[bucket] = frame
         while cacheOrder.count > Self.cacheLimit {
             cache.removeValue(forKey: cacheOrder.removeFirst())
+        }
+    }
+}
+
+private extension AVAssetImageGenerator {
+    /// The SDK's `image(at:)`, without leaving the caller's actor. That method is a nonisolated async method, so calling
+    /// it from the main actor would send the generator (not `Sendable`, and kept by the provider) to another isolation
+    /// domain. This one runs on the caller's actor (`nonisolated(nonsending)`, the default of this module) and only
+    /// waits for the completion handler of the same generation call.
+    func imageOnCallerActor(at time: CMTime) async throws -> (image: CGImage, actualTime: CMTime) {
+        try await withCheckedThrowingContinuation { continuation in
+            generateCGImageAsynchronously(for: time) { image, actualTime, error in
+                if let image {
+                    continuation.resume(returning: (image, actualTime))
+                } else {
+                    continuation.resume(throwing: error ?? AVError(.unknown))
+                }
+            }
         }
     }
 }

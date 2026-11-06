@@ -9,16 +9,18 @@
 
 import Foundation
 import SwiftData
+import Synchronization
 
 enum StoreCheck {
 
-    static var failures = 0
+    /// Checks that failed so far (the checks run one after the other, on any executor).
+    static let failures = Atomic(0)
 
     static func expect(_ condition: Bool, _ message: @autoclosure () -> String) {
         if condition {
             print("  ok   \(message())")
         } else {
-            failures += 1
+            failures.add(1, ordering: .relaxed)
             print("  FAIL \(message())")
         }
     }
@@ -194,7 +196,7 @@ enum StoreCheck {
                "no bookmarks are left behind")
     }
 
-    /// Set by main from the generator.
+    /// Set by main from the generator, once and before any check reads it, so the unsafe opt-out cannot race.
     nonisolated(unsafe) static var expectedCounts: (episodes: Int, series: Int) = (0, 0)
 
     // MARK: - Backfill
@@ -238,6 +240,7 @@ enum StoreCheck {
     }
 
     static func finish() {
+        let failures = Self.failures.load(ordering: .relaxed)
         print(failures == 0 ? "store: all checks pass" : "store: \(failures) check(s) failed")
         if failures > 0 {
             exit(1)

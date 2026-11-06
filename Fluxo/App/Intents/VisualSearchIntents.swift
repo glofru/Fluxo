@@ -24,7 +24,7 @@ struct ChannelVisualSearchQuery: IntentValueQuery {
     @Dependency
     var services: AppServices
 
-    func values(for input: SemanticContentDescriptor) async throws -> [ChannelEntity] {
+    @concurrent func values(for input: SemanticContentDescriptor) async throws -> [ChannelEntity] {
         let terms = await VisualSearchTerms(input, customWords: await services.visualSearchVocabulary())
         let items = await services.channels(forVisualSearch: terms)
         let names = ChannelEntityQuery.playlistNames(services.container)
@@ -77,7 +77,7 @@ struct VisualSearchTerms: Sendable {
     }
 
     /// The lines of text in `image` worth searching for (`lines(from:)`), read on this device.
-    static func readLines(in image: CGImage, customWords: [String]) async -> [String] {
+    @concurrent static func readLines(in image: CGImage, customWords: [String]) async -> [String] {
         var request = RecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.automaticallyDetectsLanguage = true
@@ -110,7 +110,7 @@ struct VisualSearchTerms: Sendable {
 extension AppServices {
 
     /// Channel names for the text recognizer: the favorites and the channels watched recently.
-    nonisolated func visualSearchVocabulary() async -> [String] {
+    @concurrent nonisolated func visualSearchVocabulary() async -> [String] {
         let entities = (try? await ChannelEntityQuery.suggestions(container: container, limit: 100)) ?? []
         return entities.map(\.name)
     }
@@ -173,7 +173,7 @@ extension VisualSearchTerms {
 
     /// Reads the text of `descriptor`'s image; `customWords` (channel names) help the recognizer with names that
     /// are no dictionary words.
-    init(_ descriptor: SemanticContentDescriptor, customWords: [String]) async {
+    @concurrent init(_ descriptor: SemanticContentDescriptor, customWords: [String]) async {
         labels = descriptor.labels
         lines = []
         guard let pixelBuffer = descriptor.pixelBuffer else {

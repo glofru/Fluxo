@@ -14,7 +14,8 @@ SRC="$ROOT/Fluxo/App/Sync"
 OUT="${OUT:-$(mktemp -d /tmp/fluxo-sync-check.XXXXXX)}"
 
 mkdir -p "$OUT/bin"
-xcrun swiftc -O -swift-version 5 -D DEBUG -o "$OUT/bin/sync-check" \
+source "$ROOT/Tools/swift-language.sh"
+xcrun swiftc -O "${FLUXO_SWIFT_LANGUAGE[@]}" -D DEBUG -o "$OUT/bin/sync-check" \
     "$SRC/CloudSyncRecords.swift" \
     "$SRC/CloudSyncReconciler.swift" \
     "$SRC/SimulatedCloud.swift" \

@@ -257,7 +257,7 @@ final class RecommendationCenter {
     }
 
     /// The `searchGuide` tool: programme search in the scope, limited to the suggestion window.
-    private func makeGuideSearch(scope: RecommendationScope, profile: TasteProfile, favoriteKeys: Set<String>, now: Date) -> @Sendable (String) async -> [ProgrammeCandidate] {
+    private func makeGuideSearch(scope: RecommendationScope, profile: TasteProfile, favoriteKeys: Set<String>, now: Date) -> @Sendable @concurrent (String) async -> [ProgrammeCandidate] {
         let epg = epg
         let importIDs = scope.importIDs
         let end = now.addingTimeInterval(ProgrammeRecommender.window)

@@ -149,6 +149,9 @@ struct DebugLaunchOptions {
 
 /// Where an isolated debug run keeps its library, settings, recordings and generated playlists.
 /// `shared` is nil unless the app was launched with `-FluxoDebugStore` (or a flag that implies it).
+///
+/// Unchecked `Sendable`: every property is an immutable value, and `userDefaults` is a `UserDefaults`, which Apple
+/// documents as thread-safe but does not mark `Sendable`.
 final class DebugEnvironment: @unchecked Sendable {
 
     static let shared: DebugEnvironment? = DebugLaunchOptions.current.store.map(DebugEnvironment.init)

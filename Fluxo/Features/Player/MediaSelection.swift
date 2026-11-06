@@ -128,7 +128,7 @@ final class MediaSelectionController {
     @ObservationIgnored private var audioPreferenceFailed: Set<String> = []
     @ObservationIgnored private var loadTask: Task<Void, Never>?
     @ObservationIgnored private var externalTask: Task<Void, Never>?
-    @ObservationIgnored private var selectionObserver: NSObjectProtocol?
+    @ObservationIgnored private var selectionObserver: (any NSObjectProtocol)?
     @ObservationIgnored private var presentationObserver: NSKeyValueObservation?
 
     // Chromecast
@@ -401,7 +401,7 @@ final class MediaSelectionController {
     /// remembered language stays for other content (a network failure or a reclaimed socket never changes it).
     /// Returns whether the audio track was the likely cause.
     @discardableResult
-    func playbackFailed(_ error: Error?) -> Bool {
+    func playbackFailed(_ error: (any Error)?) -> Bool {
         guard let lastAudioSwitch, Date().timeIntervalSince(lastAudioSwitch) < 15,
               let error, Self.isDecodingFailure(error as NSError) else {
             return false

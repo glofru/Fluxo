@@ -100,6 +100,8 @@ struct LogoRequest: Hashable, Sendable {
     }
 }
 
+/// Unchecked `Sendable`: the caches (`NSCache`, `URLCache`) and the session are thread-safe, and the mutable state
+/// (`inFlight`, `statistics`) is only read and written under `lock`.
 final class LogoImageLoader: @unchecked Sendable {
 
     static let shared = LogoImageLoader()
@@ -139,7 +141,7 @@ final class LogoImageLoader: @unchecked Sendable {
     private var statistics = Statistics()
 
     #if canImport(UIKit)
-    private var observers: [NSObjectProtocol] = []
+    private var observers: [any NSObjectProtocol] = []
     #endif
 
     /// - Parameters:
@@ -210,7 +212,7 @@ final class LogoImageLoader: @unchecked Sendable {
 
     /// Loads the image at the requested size. Returns nil when it cannot be loaded or when the calling
     /// task is cancelled (the shared load is cancelled too once nobody waits for it).
-    func image(for request: LogoRequest) async -> CGImage? {
+    @concurrent func image(for request: LogoRequest) async -> CGImage? {
         if let image = cachedImage(for: request) {
             return image
         }
@@ -258,7 +260,9 @@ final class LogoImageLoader: @unchecked Sendable {
 
     // MARK: - Request coalescing
 
-    private final class InFlightLoad {
+    /// Unchecked `Sendable`: its properties are only read and written under `lock` (the detached load task captures it
+    /// to complete it).
+    private final class InFlightLoad: @unchecked Sendable {
         var task: Task<Void, Never>?
         var waiters: [UUID: CheckedContinuation<CGImage?, Never>] = [:]
     }
@@ -330,7 +334,7 @@ final class LogoImageLoader: @unchecked Sendable {
         case invalidData
     }
 
-    private func load(_ request: LogoRequest) async -> CGImage? {
+    @concurrent private func load(_ request: LogoRequest) async -> CGImage? {
         do {
             let data: Data
             switch request.source {
@@ -372,7 +376,7 @@ final class LogoImageLoader: @unchecked Sendable {
         }
     }
 
-    private func download(_ url: URL) async throws -> Data {
+    @concurrent private func download(_ url: URL) async throws -> Data {
         var request = URLRequest(url: url)
         request.setValue("image/*", forHTTPHeaderField: "Accept")
         // Streamed so that an oversized or endless body is abandoned at the cap, never held in memory whole.

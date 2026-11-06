@@ -65,7 +65,7 @@ enum ExternalSubtitleStore {
 
     /// Reads and parses a file the user picked (a security-scoped URL from the file importer), and keeps a copy
     /// for `key`. Runs off the main actor.
-    static func importFile(at url: URL, for key: String?) async throws -> ExternalSubtitleTrack {
+    @concurrent static func importFile(at url: URL, for key: String?) async throws -> ExternalSubtitleTrack {
         try await Task.detached(priority: .userInitiated) {
             let accessing = url.startAccessingSecurityScopedResource()
             defer {
@@ -90,7 +90,7 @@ enum ExternalSubtitleStore {
     }
 
     /// The file kept for `key`, if any. Runs off the main actor.
-    static func load(for key: String) async -> ExternalSubtitleTrack? {
+    @concurrent static func load(for key: String) async -> ExternalSubtitleTrack? {
         await withCheckedContinuation { continuation in
             queue.async {
                 let folder = folder(for: key)
@@ -173,7 +173,7 @@ final class ExternalSubtitlePlayback {
     @ObservationIgnored private let file: SubtitleFile
     @ObservationIgnored private weak var player: AVPlayer?
     @ObservationIgnored private var boundaryObserver: Any?
-    @ObservationIgnored private var jumpObserver: NSObjectProtocol?
+    @ObservationIgnored private var jumpObserver: (any NSObjectProtocol)?
     @ObservationIgnored private var itemObserver: NSKeyValueObservation?
 
     init(file: SubtitleFile, player: AVPlayer) {

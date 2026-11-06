@@ -101,7 +101,7 @@ enum LibraryLookup {
 
     /// The token search of the Search screen (`ChannelSearchIndex`): every word must match, typos allowed, best
     /// matches first.
-    static func searchChannels(_ term: String, importIDs: [UUID], kind: ChannelContentKind? = nil, limit: Int, in container: ModelContainer) async -> [ChannelItem] {
+    @concurrent static func searchChannels(_ term: String, importIDs: [UUID], kind: ChannelContentKind? = nil, limit: Int, in container: ModelContainer) async -> [ChannelItem] {
         let hits = await ChannelSearchIndex.shared.search(term, importIDs: importIDs, kind: kind, channelLimit: limit, groupLimit: 0, container: container)
         guard !hits.channels.isEmpty else {
             return []
@@ -110,7 +110,7 @@ enum LibraryLookup {
     }
 
     /// Groups whose name matches `term` (same rules as `searchChannels`).
-    static func searchGroups(_ term: String, importIDs: [UUID], kind: ChannelContentKind? = nil, limit: Int, in container: ModelContainer) async -> [GroupItem] {
+    @concurrent static func searchGroups(_ term: String, importIDs: [UUID], kind: ChannelContentKind? = nil, limit: Int, in container: ModelContainer) async -> [GroupItem] {
         let hits = await ChannelSearchIndex.shared.search(term, importIDs: importIDs, kind: kind, channelLimit: 0, groupLimit: limit, container: container)
         guard !hits.groups.isEmpty else {
             return []

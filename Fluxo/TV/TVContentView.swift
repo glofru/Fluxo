@@ -21,6 +21,7 @@
 //
 
 #if os(tvOS)
+import AppIntents
 import SwiftData
 import SwiftUI
 

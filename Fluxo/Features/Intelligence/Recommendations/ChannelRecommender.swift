@@ -106,7 +106,7 @@ enum ChannelRecommender {
     // MARK: - Candidates
 
     /// Candidates from the library (off the main actor), without programmes yet.
-    static func candidates(profile: TasteProfile, importIDs: [UUID], container: ModelContainer) async -> [ChannelCandidate] {
+    @concurrent static func candidates(profile: TasteProfile, importIDs: [UUID], container: ModelContainer) async -> [ChannelCandidate] {
         let playlists = LibraryLookup.visiblePlaylists(in: container).filter { importIDs.contains($0.importID) }
         let importByPlaylist = Dictionary(playlists.map { ($0.playlistID, $0.importID) }, uniquingKeysWith: { first, _ in first })
         var result: [ChannelCandidate] = []
@@ -229,7 +229,7 @@ enum ChannelRecommender {
 
     /// Lets the on-device model pick and explain the suggestions. Throws when the model fails or answers with
     /// fewer than three valid picks (the built-in list is then kept).
-    static func personalize(
+    @concurrent static func personalize(
         ranked: [ChannelCandidate],
         profile: TasteProfile,
         importIDs: [UUID],
@@ -383,7 +383,7 @@ struct SearchChannelsTool: Tool {
     let excludedKeys: Set<String>
     let container: ModelContainer
 
-    func call(arguments: Arguments) async throws -> String {
+    @concurrent func call(arguments: Arguments) async throws -> String {
         guard registry.beginToolCall() else {
             return "No more searches. Choose from the candidates you have."
         }

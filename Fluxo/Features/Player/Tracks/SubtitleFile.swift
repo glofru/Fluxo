@@ -14,6 +14,7 @@
 //
 
 import Foundation
+import SwiftUI
 
 struct SubtitleCue: Equatable, Sendable {
     var start: TimeInterval

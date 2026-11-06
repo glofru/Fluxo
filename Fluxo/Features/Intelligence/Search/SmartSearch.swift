@@ -184,7 +184,7 @@ enum SmartSearch {
     // MARK: - Planning
 
     /// The plan of `query`: by the on-device model when `useModel`, else (or when the model fails) by the rules.
-    static func plan(for query: String, useModel: Bool) async -> SmartSearchPlan {
+    @concurrent static func plan(for query: String, useModel: Bool) async -> SmartSearchPlan {
         let rules = SmartSearchRules.plan(for: query)
         #if os(tvOS)
         // No on-device model on Apple TV (`PlatformFeatures.onDeviceLanguageModel`).
@@ -246,7 +246,7 @@ enum SmartSearch {
     // MARK: - Running
 
     /// Runs `plan` against the library (channels and groups) and, when `includeGuide`, the guide (programmes).
-    static func run(_ plan: SmartSearchPlan, query: String, importIDs: [UUID], container: ModelContainer, epg: EPGStore, includeGuide: Bool = true, now: Date = .now) async -> SmartSearchResults {
+    @concurrent static func run(_ plan: SmartSearchPlan, query: String, importIDs: [UUID], container: ModelContainer, epg: EPGStore, includeGuide: Bool = true, now: Date = .now) async -> SmartSearchResults {
         async let library = Task.detached(priority: .userInitiated) {
             await searchLibrary(plan, query: query, importIDs: importIDs, container: container)
         }.value
@@ -255,7 +255,7 @@ enum SmartSearch {
         return SmartSearchResults(query: query, plan: plan, channels: channels, groups: groups, programmes: programmes)
     }
 
-    private static func searchLibrary(_ plan: SmartSearchPlan, query: String, importIDs: [UUID], container: ModelContainer) async -> ([ChannelItem], [GroupItem]) {
+    @concurrent private static func searchLibrary(_ plan: SmartSearchPlan, query: String, importIDs: [UUID], container: ModelContainer) async -> ([ChannelItem], [GroupItem]) {
         let playlists = LibraryLookup.visiblePlaylists(in: container).filter { importIDs.contains($0.importID) }
         let country = CountryFilter(plan: plan, playlists: playlists)
         let countryTerms = country.terms
@@ -350,7 +350,7 @@ enum SmartSearch {
         return (Array(unique.prefix(channelLimit)), Array(groups.prefix(groupLimit)))
     }
 
-    private static func searchGuide(_ plan: SmartSearchPlan, query: String, importIDs: [UUID], container: ModelContainer, epg: EPGStore, now: Date) async -> [GuideSearchResult] {
+    @concurrent private static func searchGuide(_ plan: SmartSearchPlan, query: String, importIDs: [UUID], container: ModelContainer, epg: EPGStore, now: Date) async -> [GuideSearchResult] {
         guard await epg.hasGuide else {
             return []
         }
@@ -406,7 +406,7 @@ enum SmartSearch {
 
     /// Programmes whose category names the kind ("Film", "Movie / Drama", "Serie TV") in the plan's time window,
     /// or in the next day when it has none.
-    private static func searchGuideByGenre(_ plan: SmartSearchPlan, importIDs: [UUID], country: CountryFilter, epg: EPGStore, now: Date) async -> [GuideSearchResult] {
+    @concurrent private static func searchGuideByGenre(_ plan: SmartSearchPlan, importIDs: [UUID], country: CountryFilter, epg: EPGStore, now: Date) async -> [GuideSearchResult] {
         let interval = plan.interval(now: now) ?? DateInterval(start: now, duration: 24 * 3_600)
         var results: [GuideSearchResult] = []
         var seen: Set<String> = []

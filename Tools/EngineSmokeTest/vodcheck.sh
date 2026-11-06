@@ -21,14 +21,22 @@ build_check() {
 import PackageDescription
 let package = Package(
     name: "VODCheck",
-    platforms: [.macOS(.v15)],
+    // The macOS version the app and its FFmpeg build require.
+    platforms: [.macOS("26.0")],
     dependencies: [.package(url: "https://github.com/swhitty/FlyingFox.git", exact: "$version")],
     targets: [
         .target(name: "FluxoEngine", cSettings: [.unsafeFlags(["-I$ROOT/Vendor/FFmpeg/include", "-DFLUXO_ENGINE_TRACE"])]),
         .executableTarget(
             name: "VODCheck",
             dependencies: ["FluxoEngine", .product(name: "FlyingFox", package: "FlyingFox")],
-            swiftSettings: [.swiftLanguageMode(.v5)],
+            // The app's language settings (Fluxo.xcodeproj, Tools/swift-language.sh).
+            swiftSettings: [
+                .swiftLanguageMode(.v6),
+                .enableUpcomingFeature("ExistentialAny"),
+                .enableUpcomingFeature("InferIsolatedConformances"),
+                .enableUpcomingFeature("MemberImportVisibility"),
+                .enableUpcomingFeature("NonisolatedNonsendingByDefault"),
+            ],
             linkerSettings: [
                 .unsafeFlags(["-F$FFMPEG_MACOS_SLICE", "-framework", "FFmpeg", "-Xlinker", "-rpath", "-Xlinker", "$FFMPEG_MACOS_SLICE"]),
                 .linkedFramework("VideoToolbox"), .linkedFramework("CoreMedia"),

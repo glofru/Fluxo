@@ -48,7 +48,7 @@ final class LibrarySyncStore: CloudSyncLocalStore {
     /// `CloudSync`). Changes to playlists the device already has are always applied.
     var mayAddPlaylist: (_ recordName: String) -> Bool = { _ in true }
     /// A playlist of another device was added here and its import started.
-    var playlistImportStarted: (_ recordName: String, _ playlistID: UUID, _ task: Task<PlaylistImportSummary, Error>) -> Void = { _, _, _ in }
+    var playlistImportStarted: (_ recordName: String, _ playlistID: UUID, _ task: Task<PlaylistImportSummary, any Error>) -> Void = { _, _, _ in }
 
     /// Synced playlists and guide sources that still exist but can no longer sync (an address that is not
     /// `http(s)` any more): found by the last snapshot, reported as deleted (`deletionIntents()`).

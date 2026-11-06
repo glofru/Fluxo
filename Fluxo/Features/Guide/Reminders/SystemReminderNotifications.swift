@@ -70,7 +70,7 @@ final class SystemReminderNotifications: ReminderDelivery {
 }
 
 /// Receives notification taps. A separate NSObject because `UNUserNotificationCenterDelegate` needs one.
-final class ReminderNotificationDelegate: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
+final class ReminderNotificationDelegate: NSObject, UNUserNotificationCenterDelegate, Sendable {
 
     /// Set at launch (`ReminderCenter.start()`, from the app initializer, so a cold launch from a notification
     /// is handled too); called on the main actor with the key of the opened reminder.
@@ -88,11 +88,11 @@ final class ReminderNotificationDelegate: NSObject, UNUserNotificationCenterDele
         (userInfo[reminderKeyField] as? String).flatMap { $0.isEmpty ? nil : $0 }
     }
 
-    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+    @concurrent func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
         [.banner, .list, .sound]
     }
 
-    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+    @concurrent func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         let content = response.notification.request.content
         guard content.categoryIdentifier == ReminderCenter.categoryIdentifier,
               response.actionIdentifier == UNNotificationDefaultActionIdentifier || response.actionIdentifier == ReminderCenter.watchActionIdentifier else {

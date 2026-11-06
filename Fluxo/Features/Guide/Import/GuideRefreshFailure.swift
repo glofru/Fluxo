@@ -26,7 +26,7 @@ enum GuideRefreshFailure {
     /// Any other error: its description at the time it failed.
     case other(String)
 
-    init(_ error: Error) {
+    init(_ error: any Error) {
         switch error {
         case let error as EPGImportError:
             self = .importError(error)

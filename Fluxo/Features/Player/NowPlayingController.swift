@@ -21,13 +21,13 @@ import MediaPlayer
 final class NowPlayingController {
 
     struct Commands {
-        var play: () -> Void
-        var pause: () -> Void
-        var togglePlayPause: () -> Void
-        var skipBackward: () -> Void
-        var skipForward: () -> Void
-        var nextChannel: () -> Void
-        var previousChannel: () -> Void
+        var play: @MainActor () -> Void
+        var pause: @MainActor () -> Void
+        var togglePlayPause: @MainActor () -> Void
+        var skipBackward: @MainActor () -> Void
+        var skipForward: @MainActor () -> Void
+        var nextChannel: @MainActor () -> Void
+        var previousChannel: @MainActor () -> Void
     }
 
     private var registrations: [(command: MPRemoteCommand, target: Any)] = []
@@ -105,14 +105,14 @@ final class NowPlayingController {
         #endif
     }
 
-    private func add(_ command: MPRemoteCommand, _ action: @escaping () -> Void) {
+    private func add(_ command: MPRemoteCommand, _ action: @escaping @MainActor () -> Void) {
         command.isEnabled = true
-        let target = command.addTarget { _ in
-            // Remote commands may arrive on any queue; the player lives on the main actor.
+        // Remote commands may arrive on any queue; the player lives on the main actor. The handler is `@Sendable`, so it
+        // is not isolated to the main actor (MediaPlayer does not mark its handler type `Sendable`, and a main-actor
+        // closure would stop at Swift's actor check when called on another queue): it moves to the main queue itself.
+        let target = command.addTarget { @Sendable _ in
             DispatchQueue.main.async {
-                MainActor.assumeIsolated {
-                    action()
-                }
+                action()
             }
             return .success
         }

@@ -16,7 +16,10 @@ ROOT="$(cd "$HERE/../.." && pwd)"
 ENTRIES="${ENTRIES:-100000}"
 OLD_REV="${OLD_REV:-a7d64f6}"
 OUT="${OUT:-$(mktemp -d /tmp/fluxo-series-check.XXXXXX)}"
-SWIFTC=(xcrun swiftc -O -swift-version 5 -parse-as-library)
+source "$ROOT/Tools/swift-language.sh"
+SWIFTC=(xcrun swiftc -O "${FLUXO_SWIFT_LANGUAGE[@]}" -parse-as-library)
+# The models of OLD_REV predate the Swift 6 language mode.
+SWIFTC_OLD=(xcrun swiftc -O -swift-version 5 -parse-as-library)
 F="$ROOT/Fluxo"
 
 if [ "${PARSER_ONLY:-0}" = 1 ]; then
@@ -35,6 +38,10 @@ fi
     "$F/App/Download/DownloadManager.swift" \
     "$F/Features/Library/ChannelBookmark.swift" \
     "$F/Features/Library/ChannelLibrary.swift" \
+    "$F/App/Sync/SyncDeletionJournal.swift" \
+    "$F/App/Sync/CloudSyncRecords.swift" \
+    "$F/App/Sync/CloudSyncReconciler.swift" \
+    "$F/App/Extensions/UserDefaults+Fluxo.swift" \
     "$F/Features/Home/HomeQueries.swift" \
     "$F/Features/Search/SearchMatcher.swift" \
     "$F/Features/Search/ChannelSearchIndex.swift" \
@@ -64,7 +71,7 @@ for file in Features/Playlist/Playlist.swift Features/Playlist/ChannelContentKin
             Features/Library/ChannelLibrary.swift Features/Home/HomeQueries.swift App/Design/TextParts.swift; do
     git -C "$ROOT" show "$OLD_REV:Fluxo/$file" > "$OUT/old/$(basename "$file")"
 done
-"${SWIFTC[@]}" -o "$OUT/old-store" "$OUT"/old/*.swift "$HERE/ToolStubs.swift" "$HERE/OldMain.swift" 2> "$OUT/build-old.log" \
+"${SWIFTC_OLD[@]}" -o "$OUT/old-store" "$OUT"/old/*.swift "$HERE/ToolStubs.swift" "$HERE/OldMain.swift" 2> "$OUT/build-old.log" \
     || { cat "$OUT/build-old.log"; exit 1; }
 "$OUT/check" generate "$OUT/playlist-old.m3u" "$ENTRIES"
 "$OUT/old-store" "$OUT/old.sqlite" "$OUT/playlist-old.m3u"

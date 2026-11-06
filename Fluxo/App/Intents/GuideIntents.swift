@@ -7,6 +7,7 @@
 
 import AppIntents
 import Foundation
+import SwiftUI
 
 /// "What's on Sky Sport F1?" (now and next), or, without a channel, what the favorite channels show now.
 struct WhatsOnIntent: AppIntent {

@@ -13,6 +13,7 @@
 //
 
 #if DEBUG
+import os
 import SwiftData
 import SwiftUI
 

@@ -11,6 +11,7 @@ import AVFoundation
 import CoreGraphics
 import CoreVideo
 import Foundation
+import os
 import SwiftData
 
 @MainActor
@@ -131,7 +132,7 @@ enum DebugRecordingFactory {
         }
     }
 
-    private static func writeClip(to url: URL, hue: Double, seconds: Int) async throws -> TimeInterval {
+    @concurrent private static func writeClip(to url: URL, hue: Double, seconds: Int) async throws -> TimeInterval {
         let width = 320
         let height = 180
         let fps: Int32 = 15

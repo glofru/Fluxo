@@ -16,6 +16,8 @@
 
 import XCTest
 
+// XCUIApplication and the elements it finds are main-actor isolated: the tests run on the main actor.
+@MainActor
 final class SeriesSeasonFocusTests: XCTestCase {
 
     let out = ProcessInfo.processInfo.environment["FLUXO_SHOTS"] ?? "/tmp/fluxo-shots/remote-tests"
@@ -28,7 +30,8 @@ final class SeriesSeasonFocusTests: XCTestCase {
         try FileManager.default.createDirectory(atPath: out, withIntermediateDirectories: true)
     }
 
-    override func tearDown() {
+    // The asynchronous tearDown: unlike the synchronous one, it runs on the main actor like the tests.
+    override func tearDown() async throws {
         app.terminate()
     }
 

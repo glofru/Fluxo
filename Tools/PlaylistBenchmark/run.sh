@@ -12,7 +12,10 @@ ROOT="$(cd "$HERE/../.." && pwd)"
 OLD_REV="${OLD_REV:-ef77322}"
 ENTRIES="${ENTRIES:-100000}"
 OUT="${OUT:-$(mktemp -d /tmp/fluxo-playlist-bench.XXXXXX)}"
-SWIFTC=(xcrun swiftc -O -swift-version 5 -parse-as-library)
+source "$ROOT/Tools/swift-language.sh"
+SWIFTC=(xcrun swiftc -O "${FLUXO_SWIFT_LANGUAGE[@]}" -parse-as-library)
+# The sources of OLD_REV predate the Swift 6 language mode.
+SWIFTC_OLD=(xcrun swiftc -O -swift-version 5 -parse-as-library)
 
 mkdir -p "$OUT/old"
 python3 "$HERE/generate_m3u.py" "$OUT/playlist.m3u" --entries "$ENTRIES"
@@ -24,7 +27,7 @@ for file in Fluxo/Features/Playlist/Playlist.swift Fluxo/Features/Playlist/Playl
     git -C "$ROOT" show "$OLD_REV:$file" > "$OUT/old/$(basename "$file")"
 done
 
-"${SWIFTC[@]}" -o "$OUT/bench-old" "$OUT"/old/*.swift "$HERE/BenchSupport.swift" "$HERE/OldMain.swift" 2> "$OUT/build-old.log" \
+"${SWIFTC_OLD[@]}" -o "$OUT/bench-old" "$OUT"/old/*.swift "$HERE/BenchSupport.swift" "$HERE/OldMain.swift" 2> "$OUT/build-old.log" \
     || { cat "$OUT/build-old.log"; exit 1; }
 "${SWIFTC[@]}" -o "$OUT/bench-new" \
     "$ROOT/Fluxo/Features/Playlist/Playlist.swift" \
@@ -34,6 +37,10 @@ done
     "$ROOT/Fluxo/Features/Playlist/Import/PlaylistImporter.swift" \
     "$ROOT/Fluxo/App/Download/DownloadManager.swift" \
     "$ROOT/Fluxo/Features/Library/ChannelLibrary.swift" \
+    "$ROOT/Fluxo/App/Sync/SyncDeletionJournal.swift" \
+    "$ROOT/Fluxo/App/Sync/CloudSyncRecords.swift" \
+    "$ROOT/Fluxo/App/Sync/CloudSyncReconciler.swift" \
+    "$ROOT/Fluxo/App/Extensions/UserDefaults+Fluxo.swift" \
     "$ROOT/Fluxo/Features/Home/HomeQueries.swift" \
     "$ROOT/Fluxo/Features/Search/SearchMatcher.swift" \
     "$ROOT/Fluxo/Features/Search/ChannelSearchIndex.swift" \

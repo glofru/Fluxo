@@ -20,7 +20,8 @@ SRC="$ROOT/Fluxo"
 mkdir -p "$OUT/bin" "$OUT/samples" "$OUT/synthetic"
 # GuideFormat (used by GuideValues) lives in a SwiftUI views file; compile just the enum, taken from the source.
 { echo "import Foundation"; awk '/^enum GuideFormat/,/^}/' "$SRC/Features/Guide/Views/NowNextViews.swift"; } > "$OUT/GuideFormat.swift"
-xcrun swiftc -O -swift-version 5 -parse-as-library -o "$OUT/bin/guide-check" \
+source "$ROOT/Tools/swift-language.sh"
+xcrun swiftc -O "${FLUXO_SWIFT_LANGUAGE[@]}" -parse-as-library -o "$OUT/bin/guide-check" \
     "$SRC/Features/Playlist/Playlist.swift" \
     "$SRC/Features/Playlist/ChannelContentKind.swift" \
     "$SRC/Features/Playlist/Import/M3UParser.swift" \

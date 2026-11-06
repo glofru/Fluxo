@@ -212,7 +212,7 @@ enum SeriesLookup {
     }
 
     /// Series whose title matches `term` (the token search of the Search screen), best first.
-    static func series(matching term: String, importIDs: [UUID], limit: Int, in container: ModelContainer) async -> [SeriesItem] {
+    @concurrent static func series(matching term: String, importIDs: [UUID], limit: Int, in container: ModelContainer) async -> [SeriesItem] {
         let hits = await ChannelSearchIndex.shared.searchSeries(term, importIDs: importIDs, limit: limit, container: container)
         guard !hits.isEmpty else {
             return []

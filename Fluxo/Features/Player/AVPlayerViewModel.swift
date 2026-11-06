@@ -1132,22 +1132,25 @@ final class AVPlayerViewModel {
         NotificationCenter.default.publisher(for: AVPlayerItem.failedToPlayToEndTimeNotification, object: item)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] notification in
-                let error = notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
+                let error = notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? any Error
                 self?.handleItemFailure(error)
             }
             .store(in: &itemCancellables)
 
         // Not moved to the main queue when it is posted there: AVPlayer asks for the segment of the new time right
-        // after, and the engine must know about the seek before (see `itemTimeJumped(_:)`).
+        // after, and the engine must know about the seek before (see `itemTimeJumped(_:)`). AVPlayer may also post it
+        // on another queue, so the subscriber is `@Sendable` rather than isolated to the main actor (a main-actor
+        // closure would stop at Swift's actor check there), and it names the item by identity.
+        let itemID = ObjectIdentifier(item)
         NotificationCenter.default.publisher(for: AVPlayerItem.timeJumpedNotification, object: item)
-            .sink { [weak self, weak item] _ in
+            .sink { @Sendable [weak self] _ in
                 if Thread.isMainThread {
                     MainActor.assumeIsolated {
-                        self?.itemTimeJumped(item)
+                        self?.itemTimeJumped(itemID)
                     }
                 } else {
                     Task { @MainActor in
-                        self?.itemTimeJumped(item)
+                        self?.itemTimeJumped(itemID)
                     }
                 }
             }
@@ -1169,7 +1172,7 @@ final class AVPlayerViewModel {
         return url.isFileURL || route == .remux(isLive: false)
     }
 
-    private func handleItemFailure(_ error: Error?) {
+    private func handleItemFailure(_ error: (any Error)?) {
         let message = error?.localizedDescription ?? String(localized: "Playback failed.", comment: "Player error shown when the system gives no reason.")
         // An audio track this device cannot decode fails the whole item: the recovered item uses the default one.
         let failedAfterAudioSwitch = mediaSelection.playbackFailed(error)
@@ -1245,10 +1248,10 @@ final class AVPlayerViewModel {
     /// and one whose audio it cannot decode (DTS, which it does not even list) plays silently: the engine plays it
     /// instead, copying what AVPlayer decodes and converting the rest (`PlaybackRoute.engineReason`).
     private func checkTracksAreDecodable(_ item: AVPlayerItem) {
-        guard canFallBackToEngine else {
+        // Items of URLs (`AVPlayerItem(url:)`) have an `AVURLAsset`, which is `Sendable`: its tracks load off the main actor.
+        guard canFallBackToEngine, let asset = item.asset as? AVURLAsset else {
             return
         }
-        let asset = item.asset
         Task { [weak self] in
             guard let reason = await PlaybackRoute.engineReason(for: asset),
                   let self, self.player.currentItem === item else {
@@ -1602,12 +1605,13 @@ final class AVPlayerViewModel {
     /// other. A jump within what was buffered plays from there (the media before it is continuous) and is left alone,
     /// and so are the jumps outside Picture in Picture: every seek of the app goes through the seeker, so those are
     /// AVPlayer's own (e.g. a seek it clamps to the end of a playlist that still grows), not to be made again.
-    private func itemTimeJumped(_ item: AVPlayerItem?) {
+    /// `itemID`: the `ObjectIdentifier` of the item that posted the jump.
+    private func itemTimeJumped(_ itemID: ObjectIdentifier) {
         var isPictureInPicture = isPictureInPictureActive
         #if DEBUG
         isPictureInPicture = isPictureInPicture || debugTreatsJumpsAsPictureInPicture
         #endif
-        guard isPictureInPicture, let item, item === player.currentItem, !isCasting, route.isOnDemandRemux, !seeker.isMoving,
+        guard isPictureInPicture, let item = player.currentItem, ObjectIdentifier(item) == itemID, !isCasting, route.isOnDemandRemux, !seeker.isMoving,
               let bufferedEnd = sampledBufferedEnd else {
             return
         }

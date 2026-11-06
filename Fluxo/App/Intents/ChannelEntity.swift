@@ -143,7 +143,7 @@ struct ChannelEntityQuery: EntityStringQuery {
 
     static let suggestionLimit = 40
 
-    func entities(for identifiers: [ChannelEntity.ID]) async throws -> [ChannelEntity] {
+    @concurrent func entities(for identifiers: [ChannelEntity.ID]) async throws -> [ChannelEntity] {
         let container = services.container
         let names = Self.playlistNames(container)
         return identifiers.compactMap { identifier in
@@ -156,7 +156,7 @@ struct ChannelEntityQuery: EntityStringQuery {
     /// What Siri runs with the words it heard for a channel ("Which channel?" answered, or Siri AI filling in a
     /// parameter): the channel `AppServices.resolveChannel` picks first ("Rai Uno" → "Rai 1", "channel 5", the
     /// favorite among same-named channels), then the other search results that have the numbers said.
-    func entities(matching string: String) async throws -> [ChannelEntity] {
+    @concurrent func entities(matching string: String) async throws -> [ChannelEntity] {
         let container = services.container
         let playlists = LibraryLookup.visiblePlaylists(in: container)
         let names = Dictionary(playlists.map { ($0.playlistID, $0.name) }, uniquingKeysWith: { first, _ in first })
@@ -173,13 +173,13 @@ struct ChannelEntityQuery: EntityStringQuery {
 
     /// What Siri knows by name for the phrases "Play … in Fluxo" (`updateAppShortcutParameters()`), and what the
     /// Shortcuts app lists first: the favorites, the watch history, then the first live channels of each playlist.
-    func suggestedEntities() async throws -> [ChannelEntity] {
+    @concurrent func suggestedEntities() async throws -> [ChannelEntity] {
         try await Self.parameterSuggestions(container: services.container)
     }
 
     /// The suggestions plus the first live channels of each playlist (the main channels of a provider's list come
     /// first), up to `parameterLimit`.
-    static func parameterSuggestions(container: ModelContainer, limit: Int = parameterLimit) async throws -> [ChannelEntity] {
+    @concurrent static func parameterSuggestions(container: ModelContainer, limit: Int = parameterLimit) async throws -> [ChannelEntity] {
         var entities = try await suggestions(container: container, limit: suggestionLimit)
         guard entities.count < limit else {
             return entities
@@ -208,7 +208,7 @@ struct ChannelEntityQuery: EntityStringQuery {
     static let parameterLimit = 80
 
     /// Favorites first, then the watch history, without repeats.
-    static func suggestions(container: ModelContainer, limit: Int) async throws -> [ChannelEntity] {
+    @concurrent static func suggestions(container: ModelContainer, limit: Int) async throws -> [ChannelEntity] {
         let names = playlistNames(container)
         let bookmarks = LibraryLookup.bookmarks(playlistIDs: nil, historyLimit: limit, favoriteLimit: limit, in: container)
         var seen: Set<String> = []

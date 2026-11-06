@@ -97,7 +97,7 @@ struct DownloadFailure: Error, Sendable {
     }
 
     /// A network or other system error: by its kind when it has a known one, otherwise by its description.
-    static func network(_ error: Error) -> DownloadFailure {
+    static func network(_ error: any Error) -> DownloadFailure {
         // The URL error, also when AVFoundation wraps it.
         var kind: NetworkKind?
         var current: NSError? = error as NSError
@@ -115,7 +115,7 @@ struct DownloadFailure: Error, Sendable {
     }
 
     /// Any other error, by its description.
-    static func other(_ error: Error) -> DownloadFailure {
+    static func other(_ error: any Error) -> DownloadFailure {
         DownloadFailure(reason: .other(error.localizedDescription))
     }
 }
@@ -246,7 +246,7 @@ struct DownloadProbe: Sendable {
     }()
 
     /// Reads the start of `url`. HLS links named `.m3u8` are not fetched (AVFoundation reads the playlist itself).
-    static func probe(_ url: URL) async throws -> DownloadProbe {
+    @concurrent static func probe(_ url: URL) async throws -> DownloadProbe {
         let pathExtension = url.pathExtension.lowercased()
         if pathExtension == "m3u8" {
             return DownloadProbe(kind: .hls, expectedBytes: nil)

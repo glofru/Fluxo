@@ -37,7 +37,7 @@ final class PlaylistImportCenter {
 
     private struct RunningImport {
         let token: UUID
-        let task: Task<PlaylistImportSummary, Error>
+        let task: Task<PlaylistImportSummary, any Error>
     }
 
     private let importer: PlaylistImporter
@@ -88,7 +88,7 @@ final class PlaylistImportCenter {
     /// failed or cancelled import keeps the playlist (with no channels until a refresh succeeds): it exists on the
     /// user's other devices, and deleting it here would delete it there too. The returned task reports the import;
     /// failures are not put in `failure` (the caller shows them).
-    func addSyncedPlaylist(uuid: UUID, name: String, url: URL, createdOn: Date) async throws -> Task<PlaylistImportSummary, Error> {
+    func addSyncedPlaylist(uuid: UUID, name: String, url: URL, createdOn: Date) async throws -> Task<PlaylistImportSummary, any Error> {
         try await importer.createPlaylist(uuid: uuid, name: name, url: url, createdOn: createdOn)
         return startImport(playlistUUID: uuid, url: url)
     }
@@ -161,7 +161,7 @@ final class PlaylistImportCenter {
 
     // MARK: - Private
 
-    private func reportFailures(of task: Task<PlaylistImportSummary, Error>, playlistName: String) {
+    private func reportFailures(of task: Task<PlaylistImportSummary, any Error>, playlistName: String) {
         Task { [weak self] in
             do {
                 _ = try await task.value
@@ -173,7 +173,7 @@ final class PlaylistImportCenter {
         }
     }
 
-    private func startImport(playlistUUID: UUID, url: URL) -> Task<PlaylistImportSummary, Error> {
+    private func startImport(playlistUUID: UUID, url: URL) -> Task<PlaylistImportSummary, any Error> {
         let token = UUID()
         progress[playlistUUID] = .connecting
 

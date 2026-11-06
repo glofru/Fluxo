@@ -29,7 +29,7 @@ struct ArtworkBanner<Placeholder: View>: View {
 
     @Environment(\.displayScale) private var displayScale
 
-    /// The banner's size, rounded up to `Self.sizeStep`; zero until it is laid out.
+    /// The banner's size, rounded up to `BannerDecodeSize.step`; zero until it is laid out.
     @State private var decodeSize: CGSize = .zero
     @State private var loaded: LoadedImage?
     @State private var failedKey: String?
@@ -43,10 +43,6 @@ struct ArtworkBanner<Placeholder: View>: View {
     /// The largest enlargement of a small image, in points per decoded pixel.
     static var maximumUpscale: CGFloat {
         2
-    }
-
-    private static var sizeStep: CGFloat {
-        32
     }
 
     private struct LoadedImage {
@@ -83,7 +79,7 @@ struct ArtworkBanner<Placeholder: View>: View {
         }
         .clipped()
         .onGeometryChange(for: CGSize.self) { proxy in
-            Self.roundedUp(proxy.size)
+            BannerDecodeSize.roundedUp(proxy.size)
         } action: { size in
             decodeSize = size
         }
@@ -159,11 +155,18 @@ struct ArtworkBanner<Placeholder: View>: View {
         return .whole(scale: min(fitScale, maximumUpscale))
     }
 
-    private static func roundedUp(_ size: CGSize) -> CGSize {
+}
+
+/// The size a banner decodes its image for. Outside the generic view: the geometry transform of `onGeometryChange`
+/// is a nonisolated closure, which can neither call the view's main-actor methods nor capture its generic metatype.
+private enum BannerDecodeSize {
+    static let step: CGFloat = 32
+
+    static func roundedUp(_ size: CGSize) -> CGSize {
         guard size.width.isFinite, size.height.isFinite, size.width > 0, size.height > 0 else {
             return .zero
         }
-        return CGSize(width: (size.width / sizeStep).rounded(.up) * sizeStep, height: (size.height / sizeStep).rounded(.up) * sizeStep)
+        return CGSize(width: (size.width / step).rounded(.up) * step, height: (size.height / step).rounded(.up) * step)
     }
 }
 

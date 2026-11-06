@@ -52,6 +52,8 @@ struct HLSDownloadPlan: Sendable {
     var subtitleLanguages: [String] = []
 }
 
+/// Unchecked `Sendable`: URLSession calls the delegate on its own queues while the app calls in from the main actor,
+/// so every mutable property is read and written under `lock` (the sessions themselves are thread-safe).
 final class DownloadTransport: NSObject, @unchecked Sendable {
 
     static let shared = DownloadTransport()
@@ -192,7 +194,7 @@ final class DownloadTransport: NSObject, @unchecked Sendable {
     }
 
     /// The transfers that survived a relaunch, by download ID (their sessions are created, so their events flow).
-    func restoreTasks() async -> [UUID: SessionKind] {
+    @concurrent func restoreTasks() async -> [UUID: SessionKind] {
         var restored: [UUID: SessionKind] = [:]
         for kind in SessionKind.allCases {
             let tasks = await session(kind).allTasks
@@ -218,7 +220,7 @@ final class DownloadTransport: NSObject, @unchecked Sendable {
 
     /// The system woke the app for the events of a background session (iOS): returns once the session delivered
     /// them all, so the system can suspend the app again.
-    func handleBackgroundEvents(for identifier: String) async {
+    @concurrent func handleBackgroundEvents(for identifier: String) async {
         guard let kind = SessionKind.allCases.first(where: { "\(Self.identifierPrefix).\($0.suffix)" == identifier }) else {
             return
         }
@@ -270,7 +272,7 @@ final class DownloadTransport: NSObject, @unchecked Sendable {
 
     /// Loads the stream's variants and renditions, checks the space, and starts its download. `partialLocation`
     /// continues a download whose task was lost (AVFoundation keeps what the package already has).
-    func startHLS(
+    @concurrent func startHLS(
         id: UUID,
         url: URL,
         partialLocation: URL?,
@@ -373,7 +375,7 @@ final class DownloadTransport: NSObject, @unchecked Sendable {
     }
 
     /// The media selections to download, and the languages of their renditions for the list.
-    private func mediaSelections(for asset: AVURLAsset, plan: inout HLSDownloadPlan) async -> [AVMediaSelection]? {
+    @concurrent private func mediaSelections(for asset: AVURLAsset, plan: inout HLSDownloadPlan) async -> [AVMediaSelection]? {
         guard let preferred = try? await asset.load(.preferredMediaSelection) else {
             return nil
         }
@@ -546,7 +548,7 @@ final class DownloadTransport: NSObject, @unchecked Sendable {
 
     /// A timeout, a dropped connection or no route, also when AVFoundation wraps it (an HLS stream that fails to
     /// load reports an AVError whose underlying error is the URL error).
-    static func isNetworkError(_ error: Error) -> Bool {
+    static func isNetworkError(_ error: any Error) -> Bool {
         if let failure = error as? DownloadFailure {
             return failure.isNetworkError
         }
@@ -563,7 +565,7 @@ final class DownloadTransport: NSObject, @unchecked Sendable {
         return false
     }
 
-    static func failure(from error: Error) -> DownloadFailure {
+    static func failure(from error: any Error) -> DownloadFailure {
         if let failure = error as? DownloadFailure {
             return failure
         }
@@ -624,7 +626,7 @@ extension DownloadTransport: URLSessionDownloadDelegate {
         }
     }
 
-    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?) {
         guard let id = Self.downloadID(of: task) else {
             return
         }

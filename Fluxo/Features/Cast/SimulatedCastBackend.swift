@@ -22,7 +22,7 @@ enum DebugCastOptions {
 @MainActor
 final class SimulatedCastBackend: CastBackend {
 
-    weak var delegate: CastBackendDelegate?
+    weak var delegate: (any CastBackendDelegate)?
 
     static let devices = [
         CastDevice(id: "sim-living-room", name: "Living Room TV", model: "Chromecast with Google TV", kind: .tv),

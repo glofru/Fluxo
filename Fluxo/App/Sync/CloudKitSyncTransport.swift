@@ -19,7 +19,7 @@ import Foundation
 import os
 
 @MainActor
-final class CloudKitSyncTransport: CloudSyncTransport, CKSyncEngineDelegate {
+final class CloudKitSyncTransport: CloudSyncTransport, nonisolated CKSyncEngineDelegate {
 
     private static let logger = Logger(subsystem: "dev.watermelon.Fluxo", category: "CloudSync")
 
@@ -45,7 +45,7 @@ final class CloudKitSyncTransport: CloudSyncTransport, CKSyncEngineDelegate {
 
     /// Delete iCloud Data did not complete.
     struct ZoneDeletionError: LocalizedError {
-        var underlying: Error?
+        var underlying: (any Error)?
 
         var errorDescription: String? {
             underlying?.localizedDescription
@@ -53,7 +53,7 @@ final class CloudKitSyncTransport: CloudSyncTransport, CKSyncEngineDelegate {
         }
     }
 
-    weak var events: CloudSyncTransportEvents?
+    weak var events: (any CloudSyncTransportEvents)?
 
     private let container: CKContainer
     private let zoneID = CKRecordZone.ID(zoneName: CloudKitSyncTransport.zoneName, ownerName: CKCurrentUserDefaultName)
@@ -78,7 +78,7 @@ final class CloudKitSyncTransport: CloudSyncTransport, CKSyncEngineDelegate {
     private var finishedFetches = 0
     private var lastFetchReadZone = false
     /// The outcome of the zone deletion Delete iCloud Data asked for (set by the `sentDatabaseChanges` event).
-    private var zoneDeletion: Result<Void, Error>?
+    private var zoneDeletion: Result<Void, any Error>?
 
     init(containerIdentifier: String, directory: URL) {
         container = CKContainer(identifier: containerIdentifier)
@@ -195,7 +195,7 @@ final class CloudKitSyncTransport: CloudSyncTransport, CKSyncEngineDelegate {
     }
 
     func deleteAllRemoteData() async throws {
-        let outcome = await lifecycle.enqueue { [self] () async -> Result<Void, Error> in
+        let outcome = await lifecycle.enqueue { [self] () async -> Result<Void, any Error> in
             // With sync off there is no engine: one that only sends (it never fetches, so nothing of the cloud is
             // applied to the device on the way), cancelled before the next lifecycle step can create another.
             if let engine {
@@ -211,7 +211,7 @@ final class CloudKitSyncTransport: CloudSyncTransport, CKSyncEngineDelegate {
         try outcome.get()
     }
 
-    private func deleteZoneResult(with engine: CKSyncEngine) async -> Result<Void, Error> {
+    private func deleteZoneResult(with engine: CKSyncEngine) async -> Result<Void, any Error> {
         do {
             try await deleteZone(with: engine)
             return .success(())

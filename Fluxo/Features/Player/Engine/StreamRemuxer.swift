@@ -12,12 +12,13 @@ private let logger = Logger(subsystem: "dev.watermelon.Fluxo", category: "Engine
 
 /// Remuxes a stream into an HLS playlist on disk using the shared libavformat engine.
 ///
-/// The class is main-thread confined: call its methods and read its state from the main thread.
-/// Events coming from the engine thread are delivered on the main queue.
+/// The class is isolated to the main actor: call its methods and read its state there. Events coming from the
+/// engine thread are delivered on the main queue.
 ///
 /// On-demand inputs get a complete VOD playlist at once; its segments are produced when the player asks
 /// for them: the loopback server calls `requestFile(named:)` for every segment request, which tells the
 /// engine and waits until the segment is on disk (see `fluxo_remux_request_segment`).
+@MainActor
 final class StreamRemuxer {
 
     enum State: Equatable {
@@ -209,7 +210,7 @@ final class StreamRemuxer {
 
     private static let teardownQueue = DispatchQueue(label: "dev.watermelon.Fluxo.StreamRemuxer.teardown", qos: .utility)
 
-    deinit {
+    isolated deinit {
         stop()
     }
 
@@ -246,7 +247,7 @@ final class StreamRemuxer {
     ///
     /// - Parameter recordingCompletion: called on the main queue once an active recording file is
     ///   complete on disk. A recording is always finalized, even when the session is stopped.
-    func stop(recordingCompletion: ((URL) -> Void)? = nil) {
+    func stop(recordingCompletion: (@MainActor (URL) -> Void)? = nil) {
         guard let session else {
             return
         }
@@ -268,9 +269,10 @@ final class StreamRemuxer {
         }
 
         // Joining the engine thread may wait for a blocking read to be interrupted: never on main.
+        let teardown = Teardown(session: session, box: box)
         Self.teardownQueue.async {
-            fluxo_remux_destroy(session)
-            box?.release()
+            fluxo_remux_destroy(teardown.session)
+            teardown.box?.release()
             if let configuration {
                 Self.removeFiles(of: configuration)
             }
@@ -486,7 +488,7 @@ final class StreamRemuxer {
         }
     }
 
-    private static func removeFiles(of configuration: Configuration) {
+    private nonisolated static func removeFiles(of configuration: Configuration) {
         let fileManager = FileManager.default
         guard let files = try? fileManager.contentsOfDirectory(at: configuration.outputDirectory, includingPropertiesForKeys: nil) else {
             return
@@ -497,7 +499,7 @@ final class StreamRemuxer {
     }
 
     /// Removes the files of every session (e.g. left over by a crash). Call before the first session.
-    static func removeAllFiles(in directory: URL) {
+    nonisolated static func removeAllFiles(in directory: URL) {
         let fileManager = FileManager.default
         guard let files = try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
             return
@@ -507,7 +509,8 @@ final class StreamRemuxer {
         }
     }
 
-    private static let engineCallback: FluxoRemuxEventCallback = { context, eventPointer in
+    /// Called on the engine thread (see `FluxoRemuxEventCallback`).
+    private nonisolated static let engineCallback: FluxoRemuxEventCallback = { context, eventPointer in
         guard let context, let eventPointer else {
             return
         }
@@ -629,7 +632,17 @@ enum EngineMessage {
     }
 }
 
-/// Bridges engine callbacks back to the owning remuxer. Retained for the whole life of a C session.
+/// A stopped session on its way to `teardownQueue`, which destroys it. The engine's functions may be called from any
+/// thread except its own callback (`fluxo_remux_destroy`, FluxoRemuxEngine.h), and once `stop()` has handed the session
+/// over, the queue is its only user: the raw pointers cross threads exactly once, so the unchecked conformance is safe.
+private struct Teardown: @unchecked Sendable {
+    let session: OpaquePointer
+    let box: Unmanaged<CallbackBox>?
+}
+
+/// Bridges engine callbacks back to the owning remuxer. Retained for the whole life of a C session. The engine
+/// thread only passes the box to the main queue; `owner` is read and written on the main actor.
+@MainActor
 private final class CallbackBox {
     weak var owner: StreamRemuxer?
 

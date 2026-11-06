@@ -25,7 +25,8 @@ trap cleanup EXIT INT TERM
 "$FFMPEG" -hide_banner -loglevel error -f lavfi -i "testsrc2=size=1024x1024" -frames:v 1 "$WORK/www/logo.png"
 ls -l "$WORK/www/logo.png" | awk '{print "source logo: 1024x1024 PNG, " $5 " bytes"}'
 
-xcrun swiftc -O -swift-version 5 -D FLUXO_LOADER_STATISTICS -o "$WORK/bench" \
+source "$ROOT/Tools/swift-language.sh"
+xcrun swiftc -O "${FLUXO_SWIFT_LANGUAGE[@]}" -D FLUXO_LOADER_STATISTICS -o "$WORK/bench" \
     "$ROOT/Fluxo/App/Images/LogoImageLoader.swift" "$HERE/main.swift" 2> "$WORK/build.log" \
     || { cat "$WORK/build.log"; exit 1; }
 
