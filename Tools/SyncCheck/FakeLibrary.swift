@@ -36,6 +36,16 @@ final class FakeLibrary: CloudSyncLocalStore {
         var knownDuration: Double = 0
     }
 
+    /// What a series knows of what was watched (`SeriesBookmark`): one `.seriesProgress` record.
+    struct Series: Equatable {
+        var playlistID: UUID
+        var seriesKey: String
+        var title: String
+        var lastWatchedAt: Date?
+        var lastEpisodeURL: URL?
+        var watchedEpisodeCodes: [String] = []
+    }
+
     struct Guide: Equatable {
         var name: String
         var url: URL
@@ -48,6 +58,8 @@ final class FakeLibrary: CloudSyncLocalStore {
     var guides: [UUID: Guide] = [:]
     /// By "<playlist uuid>|<url>", like `ChannelBookmark.key`.
     var bookmarks: [String: Bookmark] = [:]
+    /// By "<playlist uuid>|<series key>", like `SeriesBookmark.key`.
+    var series: [String: Series] = [:]
     var preferences: [String: PreferenceValue] = [:]
     /// First run: playlists of other devices wait until the user adds them.
     var acceptsCloudPlaylists = true
@@ -113,6 +125,7 @@ final class FakeLibrary: CloudSyncLocalStore {
     /// Clear History.
     func clearHistory() {
         SyncDeletionJournal.noteHistoryCleared(in: defaults, now: clock())
+        series = [:]
         for key in bookmarks.keys {
             bookmarks[key]?.lastWatchedAt = nil
             bookmarks[key]?.resumePosition = 0
@@ -127,6 +140,7 @@ final class FakeLibrary: CloudSyncLocalStore {
         playlists = [:]
         guides = [:]
         bookmarks = [:]
+        series = [:]
     }
 
     /// The favorites vanish (playlists stay), without the user removing them.
@@ -142,6 +156,7 @@ final class FakeLibrary: CloudSyncLocalStore {
 
     /// The watch history vanishes (playlists and favorites stay), without Clear History.
     func loseHistory() {
+        series = [:]
         for key in bookmarks.keys {
             bookmarks[key]?.lastWatchedAt = nil
             bookmarks[key]?.resumePosition = 0
@@ -154,6 +169,7 @@ final class FakeLibrary: CloudSyncLocalStore {
     private func removePlaylist(_ id: UUID) {
         playlists[id] = nil
         bookmarks = bookmarks.filter { $0.value.playlistID != id }
+        series = series.filter { $0.value.playlistID != id }
     }
 
     var favoriteCount: Int {
@@ -164,8 +180,73 @@ final class FakeLibrary: CloudSyncLocalStore {
         bookmarks.values.filter { $0.lastWatchedAt != nil }.count
     }
 
+    /// Series with a watch state (`.seriesProgress` records).
+    var seriesHistoryCount: Int {
+        series.count
+    }
+
     static func channelURL(_ channel: String) -> URL {
         URL(string: "http://provider.example/live/user/pass/")!.appendingPathComponent(channel)
+    }
+
+    /// The user removes one entry of the history (a swipe in the history, Remove from History on a movie's
+    /// Continue Watching card), as `ChannelLibrary.removeFromHistory(_ item:)` does.
+    func removeFromHistory(_ channel: String, in playlistID: UUID) {
+        let url = Self.channelURL(channel)
+        let key = "\(playlistID)|\(url)"
+        guard bookmarks[key] != nil else {
+            return
+        }
+        SyncDeletionJournal.noteHistoryRemoved([SyncIdentity.localHistoryKey(playlistID: playlistID, url: url)], in: defaults, now: clock())
+        bookmarks[key]?.lastWatchedAt = nil
+        bookmarks[key]?.resumePosition = 0
+        if bookmarks[key]?.isFavorite == false {
+            bookmarks[key] = nil
+        }
+    }
+
+    /// The channel name of an episode of a series ("Show E3").
+    static func episode(_ number: Int, of show: String) -> String {
+        "\(show) E\(number)"
+    }
+
+    /// An episode of a series is watched: its own progress, and the series' last episode and watched episodes.
+    func watchEpisode(_ number: Int, of show: String, in playlistID: UUID, position: Double = 0, duration: Double = 2_400) {
+        let channel = Self.episode(number, of: show)
+        watch(channel, in: playlistID, position: position, duration: duration)
+        let key = "\(playlistID)|\(show)"
+        var value = series[key] ?? Series(playlistID: playlistID, seriesKey: show, title: show)
+        value.lastWatchedAt = clock().syncRounded
+        value.lastEpisodeURL = Self.channelURL(channel)
+        value.watchedEpisodeCodes = Array(Set(value.watchedEpisodeCodes + ["S1E\(number)"])).sorted()
+        series[key] = value
+    }
+
+    /// "Remove from History" on a series' Continue Watching card, as `ChannelLibrary.removeFromHistory(_ series:)`
+    /// and `SeriesLibrary.forgetHistory(of:)` do: every episode watched, and what the series knows of them.
+    func removeSeriesFromHistory(_ show: String, in playlistID: UUID) {
+        let prefix = Self.channelURL(show + " E").absoluteString
+        var removed: [String] = []
+        for (key, bookmark) in bookmarks where bookmark.playlistID == playlistID && bookmark.url.absoluteString.hasPrefix(prefix) {
+            guard bookmark.lastWatchedAt != nil || bookmark.resumePosition > 0 else {
+                continue
+            }
+            removed.append(key)
+        }
+        SyncDeletionJournal.noteHistoryRemoved(
+            removed.compactMap { bookmarks[$0].map { SyncIdentity.localHistoryKey(playlistID: playlistID, url: $0.url) } }
+                + [SyncIdentity.localHistoryKey(playlistID: playlistID, seriesKey: show)],
+            in: defaults,
+            now: clock()
+        )
+        for key in removed {
+            bookmarks[key]?.lastWatchedAt = nil
+            bookmarks[key]?.resumePosition = 0
+            if bookmarks[key]?.isFavorite == false {
+                bookmarks[key] = nil
+            }
+        }
+        series["\(playlistID)|\(show)"] = nil
     }
 
     func favorite(_ channel: String, in playlistID: UUID) {
@@ -190,6 +271,8 @@ final class FakeLibrary: CloudSyncLocalStore {
     func watch(_ channel: String, in playlistID: UUID, position: Double, duration: Double) {
         let url = Self.channelURL(channel)
         let key = "\(playlistID)|\(url)"
+        // As `ChannelLibrary.recordWatch`: back in the history, so not a removal to publish.
+        SyncDeletionJournal.withdrawHistoryRemoval(SyncIdentity.localHistoryKey(playlistID: playlistID, url: url), in: defaults, now: clock())
         var bookmark = bookmarks[key] ?? Bookmark(playlistID: playlistID, url: url, name: channel)
         bookmark.lastWatchedAt = clock().syncRounded
         bookmark.watchCount += 1
@@ -233,6 +316,20 @@ final class FakeLibrary: CloudSyncLocalStore {
             if bookmark.lastWatchedAt != nil || bookmark.resumePosition > 0 {
                 result[SyncRecordID(.channelProgress, name)] = .channelProgress(ChannelProgressPayload(channel: channel, lastWatchedAt: bookmark.lastWatchedAt, watchCount: bookmark.watchCount, resumePosition: bookmark.resumePosition, knownDuration: bookmark.knownDuration))
             }
+        }
+        for value in series.values {
+            guard let playlist = identity.linkedPlaylistName(localID: value.playlistID) else {
+                continue
+            }
+            let snapshot = SeriesSnapshot(playlist: playlist, seriesKey: value.seriesKey, title: value.title, artwork: nil, groupName: "")
+            result[SyncRecordID(.seriesProgress, SyncIdentity.seriesName(playlist: playlist, seriesKey: value.seriesKey))] = .seriesProgress(SeriesProgressPayload(
+                series: snapshot,
+                lastWatchedAt: value.lastWatchedAt,
+                lastEpisodeURL: value.lastEpisodeURL,
+                lastSeason: nil,
+                lastEpisode: nil,
+                watchedEpisodeCodes: value.watchedEpisodeCodes
+            ))
         }
         for (key, value) in preferences {
             result[SyncRecordID(.preference, key)] = .preference(value)
@@ -324,6 +421,24 @@ final class FakeLibrary: CloudSyncLocalStore {
                 if let bookmark = bookmarks[key], !bookmark.isFavorite, bookmark.lastWatchedAt == nil {
                     bookmarks[key] = nil
                 }
+            case .seriesProgress(let progress):
+                guard let playlistID = links.playlists[progress.series.playlist], playlists[playlistID] != nil else {
+                    deferred.insert(record.id)
+                    continue
+                }
+                series["\(playlistID)|\(progress.series.seriesKey)"] = Series(
+                    playlistID: playlistID,
+                    seriesKey: progress.series.seriesKey,
+                    title: progress.series.title,
+                    lastWatchedAt: progress.lastWatchedAt,
+                    lastEpisodeURL: progress.lastEpisodeURL,
+                    watchedEpisodeCodes: progress.watchedEpisodeCodes
+                )
+            case nil where record.id.kind == .seriesProgress:
+                let playlistNames = Dictionary(links.playlists.map { ($0.value, $0.key) }, uniquingKeysWith: { first, _ in first })
+                series = series.filter { _, value in
+                    playlistNames[value.playlistID].map { SyncIdentity.seriesName(playlist: $0, seriesKey: value.seriesKey) } != name
+                }
             case .preference(let value):
                 preferences[name] = value
             case nil where record.id.kind == .preference:
@@ -340,7 +455,7 @@ final class FakeLibrary: CloudSyncLocalStore {
     }
 
     func forgetDeletionIntents(_ intents: SyncDeletionIntents) {
-        SyncDeletionJournal.forget(intents, in: defaults)
+        SyncDeletionJournal.forget(intents, in: defaults, now: clock())
     }
 
     /// The import of playlists added from another device finishes.
@@ -358,8 +473,9 @@ final class FakeLibrary: CloudSyncLocalStore {
         let marks = bookmarks.values.map { mark in
             "\(names[mark.playlistID] ?? "?")/\(mark.name) fav=\(mark.isFavorite ? "yes, order \(mark.order)" : "no") watched=\(mark.lastWatchedAt.map { "\($0.syncMilliseconds)" } ?? "-") pos=\(mark.resumePosition)"
         }.sorted()
+        let shows = series.values.map { "\(names[$0.playlistID] ?? "?")/\($0.seriesKey) watched=\($0.watchedEpisodeCodes)" }.sorted()
         let guideList = guides.values.map { "\($0.name) on=\($0.isEnabled)" }.sorted()
         let prefs = preferences.map { "\($0.key)=\($0.value)" }.sorted()
-        return (lists + marks + guideList + prefs).joined(separator: "\n")
+        return (lists + marks + shows + guideList + prefs).joined(separator: "\n")
     }
 }

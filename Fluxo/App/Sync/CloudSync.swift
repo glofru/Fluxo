@@ -33,6 +33,10 @@ final class CloudSync {
     /// Record names of lost playlists and guides whose restore the user put off (the prompt does not come back for
     /// them; Settings › iCloud still offers them).
     static let restoreDeclinedKey = "sync.restoreDeclined"
+    /// Not Now in the held-removals question: when, and how many removals were held then
+    /// (`SyncHeldRemovalsReminder`; asked again a day later, not at every launch).
+    static let heldRemovalsPostponedOnKey = "sync.heldRemovalsPostponedOn"
+    static let heldRemovalsPostponedCountKey = "sync.heldRemovalsPostponedCount"
 
     /// The Info.plist key that names the CloudKit container; empty in builds that are not signed with the iCloud
     /// entitlement (unsigned command-line builds, the ad hoc signed Mac build), which then cannot sync.
@@ -164,9 +168,6 @@ final class CloudSync {
     private var passGeneration = 0
     @ObservationIgnored
     private var isStarted = false
-    /// Prompts put off during this launch (Not Now): asked again at the next launch.
-    @ObservationIgnored
-    private var postponedPrompts: Set<String> = []
     /// A question waits for the window to be uncovered (`windowIsCovered`): asked again shortly.
     @ObservationIgnored
     private var promptRetry: Task<Void, Never>?
@@ -418,10 +419,22 @@ final class CloudSync {
         }
     }
 
-    /// Not Now in the mass-removal question: nothing is removed elsewhere; asked again at the next launch.
+    /// Not Now in the mass-removal question: nothing is removed elsewhere, nothing comes back here; asked again a
+    /// day later (or sooner if more removals are held), not at every launch (`SyncHeldRemovalsReminder`).
     func postponeHeldRemovals() {
         prompt = nil
-        postponedPrompts.insert(Prompt.confirmRemovals(favorites: 0, history: 0).id)
+        let defaults = UserDefaults.fluxo
+        defaults.set(Date.now, forKey: Self.heldRemovalsPostponedOnKey)
+        defaults.set(reconciler.heldDeletionIDs.count, forKey: Self.heldRemovalsPostponedCountKey)
+    }
+
+    /// Since the last Not Now, if the question about held removals was put off.
+    private var heldRemovalsReminder: SyncHeldRemovalsReminder {
+        let defaults = UserDefaults.fluxo
+        return SyncHeldRemovalsReminder(
+            postponedOn: defaults.object(forKey: Self.heldRemovalsPostponedOnKey) as? Date,
+            postponedCount: defaults.integer(forKey: Self.heldRemovalsPostponedCountKey)
+        )
     }
 
     /// Settings › iCloud › Restore from iCloud: reads the whole cloud again, brings back the favorites, history and
@@ -728,7 +741,12 @@ final class CloudSync {
             return .restoreLibrary(playlists: awaiting.filter { $0.id.kind == .playlist }.count)
         }
         let held = reconciler.heldDeletionIDs
-        if !held.isEmpty, !postponedPrompts.contains(Prompt.confirmRemovals(favorites: 0, history: 0).id) {
+        if held.isEmpty, UserDefaults.fluxo.object(forKey: Self.heldRemovalsPostponedOnKey) != nil {
+            // Answered another way (Restore from iCloud, the items came back): a later loss is asked about at once.
+            UserDefaults.fluxo.removeObject(forKey: Self.heldRemovalsPostponedOnKey)
+            UserDefaults.fluxo.removeObject(forKey: Self.heldRemovalsPostponedCountKey)
+        }
+        if heldRemovalsReminder.shouldAsk(held: held.count, now: .now) {
             let favorites = held.filter { $0.kind == .channelFavorite || $0.kind == .seriesFavorite }.count
             return .confirmRemovals(favorites: favorites, history: held.count - favorites)
         }

@@ -366,6 +366,18 @@ enum SyncIdentity {
         digest("\(playlist)|\(seriesKey)")
     }
 
+    /// A watched channel or episode of this device (by local playlist and stream address), for the history the user
+    /// removes (`SyncDeletionJournal.noteHistoryRemoved`): the library does not know the playlist's record name, the
+    /// reconciler finds it through the links. A hash, so the defaults hold no address.
+    static func localHistoryKey(playlistID: UUID, url: URL) -> String {
+        "c" + digest("\(playlistID.uuidString)|\(url.absoluteString)")
+    }
+
+    /// The watch state of a series of this device (by local playlist and series key), for the same journal.
+    static func localHistoryKey(playlistID: UUID, seriesKey: String) -> String {
+        "s" + digest("\(playlistID.uuidString)|\(seriesKey)")
+    }
+
     /// The scheme and host are case-insensitive; the path and query (which carry the account) are kept as they are.
     static func normalized(_ url: URL) -> String {
         guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {

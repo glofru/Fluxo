@@ -182,6 +182,8 @@ final class SeriesLibrary {
             return
         }
         let bookmark = upsert(series)
+        // Back in the history before sync folded its removal: not a removal to publish.
+        SyncDeletionJournal.withdrawHistoryRemoval(Self.historyKey(of: bookmark))
         bookmark.lastWatchedAt = .now
         bookmark.lastEpisodeURL = episode.url
         bookmark.lastSeason = ref.code.season
@@ -209,6 +211,7 @@ final class SeriesLibrary {
         }
         bookmark.watchedEpisodeCodes = codes.sorted().map(\.rawValue)
         states[series.bookmarkKey] = SeriesWatchState(bookmark)
+        noteIfHistoryRemoved(bookmark)
         deleteIfUnused(bookmark)
         save()
     }
@@ -234,6 +237,7 @@ final class SeriesLibrary {
             }
         }
         states[key] = SeriesWatchState(bookmark)
+        noteIfHistoryRemoved(bookmark)
         deleteIfUnused(bookmark)
         save()
     }
@@ -246,6 +250,8 @@ final class SeriesLibrary {
         guard let bookmark = existing(key: key) else {
             return
         }
+        // iCloud sync removes it from the other devices too, at once, with the episodes (`ChannelLibrary`).
+        SyncDeletionJournal.noteHistoryRemoved([Self.historyKey(of: bookmark)])
         clearLastEpisode(of: bookmark)
         bookmark.watchedEpisodeCodes = []
         deleteIfUnused(bookmark)
@@ -327,6 +333,19 @@ final class SeriesLibrary {
         bookmark.lastEpisodeURL = nil
         bookmark.lastSeason = nil
         bookmark.lastEpisode = nil
+    }
+
+    /// The series' watch state, for `SyncDeletionJournal`.
+    private static func historyKey(of bookmark: SeriesBookmark) -> String {
+        SyncIdentity.localHistoryKey(playlistID: bookmark.playlistID, seriesKey: bookmark.seriesKey)
+    }
+
+    /// The user's change left the series without a watch state (its last episode removed from the history, its
+    /// episodes marked unwatched): its synced progress goes from the other devices too, at once.
+    private func noteIfHistoryRemoved(_ bookmark: SeriesBookmark) {
+        if bookmark.lastWatchedAt == nil && bookmark.lastEpisodeURL == nil && bookmark.watchedEpisodeCodes.isEmpty {
+            SyncDeletionJournal.noteHistoryRemoved([Self.historyKey(of: bookmark)])
+        }
     }
 
     private func deleteIfUnused(_ bookmark: SeriesBookmark) {

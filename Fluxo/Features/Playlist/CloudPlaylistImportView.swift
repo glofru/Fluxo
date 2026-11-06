@@ -21,6 +21,7 @@ extension View {
 
 /// The questions of `CloudSync.Prompt`, as system alerts: on Apple TV they take the screen with large focusable
 /// buttons, the first one focused, and Menu picks the cancel button (Not Now); VoiceOver reads the title and message.
+/// The mass-removal question is a page of its own on Apple TV, focused on Not Now (`HeldRemovalsQuestion`).
 private struct CloudSyncPromptPresenter: ViewModifier {
     @Environment(CloudSync.self) private var sync: CloudSync?
 
@@ -30,13 +31,27 @@ private struct CloudSyncPromptPresenter: ViewModifier {
                 .alert(
                     title(sync.prompt),
                     // Every button answers; nothing else closes the alert (the buttons clear `prompt`).
-                    isPresented: Binding(get: { sync.prompt != nil }, set: { _ in }),
+                    isPresented: Binding(get: { sync.prompt.map(Self.usesAlert) ?? false }, set: { _ in }),
                     presenting: sync.prompt
                 ) { prompt in
                     actions(prompt, sync: sync)
                 } message: { prompt in
                     message(prompt)
                 }
+                #if os(tvOS)
+                // The mass-removal question on Apple TV: an alert there focuses its first button and always puts the
+                // cancel button (Not Now) last, so this page focuses Not Now instead (`HeldRemovalsQuestion`). Menu
+                // closes it, and that is Not Now.
+                .fullScreenCover(isPresented: Binding(get: { sync.prompt.map { !Self.usesAlert($0) } ?? false }, set: { presented in
+                    if !presented, let prompt = sync.prompt, !Self.usesAlert(prompt) {
+                        sync.postponeHeldRemovals()
+                    }
+                })) {
+                    if let prompt = sync.prompt {
+                        HeldRemovalsQuestion(title: title(prompt), message: message(prompt), sync: sync)
+                    }
+                }
+                #endif
                 // A question that waited for the player, the Add Playlist sheet or the iCloud playlists sheet is
                 // asked as soon as they close. (`mayPresentImportOffer` reads the player and the playlist actions,
                 // which are observable: this view is updated when they change.)
@@ -48,6 +63,16 @@ private struct CloudSyncPromptPresenter: ViewModifier {
         } else {
             content
         }
+    }
+
+    /// Whether the question is a system alert (all of them, except the mass-removal question on Apple TV).
+    private static func usesAlert(_ prompt: CloudSync.Prompt) -> Bool {
+        #if os(tvOS)
+        if case .confirmRemovals = prompt {
+            return false
+        }
+        #endif
+        return true
     }
 
     private func title(_ prompt: CloudSync.Prompt?) -> Text {
@@ -96,18 +121,24 @@ private struct CloudSyncPromptPresenter: ViewModifier {
             Button {
                 sync.resolveHeldRemovals(remove: false)
             } label: {
-                Text("Restore Them", comment: "Button of the mass-removal question: brings the missing favorites and watched items back from iCloud.")
+                HeldRemovalsQuestion.restoreLabel
             }
             Button(role: .destructive) {
                 sync.resolveHeldRemovals(remove: true)
             } label: {
-                Text("Remove Everywhere", comment: "Button of the mass-removal question: removes the missing favorites and watched items from the user's other devices too.")
+                HeldRemovalsQuestion.removeLabel
             }
+            // The preferred button (Return on a keyboard; bold): it changes nothing anywhere, so it neither undoes a
+            // removal the user meant (Restore Them) nor removes anything elsewhere. It asks again a day later
+            // (`SyncHeldRemovalsReminder`). Apple TV shows `HeldRemovalsQuestion` instead, focused on it.
             Button(role: .cancel) {
                 sync.postponeHeldRemovals()
             } label: {
-                Text("Not Now", comment: "Button of the mass-removal question: decides later; nothing is removed from the other devices meanwhile.")
+                HeldRemovalsQuestion.notNowLabel
             }
+            #if !os(tvOS)
+            .keyboardShortcut(.defaultAction)
+            #endif
         }
     }
 
@@ -127,6 +158,85 @@ private struct CloudSyncPromptPresenter: ViewModifier {
             Text("\(favorites + history) favorites and watched items are missing on this device at once. If you removed them, remove them from your other devices too. If not, restore them from iCloud.", comment: "Message of the mass-removal question; the placeholder is how many favorites and watched items vanished (always 3 or more).")
         }
     }
+}
+
+/// "Remove … from All Your Devices?" (`CloudSync.Prompt.confirmRemovals`). On Apple TV a page that looks like the
+/// system alert, with Not Now focused: a click on the remote changes nothing anywhere, rather than restoring what the
+/// user may have removed on purpose (an alert would focus its first button, and put Not Now, the cancel button, last).
+private struct HeldRemovalsQuestion: View {
+    static var notNowLabel: Text {
+        Text("Not Now", comment: "Button of the mass-removal question: decides later; nothing is removed from the other devices meanwhile.")
+    }
+
+    static var restoreLabel: Text {
+        Text("Restore Them", comment: "Button of the mass-removal question: brings the missing favorites and watched items back from iCloud.")
+    }
+
+    static var removeLabel: Text {
+        Text("Remove Everywhere", comment: "Button of the mass-removal question: removes the missing favorites and watched items from the user's other devices too.")
+    }
+
+    let title: Text
+    let message: Text
+    let sync: CloudSync
+
+    #if os(tvOS)
+    private enum Choice: Hashable {
+        case notNow, restore, remove
+    }
+
+    @FocusState private var focused: Choice?
+
+    var body: some View {
+        VStack(spacing: 48) {
+            VStack(spacing: 24) {
+                title
+                    .font(.title2.bold())
+                    .accessibilityAddTraits(.isHeader)
+                message
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+            }
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: 1_100)
+            VStack(spacing: 20) {
+                Button {
+                    sync.postponeHeldRemovals()
+                } label: {
+                    Self.notNowLabel.frame(minWidth: 620)
+                }
+                .focused($focused, equals: .notNow)
+                Button {
+                    sync.resolveHeldRemovals(remove: false)
+                } label: {
+                    Self.restoreLabel.frame(minWidth: 620)
+                }
+                .focused($focused, equals: .restore)
+                Button(role: .destructive) {
+                    sync.resolveHeldRemovals(remove: true)
+                } label: {
+                    Self.removeLabel.frame(minWidth: 620)
+                }
+                .focused($focused, equals: .remove)
+            }
+        }
+        .padding(80)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // A full-screen cover is not opaque on its own: the page under it would show through.
+        .background {
+            ZStack {
+                Rectangle().fill(.background)
+                Theme.brandGradient.opacity(0.22)
+            }
+            .ignoresSafeArea()
+        }
+        .defaultFocus($focused, .notNow)
+    }
+    #else
+    var body: some View {
+        EmptyView()
+    }
+    #endif
 }
 
 private struct CloudPlaylistImportPresenter: ViewModifier {

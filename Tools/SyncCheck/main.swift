@@ -1031,6 +1031,116 @@ func run() async {
         check(tv.reconciler.heldDeletionIDs.count == 4, "the removals are held (\(tv.reconciler.heldDeletionIDs.count))")
         check(phone.library.historyCount == 4, "the iPhone keeps its history meanwhile")
     }
+
+    await scenario("Remove from History on a series (most of the history, one record per episode) syncs at once: nothing held, the rest stays") {
+        let cloud = MemoryCloudBackend()
+        let phone = Device("iphone", cloud: cloud)
+        let tv = Device("appletv", cloud: cloud)
+        let id = phone.library.addPlaylist("Shows", "https://shows.example/s.m3u")
+        for number in 1...4 {
+            phone.library.watchEpisode(number, of: "Severance", in: id)
+            world.advance(60)
+        }
+        phone.library.watch("Heat", in: id, position: 1_200, duration: 6_000)
+        await settle([phone, tv])
+        tv.library.finishImports()
+        let tvShows = tv.library.playlist(named: "Shows")!
+        check(tv.library.historyCount == 5 && tv.library.seriesHistoryCount == 1, "the TV has the 4 episodes, the movie and the series (\(tv.library.historyCount), \(tv.library.seriesHistoryCount))")
+        // Continue Watching › Remove from History on the series card (TVHomeScreen, ChannelRows).
+        tv.library.removeSeriesFromHistory("Severance", in: tvShows)
+        await settle([phone, tv])
+        check(tv.reconciler.heldDeletionIDs.isEmpty, "nothing is held (\(tv.reconciler.heldDeletionIDs.count))")
+        check(phone.library.historyCount == 1 && phone.library.bookmark("Heat", in: id)?.lastWatchedAt != nil, "the iPhone removed the 4 episodes and kept the movie (\(phone.library.historyCount) left)")
+        check(phone.library.seriesHistoryCount == 0, "the iPhone forgot the series' watch state (\(phone.library.seriesHistoryCount))")
+        check(cloud.allRecords.filter(\.isDeletion).count == 5, "5 deletion records: 4 episodes and the series (\(cloud.allRecords.filter(\.isDeletion).count))")
+        check(tv.library.journal.removedHistory.isEmpty, "the pass that published them folded the journal")
+        check(converged([phone, tv]), "both devices agree")
+    }
+
+    await scenario("Several quick swipes in the history in one pass, then more between passes, all sync at once; a movie watched again stays") {
+        let cloud = MemoryCloudBackend()
+        let phone = Device("iphone", cloud: cloud)
+        let tv = Device("appletv", cloud: cloud)
+        let id = phone.library.addPlaylist("Cinema", "https://cinema.example/c.m3u")
+        let films = ["Dune", "Heat", "Alien", "Ran", "Brazil", "Ikiru", "Solaris"]
+        for film in films {
+            phone.library.watch(film, in: id, position: 600, duration: 6_000)
+            world.advance(60)
+        }
+        await settle([phone, tv])
+        tv.library.finishImports()
+        let tvCinema = tv.library.playlist(named: "Cinema")!
+        // Five swipes before the TV's next pass (5 of 7: a mass removal by count and share), and one movie is
+        // watched again right after its swipe.
+        for film in ["Dune", "Heat", "Alien", "Ran", "Brazil"] {
+            tv.library.removeFromHistory(film, in: tvCinema)
+        }
+        world.advance(5)
+        tv.library.watch("Brazil", in: tvCinema, position: 30, duration: 6_000)
+        await settle([phone, tv])
+        check(tv.reconciler.heldDeletionIDs.isEmpty, "nothing is held (\(tv.reconciler.heldDeletionIDs.count))")
+        check(phone.library.historyCount == 3, "the iPhone removed the 4 movies (\(phone.library.historyCount) left)")
+        check(phone.library.bookmark("Brazil", in: id)?.resumePosition == 30, "the movie watched again kept its new position on the iPhone")
+        check(tv.library.journal.removedHistory.isEmpty, "the journal is folded")
+        // The last ones, one swipe per pass (each the whole remaining history at the end).
+        for film in ["Brazil", "Ikiru", "Solaris"] {
+            tv.library.removeFromHistory(film, in: tvCinema)
+            await tv.sync()
+        }
+        await settle([phone, tv])
+        check(tv.reconciler.heldDeletionIDs.isEmpty && phone.library.historyCount == 0, "the iPhone removed them too (\(phone.library.historyCount) left, \(tv.reconciler.heldDeletionIDs.count) held)")
+        check(converged([phone, tv]), "both devices agree")
+    }
+
+    await scenario("A removal from the history does not cover a loss: what vanishes with it unexplained is still held") {
+        let cloud = MemoryCloudBackend()
+        let phone = Device("iphone", cloud: cloud)
+        let tv = Device("appletv", cloud: cloud)
+        let id = phone.library.addPlaylist("Shows", "https://shows.example/s.m3u")
+        for number in 1...4 {
+            phone.library.watchEpisode(number, of: "Severance", in: id)
+        }
+        for film in ["Dune", "Heat", "Alien", "Ran"] {
+            phone.library.watch(film, in: id, position: 600, duration: 6_000)
+        }
+        await settle([phone, tv])
+        tv.library.finishImports()
+        tv.library.removeSeriesFromHistory("Severance", in: tv.library.playlist(named: "Shows")!)
+        // The rest of the history vanishes in the same pass, without a word (a damaged store).
+        tv.library.loseHistory()
+        await settle([phone, tv])
+        check(tv.reconciler.heldDeletionIDs.count == 4, "the 4 movies are held (\(tv.reconciler.heldDeletionIDs.count))")
+        check(phone.library.historyCount == 4 && phone.library.seriesHistoryCount == 0, "the iPhone removed the series only (\(phone.library.historyCount) left, \(phone.library.seriesHistoryCount) series)")
+        // A removal made long before sync runs (sync off for days) is no longer the user's word for it.
+        let cloud2 = MemoryCloudBackend()
+        let phone2 = Device("iphone2", cloud: cloud2)
+        let tv2 = Device("appletv2", cloud: cloud2)
+        let id2 = phone2.library.addPlaylist("Shows", "https://shows.example/s.m3u")
+        for number in 1...4 {
+            phone2.library.watchEpisode(number, of: "Severance", in: id2)
+        }
+        await settle([phone2, tv2])
+        tv2.library.finishImports()
+        tv2.library.removeSeriesFromHistory("Severance", in: tv2.library.playlist(named: "Shows")!)
+        world.advance(2 * 86_400)
+        await settle([phone2, tv2])
+        check(tv2.reconciler.heldDeletionIDs.count == 5, "a removal 2 days old is held (\(tv2.reconciler.heldDeletionIDs.count))")
+        check(phone2.library.historyCount == 4, "the iPhone keeps its history meanwhile")
+    }
+
+    await scenario("The held-removals question comes back a day after Not Now, not at every launch; sooner when more are held") {
+        let start = world.now
+        var reminder = SyncHeldRemovalsReminder()
+        check(!reminder.shouldAsk(held: 0, now: start), "nothing held, nothing asked")
+        check(reminder.shouldAsk(held: 4, now: start), "asked the first time")
+        reminder = SyncHeldRemovalsReminder(postponedOn: start, postponedCount: 4)
+        check(!reminder.shouldAsk(held: 4, now: start.addingTimeInterval(60)), "not asked again at the next launch")
+        check(!reminder.shouldAsk(held: 4, now: start.addingTimeInterval(23 * 3_600)), "not asked again the same day")
+        check(reminder.shouldAsk(held: 4, now: start.addingTimeInterval(24 * 3_600)), "asked again a day later")
+        check(reminder.shouldAsk(held: 6, now: start.addingTimeInterval(60)), "asked again when more removals are held")
+        check(!reminder.shouldAsk(held: 3, now: start.addingTimeInterval(60)), "not asked when fewer are held (some were restored)")
+        check(reminder.shouldAsk(held: 4, now: start.addingTimeInterval(-3_600)), "a clock set back does not put it off for good")
+    }
 }
 
 await run()

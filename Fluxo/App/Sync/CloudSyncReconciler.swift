@@ -39,15 +39,18 @@ struct SyncDeletionIntents: Equatable, Sendable {
     var localIDs: Set<UUID> = []
     /// Clear History was used: the watch history may go everywhere at once.
     var clearedHistory = false
+    /// Watched items the user removed from the history (`SyncIdentity.localHistoryKey`): their removals are
+    /// published at once, and do not count towards a mass removal.
+    var removedHistory: Set<String> = []
 
     var isEmpty: Bool {
-        localIDs.isEmpty && !clearedHistory
+        localIDs.isEmpty && !clearedHistory && removedHistory.isEmpty
     }
 }
 
 /// When favorites or watch history vanish from the device in large numbers at once, without the user saying so
-/// (Clear History), the removals are held until the user confirms them: that is what an emptied or damaged store
-/// looks like, and publishing it would empty every other device.
+/// (Clear History, a removal from the history), the removals are held until the user confirms them: that is what an
+/// emptied or damaged store looks like, and publishing it would empty every other device.
 struct SyncMassDeletionPolicy: Sendable {
     /// Fewer removals than this in one pass are always published (removing a few favorites in a row).
     var minimumCount = 3
@@ -56,6 +59,30 @@ struct SyncMassDeletionPolicy: Sendable {
 
     func isMass(removed: Int, known: Int) -> Bool {
         removed >= minimumCount && Double(removed) >= Double(max(known, 1)) * fraction
+    }
+}
+
+/// When the question about held removals ("Remove … from All Your Devices?") comes back after Not Now: nothing is
+/// removed anywhere meanwhile, so there is no hurry; it is asked again a day later (not at every launch), or sooner
+/// when more removals are held than when the user put it off (a new loss the user has not seen). Settings › iCloud
+/// (Restore from iCloud, "N to restore") offers them all along.
+struct SyncHeldRemovalsReminder: Equatable, Sendable {
+    static let interval: TimeInterval = 24 * 3_600
+
+    /// When the user last chose Not Now, and how many removals were held then.
+    var postponedOn: Date?
+    var postponedCount = 0
+
+    func shouldAsk(held: Int, now: Date) -> Bool {
+        guard held > 0 else {
+            return false
+        }
+        guard let postponedOn else {
+            return true
+        }
+        let elapsed = now.timeIntervalSince(postponedOn)
+        // A clock set back since then (elapsed below zero) does not put the question off for good.
+        return held > postponedCount || elapsed >= Self.interval || elapsed < 0
     }
 }
 
@@ -310,7 +337,8 @@ protocol CloudSyncTransportEvents: AnyObject {
 ///   or guide source on the other devices. One that is merely gone (an empty or recreated store, a migration that
 ///   lost rows) stays in iCloud and waits for the user to restore it (`SyncLedger.awaitingRestore`).
 /// - Favorites and history that vanish in large numbers at once are held until the user confirms the removal
-///   (`SyncMassDeletionPolicy`, `SyncLedger.heldDeletions`); Clear History is the user saying so.
+///   (`SyncMassDeletionPolicy`, `SyncLedger.heldDeletions`); Clear History, and watched items the user removed from
+///   the history (`SyncDeletionIntents.removedHistory`), are the user saying so.
 /// - Deletions are published only for records this device knew (`lastSeenLocal`), never for ones it never had.
 @MainActor
 final class CloudSyncReconciler {
@@ -713,11 +741,16 @@ final class CloudSyncReconciler {
             ledger.links.playlists[name].flatMap { $0 != localID ? name : nil }
         })
 
-        // Mass removals of favorites or history (of playlists still on the device).
+        // Mass removals of favorites or history (of playlists still on the device). History the user removed here
+        // (`SyncDeletionIntents.removedHistory`: a series left Continue Watching with all its episodes, swipes in
+        // the history) is the user's word: published at once, and not counted, so it neither is held nor makes the
+        // rest look like a mass loss; it is not counted among what the device has either, so a loss that comes
+        // with it is measured against the history that remains.
         var removedFavorites = 0
         var knownFavorites = 0
         var removedHistory = 0
         var knownHistory = 0
+        var intendedHistory: Set<String> = []
         for (key, before) in ledger.lastSeenLocal {
             guard let id = SyncRecordID(recordName: key), id.kind.isFavorite || id.kind.isHistory else {
                 continue
@@ -727,6 +760,8 @@ final class CloudSyncReconciler {
             if id.kind.isFavorite {
                 knownFavorites += 1
                 removedFavorites += isRemoval ? 1 : 0
+            } else if isRemoval, let local = localHistoryKey(of: before), intents.removedHistory.contains(local) {
+                intendedHistory.insert(key)
             } else {
                 knownHistory += 1
                 removedHistory += isRemoval ? 1 : 0
@@ -769,7 +804,7 @@ final class CloudSyncReconciler {
                 ledger.heldDeletions.remove(key)
                 continue
             }
-            if value == nil, (id.kind.isFavorite && holdsFavorites) || (id.kind.isHistory && holdsHistory),
+            if value == nil, (id.kind.isFavorite && holdsFavorites) || (id.kind.isHistory && holdsHistory && !intendedHistory.contains(key)),
                !confirmedHeldDeletions.contains(key) {
                 // Kept back until the user confirms (`lastSeenLocal` keeps the item, so it is compared again).
                 ledger.heldDeletions.insert(key)
@@ -783,7 +818,9 @@ final class CloudSyncReconciler {
         confirmedHeldDeletions = []
         ledger.hasMatchedBaseline = true
 
-        // The intents are folded, except deletions still running (their row is still in the snapshot).
+        // The intents are folded, except deletions still running (their row is still in the snapshot). Every removed
+        // watched item read is folded too: published above, or nothing to publish (never synced, its playlist gone,
+        // watched again), so an entry never outlives this pass to stand for a later loss.
         var present: Set<UUID> = []
         for id in snapshot.keys where id.kind.isContainer {
             if let localID = id.kind == .playlist ? ledger.links.playlists[id.name] : ledger.links.guideSources[id.name] {
@@ -791,9 +828,26 @@ final class CloudSyncReconciler {
             }
         }
         if !intents.isEmpty {
-            store.forgetDeletionIntents(SyncDeletionIntents(localIDs: intents.localIDs.subtracting(present), clearedHistory: intents.clearedHistory))
+            store.forgetDeletionIntents(SyncDeletionIntents(
+                localIDs: intents.localIDs.subtracting(present),
+                clearedHistory: intents.clearedHistory,
+                removedHistory: intents.removedHistory
+            ))
         }
         return changed
+    }
+
+    /// The journal key of a watched item (`SyncIdentity.localHistoryKey`), through the local playlist its record
+    /// belongs to.
+    private func localHistoryKey(of payload: SyncPayload) -> String? {
+        switch payload {
+        case .channelProgress(let value):
+            ledger.links.playlists[value.channel.playlist].map { SyncIdentity.localHistoryKey(playlistID: $0, url: value.channel.url) }
+        case .seriesProgress(let value):
+            ledger.links.playlists[value.series.playlist].map { SyncIdentity.localHistoryKey(playlistID: $0, seriesKey: value.series.seriesKey) }
+        default:
+            nil
+        }
     }
 
     /// Turns the device's value of `id` into a record of this device (false: another device's newer record wins).

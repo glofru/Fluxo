@@ -193,6 +193,8 @@ final class ChannelLibrary {
         let bookmark = upsertBookmark(for: item, key: key)
         bookmark.lastWatchedAt = .now
         bookmark.watchCount += 1
+        // Back in the history before sync folded its removal: not a removal to publish.
+        SyncDeletionJournal.withdrawHistoryRemoval(Self.historyKey(of: bookmark))
         let episode = item.adding(series: bookmark.episodeRef)
         save()
         trimHistory()
@@ -266,6 +268,10 @@ final class ChannelLibrary {
             guard let key = episode.bookmarkKey, let bookmark = existingBookmark(key: key), bookmark.resumePosition > 0 else {
                 continue
             }
+            if bookmark.lastWatchedAt == nil {
+                // Only started, never in the history: its progress goes, as the user asked.
+                SyncDeletionJournal.noteHistoryRemoved([Self.historyKey(of: bookmark)])
+            }
             bookmark.resumePosition = 0
             watchProgressByKey[key] = nil
         }
@@ -280,6 +286,8 @@ final class ChannelLibrary {
             return
         }
         let episode = item.adding(series: bookmark.episodeRef)
+        // iCloud sync removes it from the other devices too, at once (a swipe, or several, is not a mass loss).
+        SyncDeletionJournal.noteHistoryRemoved([Self.historyKey(of: bookmark)])
         bookmark.lastWatchedAt = nil
         bookmark.resumePosition = 0
         watchProgressByKey[key] = nil
@@ -305,10 +313,12 @@ final class ChannelLibrary {
     /// series knows of them: its last episode and the episodes watched. Favorites stay.
     func removeFromHistory(_ series: SeriesItem) {
         do {
-            for bookmark in try context.fetch(Self.episodeBookmarks(playlistID: series.playlistID, seriesKey: series.key)) {
-                guard bookmark.lastWatchedAt != nil || bookmark.resumePosition > 0 else {
-                    continue
-                }
+            let watched = try context.fetch(Self.episodeBookmarks(playlistID: series.playlistID, seriesKey: series.key))
+                .filter { $0.lastWatchedAt != nil || $0.resumePosition > 0 }
+            // One synced record per episode: iCloud sync removes them all from the other devices at once, as the
+            // user asked, instead of holding them as a mass loss (`SyncDeletionJournal.noteHistoryRemoved`).
+            SyncDeletionJournal.noteHistoryRemoved(watched.map(Self.historyKey(of:)))
+            for bookmark in watched {
                 bookmark.lastWatchedAt = nil
                 bookmark.resumePosition = 0
                 watchProgressByKey[bookmark.key] = nil
@@ -436,6 +446,11 @@ final class ChannelLibrary {
         return (ChannelItem(bookmark), watchedAt)
     }
 
+    /// The bookmark's watch progress, for `SyncDeletionJournal`.
+    private static func historyKey(of bookmark: ChannelBookmark) -> String {
+        SyncIdentity.localHistoryKey(playlistID: bookmark.playlistID, url: bookmark.url)
+    }
+
     private func deleteIfUnused(_ bookmark: ChannelBookmark) {
         if !bookmark.isFavorite && bookmark.lastWatchedAt == nil {
             context.delete(bookmark)
@@ -449,6 +464,8 @@ final class ChannelLibrary {
         guard !stale.isEmpty else {
             return
         }
+        // The app's own limit, not a loss: the other devices drop them too, however many.
+        SyncDeletionJournal.noteHistoryRemoved(stale.map(Self.historyKey(of:)))
         for bookmark in stale {
             bookmark.lastWatchedAt = nil
             bookmark.resumePosition = 0
