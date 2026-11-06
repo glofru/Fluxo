@@ -276,7 +276,8 @@ final class SeriesLibrary {
 
     // MARK: - Private
 
-    private func reload() {
+    /// Reads the favorites and watch states again (after iCloud sync changed the bookmarks).
+    func reload() {
         do {
             var favorites: Set<String> = []
             var states: [String: SeriesWatchState] = [:]

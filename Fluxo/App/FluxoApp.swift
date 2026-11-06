@@ -17,7 +17,7 @@ struct FluxoApp: App {
     /// Favorites and watch history.
     @State private var library: ChannelLibrary
     /// Add / rename / delete requests, shared by the screens and the menu bar commands.
-    @State private var playlistActions = PlaylistActions()
+    @State private var playlistActions: PlaylistActions
     /// The single player of the app. It owns the AVPlayer, the Picture in Picture surface, the remux
     /// engine, the loopback HLS server and the recordings, so there must never be more than one.
     @State private var player: AVPlayerViewModel
@@ -30,6 +30,8 @@ struct FluxoApp: App {
     @State private var windows: WindowCoordinator
     /// Offline downloads of movies and episodes (the transfers continue in the background).
     @State private var downloads: DownloadCenter
+    /// iCloud sync of playlists, guides, favorites, watch progress and settings across the user's devices.
+    @State private var cloudSync: CloudSync
     /// The objects above, for App Intents (Siri, Shortcuts, Spotlight).
     private let services: AppServices
 
@@ -73,6 +75,14 @@ struct FluxoApp: App {
         // Now, not when the first view appears: the reminder notification delegate must be installed before a
         // notification that launched the app is delivered.
         epg.start()
+        // After the library, the imports and the guide it applies other devices' changes through.
+        let playlistActions = PlaylistActions()
+        let cloudSync = CloudSync(container: container, importCenter: importCenter, library: library, epg: epg)
+        // The "Your Playlists from iCloud" offer never covers playback or the Add Playlist sheet.
+        cloudSync.mayPresentImportOffer = { [weak player, weak playlistActions] in
+            !(player?.isPresented ?? false) && !(playlistActions?.isPresenting ?? false)
+        }
+        cloudSync.start()
         let intelligence = FluxoIntelligence(container: container, epg: epg)
         let windows = WindowCoordinator()
         let services = AppServices(container: container, library: library, player: player, epg: epg, windows: windows, intelligence: intelligence)
@@ -86,6 +96,8 @@ struct FluxoApp: App {
         _player = State(initialValue: player)
         _epg = State(initialValue: epg)
         _downloads = State(initialValue: downloads)
+        _cloudSync = State(initialValue: cloudSync)
+        _playlistActions = State(initialValue: playlistActions)
     }
 
     var body: some Scene {
@@ -108,6 +120,8 @@ struct FluxoApp: App {
                 .environment(downloads)
                 .environment(epg)
                 .environment(intelligence)
+                .environment(cloudSync)
+                .environment(importCenter)
                 .modelContainer(container)
                 .defaultAppStorage(.fluxo)
         }
@@ -150,7 +164,7 @@ struct FluxoApp: App {
         // for a tap instead of playing on its own (see `WindowCoordinator.pendingPlayerWindows`).
         WindowGroup("Player", id: PlayerWindowValue.windowID, for: PlayerWindowValue.self) { $value in
             PlayerWindowView(value: value, player: player)
-                .modifier(AppEnvironment(importCenter: importCenter, library: library, actions: playlistActions, epg: epg, intelligence: intelligence, windows: windows, player: player, downloads: downloads))
+                .modifier(AppEnvironment(importCenter: importCenter, library: library, actions: playlistActions, epg: epg, intelligence: intelligence, windows: windows, player: player, downloads: downloads, cloudSync: cloudSync))
         }
         .modelContainer(container)
         .defaultSize(width: 960, height: 600)
@@ -171,6 +185,7 @@ struct FluxoApp: App {
             .environment(epg)
             .environment(windows)
             .environment(downloads)
+            .environment(cloudSync)
     }
 
     /// Each main window has its own navigation; the first one adopts the navigation App Intents may already have
@@ -196,6 +211,7 @@ private struct AppEnvironment: ViewModifier {
     let windows: WindowCoordinator
     let player: AVPlayerViewModel
     let downloads: DownloadCenter
+    let cloudSync: CloudSync
 
     @State private var navigation = AppNavigation()
 
@@ -210,6 +226,7 @@ private struct AppEnvironment: ViewModifier {
             .environment(intelligence)
             .environment(windows)
             .environment(downloads)
+            .environment(cloudSync)
             .environment(navigation)
             .defaultAppStorage(.fluxo)
             .tint(Theme.accent)

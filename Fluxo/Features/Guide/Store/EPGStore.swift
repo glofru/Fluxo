@@ -244,6 +244,17 @@ final class EPGStore {
         enqueue([sourceID], reportingFailures: true)
     }
 
+    /// Adds a guide that iCloud sync brought from another device (refreshed like a new guide, failures not reported:
+    /// the user did not add it here). Returns its ID, or the ID of the guide this device already has at `url`.
+    func addSyncedSource(url: URL, name: String, isEnabled: Bool) async throws -> UUID {
+        let sourceID = try await importer.addSource(url: url, name: name, isEnabled: isEnabled)
+        bumpRevision()
+        if isEnabled {
+            enqueue([sourceID], reportingFailures: false)
+        }
+        return sourceID
+    }
+
     /// Deletes a guide source with its programmes, channels and manual matches. Reminders are snapshots and stay.
     ///
     /// The source disappears from the lists right away (`deletingSourceIDs`; call it inside `withAnimation` to

@@ -18,6 +18,8 @@
 //  -FluxoDebugTestStreamURL <url>          Base URL of Tools/Simulator/test-stream.sh (default http://127.0.0.1:18080).
 //  -FluxoDebugCast simulated               Uses the simulated Chromecast receiver (SimulatedCastBackend) instead of
 //                                          the Google Cast SDK.
+//  -FluxoDebugCloud memory|<folder>        iCloud sync with a simulated cloud (`DebugCloud`), in memory or in a folder
+//                                          that several simulators share (implies -FluxoDebugStore memory).
 //
 //  Only the launch arguments are read (the argument domain), never values persisted in the user defaults, so a
 //  normal Debug launch without arguments behaves exactly like the app. -FluxoDebugAppearance and
@@ -53,6 +55,8 @@ struct DebugLaunchOptions {
     var dynamicTypeSize: DynamicTypeSize?
     /// Tools/Simulator/test-stream.sh, on the loopback interface (the simulator shares the Mac's).
     var testStreamBaseURL = URL(string: "http://127.0.0.1:18080") ?? URL(fileURLWithPath: "/")
+    /// `-FluxoDebugCloud`: "memory" or the path of a folder.
+    var cloud: String?
 
     static let current = DebugLaunchOptions(arguments: UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain))
 
@@ -96,7 +100,8 @@ struct DebugLaunchOptions {
         if let value = string("FluxoDebugRoute") {
             routes = value.split(separator: ";").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         }
-        if seed != nil || importURL != nil || !routes.isEmpty, store == nil {
+        cloud = string("FluxoDebugCloud")
+        if seed != nil || importURL != nil || !routes.isEmpty || cloud != nil, store == nil {
             // Seeding, importing and routes always run on an isolated library: some routes write watch history
             // or settings, which must never reach the real ones.
             store = .memory
@@ -154,6 +159,8 @@ final class DebugEnvironment: @unchecked Sendable {
         .appendingPathComponent("Status", isDirectory: true)
 
     let mode: DebugLaunchOptions.StoreMode
+    /// The folder of the isolated run (the store, recordings, downloads, the sync ledger).
+    let rootDirectory: URL
     /// nil for the in-memory store.
     let storeURL: URL?
     let recordingsDirectory: URL
@@ -183,6 +190,7 @@ final class DebugEnvironment: @unchecked Sendable {
         try? fileManager.createDirectory(at: root, withIntermediateDirectories: true)
 
         self.mode = mode
+        rootDirectory = root
         storeURL = mode == .memory ? nil : root.appendingPathComponent("Fluxo.store")
         recordingsDirectory = root.appendingPathComponent("Recordings", isDirectory: true)
         downloadsDirectory = root.appendingPathComponent("Downloads", isDirectory: true)

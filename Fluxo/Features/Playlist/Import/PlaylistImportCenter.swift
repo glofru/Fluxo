@@ -84,6 +84,15 @@ final class PlaylistImportCenter {
         }
     }
 
+    /// Creates a playlist that iCloud sync brought from another device and starts its import. Unlike `addPlaylist`, a
+    /// failed or cancelled import keeps the playlist (with no channels until a refresh succeeds): it exists on the
+    /// user's other devices, and deleting it here would delete it there too. The returned task reports the import;
+    /// failures are not put in `failure` (the caller shows them).
+    func addSyncedPlaylist(uuid: UUID, name: String, url: URL, createdOn: Date) async throws -> Task<PlaylistImportSummary, Error> {
+        try await importer.createPlaylist(uuid: uuid, name: name, url: url, createdOn: createdOn)
+        return startImport(playlistUUID: uuid, url: url)
+    }
+
     /// Re-downloads the playlist and replaces its channels. The current channels stay visible until the new ones
     /// are stored; on failure they are kept and `failure` is set.
     /// A refresh requested while one is already running is ignored.

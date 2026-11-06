@@ -221,9 +221,15 @@ final class ChannelLibrary {
         return watchProgressByKey[key]
     }
 
+    /// True during the save of a position playback records every few seconds (`saveWatchProgress(…, isPeriodic:)`),
+    /// which iCloud sync publishes later than other changes (`CloudSync`).
+    @ObservationIgnored
+    private(set) var isSavingPeriodicProgress = false
+
     /// Stores the playback position of an on-demand item. Near the end (the credits), the item counts as
-    /// watched and its position is cleared, so it starts from the beginning next time.
-    func saveWatchProgress(for item: ChannelItem, position: TimeInterval, duration: TimeInterval) {
+    /// watched and its position is cleared, so it starts from the beginning next time. `isPeriodic`: one of the
+    /// saves made every few seconds during playback (not a pause, a stop or the end).
+    func saveWatchProgress(for item: ChannelItem, position: TimeInterval, duration: TimeInterval, isPeriodic: Bool = false) {
         guard item.kind != .live, duration > 0, position.isFinite, let key = item.bookmarkKey else {
             return
         }
@@ -245,7 +251,9 @@ final class ChannelLibrary {
         bookmark.resumePosition = newPosition
         bookmark.knownDuration = duration
         watchProgressByKey[key] = WatchProgress(bookmark)
+        isSavingPeriodicProgress = isPeriodic && !finished
         save()
+        isSavingPeriodicProgress = false
     }
 
     /// Marks episodes as watched (their resume positions are cleared) or not watched.
@@ -326,6 +334,13 @@ final class ChannelLibrary {
         watchProgressByKey = [:]
         save()
         series.clearHistory()
+    }
+
+    /// Reads favorites and watch progress again after the bookmarks changed outside this library (iCloud sync).
+    func reloadFromStore() {
+        reloadFavorites()
+        reloadWatchProgress()
+        series.reload()
     }
 
     /// Drops the in-memory favorite state of a deleted playlist (its rows are deleted by the importer).

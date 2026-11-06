@@ -30,6 +30,7 @@ struct TVContentView: View {
     @Environment(ChannelLibrary.self) private var library
     @Environment(EPGStore.self) private var epg
     @Environment(WindowCoordinator.self) private var coordinator
+    @Environment(CloudSync.self) private var cloudSync
     /// The selected tab and the search text, shared with App Intents and the debug routes.
     @State private var navigation: AppNavigation
     /// Identifies the window to the `WindowCoordinator` (Apple TV has one).
@@ -98,6 +99,8 @@ struct TVContentView: View {
         }
         .reminderAlert(epg.reminders)
         .playlistManagement()
+        // "Your Playlists from iCloud": the playlists of the user's other devices, without typing an address.
+        .cloudPlaylistImport()
         .guideManagement(epg)
         .watchProgressRecording(player: viewModel)
         .playerAnnouncements(viewModel)
@@ -105,8 +108,10 @@ struct TVContentView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 viewModel.sceneDidBecomeActive()
+                cloudSync.sceneDidBecomeActive()
             } else if phase == .background {
                 EPGBackgroundRefresh.schedule()
+                cloudSync.sceneDidEnterBackground()
             }
         }
         .task(id: epg.reminders.channelToOpen) {

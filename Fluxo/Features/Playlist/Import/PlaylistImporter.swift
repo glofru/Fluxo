@@ -80,9 +80,9 @@ actor PlaylistImporter {
 
     // MARK: - Playlists
 
-    func createPlaylist(uuid: UUID, name: String, url: URL) throws {
+    func createPlaylist(uuid: UUID, name: String, url: URL, createdOn: Date = .now) throws {
         let context = makeContext()
-        context.insert(Playlist(uuid: uuid, name: name, url: url, createdOn: .now))
+        context.insert(Playlist(uuid: uuid, name: name, url: url, createdOn: createdOn))
         try context.save()
     }
 

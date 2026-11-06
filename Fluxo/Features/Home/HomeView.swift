@@ -472,6 +472,9 @@ struct HomeEmptyState: View {
             .buttonStyle(.glassProminent)
             .tint(Theme.accentFill)
             .controlSize(.large)
+
+            // The playlists of the user's other devices (iCloud sync).
+            CloudSyncWelcomeNote()
         }
         .padding(32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

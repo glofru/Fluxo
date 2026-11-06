@@ -105,6 +105,7 @@ private struct PlaylistManagementPresenter: ViewModifier {
     @Environment(PlaylistImportCenter.self) private var importCenter
     @Environment(ChannelLibrary.self) private var library
     @Environment(DownloadCenter.self) private var downloads: DownloadCenter?
+    @Environment(CloudSync.self) private var cloudSync: CloudSync?
     /// With several windows (iPad), each sheet and alert shows in one of them (see `WindowCoordinator`).
     @Environment(WindowCoordinator.self) private var coordinator: WindowCoordinator?
     @Environment(\.windowID) private var windowID
@@ -135,16 +136,27 @@ private struct PlaylistManagementPresenter: ViewModifier {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: { playlist in
-                // Its offline downloads go with it (`DownloadCenter.playlistWasDeleted`): said, when it has some.
-                hasDownloads(playlist)
-                    ? Text("“\(playlist.name)” and its \(playlist.channelCount) channels, favorites, watch history and downloads will be removed from this device.", comment: "Message of the Delete Playlist alert when movies or episodes of the playlist are downloaded; the placeholders are the playlist name and its number of channels.")
-                    : Text("“\(playlist.name)” and its \(playlist.channelCount) channels, favorites and watch history will be removed from this device.", comment: "Message of the Delete Playlist alert; the placeholders are the playlist name and its number of channels.")
+                deletionMessage(playlist)
             }
             .alert("Playlist Error", isPresented: failureAlertBinding, presenting: importCenter.failure) { _ in
                 Button("OK", role: .cancel) {}
             } message: { failure in
                 Text("\(failure.playlistName): \(failure.message)")
             }
+    }
+
+    /// What goes with the playlist: its offline downloads (`DownloadCenter.playlistWasDeleted`), and its copies on
+    /// the user's other devices when it is synced with iCloud. Each is said only when it applies.
+    private func deletionMessage(_ playlist: Playlist) -> Text {
+        let downloads = hasDownloads(playlist)
+        if cloudSync?.syncsPlaylist(playlist.uuid) == true {
+            return downloads
+                ? Text("“\(playlist.name)” and its \(playlist.channelCount) channels, favorites and watch history will be removed from this device and from your other devices that sync with iCloud. Its downloads on this device will be deleted.", comment: "Message of the Delete Playlist alert when the playlist is synced with iCloud and movies or episodes of it are downloaded on this device; the placeholders are the playlist name and its number of channels.")
+                : Text("“\(playlist.name)” and its \(playlist.channelCount) channels, favorites and watch history will be removed from this device and from your other devices that sync with iCloud.", comment: "Message of the Delete Playlist alert when the playlist is synced with iCloud; the placeholders are the playlist name and its number of channels.")
+        }
+        return downloads
+            ? Text("“\(playlist.name)” and its \(playlist.channelCount) channels, favorites, watch history and downloads will be removed from this device.", comment: "Message of the Delete Playlist alert when movies or episodes of the playlist are downloaded; the placeholders are the playlist name and its number of channels.")
+            : Text("“\(playlist.name)” and its \(playlist.channelCount) channels, favorites and watch history will be removed from this device.", comment: "Message of the Delete Playlist alert; the placeholders are the playlist name and its number of channels.")
     }
 
     private func hasDownloads(_ playlist: Playlist) -> Bool {

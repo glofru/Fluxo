@@ -364,13 +364,15 @@ actor EPGImporter {
         return added
     }
 
-    func addSource(url: URL, name: String?) throws -> UUID {
+    /// `isEnabled` is false for a guide that iCloud sync brought from another device where it is turned off.
+    func addSource(url: URL, name: String?, isEnabled: Bool = true) throws -> UUID {
         let context = makeContext()
         if let existing = try context.fetch(EPGQueries.sources()).first(where: { $0.url == url && $0.playlistID == nil }) {
             return existing.uuid
         }
         let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let source = EPGSource(url: url, name: trimmed.isEmpty ? Self.defaultName(for: url) : trimmed, playlistID: nil)
+        source.isEnabled = isEnabled
         context.insert(source)
         try context.save()
         return source.uuid

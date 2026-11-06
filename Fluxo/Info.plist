@@ -48,6 +48,7 @@
 	<array>
 		<string>audio</string>
 		<string>fetch</string>
+		<string>remote-notification</string>
 	</array>
 	<key>NSBonjourServices</key>
 	<array>
@@ -56,6 +57,8 @@
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Fluxo uses the local network to find Chromecast and other Google Cast devices, so you can watch channels on your TV.</string>
+	<key>FluxoCloudKitContainer</key>
+	<string>$(FLUXO_CLOUDKIT_CONTAINER)</string>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>dev.watermelon.Fluxo.guide-refresh</string>

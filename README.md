@@ -174,6 +174,161 @@ Tools/PlaylistBenchmark/run.sh             # ENTRIES=20000 for a quicker run
   and Recordings, and each playlist) and a Settings window (Cmd-,). iPhone uses tabs; iPad uses a sidebar-adaptable
   tab view (see "iPad" below).
 
+## iCloud sync
+
+Playlists, the TV guides the user added, favorites, watch history and resume positions, and the player's main
+settings follow the user to every device signed in to the same Apple Account (iPhone, iPad, Mac and Apple TV). The main
+reason is the Apple TV: typing an M3U address with the Siri Remote is slow, so a new Apple TV offers the playlists of the
+user's other devices as soon as it finds them ("Your Playlists from iCloud").
+
+### What syncs
+
+| Synced | Not synced |
+|---|---|
+| Playlists: name, address, date added (only `http(s)` playlists: one imported from a file lives in the device's container) | Channels, groups, series, artwork: each device downloads the playlist itself |
+| TV guides added by the user, and whether they are on (guides of a playlist header follow the playlist) | The programmes of the guide, manual guide matches |
+| Favorites of channels, movies and series, in the user's order | Offline downloads, recordings |
+| Watch history, resume positions, watched episodes of a series | Device settings: downloads, Picture in Picture, foldable layouts, the Home selection |
+| Time-shift length, skip intervals, audio and subtitle languages (and audio description / SDH), reminder lead time, Apple Intelligence on or off | |
+
+### How it works
+
+- **Transport: CloudKit** (`App/Sync/CloudKitSyncTransport.swift`), the user's private database, one zone ("Fluxo"),
+  driven by `CKSyncEngine` (batching, retries, the silent push that announces changes, account changes). The key-value
+  store (`NSUbiquitousKeyValueStore`) was the other option: smaller (1 MB) and simpler, but Apple's documentation says
+  not to put sensitive information in it, as it is stored unencrypted on disk, and its values are not covered by
+  Advanced Data Protection. Stream addresses usually embed the provider account (`username=…&password=…`, or
+  `/user/pass/` in Xtream paths), so CloudKit's encrypted fields were chosen.
+- **No SwiftData-CloudKit**: the store has `@Attribute(.unique)` keys, non-optional attributes and relationships that
+  CloudKit mirroring does not allow, and mirroring would sync the 100,000-row channel tables that each device downloads
+  anyway. The schema and its migrations are unchanged: sync is a separate layer that reads and writes the library
+  through the objects the screens use (`LibrarySyncStore`), so a synced change behaves exactly like a local one (a
+  deleted playlist goes through `PlaylistImportCenter.delete`, a new one through the import pipeline, a guide through
+  `EPGStore`).
+- **Records** (`App/Sync/CloudSyncRecords.swift`): one per playlist, guide, favorite, progress and setting. Favorites
+  and progress are separate records, so a favorite added on the iPhone and a movie watched on the Apple TV at the same
+  time both survive. Record names never contain an address: playlists and guides are named after a hash of their
+  address the first time they sync (so the same playlist added on two devices before sync was on becomes one, and the
+  name stays when the address is edited later), favorites and progress after a hash of their playlist and stream
+  address.
+- **Conflicts** (`App/Sync/CloudSyncReconciler.swift`): last writer wins, per record, by the time of the change (then
+  the device ID, so every device picks the same winner). A change made after the device received another device's
+  change always wins over it, whatever the clocks say. An item a device never compared before (there before sync was
+  on) carries its own date (when it was favorited or last watched), so turning sync on does not let last week's
+  position on one device override yesterday's on another. When CloudKit refuses a save because another device saved
+  first (`serverRecordChanged`), the server's copy is merged and the newer one is sent again.
+- **Deletions** are records without a value (a tombstone): a playlist deleted on one device is deleted on the others,
+  with its favorites and history, and a device that was offline cannot bring it back. Deleting a playlist writes one
+  record, not one per favorite (they go with their playlist). The Delete Playlist alert says when the playlist will be
+  removed from the user's other devices too. Removing a favorite or clearing the history syncs the same way.
+- **The ledger** (`Application Support/CloudSync/ledger.json`, complete file protection until first unlock): the newest
+  record of every item and the device's own value at the last comparison. A difference between the library and the
+  ledger is a change made on this device; a record the device does not match yet (a favorite whose playlist is still
+  importing) is applied at the next pass. Library saves (`ModelContext.didSave` of playlists, guides and bookmarks) and
+  changes of a synced setting start a pass 2–3 s later, so an import or a burst of favorites is compared once; the app
+  also syncs when it comes to the foreground and before it is suspended. A pass that changes nothing does not write
+  the ledger.
+- **Battery during playback**: the resume position playback saves every 10 s (`WatchProgressRecorder`) is not
+  published at once (`ChannelLibrary.isSavingPeriodicProgress`): those saves start at most one pass every 5 minutes
+  (`CloudSync.progressPublishDelay`), which later saves do not postpone. Pausing, the end of an item, another item,
+  stopping and the app going to the background save it as usual and publish it within seconds, so a movie paused on
+  the iPhone resumes at the right place on the Apple TV, without an upload every 10 s of the movie.
+- **Delivery**: the ledger keeps the records of this device the cloud has not confirmed (`unsent`), written together
+  with the change. `CKSyncEngine` retries only transient errors (network, throttling, account temporarily unavailable,
+  `CKSyncEngine.h` "Error Handling") and drops the others; a save refused for good (`quotaExceeded`: iCloud storage
+  full; Settings › iCloud says so), cancelled, or queued just before the app was quit is queued again at the next sync
+  (foreground, Sync Now, sign-in) until the cloud confirms it, unless another device's newer change replaced it. A
+  `batchRequestFailed` record (refused only because another one of its batch was) is sent again at once.
+- **First run** (`CloudPlaylistImportView`): a device that had playlists when sync started shares them and takes the
+  others. A device without playlists (a new Apple TV) asks first, once: the sheet (full screen on Apple TV, with the system
+  card buttons and focus) lists the playlists of iCloud by name and server, all checked; Add imports them through the
+  normal pipeline with the progress of each, and their favorites, history and guides follow. A playlist left out stays
+  in iCloud (Settings › iCloud › Playlists in iCloud). An import that fails here keeps the playlist (it exists on the
+  other devices), with no channels until a refresh works. The offer opens on its own only while the device has no
+  playlist, never over the player or the Add Playlist sheet, and closing it any way without Add (Not Now, Menu on the
+  Siri Remote, a swipe down, Escape) is final: it then opens only from the empty Home ("Add N Playlists from iCloud",
+  next to Add Playlist on the Apple TV welcome screen, where it has the focus) and from Settings › iCloud. The empty
+  Home says "Looking for your playlists in iCloud…" meanwhile. Typing an address remains possible: on Apple TV the URL field uses the URL keyboard, so the Continuity
+  Keyboard on a nearby iPhone or iPad gets it too, and Add Playlist explains both ways. No local web server or QR-code
+  form is used: nothing listens on the network for this.
+- **Sync off**: turning it off on a device stops sending and receiving there; the ledger stays, so when it is turned
+  on again the changes made meanwhile on both sides are merged (a playlist deleted meanwhile is deleted on the other
+  devices then).
+- **Accounts**: signing out stops syncing and keeps the library and the ledger, so signing in again to the same
+  account goes on from there (nothing is republished as new, which would override renames and deletions made
+  meanwhile on the other devices); the transport remembers the iCloud user record, and another Apple Account (signed in
+  directly, or after a sign-out) gets this device's library as new. When the user deletes the data from iCloud's
+  storage settings, sync turns off. Settings › iCloud has the switch
+  (on by default, per device), the status (synced when, Syncing…, Sign in to iCloud, not available in this build), Sync
+  Now, Playlists in iCloud, and What's Synced and Privacy, which has Delete iCloud Data (deletes the zone; every device's
+  library stays). Delete iCloud Data reports success only when CloudKit confirms the zone deletion
+  (`sentDatabaseChanges.deletedZoneIDs`); otherwise it says so, leaves sync as it was and withdraws the pending
+  deletion, so it cannot run later over data uploaded again. With sync off it uses an engine that only sends (it never
+  fetches, so nothing of iCloud is applied on the way). Release builds without the iCloud capability (the ad hoc signed
+  Mac build) do not show the iCloud section.
+
+### How stream addresses are protected
+
+Everything that can carry credentials (playlist and guide addresses, channel and stream URLs, names, logos) is one JSON
+blob per record in `CKRecord.encryptedValues`: CloudKit encrypts it on the device before it is sent and decrypts it
+after it is fetched. Only the time of the change, a random device ID and a deletion flag are plain fields. The data is
+in the user's private database, which only their Apple Account can read, and it is encrypted in transit and on Apple's
+servers. With **Advanced Data Protection** turned on, CloudKit encrypted fields are end-to-end encrypted: the keys are
+only on the user's trusted devices, and Apple cannot read them (Apple: "iCloud data security overview", and the
+`encryptedValues` documentation). Without it, Apple holds the keys (standard data protection), which allows account
+recovery. Settings › iCloud › What's Synced and Privacy says the same to the user, with where to turn Advanced Data
+Protection on. The local ledger and engine state are in Application Support, like the library store.
+
+Record names are not encrypted (CloudKit never encrypts them): playlist and guide records are named after a SHA-256
+of their normalized address, favorites and progress after a SHA-256 of their playlist record and stream address.
+Without Advanced Data Protection, someone who can read the record names of the user's private database (Apple) and
+who guesses a provider's host and an account's user name and password could test that guess against a name offline.
+A keyed hash (HMAC with a random per-account key kept in an encrypted field) would remove that; it needs a key
+agreed by every device before the first record is named, and is left for a later version (see `SyncIdentity`).
+
+Sync is on by default, also for users who update with playlists already on the device: their playlists start
+syncing to their private iCloud database at the first launch of this version. Mention it in the release notes.
+
+### Capabilities and signing
+
+The app needs the **iCloud (CloudKit)** capability with the container `iCloud.dev.watermelon.Fluxo`, and **Push
+Notifications** plus the **Remote notifications** background mode (`UIBackgroundModes`: `remote-notification`) so
+that `CKSyncEngine` learns of changes at once. `Fluxo/Fluxo.entitlements` (iOS, iPadOS and tvOS) lists
+`com.apple.developer.icloud-services` (`CloudKit`), `com.apple.developer.icloud-container-identifiers` and
+`aps-environment`. With automatic signing and the team (4MJXMYZ3D9), Xcode registers the container and the
+capabilities of the App ID the first time it signs; the container appears in the CloudKit Console, where the
+development schema is created by the first records and must be deployed to production before a TestFlight or App
+Store build syncs (record types `Playlist`, `GuideSource`, `ChannelFavorite`, `ChannelProgress`, `SeriesFavorite`,
+`SeriesProgress`, `Preference`; fields `payload` (encrypted bytes), `modifiedAt`, `deviceID`, `deleted`).
+
+`CKContainer` stops the app when it is not signed with the entitlement, so the container comes from Info.plist
+(`FluxoCloudKitContainer` = `$(FLUXO_CLOUDKIT_CONTAINER)`), and the build setting is empty when
+`CODE_SIGNING_ALLOWED=NO` (`FLUXO_CLOUDKIT_CONTAINER_$(CODE_SIGNING_ALLOWED)`): unsigned command-line builds and the
+simulator harness run without sync and say "Not available in this build". The macOS build is signed ad hoc, which
+cannot carry iCloud entitlements, so `FLUXO_CLOUDKIT_CONTAINER[sdk=macosx*]` is empty too. To sync on the Mac, sign it
+with the team (see "Building"), add the same three keys to `Fluxo/Fluxo-macOS.entitlements`
+(`aps-environment` is `com.apple.developer.aps-environment` there) and remove the `[sdk=macosx*]` override. The
+Apple TV build reads `Fluxo/Info-tvOS.plist`, which has the `FluxoCloudKitContainer` key and the
+`remote-notification` background mode too, and uses `Fluxo/Fluxo.entitlements`: the same capabilities apply to the
+tvOS App ID (the iCloud container is shared by the four platforms).
+
+### Checking it
+
+```sh
+Tools/SyncCheck/run.sh     # the reconciler on simulated devices that share a simulated cloud
+```
+
+`SyncCheck` compiles the sync sources with an in-memory library per device and a cloud that refuses stale saves like
+CloudKit (`App/Sync/SimulatedCloud.swift`), and checks: a new Apple TV waiting for the user, then getting the playlist
+with its favorite and resume position; renames and address changes from either side (no duplicate); the same playlist
+added on two devices; a favorite and a watch at the same time; concurrent offline renames; a device clock an hour
+behind; deletion with its bookmarks and no resurrection by a returning device; removed favorites; guides; turning sync
+on with history on both devices; a relaunch that sends nothing; another account; and 200 random edits on three devices
+that must converge; a save refused for good (iCloud storage full) that arrives once there is space; a change queued
+just before the app was quit, sent at the next launch; a refused change that another device overrode, not sent again;
+and idle passes that do not write the ledger. In the app, `-FluxoDebugCloud memory|<folder>` replaces CloudKit with the simulated cloud (a folder
+that two simulator clones share lets them sync with each other), see "iCloud sync" in `Tools/Simulator/README.md`.
+
 ## Offline downloads
 
 Movies and episodes (never live channels) download to watch without a network (`Features/Downloads`).
@@ -797,8 +952,9 @@ refresh (`BGAppRefreshTask`) runs on tvOS too.
 - **Root** (`TVContentView`): the tvOS top tab bar, titles only as tvOS shows them: Search (first, as in the TV app),
   Home, Live TV, Movies, Series, Library and Settings. It is driven by `AppNavigation.tab` (Live TV is the `.guide` tab
   of the iPhone; Movies and Series are tvOS-only cases), so App Intents, Show in TV Guide and the debug routes move it.
-  It sets up what `ContentView` sets up elsewhere: the playlist and guide sheets, watch progress, VoiceOver
-  announcements, the reminder alert, the play action of every card and the debug harness. Every page draws its own
+  It sets up what `ContentView` sets up elsewhere: the playlist and guide sheets, the "Your Playlists from iCloud"
+  cover and iCloud sync on activation and suspension (see "iCloud sync"), watch progress, VoiceOver announcements, the
+  reminder alert, the play action of every card and the debug harness. Every page draws its own
   background (`tvPageBackground()`), which the hero and the series page fade into.
 - **Layout** (`TVComponents.swift`): pages ignore the safe area so artwork runs to the edges of the picture, and keep
   text and controls 80 points from the sides (`TVLayout.margin`, the overscan-safe inset; 60 at the top and bottom).
@@ -843,12 +999,15 @@ refresh (`BGAppRefreshTask`) runs on tvOS too.
   one side and a list on the other: playlists (each with refresh, edit and delete; Add Playlist; which playlists the
   pages show), TV guide sources (on or off, refresh, delete; add; refresh all; reminder lead time), the time-shift
   buffer, audio and subtitle languages (the shared `TrackSettingsSection`), Clear Watch History, the recordings and the
-  version; every choice opens its own list. Addresses are typed in the shared Add Playlist and Add Guide Source sheets,
+  version; every choice opens its own list. iCloud (the shared `CloudSyncSettingsSection`, after the playlists, with
+  the same plain row symbols): the switch, the status, Playlists in iCloud, Sync Now, and What's Synced and Privacy
+  (a page of focusable lines the remote scrolls through, and Delete iCloud Data). Addresses are typed in the shared Add Playlist and Add Guide Source sheets,
   whose text fields bring up the tvOS keyboard, dictation and the Continuity Keyboard on a nearby iPhone or iPad; on
   tvOS their Add button is a row of the form (the sheet's bar has no room for the title and two buttons) and Menu
   cancels.
 - **Focus**: each page has a sensible first focus (the hero's Play, the series' Continue, the programme on air on the
-  first channel, the Add Playlist of an empty page); the system brings the focus back to the card or programme that
+  first channel, the Add Playlist of an empty page, or Add Playlists from iCloud next to it on the welcome screen when
+  iCloud has playlists of the user's other devices); the system brings the focus back to the card or programme that
   opened a player, a sheet or a pushed page.
 - **Player** (`TVPlayerView`): `AVPlayerViewController` on the app's single `AVPlayer`, so the transport bar, the
   info panel, audio and subtitles and the Siri Remote work as in the TV app; live streams show their live edge and
@@ -1196,7 +1355,7 @@ navigation, intelligence) with `AppDependencyManager`; intents run in the app's 
   the clipboard, a name suggested from the URL, determinate or indeterminate import progress
   with Cancel Import, and an error section with Try Again. Editing can change the URL, which
   re-imports the playlist.
-- **Settings** (a tab on iOS, the Settings window ⌘, on macOS): time-shift length, skip
+- **Settings** (a tab on iOS, the Settings window ⌘, on macOS): iCloud sync (see "iCloud sync"), time-shift length, skip
   intervals, automatic PiP (iOS), TV guide sources and the reminder time, recordings count / size / location (Show in Finder on macOS,
   the Files app on iOS through `UIFileSharingEnabled`), delete all recordings, temporary stream
   files, logo cache, watch history, and the app and FFmpeg versions.

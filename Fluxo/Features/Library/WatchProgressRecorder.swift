@@ -139,7 +139,7 @@ private struct WatchProgressRecorder: View {
         }
         tracked = current
         if abs(position - current.savedPosition) >= Self.saveInterval {
-            saveTracked()
+            saveTracked(isPeriodic: true)
         }
     }
 
@@ -166,11 +166,13 @@ private struct WatchProgressRecorder: View {
         tracked = current
     }
 
-    private func saveTracked() {
+    /// `isPeriodic`: the save made every `saveInterval` seconds of playback (iCloud sync publishes those later; a
+    /// pause, the end, another item or the background publish the position at once).
+    private func saveTracked(isPeriodic: Bool = false) {
         guard var current = tracked, current.pendingResume == nil, current.duration > 0 else {
             return
         }
-        library.saveWatchProgress(for: current.item, position: current.position, duration: current.duration)
+        library.saveWatchProgress(for: current.item, position: current.position, duration: current.duration, isPeriodic: isPeriodic)
         current.savedPosition = current.position
         tracked = current
     }

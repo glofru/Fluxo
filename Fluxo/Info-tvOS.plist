@@ -36,7 +36,10 @@
 	<array>
 		<string>audio</string>
 		<string>fetch</string>
+		<string>remote-notification</string>
 	</array>
+	<key>FluxoCloudKitContainer</key>
+	<string>$(FLUXO_CLOUDKIT_CONTAINER)</string>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>dev.watermelon.Fluxo.guide-refresh</string>

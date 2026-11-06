@@ -4577,6 +4577,29 @@
         }
       }
     },
+    "%lld channels added" : {
+      "comment" : "iCloud playlists sheet: a playlist was imported; the placeholder is its number of channels (plural variations).",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld channel added"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld channels added"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%lld channels, %lld categories" : {
       "comment" : "Search results summary: how many channels and categories match.",
       "localizations" : {
@@ -7603,6 +7626,29 @@
                 "stringUnit" : {
                   "state" : "translated",
                   "value" : "%lld 部電影"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld not on this device" : {
+      "comment" : "Settings › iCloud: how many playlists of the user's other devices this device does not have; the row opens the list to add them.",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld not on this device"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld not on this device"
                 }
               }
             }
@@ -12688,6 +12734,55 @@
         }
       }
     },
+    "Add %lld Playlists" : {
+      "comment" : "Button of the iCloud playlists sheet; the placeholder is how many playlists are checked (one: Add Playlist).",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Add Playlist"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Add %lld Playlists"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Add %lld Playlists from iCloud" : {
+      "comment" : "Empty Home: button that opens the playlists of the user's other devices; the placeholder is how many (one: Add Playlist from iCloud).",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Add Playlist from iCloud"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Add %lld Playlists from iCloud"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Add All %lld Playlists" : {
+      "comment" : "Button of the iCloud playlists sheet when every playlist is checked (always more than one); the placeholder is how many."
+    },
     "Add Episode to Favorites" : {
       "comment" : "Series page, menu of an episode: adds this episode to the favorites.",
       "localizations" : {
@@ -14202,6 +14297,9 @@
           }
         }
       }
+    },
+    "Adds or leaves out this playlist." : {
+      "comment" : "VoiceOver hint of a playlist row of the iCloud playlists sheet."
     },
     "AirPlay" : {
       "comment" : "Apple brand name of the AirPlay button. Do not translate.",
@@ -19109,6 +19207,9 @@
         }
       }
     },
+    "Cancelled" : {
+      "comment" : "iCloud playlist import: the import was cancelled."
+    },
     "Cancels the reminder" : {
       "comment" : "VoiceOver hint — TV programme details.",
       "localizations" : {
@@ -21754,6 +21855,12 @@
           }
         }
       }
+    },
+    "Channels, programmes and artwork are downloaded by each device from your providers. Downloads, recordings and settings that belong to one device stay on it." : {
+      "comment" : "iCloud privacy page: what is not synced."
+    },
+    "Checking…" : {
+      "comment" : "Settings › iCloud status: the app is checking the iCloud account."
     },
     "Chromecast can't play %@:// streams." : {
       "comment" : "Text — Chromecast (Google Cast). The placeholder is a URL scheme, such as srt.",
@@ -24784,6 +24891,9 @@
           }
         }
       }
+    },
+    "Continue in Background" : {
+      "comment" : "Button of the iCloud playlists sheet while playlists import: closes it, the imports go on."
     },
     "Copy Address" : {
       "comment" : "Button — TV guide sources (Settings).",
@@ -28218,6 +28328,9 @@
         }
       }
     },
+    "Delete Fluxo's Data from iCloud?" : {
+      "comment" : "Title of the confirmation of Delete iCloud Data."
+    },
     "Delete Guide Source" : {
       "comment" : "Button — TV guide sources (Settings).",
       "localizations" : {
@@ -28824,6 +28937,12 @@
         }
       }
     },
+    "Delete iCloud Data" : {
+      "comment" : "Confirmation button of Delete iCloud Data."
+    },
+    "Delete iCloud Data…" : {
+      "comment" : "iCloud privacy page: button that deletes everything Fluxo stored in iCloud."
+    },
     "Delete this recording?" : {
       "comment" : "Alert title — recordings.",
       "localizations" : {
@@ -29126,6 +29245,9 @@
           }
         }
       }
+    },
+    "Deleting…" : {
+      "comment" : "iCloud privacy page: shown while the synced data is being deleted from iCloud."
     },
     "Description" : {
       "comment" : "Shortcuts property of a TV programme: its description.",
@@ -34171,6 +34293,9 @@
           }
         }
       }
+    },
+    "Favorites, in your order" : {
+      "comment" : "iCloud privacy page: an item of the list of what iCloud sync stores."
     },
     "Favourites" : {
       "comment" : "Synonym Siri accepts for the Favorites screen (British spelling).",
@@ -41346,6 +41471,9 @@
         }
       }
     },
+    "How Your Addresses Are Protected" : {
+      "comment" : "iCloud privacy page: title of the section about encryption."
+    },
     "How far back you can go in a live channel. Applies the next time a channel starts. The buffer uses at most %@ and never more than a tenth of the free space." : {
       "comment" : "Text — Settings. The placeholder is a size, such as 12 MB.",
       "localizations" : {
@@ -43121,6 +43249,9 @@
           }
         }
       }
+    },
+    "Its favorites, watch history and TV guides come along." : {
+      "comment" : "Note of the iCloud playlists sheet, when it lists one playlist: what is added with it."
     },
     "Its programmes are removed. Reminders you set stay." : {
       "comment" : "Text — TV guide sources (Settings).",
@@ -46388,6 +46519,9 @@
           }
         }
       }
+    },
+    "Looking for your playlists in iCloud…" : {
+      "comment" : "Empty Home: shown while iCloud sync reads the playlists of the user's other devices."
     },
     "Low Power Mode is on: streams that offer several qualities play in 1080p at most, and the TV guide refreshes less often." : {
       "comment" : "Settings, Playback footer: shown while Low Power Mode is on.",
@@ -53421,7 +53555,13 @@
       }
     },
     "Not Now" : {
-      "comment" : "Button of a programme reminder on Apple TV: closes the reminder without playing the channel."
+      "comment" : "Button of a programme reminder on Apple TV: closes the reminder without playing the channel.\nButton of the iCloud playlists sheet: closes it without adding playlists."
+    },
+    "Not added" : {
+      "comment" : "iCloud playlists sheet: a playlist the user left out."
+    },
+    "Not available in this build" : {
+      "comment" : "Settings › iCloud status: the app was built without the iCloud capability (unsigned or ad hoc signed builds)."
     },
     "Not enough free space to play this file." : {
       "comment" : "Player error: playing a movie or an episode file needs disk space for a temporary copy, and the device is almost full.",
@@ -55404,7 +55544,7 @@
       }
     },
     "Off" : {
-      "comment" : "Subtitles menu: no subtitles are shown.",
+      "comment" : "Settings › iCloud status: sync is turned off.\nSubtitles menu: no subtitles are shown.",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -56336,6 +56476,9 @@
         }
       }
     },
+    "On a Mac: System Settings › your name › iCloud › Advanced Data Protection." : {
+      "comment" : "iCloud privacy page: where to turn on Advanced Data Protection on a Mac. Use the names System Settings shows in this language."
+    },
     "On now" : {
       "comment" : "Status of a programme that is airing now, shown on its own: on a reminder row and as the reason of a suggestion (next to 'Starts soon'). Capitalize it like a label.",
       "localizations" : {
@@ -56852,6 +56995,9 @@
           }
         }
       }
+    },
+    "On this device: Settings › your name › iCloud › Advanced Data Protection." : {
+      "comment" : "iCloud privacy page: where to turn on Advanced Data Protection on an iPhone or iPad. Use the names the Settings app shows in this language."
     },
     "On your favorite channel" : {
       "comment" : "Text — Apple Intelligence suggestions.",
@@ -63372,6 +63518,15 @@
           }
         }
       }
+    },
+    "Playlists from iCloud" : {
+      "comment" : "Title of the sheet that offers the playlists of the user's other devices (navigation bar)."
+    },
+    "Playlists in iCloud" : {
+      "comment" : "Settings › iCloud: opens the playlists of the user's other devices, to add them to this one."
+    },
+    "Playlists: their names and addresses" : {
+      "comment" : "iCloud privacy page: an item of the list of what iCloud sync stores."
     },
     "Plays" : {
       "comment" : "VoiceOver hint of a channel, movie, episode or recording on Apple TV: selecting it starts playback."
@@ -70498,6 +70653,9 @@
           }
         }
       }
+    },
+    "Removes your playlists, guides, favorites, history and settings from iCloud and turns sync off. Nothing is removed from your devices." : {
+      "comment" : "iCloud privacy page: what Delete iCloud Data does."
     },
     "Reset (%@)" : {
       "comment" : "Player's Subtitle Timing menu: removes the shift of a subtitle file; the placeholder is the shift, as in '+1.5 s'.",
@@ -79901,6 +80059,9 @@
         }
       }
     },
+    "Shows the playlists of your other devices, to add them to this Apple TV." : {
+      "comment" : "VoiceOver hint of the Add from iCloud button of the Apple TV welcome screen."
+    },
     "Shows the programme" : {
       "comment" : "VoiceOver hint — Apple Intelligence features.",
       "localizations" : {
@@ -80203,6 +80364,9 @@
           }
         }
       }
+    },
+    "Sign in to iCloud to sync" : {
+      "comment" : "Settings › iCloud status: the device is not signed in to an Apple Account with iCloud."
     },
     "Similar to %@" : {
       "comment" : "Text — Apple Intelligence suggestions. The placeholder is a name.",
@@ -83187,6 +83351,9 @@
         }
       }
     },
+    "Status" : {
+      "comment" : "Settings › iCloud: label of the sync status (Up to Date, Syncing…, the problem)."
+    },
     "Still recording" : {
       "comment" : "VoiceOver hint of a recording that is still being recorded.",
       "localizations" : {
@@ -85106,6 +85273,9 @@
         }
       }
     },
+    "Stream addresses can contain the account name and password of your provider. Fluxo keeps them in your private iCloud database, which only your Apple Account can read, and encrypts them on this device before they're sent. They're encrypted in transit and on Apple's servers." : {
+      "comment" : "iCloud privacy page: how stream addresses are protected with standard iCloud data protection."
+    },
     "Stream files are in use while a channel plays. They are removed automatically when playback stops." : {
       "comment" : "Text — Settings.",
       "localizations" : {
@@ -86419,6 +86589,18 @@
         }
       }
     },
+    "Sync Now" : {
+      "comment" : "Settings › iCloud: button that syncs with iCloud at once."
+    },
+    "Sync with iCloud" : {
+      "comment" : "Settings › iCloud: the switch that turns iCloud sync on or off."
+    },
+    "Synced %@" : {
+      "comment" : "Settings › iCloud status: when the last sync finished; the placeholder is a relative time such as '2 minutes ago'."
+    },
+    "Syncing…" : {
+      "comment" : "Settings › iCloud status: a sync is running."
+    },
     "TV" : {
       "comment" : "Shortcuts search keyword of Play Channel (television).",
       "localizations" : {
@@ -86822,6 +87004,9 @@
           }
         }
       }
+    },
+    "TV guides you added, and whether they're on" : {
+      "comment" : "iCloud privacy page: an item of the list of what iCloud sync stores."
     },
     "TV.category.order" : {
       "comment" : "Apple TV, a category's page: the menu of the order of its entries.",
@@ -91973,6 +92158,9 @@
         }
       }
     },
+    "Their favorites, watch history and TV guides come along." : {
+      "comment" : "Note of the iCloud playlists sheet: what is added with the playlists."
+    },
     "Then say what you are looking for: a channel, a film, “football tonight”." : {
       "comment" : "Settings > Siri & Shortcuts: explanation under the Search phrase. Translate “football tonight” as a natural example search.",
       "localizations" : {
@@ -92174,6 +92362,18 @@
           }
         }
       }
+    },
+    "These playlists are on your other devices. Add them to this Apple TV to watch them here, without typing a single address." : {
+      "comment" : "Description of the iCloud playlists sheet on Apple TV."
+    },
+    "These playlists are on your other devices. Add them to this Mac to watch them here too." : {
+      "comment" : "Description of the iCloud playlists sheet on a Mac."
+    },
+    "These playlists are on your other devices. Add them to this iPad to watch them here too." : {
+      "comment" : "Description of the iCloud playlists sheet on an iPad."
+    },
+    "These playlists are on your other devices. Add them to this iPhone to watch them here too." : {
+      "comment" : "Description of the iCloud playlists sheet on an iPhone."
     },
     "This can't be played: its audio format (%@) isn't supported." : {
       "comment" : "Player error: an audio-only stream is in a format the app cannot decode or convert; the placeholder is the technical name of the audio codec, in English.",
@@ -93185,6 +93385,18 @@
         }
       }
     },
+    "This playlist is on your other devices. Add it to this Apple TV to watch it here, without typing a single address." : {
+      "comment" : "Description of the iCloud playlists sheet on Apple TV, when it lists one playlist."
+    },
+    "This playlist is on your other devices. Add it to this Mac to watch it here too." : {
+      "comment" : "Description of the iCloud playlists sheet on a Mac, when it lists one playlist."
+    },
+    "This playlist is on your other devices. Add it to this iPad to watch it here too." : {
+      "comment" : "Description of the iCloud playlists sheet on an iPad, when it lists one playlist."
+    },
+    "This playlist is on your other devices. Add it to this iPhone to watch it here too." : {
+      "comment" : "Description of the iCloud playlists sheet on an iPhone, when it lists one playlist."
+    },
     "This programme is no longer in the TV guide." : {
       "comment" : "Siri and Shortcuts text (dialog or error) — Siri and Shortcuts.",
       "localizations" : {
@@ -93790,6 +94002,9 @@
           }
         }
       }
+    },
+    "Time-shift and skip intervals, audio and subtitle languages, reminder time" : {
+      "comment" : "iCloud privacy page: an item of the list of what iCloud sync stores."
     },
     "Time-shift buffer" : {
       "comment" : "Label (text with an icon) — Settings.",
@@ -95104,6 +95319,12 @@
         }
       }
     },
+    "Turn it on from your iPhone or iPad (Settings › your name › iCloud › Advanced Data Protection) or your Mac (System Settings › your name › iCloud › Advanced Data Protection)." : {
+      "comment" : "iCloud privacy page on Apple TV: Advanced Data Protection is turned on from another device. Use the names the Settings app (iPhone, iPad) and System Settings (Mac) show in this language."
+    },
+    "Turn on Advanced Data Protection for iCloud to have them end-to-end encrypted: only your trusted devices then have the keys, and not even Apple can read them. Without it, Apple keeps the keys, so it can help you recover your data." : {
+      "comment" : "iCloud privacy page: what Advanced Data Protection changes for the synced stream addresses."
+    },
     "Turn on Apple Intelligence for personal picks" : {
       "comment" : "Text — Apple Intelligence features.",
       "localizations" : {
@@ -95507,6 +95728,12 @@
           }
         }
       }
+    },
+    "Type with your iPhone: open its Apple TV Keyboard notification." : {
+      "comment" : "Apple TV, Add Playlist: how to avoid typing the address with the remote (the Continuity Keyboard on an iPhone or iPad), when iCloud sync is off or unavailable."
+    },
+    "Type with your iPhone: open its Apple TV Keyboard notification. Or add the playlist on another device, and iCloud brings it here." : {
+      "comment" : "Apple TV, Add Playlist: how to avoid typing the address with the remote (the Continuity Keyboard on an iPhone or iPad, or iCloud sync)."
     },
     "URL" : {
       "comment" : "Label of the playlist address field (web address).",
@@ -97430,6 +97657,9 @@
     "Up Next on %@" : {
 
     },
+    "Up to Date" : {
+      "comment" : "Settings › iCloud status: nothing to sync."
+    },
     "Updating %@" : {
       "comment" : "Text — Home page. The placeholder is the playlist name.",
       "localizations" : {
@@ -98844,6 +99074,9 @@
         }
       }
     },
+    "Waiting…" : {
+      "comment" : "iCloud playlists sheet: a playlist that has not started importing yet."
+    },
     "Watch" : {
       "comment" : "Button (verb): play the channel.\nButton of a programme reminder on Apple TV: plays the channel of the programme that is about to start.",
       "localizations" : {
@@ -99348,6 +99581,9 @@
           }
         }
       }
+    },
+    "Watch history and where you stopped each movie and episode" : {
+      "comment" : "iCloud privacy page: an item of the list of what iCloud sync stores."
     },
     "Watch it again" : {
       "comment" : "Text — Apple Intelligence suggestions.",
@@ -100610,6 +100846,12 @@
           }
         }
       }
+    },
+    "What's Synced" : {
+      "comment" : "iCloud privacy page: title of the list of what is synced."
+    },
+    "What's Synced and Privacy" : {
+      "comment" : "Settings › iCloud: opens the page that lists what iCloud sync stores and how stream addresses are protected."
     },
     "What's on ${channel}" : {
       "comment" : "Summary of a Shortcuts action, shown in the Shortcuts editor (${…} are parameters; keep them as written) — Shortcuts app.",
@@ -103241,6 +103483,9 @@
         }
       }
     },
+    "Your Playlists from iCloud" : {
+      "comment" : "Title of the sheet that offers the playlists of the user's other devices."
+    },
     "Your device is warm: streams that offer several qualities play at a lower one, and the TV guide waits to refresh until it cools down." : {
       "comment" : "Settings, Playback footer: shown while the device is hot (serious or critical thermal state).",
       "localizations" : {
@@ -103645,6 +103890,15 @@
         }
       }
     },
+    "Your iCloud storage is full. Changes on this device are sent once there is space." : {
+      "comment" : "Settings › iCloud status: the iCloud account has no storage left, so changes cannot be synced."
+    },
+    "Your other devices keep their playlists and stop syncing. Turn sync on again to upload this device's library." : {
+      "comment" : "Message of the confirmation of Delete iCloud Data."
+    },
+    "Your playlists, the TV guides you added, favorites, watch progress and player settings stay the same on your iPhone, iPad, Mac and Apple TV. Playlist addresses are encrypted before they leave this device." : {
+      "comment" : "Settings › iCloud: footer that says what sync does."
+    },
     "epgshare01 publishes free guides by country, updated every day. Use them for channels you are allowed to watch." : {
       "comment" : "Text — TV guide sources (Settings).",
       "localizations" : {
@@ -103745,6 +103999,21 @@
           }
         }
       }
+    },
+    "iCloud" : {
+      "comment" : "Settings: title of the iCloud sync section."
+    },
+    "iCloud Sync" : {
+      "comment" : "Title of the iCloud privacy page."
+    },
+    "iCloud did not confirm the deletion. Check your connection and try again." : {
+      "comment" : "Delete iCloud Data failed: the server did not confirm that the data was deleted."
+    },
+    "iCloud is not available right now" : {
+      "comment" : "Settings › iCloud status: the account is temporarily unavailable (for example while it is being set up)."
+    },
+    "iCloud is restricted on this device" : {
+      "comment" : "Settings › iCloud status: Screen Time or a device management profile does not allow iCloud."
     },
     "loads with the next refresh" : {
       "comment" : "Guide channel picker: a guide channel whose programmes are not loaded yet. Follows the name of its guide source after a separator, as in 'epgshare01 · loads with the next refresh'; start in lower case where your language allows.",
@@ -104052,6 +104321,72 @@
     "·" : {
       "comment" : "Middle dot used as a separator between two pieces of text. Do not translate.",
       "shouldTranslate" : false
+    },
+    "“%@” and its %lld channels, favorites and watch history will be removed from this device and from your other devices that sync with iCloud." : {
+      "comment" : "Message of the Delete Playlist alert when the playlist is synced with iCloud; the placeholders are the playlist name and its number of channels.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%1$@” and its %2$#@channels@, favorites and watch history will be removed from this device and from your other devices that sync with iCloud."
+          },
+          "substitutions" : {
+            "channels" : {
+              "argNum" : 2,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg channel"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg channels"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "“%@” and its %lld channels, favorites and watch history will be removed from this device and from your other devices that sync with iCloud. Its downloads on this device will be deleted." : {
+      "comment" : "Message of the Delete Playlist alert when the playlist is synced with iCloud and movies or episodes of it are downloaded on this device; the placeholders are the playlist name and its number of channels.",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%1$@” and its %2$#@channels@, favorites and watch history will be removed from this device and from your other devices that sync with iCloud. Its downloads on this device will be deleted."
+          },
+          "substitutions" : {
+            "channels" : {
+              "argNum" : 2,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg channel"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg channels"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     },
     "“%@” and its %lld channels, favorites and watch history will be removed from this device." : {
       "comment" : "Message of the Delete Playlist alert; the placeholders are the playlist name and its number of channels.",

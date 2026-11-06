@@ -797,7 +797,7 @@ enum DebugRoutes {
         DebugRoute("help", "Logs this list.") { _, _ in
             DebugLaunchOptions.logger.notice("\(DebugRoutes.helpText, privacy: .public)")
         },
-    ] + DebugIntentRoutes.all + DebugDownloadRoutes.all + DebugPowerRoutes.all
+    ] + DebugIntentRoutes.all + DebugDownloadRoutes.all + DebugPowerRoutes.all + DebugCloud.routes
 
     /// A track by number (1-based) or by name (exact, then contained), for the track routes.
     static func track(_ argument: String, in tracks: [MediaSelectionController.Track]) -> MediaSelectionController.Track? {

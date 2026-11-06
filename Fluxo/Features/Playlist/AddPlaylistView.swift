@@ -90,6 +90,9 @@ struct AddPlaylistView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Environment(PlaylistImportCenter.self) private var importCenter
+    #if os(tvOS)
+    @Environment(CloudSync.self) private var cloudSync: CloudSync?
+    #endif
 
     @State private var name = ""
     @State private var urlText = ""
@@ -171,7 +174,17 @@ struct AddPlaylistView: View {
                     Label(message, systemImage: "exclamationmark.circle.fill")
                         .foregroundStyle(Theme.error)
                 } else {
+                    #if os(tvOS)
+                    // Typing an address with the Siri Remote is slow: the faster ways, instead of the format note (iCloud
+                    // only when this Apple TV can sync).
+                    if let cloudSync, cloudSync.isEnabled, cloudSync.isConfigured, cloudSync.availability == .available {
+                        Text("Type with your iPhone: open its Apple TV Keyboard notification. Or add the playlist on another device, and iCloud brings it here.", comment: "Apple TV, Add Playlist: how to avoid typing the address with the remote (the Continuity Keyboard on an iPhone or iPad, or iCloud sync).")
+                    } else {
+                        Text("Type with your iPhone: open its Apple TV Keyboard notification.", comment: "Apple TV, Add Playlist: how to avoid typing the address with the remote (the Continuity Keyboard on an iPhone or iPad), when iCloud sync is off or unavailable.")
+                    }
+                    #else
                     Text("M3U and M3U8 playlists over HTTP or HTTPS. Channels, groups and logos are imported on this device.")
+                    #endif
                 }
             }
             .disabled(isImporting)

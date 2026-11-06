@@ -88,51 +88,95 @@ enum TVHomeSection: String {
 
 // MARK: - Welcome and status
 
-/// First launch: no playlist yet. The Add Playlist button has the focus.
+/// First launch: no playlist yet. The Add Playlist button has the focus, or Add from iCloud when iCloud sync found
+/// playlists of the user's other devices (the way to watch without typing an address with the remote).
 struct TVWelcome: View {
     let onAddPlaylist: () -> Void
 
-    @FocusState private var isFocused: Bool
+    @Environment(CloudSync.self) private var sync: CloudSync?
+    @FocusState private var focused: Action?
+
+    private enum Action: Hashable {
+        case add
+        case iCloud
+    }
 
     var body: some View {
+        let cloud = CloudSyncWelcomeNote.Status(sync)
         ZStack {
             LinearGradient(colors: [Theme.accent.opacity(0.35), Theme.lilac.opacity(0.15), .clear], startPoint: .topLeading, endPoint: .bottomTrailing)
                 .ignoresSafeArea()
                 .accessibilityHidden(true)
-            VStack(spacing: 34) {
+            VStack(spacing: 30) {
                 Image(systemName: "play.tv.fill")
-                    .font(.system(size: 110, weight: .semibold))
+                    .font(.system(size: 100, weight: .semibold))
                     .foregroundStyle(.white)
-                    .frame(width: 220, height: 220)
+                    .frame(width: 200, height: 200)
                     .glassEffect(.regular.tint(Theme.accent.opacity(0.6)), in: .circle)
                     .accessibilityHidden(true)
                 Text("Welcome to Fluxo")
                     .font(.title.bold())
                     .accessibilityAddTraits(.isHeader)
+                // Never truncated: the lines wrap at the width and the stack makes room for them.
                 Text("Add an M3U playlist to watch live TV, movies and series. You can add as many playlists as you like and switch between them here.")
                     .font(.body)
                     .foregroundStyle(Theme.secondaryText)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 1_000)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(String(localized: "TV.welcome.continuity", defaultValue: "Type the address with the remote, by voice, or with the keyboard of your iPhone when it offers to help.", comment: "Apple TV Home, first launch: how to type a playlist address (the Siri Remote, dictation, or the Continuity Keyboard on a nearby iPhone)."))
                     .font(.callout)
                     .foregroundStyle(Theme.tertiaryText)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 1_000)
-                Button {
-                    onAddPlaylist()
-                } label: {
-                    Label("Add Playlist", systemImage: "plus")
-                        .font(.headline)
-                        .padding(.horizontal, 16)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 40) {
+                    if case .playlists(let count) = cloud {
+                        Button {
+                            sync?.presentImportSheet()
+                        } label: {
+                            Label {
+                                Text(CloudSyncWelcomeNote.addTitle(count: count))
+                            } icon: {
+                                Image(systemName: "icloud.and.arrow.down")
+                            }
+                            .font(.headline)
+                            .padding(.horizontal, 16)
+                        }
+                        // Two actions of the same weight: the focus alone highlights one (it starts on this one).
+                        .tvActionButton()
+                        .focused($focused, equals: .iCloud)
+                        .accessibilityHint(Text("Shows the playlists of your other devices, to add them to this Apple TV.", comment: "VoiceOver hint of the Add from iCloud button of the Apple TV welcome screen."))
+                    }
+                    Button {
+                        onAddPlaylist()
+                    } label: {
+                        Label("Add Playlist", systemImage: "plus")
+                            .font(.headline)
+                            .padding(.horizontal, 16)
+                    }
+                    .tvActionButton(prominent: !cloud.hasPlaylists)
+                    .focused($focused, equals: .add)
                 }
-                .tvActionButton(prominent: true)
-                .focused($isFocused)
                 .padding(.top, 12)
+                .focusSection()
+                if cloud == .looking {
+                    CloudSyncWelcomeNote()
+                }
             }
             .padding(TVLayout.margin)
         }
-        .defaultFocus($isFocused, true)
+        .defaultFocus($focused, cloud.hasPlaylists ? .iCloud : .add)
+        #if DEBUG
+        // Debug harness (`cloud-focus:welcome-add|welcome-icloud`): the focused state of each button, for screenshots.
+        .onReceive(NotificationCenter.default.publisher(for: .fluxoDebugCloudFocus)) { notification in
+            switch notification.object as? String {
+            case "welcome-add": focused = .add
+            case "welcome-icloud": focused = .iCloud
+            default: break
+            }
+        }
+        #endif
     }
 }
 

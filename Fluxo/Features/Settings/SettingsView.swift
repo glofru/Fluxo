@@ -53,6 +53,7 @@ struct SettingsView: View {
             Section {
                 SettingsHeader(recordingCount: player.recordings.recordings.count)
             }
+            CloudSyncSettingsSection()
             playbackSection
             TrackSettingsSection()
             #if !os(macOS)

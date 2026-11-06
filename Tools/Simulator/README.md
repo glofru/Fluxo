@@ -104,6 +104,8 @@ nothing when none of these is passed.
 | `-FluxoDebugIntelligence available\|off\|unavailable\|notReady\|unsupported` | Forces the Apple Intelligence status (`FluxoIntelligence`), e.g. `unavailable` to see the built-in suggestions and search on a simulator that has the model. Alone, it keeps the real library. |
 | `-FluxoDebugTestStreamURL <url>` | Base URL of the test-stream server used by the seeded "Loopback Test" playlist and the large seed's artwork (default `http://127.0.0.1:18080`). |
 | `-FluxoDebugPower low-power\|normal\|fair\|serious\|critical` | Pretends Low Power Mode or a thermal state from launch (see the `power:` route). Alone, it keeps the real library (it writes nothing). |
+| `-FluxoDebugCloud memory\|<folder>` | iCloud sync with a simulated cloud instead of CloudKit (`App/Sync/SimulatedCloud.swift`): in memory, or a folder of JSON records (one per record) on the Mac that every clone can read and write, so two clones sync with each other; the app polls it every 2 s. Implies `-FluxoDebugStore memory`. Without it, a debug library never syncs (and unsigned builds have no CloudKit anyway). The folder holds the records as plain JSON (debug only): use a folder in `/tmp`. |
+| `-FluxoDebugCloudSeed "<name>=<url>[;…]"` | Playlists "another device" put in the simulated cloud, for the first-run "Your Playlists from iCloud" sheet. |
 | `-FluxoDebugLoopbackPort <port>` | Port of the player's loopback HLS server (default 19123, always on 127.0.0.1). Every simulator shares the Mac's loopback interface: give clones that play at the same time different ports. |
 
 Other useful system arguments: `-AppleLanguages "(de)" -AppleLocale de_DE`,
@@ -124,6 +126,16 @@ first that contains the text.
 | Route | Opens |
 |---|---|
 | `home` | Home, from its root. |
+| `cloud-sync` | iCloud sync: compares the library and syncs with the (simulated) cloud now. |
+| `cloud-offer`, `cloud-done`, `cloud-not-now` | Shows the "Your Playlists from iCloud" sheet; closes it (Done); Not Now. |
+| `cloud-menu` | Closes the sheet the way Menu on the Siri Remote, a swipe down or Escape does (its own dismissal, not Not Now): the offer must not come back on its own. |
+| `cloud-expect-closed[:<seconds>]` | Fails the step if the sheet shows within that many seconds (6 by default): `cloud-menu;cloud-sync;cloud-expect-closed`. |
+| `cloud-reject-saves:<on\|off>` | The simulated cloud refuses every save as CloudKit does when iCloud storage is full (not retried; Settings › iCloud shows the error); `off` accepts them again, and the next `cloud-sync` sends what was refused. |
+| `cloud-add:<all\|name,…>` | Adds playlists from iCloud as Add in the sheet does (the others are left out). |
+| `cloud-wait-imports` | Waits (60 s at most) until the playlists added from iCloud are imported. |
+| `cloud-focus:<name\|add\|not-now\|done\|sync-toggle\|privacy\|welcome-add\|welcome-icloud>` | Apple TV: focuses a row or button of the sheet, of Settings › iCloud or of the welcome screen (Add Playlist, Add Playlists from iCloud), for screenshots of the focused state. |
+| `cloud-privacy` | Shows What's Synced and Privacy as a sheet (full screen on Apple TV). |
+| `cloud-log` | Writes the sync state (records with hosts only, links, imports) to `Status/cloud.log`. |
 | `tab:<home\|guide\|library\|settings\|search\|playlist name>` | A tab (iOS, tvOS; playlists are iPad sidebar entries). Apple TV also has `movies`, `series` and `live` (the Live TV tab, the same as `guide`). |
 | `focus:<name>` | Apple TV: moves the focus on the page shown, for screenshots of the focused state: the card of a channel, movie, series or programme (its exact name), `hero` (the hero's Play), `play`, `favorite`, `season:<n>`, `episode:<S1 E2>` (series page), `guide-now`, `guide-later`, `guide-channel`, `programme:<channel>` (TV guide), `see-all-<group>`, `open-guide`. Cards inside lazy shelves must be on screen: bring them in with `home-section:` first. |
 | `guide` | The TV Guide (the Guide tab on iOS, the sidebar item on macOS). |
@@ -322,6 +334,38 @@ resolves: playing one shows the player's error state.
 `large` adds "Mega IPTV" (30,000 live channels in 300 groups) and "Mega VOD" (12,000 movies and 4,200
 episodes in 30 groups), about 6 s. Their logos are http URLs of the test-stream server; without it they
 show placeholders.
+
+## iCloud sync
+
+Two clones that sync through a folder of the Mac (one booted at a time is enough: the records stay in the folder).
+Serve some playlists on the loopback interface first, e.g. `python3 -m http.server 18091 --bind 127.0.0.1` in a
+folder of M3U files.
+
+```sh
+CLOUD=/tmp/fluxo-cloud/mykey; rm -rf "$CLOUD"
+# Device A (iPhone): imports a playlist, watches a channel, and publishes both.
+Tools/Simulator/run.sh --device "iPhone 17" --clone fluxo-mykey-1 --seed none --step-shots \
+    --route "home;progress:Entertainment 2;wait:5;cloud-sync;wait:3;settings-section:icloud" \
+    -- -FluxoDebugImportPlaylist http://127.0.0.1:18091/living-room.m3u -FluxoDebugCloud "$CLOUD"
+# Device B (Apple TV, no playlists): the sheet offers the iPhone's playlist; Add imports it, and the history follows.
+Tools/Simulator/run.sh --device "Apple TV 4K (4th generation)" --clone fluxo-mykey-tv-1 --seed none --step-shots \
+    --route "wait:5;cloud-focus:add;cloud-add:all;cloud-wait-imports;cloud-done;home;cloud-log" \
+    -- -FluxoDebugCloud "$CLOUD" -FluxoDebugAppearance dark
+# The first-run sheet alone, with three playlists of "another device" (in memory).
+Tools/Simulator/run.sh --clone fluxo-mykey-tv-1 --seed none --step-shots --route "wait:4;cloud-focus:Sports Pack;cloud-not-now;settings;cloud-focus:sync-toggle" \
+    -- -FluxoDebugCloud memory -FluxoDebugCloudSeed "Living Room=http://127.0.0.1:18091/living-room.m3u;Sports Pack=http://127.0.0.1:18091/sports.m3u"
+```
+
+The offer must stay closed once it was closed without Add, whatever syncs afterwards:
+
+```sh
+Tools/Simulator/run.sh --device "Apple TV 4K (4th generation)" --clone fluxo-mykey-tv-1 --seed none --step-shots \
+    --route "wait:4;cloud-menu;cloud-sync;cloud-expect-closed;cloud-log" \
+    -- -FluxoDebugCloud memory -FluxoDebugCloudSeed "Living Room=http://127.0.0.1:18091/living-room.m3u"
+```
+
+`Tools/SyncCheck/run.sh` checks the sync algorithm itself (conflicts, deletions, clocks, convergence) without a
+simulator. tvOS simulators do not support `simctl ui appearance`: use `-FluxoDebugAppearance dark` instead.
 
 ## Test streams
 

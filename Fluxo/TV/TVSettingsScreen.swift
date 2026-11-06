@@ -4,7 +4,7 @@
 //
 //  The Settings tab of Apple TV, laid out like the system's Settings app: the app's mark and the library at a
 //  glance on the leading side, the settings as a list on the other: playlists (add, refresh, edit, delete, which
-//  ones Home shows), TV guide sources (add, turn on or off, refresh, delete; reminders), playback, audio and
+//  ones Home shows), iCloud sync (`CloudSyncSettingsSection`), TV guide sources (add, turn on or off, refresh, delete; reminders), playback, audio and
 //  subtitles, the watch history, recordings and the version.
 //
 //  Addresses are typed in the shared Add Playlist and Add Guide Source sheets: their text fields bring up the tvOS
@@ -31,6 +31,7 @@ struct TVSettingsScreen: View {
     @Environment(ChannelLibrary.self) private var library
     @State private var showsAddSource = false
     @State private var confirmation: Confirmation?
+    @State private var path: [TVSettingsRoute] = []
 
     private enum Confirmation: Identifiable {
         case clearHistory
@@ -42,7 +43,7 @@ struct TVSettingsScreen: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             HStack(alignment: .top, spacing: 60) {
                 TVSettingsHeader(playlistCount: playlists.count, recordingCount: player.recordings.recordings.count)
                     .frame(width: 560)
@@ -60,9 +61,17 @@ struct TVSettingsScreen: View {
                     if let source = sources.first(where: { $0.uuid == uuid }) {
                         TVGuideSourceScreen(source: source, playlistName: source.playlistID.flatMap { id in playlists.first { $0.uuid == id }?.name })
                     }
+                case .cloudPrivacy:
+                    CloudSyncPrivacyView(isModal: false)
                 }
             }
         }
+        #if DEBUG
+        // Debug harness (`cloud-privacy`): the page as the row pushes it.
+        .onReceive(NotificationCenter.default.publisher(for: .fluxoDebugCloudPrivacy)) { _ in
+            path = [.cloudPrivacy]
+        }
+        #endif
         .sheet(isPresented: $showsAddSource) {
             AddGuideSourceView()
         }
@@ -102,6 +111,8 @@ struct TVSettingsScreen: View {
     private var list: some View {
         List {
             playlistsSection
+            // Playlists, guides, favorites and progress from the user's other devices.
+            CloudSyncSettingsSection()
             guideSection
             Section {
                 Picker(selection: $timeShiftMinutes) {
@@ -251,6 +262,8 @@ struct TVSettingsScreen: View {
 enum TVSettingsRoute: Hashable {
     case playlist(UUID)
     case guideSource(UUID)
+    /// iCloud › What's Synced and Privacy (`CloudSyncPrivacyView`).
+    case cloudPrivacy
 }
 
 /// The app's mark, its version and the library at a glance (the leading side of Settings).

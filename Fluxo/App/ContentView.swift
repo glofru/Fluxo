@@ -17,6 +17,7 @@ struct ContentView: View {
     @Environment(ChannelLibrary.self) private var library
     @Environment(EPGStore.self) private var epg
     @Environment(WindowCoordinator.self) private var coordinator
+    @Environment(CloudSync.self) private var cloudSync
     /// Selected tab / sidebar item, navigation paths and search text, shared with code outside the screens
     /// (App Intents, the debug routes). One per window (iPad windows each have their own); App Intents move the
     /// one of the window used last (see `WindowCoordinator.intentNavigation`).
@@ -56,6 +57,8 @@ struct ContentView: View {
             .linkCopyFeedbackHost(colorScheme: coordinator.shows(.player, in: windowID, isActive: viewModel.isPresented) ? .dark : nil)
             .windowPresentation(.player, isActive: viewModel.isPresented)
             .playlistManagement()
+            // "Your Playlists from iCloud", when iCloud sync finds playlists of the user's other devices.
+            .cloudPlaylistImport()
             .guideManagement(epg)
             .channelScheduleSheet(navigation)
             // URLs and M3U files dropped on the window add a playlist (iPad, macOS).
@@ -69,8 +72,10 @@ struct ContentView: View {
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active {
                     viewModel.sceneDidBecomeActive()
+                    cloudSync.sceneDidBecomeActive()
                 } else if phase == .background {
                     EPGBackgroundRefresh.schedule()
+                    cloudSync.sceneDidEnterBackground()
                 }
             }
             .task(id: epg.reminders.channelToOpen) {

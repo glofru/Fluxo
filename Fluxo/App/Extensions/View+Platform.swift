@@ -66,7 +66,8 @@ extension View {
     /// Uses the URL keyboard where the platform has one, without autocorrection or capitalization.
     @ViewBuilder
     func urlKeyboard() -> some View {
-        #if os(iOS)
+        // tvOS too: the URL layout of the on-screen keyboard, and of the Continuity Keyboard on a nearby iPhone.
+        #if os(iOS) || os(tvOS)
         self
             .keyboardType(.URL)
             .textInputAutocapitalization(.never)
