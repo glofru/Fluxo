@@ -11,7 +11,8 @@
 //  drag and drop, Copy Link, offline downloads, several windows, the foldable posture): the playlist and guide
 //  sheets, watch progress, VoiceOver announcements, reminders, the play action every card uses, App Intents
 //  navigation, the Top Shelf of the Home Screen (`TopShelfPublisher`, `TopShelfLinks`) and the debug harness. The
-//  pages are in `Fluxo/TV` (`TVHomeScreen`, `TVGuideScreen`, `TVKindScreen`,
+//  app-wide sheets and alerts show over whichever of the tab bar and the player is on top (`AppModalsGate`), so none
+//  of them closes the player. The pages are in `Fluxo/TV` (`TVHomeScreen`, `TVGuideScreen`, `TVKindScreen`,
 //  `TVLibraryScreen`, `TVSearchScreen`, `TVSettingsScreen`); the player is `TVPlayerView`.
 //
 //  Everything in Fluxo/TV is compiled for tvOS only (each file is wrapped in `#if os(tvOS)`): the iPhone, iPad and
@@ -36,6 +37,8 @@ struct TVContentView: View {
     @State private var navigation: AppNavigation
     /// Identifies the window to the `WindowCoordinator` (Apple TV has one).
     @State private var windowID = UUID()
+    /// Whether the player's cover is on screen, closing animation included.
+    @State private var playerCover = PlayerCover()
 
     init(viewModel: AVPlayerViewModel, navigation: AppNavigation) {
         self.viewModel = viewModel
@@ -99,17 +102,29 @@ struct TVContentView: View {
             TVPlayerView(viewModel: viewModel)
                 // On-screen awareness: Siri knows the channel on screen ("Add this to my favorites in Fluxo").
                 .appEntityIdentifier(viewModel.currentItem.flatMap(ChannelEntity.entityIdentifier(for:)))
+                // While the player is up, the app's sheets and alerts show over it, and playback goes on under them.
+                .appModals(epg, navigation: navigation, gate: AppModalsGate { [viewModel] in viewModel.isPresented })
+                .onAppear {
+                    playerCover.isCovering = true
+                }
         }
         // Siri or a link opened a tab while the player (or a link's alert) covered the tab bar: the focus given back
         // as it goes away must not select the tab it had before (`AppNavigation.keepTab(for:)`).
         .onChange(of: navigation.tab) {
             navigation.tabDidChange()
         }
-        .reminderAlert(epg.reminders)
-        .playlistManagement()
-        // "Your Playlists from iCloud": the playlists of the user's other devices, without typing an address.
+        // The app's sheets and alerts (a due reminder, the playlist and guide sheets and alerts that App Intents, a
+        // refresh that failed or the harness open, a link's alert) show over the top-most screen. Presented from here
+        // while the player covers the tab bar, SwiftUI would dismiss the player to show them, and closing the player
+        // stops playback: while it is up, the player presents them instead (above). They come back here once its
+        // cover has finished closing (presented while it still animates away, they would not show).
+        .appModals(epg, navigation: navigation, gate: AppModalsGate { [viewModel, playerCover] in
+            !viewModel.isPresented && !playerCover.isCovering
+        })
+        // "Your Playlists from iCloud": the playlists of the user's other devices, without typing an address. Its
+        // cover never opens over the player on its own (`CloudSync.mayPresentImportOffer`), and Settings, the other
+        // way to it, is under the player.
         .cloudPlaylistImport()
-        .guideManagement(epg)
         .watchProgressRecording(player: viewModel)
         .playerAnnouncements(viewModel)
         // The Top Shelf of the Home Screen: what it shows (written for the FluxoTopShelf extension), and its links.
@@ -161,12 +176,32 @@ struct TVContentView: View {
     /// The player's cover is gone: playback stops (Apple TV has no mini player) unless it goes on in Picture in
     /// Picture, and the tab Siri or a link opened behind it is kept while tvOS gives the focus back.
     private func playerDidDismiss() {
+        playerCover.isCovering = false
         viewModel.playerScreenDidClose()
         navigation.coverDidDismiss(keepingFor: AppServices.keptTabDuration)
     }
 }
 
+/// Whether the player's cover is on screen: from when it appears until it has finished closing (`onDismiss`).
+/// Observable, so the tab bar's `AppModalsGate` opens when it is gone.
+@MainActor
+@Observable
+private final class PlayerCover {
+    var isCovering = false
+}
+
 private extension View {
+    /// The app-wide sheets and alerts: a due reminder, the playlist sheets and alerts, the guide picker and errors,
+    /// and the alert of a link that could not open. Applied to the tab bar and to the player; `gate` is open for the
+    /// one on top, the only one that shows them (see `AppModalsGate`).
+    func appModals(_ epg: EPGStore, navigation: AppNavigation, gate: AppModalsGate) -> some View {
+        reminderAlert(epg.reminders)
+            .playlistManagement()
+            .guideManagement(epg)
+            .linkFailureAlert(navigation, epg: epg)
+            .environment(\.appModalsGate, gate)
+    }
+
     /// The alert of a reminder that is due (Apple TV shows reminders itself, see `InAppReminderAlerts`).
     func reminderAlert(_ reminders: ReminderCenter) -> some View {
         modifier(ReminderAlertModifier(reminders: reminders))
@@ -176,15 +211,19 @@ private extension View {
 private struct ReminderAlertModifier: ViewModifier {
     let reminders: ReminderCenter
 
+    /// Closed while the other presenter shows the reminder (see `AppModalsGate`).
+    @Environment(\.appModalsGate) private var gate
+
     func body(content: Content) -> some View {
-        let reminder = reminders.dueReminder
+        let reminder = gate.isOpen() ? reminders.dueReminder : nil
         content
             .alert(
                 reminder?.title ?? "",
                 isPresented: Binding {
-                    reminders.dueReminder != nil
+                    gate.isOpen() && reminders.dueReminder != nil
                 } set: { isPresented in
-                    if !isPresented {
+                    // Handed over to the other presenter (the gate closed): it stays due, for that one.
+                    if !isPresented, gate.isOpen() {
                         reminders.dismissDueReminder()
                     }
                 },

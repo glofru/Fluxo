@@ -43,6 +43,13 @@ final class ReminderCenter {
     /// A reminder that is due now and that the app shows itself (Apple TV, where notifications cannot show text):
     /// the root view presents it, with Watch (`openDueReminder()`) and dismiss (`dismissDueReminder()`).
     private(set) var dueReminder: ReminderAlert?
+    /// Reminders that became due while `dueReminder` was on screen (programmes that start together), the earliest
+    /// programme first. Each shows in turn, unless its programme is over by then.
+    @ObservationIgnored
+    private var queuedDueReminders: [ReminderAlert] = []
+    /// Shows the next queued reminder once the alert that closed has left the screen.
+    @ObservationIgnored
+    private var nextDueReminder: Task<Void, Never>?
 
     @ObservationIgnored
     private let container: ModelContainer
@@ -73,7 +80,7 @@ final class ReminderCenter {
             self?.open(reminderKey: key)
         }
         delivery.onDue = { [weak self] alert in
-            self?.dueReminder = alert
+            self?.enqueueDueReminder(alert)
         }
         delivery.install()
         pruneEndedReminders()
@@ -135,7 +142,7 @@ final class ReminderCenter {
         keys.insert(key)
 
         do {
-            try await delivery.schedule(ReminderAlert(key: key, title: programme.title, channelName: channel.displayName, start: programme.start, fireDate: fireDate))
+            try await delivery.schedule(ReminderAlert(key: key, title: programme.title, channelName: channel.displayName, start: programme.start, stop: programme.stop, fireDate: fireDate))
             return true
         } catch {
             Self.logger.error("Could not schedule a reminder: \(error.localizedDescription, privacy: .public)")
@@ -146,8 +153,9 @@ final class ReminderCenter {
 
     func cancel(key: String) {
         delivery.remove(keys: [key])
+        queuedDueReminders.removeAll { $0.key == key }
         if dueReminder?.key == key {
-            dueReminder = nil
+            closeDueReminder()
         }
         let context = container.mainContext
         if let reminder = try? context.fetch(EPGQueries.reminder(key: key)).first {
@@ -160,6 +168,9 @@ final class ReminderCenter {
     func cancelAll() {
         let all = Array(keys)
         delivery.remove(keys: all)
+        queuedDueReminders.removeAll()
+        nextDueReminder?.cancel()
+        nextDueReminder = nil
         dueReminder = nil
         try? container.mainContext.delete(model: ProgrammeReminder.self)
         save()
@@ -181,14 +192,74 @@ final class ReminderCenter {
         guard let alert = dueReminder else {
             return
         }
-        dueReminder = nil
+        closeDueReminder()
         open(reminderKey: alert.key)
     }
 
     /// Closes the reminder the app shows without playing it.
     func dismissDueReminder() {
-        dueReminder = nil
+        // The alert's binding also calls this after a button closed it: nothing is on screen by then.
+        guard dueReminder != nil else {
+            return
+        }
+        closeDueReminder()
     }
+
+    /// A reminder the app shows itself is due: it shows now, or after the one on screen.
+    private func enqueueDueReminder(_ alert: ReminderAlert) {
+        guard dueReminder?.key != alert.key, !queuedDueReminders.contains(where: { $0.key == alert.key }) else {
+            return
+        }
+        queuedDueReminders.append(alert)
+        queuedDueReminders.sort { $0.start < $1.start }
+        if dueReminder == nil, nextDueReminder == nil {
+            showNextDueReminder()
+        }
+    }
+
+    private func showNextDueReminder() {
+        nextDueReminder = nil
+        let now = Date.now
+        queuedDueReminders.removeAll { !$0.isTimely(at: now) }
+        guard dueReminder == nil, !queuedDueReminders.isEmpty else {
+            return
+        }
+        dueReminder = queuedDueReminders.removeFirst()
+    }
+
+    /// The alert on screen closes; the next queued one follows once it has gone (an alert presented while the one
+    /// before it still animates away would not show).
+    private func closeDueReminder() {
+        dueReminder = nil
+        guard !queuedDueReminders.isEmpty, nextDueReminder == nil else {
+            return
+        }
+        nextDueReminder = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(600))
+            guard !Task.isCancelled else {
+                return
+            }
+            self?.showNextDueReminder()
+        }
+    }
+
+    #if DEBUG
+    /// Debug harness (`reminder-due:`): delivers the scheduled reminder `key` now, as its timer would.
+    /// System notifications show themselves: only the app's own alerts (Apple TV) can be delivered so.
+    func debugDeliverNow(key: String) -> Bool {
+        guard !delivery.persistsAcrossLaunches, let reminder = try? container.mainContext.fetch(EPGQueries.reminder(key: key)).first else {
+            return false
+        }
+        delivery.remove(keys: [key])
+        enqueueDueReminder(ReminderAlert(reminder))
+        return true
+    }
+
+    /// Debug harness: the reminders waiting behind the one on screen.
+    var debugQueuedDueReminderCount: Int {
+        queuedDueReminders.count
+    }
+    #endif
 
     /// Rewrites the pending notifications (same identifier, same fire date) when the language or the time
     /// format differs from the one they were written in. Delivered ones are left alone, and none is added.

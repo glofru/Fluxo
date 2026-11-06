@@ -941,7 +941,7 @@ testing the operating system; the APIs tvOS lacks are compiled out only in the f
 |---|---|
 | Offline downloads (`offlineDownloads`) | Off. tvOS keeps only a small amount of an app's data for sure and may delete everything else (caches) when it needs space, so a downloaded movie could be gone when it is watched; `AVAssetDownloadURLSession` and the storage priorities that protect downloads do not exist there. `DownloadCenter` starts empty and `canDownload` is false, so no screen offers Download. |
 | Clipboard (`pasteboard`) | None: Copy Link, Share and the Paste button of Add Playlist are not shown. |
-| Notifications with text (`textNotifications`) | tvOS notifications only badge the icon. Reminders are delivered by `ReminderDelivery`: system notifications on iPhone, iPad and Mac (`SystemReminderNotifications`), an alert in the app on Apple TV (`InAppReminderAlerts`, one timer for the next reminder, armed again at launch from the stored reminders), with Watch and Not Now. |
+| Notifications with text (`textNotifications`) | tvOS notifications only badge the icon. Reminders are delivered by `ReminderDelivery`: system notifications on iPhone, iPad and Mac (`SystemReminderNotifications`), an alert in the app on Apple TV (`InAppReminderAlerts`, one timer for the next reminder, armed again at launch from the stored reminders), with Watch and Not Now, over the player too. Reminders due together show one after the other, worded with the time actually left ("Started at 20:15." once it has started); one whose programme ended while Fluxo was in the background (no timer runs then) is dropped. |
 | On-device model (`onDeviceLanguageModel`) | Foundation Models has no language model on tvOS: `FluxoIntelligence` reports the device as not eligible, and recommendations, smart search and summaries use their built-in fallbacks. |
 | Spotlight (`spotlightIndexing`) | No app content in tvOS search: channels are not indexed; the Siri phrases with channel names still update. |
 | Files and drag and drop (`files`) | No Files app or document picker: Load Subtitle File… and dropped playlists are not offered. |
@@ -961,7 +961,16 @@ refresh (`BGAppRefreshTask`) runs on tvOS too.
   of the iPhone; Movies and Series are tvOS-only cases), so App Intents, Show in TV Guide and the debug routes move it.
   It sets up what `ContentView` sets up elsewhere: the playlist and guide sheets, the "Your Playlists from iCloud"
   cover and iCloud sync on activation and suspension (see "iCloud sync"), watch progress, VoiceOver announcements, the
-  reminder alert, the play action of every card and the debug harness. Every page draws its own
+  reminder alert, the play action of every card and the debug harness. The app-wide sheets and alerts (a due reminder,
+  the playlist sheets and the Delete Playlist and Playlist Error alerts, the TV guide picker and its errors, the alert
+  of a link that could not open) show over the top-most screen: over the player while it is up, and playback goes on
+  under them. Presented from the tab bar under the full-screen player, SwiftUI would dismiss the player to show them,
+  and closing the player stops playback. So both the tab bar and the player present them (`appModals`), and an
+  `AppModalsGate` in the environment opens exactly one: the player's while it is up, the tab bar's once the player's
+  cover has finished closing. The gate is a check, not a stored value, because SwiftUI calls the setter of a
+  presentation's binding when it is handed over, sometimes a binding made before the hand-over: the setter asks the
+  gate again and leaves the request for the other presenter. iPhone, iPad and Mac have one presenter per window and
+  an always-open gate. Every page draws its own
   background (`tvPageBackground()`), which the hero and the series page fade into.
 - **Layout** (`TVComponents.swift`): pages ignore the safe area so artwork runs to the edges of the picture, and keep
   text and controls 80 points from the sides (`TVLayout.margin`, the overscan-safe inset; 60 at the top and bottom).

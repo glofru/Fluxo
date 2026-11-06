@@ -134,7 +134,7 @@ struct GuideChannelPicker: View {
 
 extension View {
     /// The guide UI any screen can ask for: the matching picker (`EPGStore.matchingTarget`) and refresh errors.
-    /// Applied once at the root of the window.
+    /// Applied once at the root of the window (on Apple TV, also to the player: see `AppModalsGate`).
     func guideManagement(_ epg: EPGStore) -> some View {
         modifier(GuideManagement(epg: epg))
     }
@@ -146,6 +146,8 @@ private struct GuideManagement: ViewModifier {
     /// With several windows (iPad), the picker and the alert show in one of them (see `WindowCoordinator`).
     @Environment(WindowCoordinator.self) private var coordinator: WindowCoordinator?
     @Environment(\.windowID) private var windowID
+    /// Closed while another presenter shows them (Apple TV, while the player is up: see `AppModalsGate`).
+    @Environment(\.appModalsGate) private var gate
 
     func body(content: Content) -> some View {
         content
@@ -156,7 +158,7 @@ private struct GuideManagement: ViewModifier {
             }
             .alert(
                 Text(epg.failure?.title ?? "Could Not Load the TV Guide"),
-                isPresented: Binding(get: { shows(.guideFailure, isActive: epg.failure != nil) }, set: { if !$0 { epg.failure = nil } }),
+                isPresented: Binding(get: { shows(.guideFailure, isActive: epg.failure != nil) }, set: { if !$0, gate.isOpen() { epg.failure = nil } }),
                 presenting: epg.failure
             ) { _ in
                 Button("OK", role: .cancel) {}
@@ -166,13 +168,19 @@ private struct GuideManagement: ViewModifier {
     }
 
     private func shows(_ presentation: WindowCoordinator.Presentation, isActive: Bool) -> Bool {
-        coordinator?.shows(presentation, in: windowID, isActive: isActive) ?? isActive
+        gate.isOpen() && (coordinator?.shows(presentation, in: windowID, isActive: isActive) ?? isActive)
     }
 
+    /// A picker handed over to the other presenter (its gate closed) is dismissed without being answered: the
+    /// request stays, for the other presenter (see `AppModalsGate`).
     private var matchingBinding: Binding<ChannelItem?> {
         Binding(
             get: { shows(.guideMatching, isActive: epg.matchingTarget != nil) ? epg.matchingTarget : nil },
-            set: { epg.matchingTarget = $0 }
+            set: { item in
+                if gate.isOpen() {
+                    epg.matchingTarget = item
+                }
+            }
         )
     }
 }

@@ -180,6 +180,27 @@ final class WindowCoordinator {
 extension EnvironmentValues {
     /// The identifier of the window a view is in (see `WindowCoordinator`); nil outside a registered window.
     @Entry var windowID: UUID?
+
+    /// Whether the app-wide sheets and alerts (`playlistManagement()`, `guideManagement(_:)`, and on Apple TV the
+    /// reminder and link alerts) show from this presenter now (see `AppModalsGate`). Always open on iPhone, iPad and
+    /// Mac, which have one presenter per window.
+    @Entry var appModalsGate = AppModalsGate.open
+}
+
+/// Whether a presenter of the app-wide sheets and alerts shows them now. On Apple TV the full-screen player covers
+/// the tab bar: a sheet or an alert presented from the tab bar while it is up would make SwiftUI dismiss the player
+/// (and closing the player stops playback) to show it. So the app has two presenters there, the tab bar and the
+/// player (`TVContentView`), and the gate of exactly one of them is open at a time.
+///
+/// A check, not a stored value: `isOpen()` reads the state it depends on (observable, so the presenter's view
+/// updates when it changes) at the moment it is called. A presentation handed over to the other presenter is
+/// dismissed, and SwiftUI then calls the setter of the binding it held, possibly one created before the hand-over:
+/// the setter asks the gate again and, closed now, leaves the request alone, so the other presenter shows it. A
+/// `Bool` captured in the binding would still say open there, and the request would be lost.
+struct AppModalsGate: Sendable {
+    let isOpen: @MainActor @Sendable () -> Bool
+
+    static let open = AppModalsGate { true }
 }
 
 extension FocusedValues {

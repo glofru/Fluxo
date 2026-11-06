@@ -482,7 +482,7 @@ private struct TVEpisodeCard: View {
                 isUpNext ? String(localized: "Up Next", comment: "Label of the episode of a series to watch next (Continue Watching, the series page, the player).") : nil,
                 isWatched ? String(localized: "Watched") : progress.map(WatchProgressFormat.remaining),
             ])))
-            .accessibilityHint(Text(TVText.playsHint))
+            .accessibilityHint(Text(TVText.playsHint(for: episode)))
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(ref.map(EpisodeFormat.code) ?? "")

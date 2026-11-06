@@ -97,7 +97,7 @@ private struct TVRecordingCard: View {
             action: .perform { player.playRecording(recording) },
             focusName: recording.title,
             accessibilityLabel: Text(TextParts.spoken([recording.title, recording.createdOn.formatted(date: .abbreviated, time: .shortened), isBusy ? String(localized: "Recording") : nil])),
-            accessibilityHint: Text(TVText.playsHint)
+            accessibilityHint: Text(TVText.playsRecordingHint)
         ) {
             ZStack {
                 Theme.tileBackground

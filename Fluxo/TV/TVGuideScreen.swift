@@ -784,7 +784,7 @@ private struct TVGuideRow: View {
         .buttonStyle(TVGuideCellStyle(kind: .channel))
         .focused(focus, equals: .channel(channel.id))
         .accessibilityLabel(Text(TextParts.spoken([channel.item.displayName, channel.item.number.map { String(localized: "Channel \($0.formatted(.number.grouping(.never)))", comment: "VoiceOver: the channel number of the playlist, as in 'Channel 12'.") }])))
-        .accessibilityHint(Text(TVText.playsHint))
+        .accessibilityHint(Text(TVText.playsHint(for: channel.item)))
     }
 
     private func endCell(isLater: Bool, isEnabled: Bool) -> some View {
@@ -812,7 +812,7 @@ private struct TVGuideRow: View {
         }
         .buttonStyle(TVGuideCellStyle(kind: .programme(isOnAir: false, isPast: false)))
         .focused(focus, equals: .empty(channel.id))
-        .accessibilityHint(Text(TVText.playsHint))
+        .accessibilityHint(Text(TVText.playsHint(for: channel.item)))
     }
 
     /// The programmes laid out in time, with gaps where the guide has none.

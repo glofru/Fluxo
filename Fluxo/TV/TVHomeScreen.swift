@@ -314,7 +314,7 @@ struct TVContinueCard: View {
                     progress.map(WatchProgressFormat.remaining),
                     current?.title,
                 ])),
-                accessibilityHint: Text(item.kind == .live ? TVText.playsHint : (isUpNext ? LocalizedStringResource("Plays the next episode") : LocalizedStringResource("Resumes the video")))
+                accessibilityHint: Text(item.kind == .live ? TVText.playsHint(for: item) : (isUpNext ? LocalizedStringResource("Plays the next episode") : LocalizedStringResource("Resumes the video")))
             ) {
                 TVLandscapeArtwork(item: item)
                     .overlay(alignment: .bottom) {
@@ -579,7 +579,7 @@ private struct TVOnNowCard: View {
                 action: .perform { playChannel(entry.item) },
                 focusName: entry.item.displayName,
                 accessibilityLabel: Text(TextParts.spoken([entry.programme.title, entry.item.displayName, GuideFormat.remaining(entry.programme, at: context.date)])),
-                accessibilityHint: Text(TVText.playsHint)
+                accessibilityHint: Text(TVText.playsHint(for: entry.item))
             ) {
                 ZStack {
                     if let icon = entry.programme.icon {

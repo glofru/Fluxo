@@ -18,6 +18,8 @@ struct ReminderAlert: Identifiable, Equatable, Sendable {
     let title: String
     let channelName: String
     let start: Date
+    /// When the programme ends.
+    let stop: Date
     let fireDate: Date
 
     var id: String {
@@ -41,11 +43,18 @@ struct ReminderAlert: Identifiable, Equatable, Sendable {
         let minutesLeft = max(0, Int((secondsLeft / 60).rounded(.up)))
         return ReminderCenter.body(start: start, leadMinutes: min(minutesLeft, ReminderCenter.leadMinutes))
     }
+
+    /// Whether an alert the app shows itself is still worth showing at `now`: until its programme ends. Late (after
+    /// the reminders due before it, or when the app was suspended at its fire date) it says that the programme
+    /// started (`body(at:)`), and Watch still plays it; once it is over, the alert is dropped instead.
+    func isTimely(at now: Date) -> Bool {
+        now < stop
+    }
 }
 
 extension ReminderAlert {
     init(_ reminder: ProgrammeReminder) {
-        self.init(key: reminder.key, title: reminder.title, channelName: reminder.channel.displayName, start: reminder.start, fireDate: reminder.fireDate)
+        self.init(key: reminder.key, title: reminder.title, channelName: reminder.channel.displayName, start: reminder.start, stop: reminder.stop, fireDate: reminder.fireDate)
     }
 }
 

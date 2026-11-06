@@ -66,8 +66,20 @@ private struct TVPageBackground: ViewModifier {
 }
 
 enum TVText {
-    /// The VoiceOver hint of what selecting plays (cards, rows).
-    static let playsHint = LocalizedStringResource("Plays", comment: "VoiceOver hint of a channel, movie, episode or recording on Apple TV: selecting it starts playback.")
+    /// The VoiceOver hint of a card or a row that plays `item`: the hints of the iPhone and iPad rows and cards.
+    static func playsHint(for item: ChannelItem) -> LocalizedStringResource {
+        switch item.kind {
+        case .live:
+            "Plays the channel"
+        case .series:
+            "Plays the episode"
+        default:
+            "Plays the video"
+        }
+    }
+
+    /// The VoiceOver hint of a recording.
+    static let playsRecordingHint = LocalizedStringResource("Plays the recording", comment: "VoiceOver hint of a recording in the list.")
     static let opensSeriesHint = LocalizedStringResource("TV.hint.series", defaultValue: "Shows the seasons and episodes", comment: "VoiceOver hint of a series card on Apple TV: selecting it opens the page of the series.")
     static let opensCategoryHint = LocalizedStringResource("TV.hint.category", defaultValue: "Shows everything in this category", comment: "VoiceOver hint of a category tile or a See All card on Apple TV.")
     static let seeAll = LocalizedStringResource("See All")
@@ -237,7 +249,7 @@ struct TVChannelCard: View {
                     accessibilityLabel: Text(showsSeries
                         ? TextParts.spoken([title, ChannelContentKind.series.title, subtitle])
                         : TextParts.spoken([item.displayName, current?.title, subtitle ?? item.groupName])),
-                    accessibilityHint: Text(showsSeries ? TVText.opensSeriesHint : TVText.playsHint)
+                    accessibilityHint: Text(showsSeries ? TVText.opensSeriesHint : TVText.playsHint(for: item))
                 ) {
                     TVLandscapeArtwork(item: item)
                 } caption: { isFocused in
@@ -283,7 +295,7 @@ struct TVPosterCard: View {
                 action: .perform { playChannel(item) },
                 focusName: item.displayName,
                 accessibilityLabel: Text(TextParts.spoken([item.displayName, progress.map(WatchProgressFormat.remaining)])),
-                accessibilityHint: Text(TVText.playsHint)
+                accessibilityHint: Text(TVText.playsHint(for: item))
             ) {
                 TVPosterArtwork(logo: item.logo, name: item.displayName, kind: item.kind)
                     .overlay(alignment: .bottom) {

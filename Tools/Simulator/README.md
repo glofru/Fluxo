@@ -202,6 +202,10 @@ first that contains the text.
 | `cast:<device>` | Switches to the simulated Chromecast receiver (`Living Room TV`, `Bedroom`, `Kitchen Speaker`) and connects to it; what plays is cast. |
 | `cast-picker`, `stop-casting` | The Cast device picker; ends the Cast session (the channel plays on the device again). |
 | `add-playlist`, `edit-playlist:<name>`, `delete-playlist:<name>` | The Add / Edit Playlist sheet; the delete confirmation (nothing is deleted). |
+| `playlist-error[:<message>]`, `guide-error[:<message>]`, `guide-match:<channel>` | The Playlist Error alert (as after a refresh that failed), the alert of a TV guide that could not be loaded, the TV guide picker of a channel (Choose TV Guide Channel). |
+| `reminder-due:<channel>[,<channel>…]` | Apple TV: sets a reminder for the next programme of each channel (needs a guide, e.g. `seed-guide`) and delivers it now, as its timer would: the reminder alert, and with several channels the next ones after it, one at a time. `reminder-watch` and `reminder-not-now` answer it as its buttons do. |
+| `dismiss-modals` | Closes the app-wide sheets and alerts (playlist, guide, reminder, link) as Cancel or OK would. |
+| `expect-player`, `modals-log` | Fails unless the player is on screen and playing; logs the player and the app-wide sheets and alerts requested (`Status/modals.log`). On Apple TV those show over the player and playback goes on under them: e.g. `player:Test Pattern (HLS);wait:6;reminder-due:Rai 1 HD;wait:2;expect-player;probe-playback`. |
 | `orientation:<portrait\|landscape>` | Asks the scene to rotate (iPhone; iPadOS refuses it in windowed modes, use `testLayoutScreenshots` below). |
 | `side-panel:<channels\|guide\|off>` | Shows the player's side panel (wide players) on a tab, or hides it. |
 | `new-window:<channel>` | Opens a channel in a player window of its own (iPad); logs the number of connected scenes. |

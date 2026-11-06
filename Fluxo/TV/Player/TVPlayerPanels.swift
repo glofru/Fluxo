@@ -215,7 +215,7 @@ private struct TVPlayerChannelCard: View {
             .disabled(!isEnabled && !isCurrent)
             .accessibilityLabel(Text(TextParts.line([title, subtitle(nowNext)])))
             .accessibilityValue(isCurrent ? Text("Now Playing") : Text(verbatim: ""))
-            .accessibilityHint(isCurrent ? Text(verbatim: "") : Text(TVText.playsHint))
+            .accessibilityHint(isCurrent ? Text(verbatim: "") : Text(TVText.playsHint(for: item)))
         }
     }
 

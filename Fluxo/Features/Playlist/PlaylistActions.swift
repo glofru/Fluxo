@@ -93,7 +93,7 @@ struct PlaylistMenuItems: View {
 
 extension View {
     /// Presents the add / rename sheet, the delete confirmation and import errors requested through
-    /// `PlaylistActions`. Apply once, at the root of the window.
+    /// `PlaylistActions`. Apply once, at the root of the window (on Apple TV, also to the player: see `AppModalsGate`).
     func playlistManagement() -> some View {
         modifier(PlaylistManagementPresenter())
     }
@@ -109,6 +109,8 @@ private struct PlaylistManagementPresenter: ViewModifier {
     /// With several windows (iPad), each sheet and alert shows in one of them (see `WindowCoordinator`).
     @Environment(WindowCoordinator.self) private var coordinator: WindowCoordinator?
     @Environment(\.windowID) private var windowID
+    /// Closed while another presenter shows them (Apple TV, while the player is up: see `AppModalsGate`).
+    @Environment(\.appModalsGate) private var gate
     @AppStorage(PlaylistSelection.storageKey) private var selectionRawValue = ""
 
     func body(content: Content) -> some View {
@@ -175,21 +177,28 @@ private struct PlaylistManagementPresenter: ViewModifier {
     }
 
     private func shows(_ presentation: WindowCoordinator.Presentation, isActive: Bool) -> Bool {
-        coordinator?.shows(presentation, in: windowID, isActive: isActive) ?? isActive
+        gate.isOpen() && (coordinator?.shows(presentation, in: windowID, isActive: isActive) ?? isActive)
     }
+
+    // A presentation handed over to the other presenter (its gate closed) is dismissed without being answered: the
+    // setters then leave the request alone, so the other presenter shows it (see `AppModalsGate`).
 
     private var sheetBinding: Binding<PlaylistActions.Sheet?> {
         Binding(
             get: { shows(.playlistSheet, isActive: actions.sheet != nil) ? actions.sheet : nil },
-            set: { actions.sheet = $0 }
+            set: { sheet in
+                if gate.isOpen() {
+                    actions.sheet = sheet
+                }
+            }
         )
     }
 
     private var deleteAlertBinding: Binding<Bool> {
-        Binding(get: { shows(.playlistDelete, isActive: actions.playlistToDelete != nil) }, set: { if !$0 { actions.playlistToDelete = nil } })
+        Binding(get: { shows(.playlistDelete, isActive: actions.playlistToDelete != nil) }, set: { if !$0, gate.isOpen() { actions.playlistToDelete = nil } })
     }
 
     private var failureAlertBinding: Binding<Bool> {
-        Binding(get: { shows(.playlistFailure, isActive: importCenter.failure != nil) }, set: { if !$0 { importCenter.failure = nil } })
+        Binding(get: { shows(.playlistFailure, isActive: importCenter.failure != nil) }, set: { if !$0, gate.isOpen() { importCenter.failure = nil } })
     }
 }

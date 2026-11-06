@@ -70,14 +70,17 @@ final class InAppReminderAlerts: ReminderDelivery {
         }
     }
 
+    /// Delivers every alert that is due, the earliest programme first: `ReminderCenter` shows them one after the
+    /// other (programmes that start together). Timers do not run while the app is suspended, so after a return to
+    /// Fluxo past their fire dates several can be due at once; those whose programme is over are dropped
+    /// (`ReminderAlert.isTimely(at:)`).
     private func deliverDueAlerts() {
         let now = Date.now
         let due = pending.values.filter { $0.fireDate <= now }
         for alert in due {
             pending[alert.key] = nil
         }
-        // Several due at once (programmes that start together): the alert shows the first to start.
-        if let alert = due.min(by: { $0.start < $1.start }) {
+        for alert in due.sorted(by: { $0.start < $1.start }) where alert.isTimely(at: now) {
             onDue?(alert)
         }
         armTimer()
