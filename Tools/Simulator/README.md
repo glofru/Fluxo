@@ -15,6 +15,7 @@ library that never touches a real one. Everything here runs on the Mac; nothing 
 | `siri-tests.sh` | The system side of the App Intents on a kept clone (`SiriTests/`, an XCUITest bundle): the Shortcuts app lists Fluxo's ten App Shortcuts and runs What's On in the running app, the action search is screenshotted, Spotlight finds a seeded favorite and opening it plays it in Fluxo, and Siri is asked two phrases. Screenshots and hierarchy dumps (Spotlight's results are in its own process, `com.apple.Spotlight`) in `/tmp/fluxo-shots/<clone>/siri-tests/`. On iOS 27.2 the Simulator has no Siri ("not enabled on this device"): try phrases on a device. |
 | `format-matrix.sh` | The format matrix in the app (`--device`, `--clone`, optional case words): plays a file of each common container / video / audio codec combination (the media of `Tools/EngineSmokeTest/run_formats.sh`, served on 127.0.0.1) with `play-movie:`, then `probe-tracks`, `probe-playback`, a skip, a scrub and a skip back; one clone boot for every case. Summary in `/tmp/fluxo-shots/<clone>/formats/summary.txt`. |
 | `topshelf-tests.sh` | Apple TV: the Top Shelf on the Home Screen of a kept clone (`TopShelfTests/`, an XCUITest bundle that presses the Siri Remote buttons with `XCUIRemote`): focuses Fluxo's icon in the top row, then follows a list of presses and screenshots (`up`, `right`, `select`, `playpause`, `home`, `wait:<s>`, `shot:<name>`, `focus:<app>`). Fluxo keeps running in the background, so a selected item opens in the seeded library of that run. |
+| `remote-tests.sh` | Apple TV: focus checks in the app with real Siri Remote presses (`RemoteTests/`, an XCUITest bundle that launches Fluxo with the harness, presses the remote with `XCUIRemote` and reads the focused element). `SeriesSeasonFocusTests`: on series pages of 1, 2, 3 and 12 seasons (Test Series, Deep Field, Orbit, Evergreen Street), every season tab is reached with left and right and shows its episodes, the long row scrolls both ways, down enters the season at its Up Next or first episode, up returns to the selected season, Select on a tab moves into its episodes, and Menu from the player returns to the episode played. `FLUXO_APPEARANCE=light` for light mode; screenshots in `/tmp/fluxo-shots/<clone>/remote-tests/`. |
 | `contact_sheet.swift` | Combines screenshots into one labelled grid (`run.sh` does it when a run makes several). |
 
 The app side is in `Fluxo/App/Debug` (`DebugLaunchOptions`, `DebugHarness`, `DebugRoutes`, `DebugSeeder`,
@@ -237,9 +238,10 @@ The same scripts drive Apple TV simulators: build the tvOS app with `build.sh --
 (`run.sh` installs the app of the clone's platform, from its runtime). The library, the launch arguments and the
 routes are the same; routes of screens tvOS does not have (the touch player's `player-drag`, `player-controls`,
 `player-guide`, `side-panel`; Spotlight, Cast, downloads, foldable postures) fail with "not available on this
-platform" or change nothing. The Siri Remote cannot be scripted, so `focus:<channel>` moves the focus for screenshots.
+platform" or change nothing. Routes cannot press the Siri Remote, so `focus:<channel>` moves the focus for screenshots;
+`remote-tests.sh` presses the real remote through XCUITest to check where the focus goes.
 There is no status bar to override, and `simctl ui appearance` does not work on tvOS: use `-- -FluxoDebugAppearance light`. `gesture-tests.sh`, `accessibility-audit.sh`, `siri-tests.sh` and
-`format-matrix.sh` are iOS only for now; `topshelf-tests.sh` is Apple TV only.
+`format-matrix.sh` are iOS only for now; `topshelf-tests.sh` and `remote-tests.sh` are Apple TV only.
 
 ```sh
 Tools/Simulator/build.sh --platform tvos
@@ -337,18 +339,18 @@ still run. With `--step-shots` the step is still screenshotted and `run.sh` show
 
 ### Seeded content
 
-`sample` (about 380 entries in 34 groups, ready in about 2 s) is imported through the real pipeline from
+`sample` (about 420 entries in 34 groups, ready in about 2 s) is imported through the real pipeline from
 generated M3U files, then gets favorites, a watch history and three recordings:
 
 - **Sky Italia**: Italian live TV in 8 groups (Sport, Intrattenimento, Cinema, News, Rai, Mediaset, Kids,
   Musica), with "Sky Sport F1", "IT | Sky Sport F1 FHD", quality tags and a very long channel name.
 - **World TV**: 11 country groups ("UK | Sport", France, Deutschland, España…), including Japanese,
   Arabic and Greek names.
-- **Cinema Club**: 96 movies in 8 groups and 11 series in 4 groups, with Xtream-style `/movie/` and `/series/`
+- **Cinema Club**: 96 movies in 8 groups and 12 series in 4 groups, with Xtream-style `/movie/` and `/series/`
   URLs. Each series names its episodes in another provider style (`Orbit S01E01`, `Harbor Lights S01 E01 - Title`,
   `The Night Desk 1x01 Title`, `Paper Kings Stagione 1 Episodio 1`, `IT: Office Plants S01E01 [MULTI] FHD`,
   `Deep Field (2021) S01E01`, `The Lantern Protocol Staffel 1 Folge 1`, `Sky Runners Episode 1`, …); Orbit has
-  three seasons.
+  three seasons and Evergreen Street twelve (three episodes each); the others have two.
 - **Loopback Test**: "Test Pattern (HLS)", "Test Pattern (MPEG-TS)", "Test Clip (MP4)", "Test Clip (Audio and Subtitles)", "Test Clip (Matroska Tracks)", "Test Pattern (Two Audio Tracks)", "Test Clip
   (MPEG-TS)" (the streams of `test-stream.sh`), "Unreachable Channel" (fails at once), and "Test Series" (two
   playable 60 s episodes, for the player's next-episode card: `player:Test Series S01E01;wait:62`, and a third one

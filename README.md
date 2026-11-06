@@ -995,8 +995,11 @@ refresh (`BGAppRefreshTask`) runs on tvOS too.
   `CategoryChannelsModel`. Favorites and Recently Watched (by day, Clear History) have full pages too.
 - **Series** (`TVSeriesScreen`): a backdrop of the poster, the poster, title, counts and what plays next; Resume /
   Play S1 E4 (it has the focus when the page opens), favorite, mark the season as watched; the seasons as a row of
-  tabs (the focused one shows its episodes, as in the TV app) and the episodes as a shelf (number, title, watched,
-  progress, Up Next; the long-press menu marks one as watched).
+  tabs drawn like the tab bar (the focused one shows its episodes, as in the TV app; a long row scrolls, and opens at
+  the season of the episode to watch) and the episodes as a shelf (number, title, watched, progress, Up Next; the
+  long-press menu marks one as watched). The focus moves between the rows predictably: down from the actions and up
+  from the episodes land on the selected season, and down from a tab (or Select on it) enters the season at its Up
+  Next episode, or its first. `Tools/Simulator/remote-tests.sh` checks it with Siri Remote presses.
 - **Library** (`TVLibraryScreen`): Continue Watching, Favorites, Favorite Series, Recently Watched and the recordings
   (long press deletes one), on `AppNavigation.libraryPath`.
 - **Search** (`TVSearchScreen`): the system search field and keyboard (dictation with the Siri Remote's microphone,

@@ -129,7 +129,7 @@ enum DebugSeedCatalog {
         }
         let seriesGroups: [(String, [String])] = [
             ("Serie TV | Drama", ["Harbor Lights", "The Night Desk", "Paper Kings"]),
-            ("Series | Comedy", ["Small Town Signals", "Office Plants", "Second Breakfast"]),
+            ("Series | Comedy", ["Small Town Signals", "Office Plants", "Second Breakfast", "Evergreen Street"]),
             ("Series | Sci-Fi", ["Orbit", "Deep Field", "The Lantern Protocol"]),
             ("Anime", ["Sky Runners", "Moonlit Garden"]),
         ]
@@ -166,9 +166,11 @@ enum DebugSeedCatalog {
         }
         for (group, shows) in seriesGroups {
             for show in shows {
-                // Orbit has a third season (the season picker scrolls on small phones).
-                for season in 1...(show == "Orbit" ? 3 : 2) {
-                    for episode in 1...5 {
+                // Orbit has a third season (the season picker scrolls on small phones), and Evergreen Street, a
+                // long-running sitcom, twelve short ones (the season tabs scroll on Apple TV too).
+                let seasonCount = show == "Evergreen Street" ? 12 : show == "Orbit" ? 3 : 2
+                for season in 1...seasonCount {
+                    for episode in 1...(show == "Evergreen Street" ? 3 : 5) {
                         id += 1
                         // Paper Kings' first episode has no artwork of its own: its card and the billboard show
                         // the series' poster (from the next episode).

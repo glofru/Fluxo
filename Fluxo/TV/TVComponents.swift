@@ -603,6 +603,10 @@ struct TVSeeAllCard: View {
 
 /// The look of the action buttons of the hero and the series page: Liquid Glass capsules, the main one tinted
 /// with the accent (the system lifts and lights whichever has the focus).
+///
+/// `isProminent` picks one of two button styles, so changing it replaces the button: a focused button whose
+/// prominence follows the focus or a selection loses the focus. Keep it fixed while the button can have the focus
+/// (the season tabs of the series page have their own single style for that reason).
 struct TVActionButtonStyle: ViewModifier {
     let isProminent: Bool
 

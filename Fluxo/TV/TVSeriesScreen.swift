@@ -8,6 +8,10 @@
 //  the season's episodes as a shelf: number, title, watched state, progress, Up Next. Continue has the focus when
 //  the page opens; coming back from the player, the focus returns to the episode that was played.
 //
+//  Focus between the rows is predictable rather than geometric: down from the actions or up from the episodes
+//  lands on the selected season's tab, and down from the tabs (or Select on one) enters the season at its Up Next
+//  episode, or its first.
+//
 
 #if os(tvOS)
 import SwiftData
@@ -52,7 +56,7 @@ struct TVSeriesScreen: View {
                         .padding(.top, 120)
                     if let episodes {
                         if seasons.count > 1 {
-                            seasonTabs(seasons: seasons, selection: season, episodes: episodes, state: state)
+                            seasonTabs(seasons: seasons, selection: season, episodes: episodes, upNext: nextUp?.episode, state: state)
                         }
                         if let season {
                             episodeShelf(episodes.episodes(inSeason: season), title: seasons.count > 1 ? nil : EpisodeFormat.seasonTitle(season), upNext: nextUp?.episode, state: state)
@@ -243,42 +247,65 @@ struct TVSeriesScreen: View {
 
     // MARK: - Seasons and episodes
 
-    private func seasonTabs(seasons: [Int], selection: Int?, episodes: SeriesEpisodes, state: SeriesWatchState?) -> some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 20) {
-                ForEach(seasons, id: \.self) { season in
-                    let isSelected = season == selection
-                    Button {
-                        selectedSeason = season
-                    } label: {
-                        HStack(spacing: 10) {
-                            Text(EpisodeFormat.seasonTitle(season))
-                            if isSeasonWatched(season, in: episodes, state: state) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .accessibilityHidden(true)
+    private func seasonTabs(seasons: [Int], selection: Int?, episodes: SeriesEpisodes, upNext: ChannelItem?, state: SeriesWatchState?) -> some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal) {
+                HStack(spacing: 12) {
+                    ForEach(seasons, id: \.self) { season in
+                        let isSelected = season == selection
+                        let isWatched = isSeasonWatched(season, in: episodes, state: state)
+                        Button {
+                            // The focus already chose the season: Select goes on into its episodes.
+                            selectedSeason = season
+                            if let entry = Self.entryEpisode(of: episodes.episodes(inSeason: season), upNext: upNext) {
+                                focus = .episode(entry.id)
+                            }
+                        } label: {
+                            HStack(spacing: 10) {
+                                Text(EpisodeFormat.seasonTitle(season))
+                                if isWatched {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .accessibilityHidden(true)
+                                }
                             }
                         }
-                        .font(.callout.weight(isSelected ? .bold : .regular))
-                        .padding(.horizontal, 8)
+                        // One button style whatever the selection: switching styles as the focus selected a season
+                        // replaced the focused button, and the focus fell back to the first season.
+                        .buttonStyle(TVSeasonTabStyle(isSelected: isSelected))
+                        .focused($focus, equals: .season(season))
+                        .accessibilityAddTraits(isSelected ? .isSelected : [])
+                        .accessibilityValue(isWatched ? Text("Watched") : Text(verbatim: ""))
                     }
-                    .tvActionButton(prominent: isSelected)
-                    .focused($focus, equals: .season(season))
-                    .accessibilityAddTraits(isSelected ? .isSelected : [])
-                    .accessibilityValue(isSeasonWatched(season, in: episodes, state: state) ? Text("Watched") : Text(verbatim: ""))
+                }
+                .padding(.vertical, 24)
+            }
+            .contentMargins(.horizontal, TVLayout.margin, for: .scrollContent)
+            .scrollClipDisabled()
+            .scrollIndicators(.hidden)
+            .onAppear {
+                // A page that opens on a later season (its Up Next) shows that season's tab.
+                if let selection, selection != seasons.first {
+                    proxy.scrollTo(selection, anchor: .center)
                 }
             }
-            .padding(.vertical, 20)
         }
-        .contentMargins(.horizontal, TVLayout.margin, for: .scrollContent)
-        .scrollClipDisabled()
-        .scrollIndicators(.hidden)
+        // Coming into the row from the actions or the episodes, the focus lands on the selected season, not on
+        // whichever tab happens to be nearest.
+        .defaultFocus($focus, selection.map { TVSeriesFocus.season($0) }, priority: .userInitiated)
         .focusSection()
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text("Seasons", comment: "VoiceOver label of the season picker on a series page."))
         .onChange(of: focus) { _, focus in
             // As in the TV app, the season under the focus shows its episodes.
             if case .season(let season) = focus, season != selectedSeason {
                 selectedSeason = season
             }
         }
+    }
+
+    /// Where the focus enters a season's episodes: its Up Next episode, or its first.
+    private static func entryEpisode(of list: [ChannelItem], upNext: ChannelItem?) -> ChannelItem? {
+        upNext.flatMap { upNext in list.first { $0.url == upNext.url } } ?? list.first
     }
 
     private func isSeasonWatched(_ season: Int, in episodes: SeriesEpisodes, state: SeriesWatchState?) -> Bool {
@@ -315,7 +342,62 @@ struct TVSeriesScreen: View {
                 }
             }
         }
+        // Moving down into the episodes enters them at the one to watch next (or the first), not below the tab.
+        .defaultFocus($focus, Self.entryEpisode(of: list, upNext: upNext).map { TVSeriesFocus.episode($0.id) }, priority: .userInitiated)
         .focusSection()
+    }
+}
+
+/// A season tab, drawn like the items of the tvOS tab bar: plain text; the selected season on a soft capsule; the
+/// focused tab lifted on a bright capsule with dark text, whether it is selected or not. One style for every
+/// state, so the button keeps its identity (and the focus) when its season becomes the selected one.
+private struct TVSeasonTabStyle: ButtonStyle {
+    let isSelected: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        TVSeasonTab(configuration: configuration, isSelected: isSelected)
+    }
+}
+
+private struct TVSeasonTab: View {
+    let configuration: ButtonStyleConfiguration
+    let isSelected: Bool
+
+    @Environment(\.isFocused) private var isFocused
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        configuration.label
+            .font(.callout.weight(isFocused || isSelected ? .semibold : .medium))
+            .foregroundStyle(foreground)
+            .padding(.horizontal, 32)
+            .padding(.vertical, 16)
+            .background {
+                Capsule()
+                    .fill(fill)
+            }
+            .shadow(color: .black.opacity(isFocused ? 0.32 : 0), radius: 20, y: 12)
+            .scaleEffect(configuration.isPressed ? 1.0 : isFocused ? 1.08 : 1)
+            .animation(.easeOut(duration: 0.16), value: isFocused)
+            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+            .animation(.easeOut(duration: 0.16), value: isSelected)
+    }
+
+    private var foreground: Color {
+        if isFocused {
+            return .black
+        }
+        return isSelected ? .primary : Theme.secondaryText
+    }
+
+    private var fill: Color {
+        if isFocused {
+            return .white
+        }
+        if isSelected {
+            return .primary.opacity(colorScheme == .dark ? 0.2 : 0.12)
+        }
+        return .clear
     }
 }
 
@@ -395,7 +477,8 @@ private struct TVEpisodeCard: View {
             }
             .accessibilityLabel(Text(TextParts.spoken([
                 ref.map(EpisodeFormat.spokenCode),
-                ref.map(EpisodeFormat.title),
+                // Only a title of its own: the "Episode 3" an untitled episode shows would repeat the number.
+                ref?.episodeTitle?.nilIfEmpty,
                 isUpNext ? String(localized: "Up Next", comment: "Label of the episode of a series to watch next (Continue Watching, the series page, the player).") : nil,
                 isWatched ? String(localized: "Watched") : progress.map(WatchProgressFormat.remaining),
             ])))
