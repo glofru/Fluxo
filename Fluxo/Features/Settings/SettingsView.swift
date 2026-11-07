@@ -21,6 +21,7 @@ struct SettingsView: View {
     @AppStorage(PlayerPreferences.skipForwardSecondsKey) private var skipForwardSeconds = PlayerPreferences.defaultSkipForwardSeconds
     @AppStorage(PlayerPreferences.autoPictureInPictureKey) private var autoPictureInPicture = PlayerPreferences.defaultAutoPictureInPicture
     @AppStorage(PlayerPreferences.pictureInPictureOnCloseKey) private var pictureInPictureOnClose = PlayerPreferences.defaultPictureInPictureOnClose
+    @AppStorage(RecordingLimits.maximumMinutesKey) private var maximumRecordingMinutes = RecordingLimits.defaultMaximumMinutes
 
     @State private var viewModel = SettingsViewModel()
     @State private var confirmation: Confirmation?
@@ -86,6 +87,7 @@ struct SettingsView: View {
             DownloadSettingsSection()
                 .id("downloads")
             recordingsSection
+                .id("recordings")
             storageSection
             aboutSection
         }
@@ -193,6 +195,14 @@ struct SettingsView: View {
                 SettingsLabel("Recordings", systemImage: "record.circle", tint: Theme.recording)
             }
 
+            Picker(selection: $maximumRecordingMinutes) {
+                ForEach(RecordingLimits.maximumMinutesChoices, id: \.self) { minutes in
+                    Text(RecordingLimits.title(minutes: minutes)).tag(minutes)
+                }
+            } label: {
+                SettingsLabel(localized: String(localized: "Stop Recording After", comment: "Settings, Recordings: the longest a recording runs before it stops on its own."), systemImage: "timer", tint: Theme.recording)
+            }
+
             Button("Delete All Recordings…", systemImage: "trash", role: .destructive) {
                 confirmation = .deleteRecordings
             }
@@ -203,7 +213,7 @@ struct SettingsView: View {
             if player.isRecording {
                 Text("Stop the current recording to delete recordings.")
             } else {
-                Text("Recordings and downloads play only in Fluxo, for your personal viewing.", comment: "Settings, Recordings footer: recordings and offline downloads stay inside the app (they can't be shared or opened in the Files app).")
+                Text("Recordings and downloads play only in Fluxo, for your personal viewing. They stay on this device and aren't included in backups. A recording also stops when the device is almost full.", comment: "Settings, Recordings footer: recordings and offline downloads stay inside the app (they can't be shared or opened in the Files app), are excluded from iCloud and computer backups, and a recording stops on its own when free space runs low.")
             }
         }
     }

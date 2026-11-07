@@ -110,6 +110,7 @@ nothing when none of these is passed.
 | `-FluxoDebugCloud memory\|<folder>` | iCloud sync with a simulated cloud instead of CloudKit (`App/Sync/SimulatedCloud.swift`): in memory, or a folder of JSON records (one per record) on the Mac that every clone can read and write, so two clones sync with each other; the app polls it every 2 s. Implies `-FluxoDebugStore memory`. Without it, a debug library never syncs (and unsigned builds have no CloudKit anyway). The folder holds the records as plain JSON (debug only): use a folder in `/tmp`. |
 | `-FluxoDebugNextLaunch "<route>[;…]"` | The next launch without any harness argument (one the system makes, e.g. from a tapped notification) opens the same scratch library and runs these routes, once (implies `-FluxoDebugStore scratch`; a later launch with harness arguments replaces or removes it). `notification-tests.sh` uses it for the cold launch from a notification. |
 | `-FluxoDebugCloudSeed "<name>=<url>[;…]"` | Playlists "another device" put in the simulated cloud, for the first-run "Your Playlists from iCloud" sheet. |
+| `-FluxoDebugLibraryFailure <kind>` | The first attempt to open the library fails as `newerVersion`, `temporarilyUnavailable`, `notEnoughSpace`, `damaged` or `cannotOpen` would: the recovery screen (Try Again then opens it). Export a Copy shows only when the store file exists: with `--store scratch`, after one normal launch has created it (on a fresh scratch store there is nothing to export, and the message does not offer it). The harness never reports ready meanwhile: use `--timeout 12`. |
 | `-FluxoDebugLoopbackPort <port>` | Port of the player's loopback HLS server (default 19123, always on 127.0.0.1). Every simulator shares the Mac's loopback interface: give clones that play at the same time different ports. |
 
 Other useful system arguments: `-AppleLanguages "(de)" -AppleLocale de_DE`,
@@ -234,6 +235,10 @@ first that contains the text.
 | `acknowledgements[:<fluxo\|ffmpeg\|flyingfox\|googlecast\|gtmsessionfetcher\|googlecast/<part>\|source-offer\|source-offer-sha>]` | Settings › About › Acknowledgements (pushed; a sheet in the Mac's Settings window), a component's page with its license texts, a part of the Google Cast SDK with Google's notice (`googlecast/eigen-3`, `googlecast/material-components-for-ios`: the name in lowercase, other characters as `-`; iOS), or the page scrolled to the FFmpeg source offer (`source-offer-sha`: to its checksum, for large text sizes). A later step in the same launch goes back to the page and opens the next one. |
 | `settings-section:about` | Settings, scrolled to About (version, Acknowledgements, Privacy Policy, Source Code, the no-content notice; iOS). |
 | `settings-section:downloads` | Settings, scrolled to its Downloads section (iOS). |
+| `settings-section:recordings` | Settings, scrolled to Recordings (Stop Recording After; iOS). |
+| `library-log` | Writes the rows of every model, the player's recording state and message, and where the stores are (library and cache, their schema versions, a pending maintenance, backups) to `Status/library.log`. |
+| `downloads-fake-failures` | Adds failed downloads of four movies, one per kind of reason (unexpected stop, expired link, offline, a format that cannot play), for the Couldn't Download section. |
+| `recording-limit:<seconds>` | Recordings stop after this many seconds instead of Settings › Recordings › Stop Recording After (0: the setting again). |
 | `power:<low-power\|normal\|fair\|serious\|critical\|system>` | Pretends Low Power Mode is on, or a thermal state (`normal`: neither), or follows the system (`-FluxoDebugPower <value>` does it from launch): the player's quality limits (`PlaybackEnergyProfile`), the symbol animations and the guide refresh follow it. |
 | `energy-check` | Checks the rules of `PlaybackEnergyProfile` (position sampling, quality limits, display sleep, video decoding for the player screen, the mini player, the background, Picture in Picture, Low Power Mode and the thermal states) and writes `energy-check: ok` or the failures to `Status/power.log`. |
 | `power-log` | Appends the energy state to `Status/power.log`: Low Power Mode, the thermal state, background, whether something plays and the guide refresh waits, whether the player layer decodes video, whether the display may sleep, the quality limit of the current item and the player's energy profile. |
@@ -252,6 +257,14 @@ first that contains the text.
 | `topshelf[:<sections>]` | Apple TV: waits (up to 30 s) until this launch has written the Top Shelf snapshot with the given sections (`continueWatching,favorites,onNow`), and logs their titles; fails without the App Group (an unsigned build). |
 | `topshelf-artwork-check` | Apple TV: draws a Top Shelf image whose logo cannot be loaded (cancelled while it loads, then a refused `127.0.0.1:9` URL) into a temporary folder and checks that nothing is cached under that logo's name: the cancelled draw writes nothing, the failed one the initials tile under the name of the art without a logo. |
 | `help` | Logs the list of routes (in `app.log`). |
+
+**The migration of a library of the previous version, in the app**: build the previous version's simulator app
+(`git archive <rev>` into a folder of its own, then `xcodebuild … -derivedDataPath /tmp/fluxo-dd/<key>-oldsim`), and on
+one clone: `FLUXO_SIM_APP=<old Fluxo.app> run.sh --store scratch --seed sample --keep` (add `--route seed-guide` for
+a guide), then `run.sh --clone <clone> --store scratch --seed none --keep --route library-log` with this build (a
+reinstall keeps the data container): the counts in `library.log` must be those of the old store (`sqlite3` on
+`Library/Application Support/FluxoDebug/Scratch/Fluxo.store` of the app's data container), both stores at 2.0.0;
+the next launch compacts the library file.
 
 ### Apple TV
 

@@ -148,6 +148,8 @@ final class EPGStore {
             // Independent steps: one failing does not stop the others.
             do {
                 try await importer.purgeOrphanedContent()
+                // A recreated cache: those guides load again with the stale ones, below.
+                try await importer.resetSourcesMissingContent()
             } catch {
                 Self.logger.error("Guide cleanup failed: \(error.localizedDescription, privacy: .public)")
             }

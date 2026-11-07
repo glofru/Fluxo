@@ -214,6 +214,8 @@ actor EPGImporter {
             }
             progress(EPGRefreshProgress(phase: .finishing, fractionCompleted: 1, bytes: downloadedBytes, programmeCount: result.programmeCount))
             try commit(importID: importID, sourceID: sourceID, result: result, now: now)
+            // A guide writes a row of history per programme, about 35 MB per 260,000 (`StoreHistory`).
+            StoreHistory.prune(in: container, olderThan: StoreHistory.keptAge)
             return EPGRefreshSummary(
                 channelCount: result.channelCount,
                 storedChannelCount: result.storedChannelCount,
@@ -488,6 +490,40 @@ actor EPGImporter {
         let livePlaylistIDs = Array(playlistIDs)
         try context.delete(model: EPGChannelOverride.self, where: #Predicate { !livePlaylistIDs.contains($0.playlistID) })
         try context.save()
+    }
+
+    /// Sources whose visible import has no rows in the cache store (it was recreated: it could not be opened, the
+    /// system purged it, a device restored from a backup) are made "never loaded", so the next stale refresh loads
+    /// them. The validators go too: the server would answer "not modified" to a guide that is no longer here.
+    /// Returns how many were reset.
+    @discardableResult
+    func resetSourcesMissingContent() throws -> Int {
+        let context = makeContext()
+        var reset = 0
+        for source in try context.fetch(EPGQueries.sources()) {
+            guard let importID = source.currentImportID, source.channelCount > 0, !runningImports.contains(importID) else {
+                continue
+            }
+            var descriptor = FetchDescriptor<EPGChannel>(predicate: #Predicate { $0.importID == importID })
+            descriptor.fetchLimit = 1
+            guard try context.fetchCount(descriptor) == 0 else {
+                continue
+            }
+            source.currentImportID = nil
+            source.contentHash = nil
+            source.entityTag = nil
+            source.lastModifiedHeader = nil
+            source.lastRefreshedOn = nil
+            source.lastAttemptOn = nil
+            source.storedChannelCount = 0
+            source.programmeCount = 0
+            reset += 1
+        }
+        if reset > 0 {
+            try context.save()
+            Self.logger.notice("\(reset) guides are loaded again: their content was not in the cache")
+        }
+        return reset
     }
 
     // MARK: - Private

@@ -53,6 +53,7 @@ fi
     "$F/Features/Series/SeriesLibrary.swift" \
     "$F/App/Design/TextParts.swift" \
     "$F/App/Database/ModelRegistry.swift" \
+    "$F/App/Database/StoreHistory.swift" \
     "$F/Features/Guide/Model/EPGModels.swift" \
     "$F/Features/Guide/Model/GuideValues.swift" \
     "$HERE/ParserCases.swift" "$HERE/ParserChecks.swift" "$HERE/SyntheticPlaylist.swift" "$HERE/StoreCheck.swift" "$HERE/ToolStubs.swift" "$HERE/main.swift" \

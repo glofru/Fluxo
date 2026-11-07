@@ -80,6 +80,9 @@ protocol ReminderDelivery: AnyObject {
 
     /// Sets the delivery up. Called once, at launch, before a notification that launched the app is delivered.
     func install()
+    /// Installs what receives the opened reminders before the library opens (`FluxoApp.init`): what is opened
+    /// before `ReminderCenter` starts waits for it (the launch that updates the library starts it seconds later).
+    static func installEarly()
     func authorizationStatus() async -> UNAuthorizationStatus
     /// Asks the viewer for permission; returns the status afterwards.
     func requestAuthorization() async -> UNAuthorizationStatus

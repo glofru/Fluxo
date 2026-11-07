@@ -203,6 +203,10 @@ final class AVPlayerViewModel {
         }
     }
     private(set) var recordingError: String?
+    /// The recording was asked to stop by `enforceRecordingLimits` (the engine reports the end a moment later).
+    @ObservationIgnored private var recordingLimitReached = false
+    /// Recording time of the last free-space check.
+    @ObservationIgnored private var lastRecordingSpaceCheck: TimeInterval = 0
     private(set) var isPictureInPictureActive = false
     /// Picture in Picture can start now (the item is ready and the video view is on screen).
     private(set) var isPictureInPicturePossible = false
@@ -772,15 +776,47 @@ final class AVPlayerViewModel {
         guard canRecord, !isRecording else {
             return
         }
+        if let available = PlatformStorage.availableCapacity(at: recordings.directory), available < RecordingLimits.minimumFreeSpaceToStart {
+            logger.error("Not enough free space to start a recording: \(available) bytes")
+            recordingError = RecordingLimits.notEnoughSpaceToStartMessage
+            return
+        }
         let url = recordings.makeRecordingURL(channelName: currentChannel?.name)
         do {
             try remuxer.startRecording(to: url)
             recordings.recordingDidStart(url, title: currentChannel?.name, logo: currentChannel?.logo)
             recordingError = nil
+            recordingLimitReached = false
+            lastRecordingSpaceCheck = 0
             isRecording = true
             timeline.updateRecordingDuration(0)
         } catch {
             recordingError = error.localizedDescription
+        }
+    }
+
+    /// Stops the recording (keeping what it recorded) at the length set in Settings, or when the device is nearly
+    /// full: the engine itself only stops on a write error, once the disk is already full.
+    private func enforceRecordingLimits(duration: TimeInterval) {
+        guard isRecording, !recordingLimitReached else {
+            return
+        }
+        if let maximum = RecordingLimits.maximumDuration, duration >= maximum {
+            logger.info("Recording reached its limit of \(maximum)s: stopping")
+            recordingLimitReached = true
+            stopRecording()
+            recordingError = RecordingLimits.stoppedAtLimitMessage(duration: maximum)
+            return
+        }
+        guard duration - lastRecordingSpaceCheck >= RecordingLimits.freeSpaceCheckInterval else {
+            return
+        }
+        lastRecordingSpaceCheck = duration
+        if let available = PlatformStorage.availableCapacity(at: recordings.directory), available < RecordingLimits.minimumFreeSpaceWhileRecording {
+            logger.error("The device is nearly full (\(available) bytes free): stopping the recording")
+            recordingLimitReached = true
+            stopRecording()
+            recordingError = RecordingLimits.stoppedForSpaceMessage
         }
     }
 
@@ -1327,6 +1363,7 @@ final class AVPlayerViewModel {
 
         case .recordingProgress(let progress):
             timeline.updateRecordingDuration(progress.duration)
+            enforceRecordingLimits(duration: progress.duration)
 
         case .recordingStopped(let progress):
             logger.info("Recording stopped: \(progress.url.lastPathComponent, privacy: .public) \(progress.duration)s \(progress.bytes) bytes")

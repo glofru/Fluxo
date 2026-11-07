@@ -25,11 +25,22 @@ xcrun swiftc -O "${FLUXO_SWIFT_LANGUAGE[@]}" -parse-as-library -o "$OUT/bin/guid
     "$SRC/Features/Playlist/Playlist.swift" \
     "$SRC/Features/Playlist/ChannelContentKind.swift" \
     "$SRC/Features/Playlist/Import/M3UParser.swift" \
+    "$SRC/Features/Series/EpisodeParser.swift" \
+    "$SRC/Features/Series/SeriesModels.swift" \
+    "$SRC/Features/Series/SeriesLibrary.swift" \
+    "$SRC/Features/Series/SeriesLookup.swift" \
+    "$SRC/Features/Search/SearchMatcher.swift" \
+    "$SRC/Features/Search/ChannelSearchIndex.swift" \
+    "$SRC/App/Sync/SyncDeletionJournal.swift" \
+    "$SRC/App/Sync/CloudSyncRecords.swift" \
+    "$SRC/App/Sync/CloudSyncReconciler.swift" \
+    "$SRC/App/Extensions/UserDefaults+Fluxo.swift" \
     "$SRC/Features/Library/ChannelBookmark.swift" \
     "$SRC/Features/Library/ChannelLibrary.swift" \
     "$SRC/Features/Home/HomeQueries.swift" \
     "$SRC/App/Download/DownloadManager.swift" \
     "$SRC/App/Database/ModelRegistry.swift" \
+    "$SRC/App/Database/StoreHistory.swift" \
     "$SRC/App/Design/TextParts.swift" \
     "$OUT/GuideFormat.swift" \
     "$SRC/Features/Guide/Model/EPGModels.swift" \

@@ -258,6 +258,86 @@ struct DownloadRecord: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
+// MARK: - Lenient decoding
+
+// The manifest outlives builds: a record written by an earlier build lacks the fields added since, one written by a
+// later build may hold values this build does not know. Synthesized decoding throws for both (a defaulted
+// non-optional field still needs its key), and one bad record would lose the whole list. So every field decodes on its
+// own: missing or unknown values take their default, and only what identifies the download (`id`, the entry's
+// playlist and link) is required. `DownloadManifest` then decodes the records one by one.
+
+extension DownloadedItem {
+    private enum CodingKeys: String, CodingKey {
+        case id, playlistID, name, logo, url, groupName, kindRawValue, tvgID, number, seriesKey, seriesTitle, season, episode, episodeTitle
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        playlistID = try container.decode(UUID.self, forKey: .playlistID)
+        url = try container.decode(URL.self, forKey: .url)
+        name = container.lenient(String.self, .name)
+        logo = container.lenient(String.self, .logo)
+        groupName = container.lenient(String.self, .groupName) ?? ""
+        kindRawValue = container.lenient(Int.self, .kindRawValue) ?? ChannelContentKind.movie.rawValue
+        tvgID = container.lenient(String.self, .tvgID)
+        number = container.lenient(Int.self, .number)
+        seriesKey = container.lenient(String.self, .seriesKey)
+        seriesTitle = container.lenient(String.self, .seriesTitle)
+        season = container.lenient(Int.self, .season)
+        episode = container.lenient(Int.self, .episode)
+        episodeTitle = container.lenient(String.self, .episodeTitle)
+    }
+}
+
+extension DownloadRecord {
+    private enum CodingKeys: String, CodingKey {
+        case id, item, status, method, addedOn, completedOn, fraction, bytesWritten, bytesExpected, bytesOnDisk, failureReason,
+             failureIsPermanent, location, transferFileName, artworkFileName, duration, qualityHeight, audioLanguages,
+             subtitleLanguages, allowsCellular, automaticRetries, watchedOn, isMissing
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        item = try container.decode(DownloadedItem.self, forKey: .item)
+        // A state of a later build (or none): shown as failed (Retry, Remove), never as playable or running.
+        let knownStatus = container.lenient(String.self, .status).flatMap(DownloadStatus.init(rawValue:))
+        status = knownStatus ?? .failed
+        method = container.lenient(DownloadMethod.self, .method)
+        addedOn = container.lenient(Date.self, .addedOn) ?? .distantPast
+        completedOn = container.lenient(Date.self, .completedOn)
+        fraction = container.lenient(Double.self, .fraction) ?? 0
+        bytesWritten = container.lenient(Int64.self, .bytesWritten) ?? 0
+        bytesExpected = container.lenient(Int64.self, .bytesExpected)
+        bytesOnDisk = container.lenient(Int64.self, .bytesOnDisk) ?? 0
+        // A reason of a later build: the Library says the download stopped unexpectedly.
+        failureReason = container.lenient(DownloadFailure.Reason.self, .failureReason) ?? (container.contains(.failureReason) ? .unexpected : nil)
+        failureIsPermanent = container.lenient(Bool.self, .failureIsPermanent) ?? false
+        location = container.lenient(String.self, .location)
+        transferFileName = container.lenient(String.self, .transferFileName)
+        artworkFileName = container.lenient(String.self, .artworkFileName)
+        duration = container.lenient(TimeInterval.self, .duration)
+        qualityHeight = container.lenient(Int.self, .qualityHeight)
+        audioLanguages = container.lenient([String].self, .audioLanguages)
+        subtitleLanguages = container.lenient([String].self, .subtitleLanguages)
+        allowsCellular = container.lenient(Bool.self, .allowsCellular) ?? false
+        automaticRetries = container.lenient(Int.self, .automaticRetries) ?? 0
+        watchedOn = container.lenient(Date.self, .watchedOn)
+        isMissing = container.lenient(Bool.self, .isMissing) ?? false
+        if knownStatus == nil, failureReason == nil {
+            failureReason = .unexpected
+        }
+    }
+}
+
+extension KeyedDecodingContainer {
+    /// The value, or nil when the key is missing, null or holds something this build cannot decode.
+    func lenient<T: Decodable>(_ type: T.Type, _ key: Key) -> T? {
+        (try? decodeIfPresent(type, forKey: key)) ?? nil
+    }
+}
+
 /// Why a download could not start, shown in an alert.
 struct DownloadNotice: Identifiable, Equatable {
     let id = UUID()

@@ -24,6 +24,10 @@
 //  -FluxoDebugNextLaunch "<route>[;…]"     The next launch without harness arguments (one the system makes, e.g. from a
 //                                          tapped notification) opens the same scratch library and runs these routes,
 //                                          once (implies -FluxoDebugStore scratch).
+//  -FluxoDebugLibraryFailure <kind>        The first attempt to open the library fails as `LibraryOpenFailure.<kind>`
+//                                          does (newerVersion, temporarilyUnavailable, notEnoughSpace, damaged,
+//                                          cannotOpen): the recovery screen, and Try Again then opens it (implies
+//                                          -FluxoDebugStore memory unless another store is given).
 //
 //  Only the launch arguments are read (the argument domain), never values persisted in the user defaults, so a
 //  normal Debug launch without arguments behaves exactly like the app. -FluxoDebugAppearance and
@@ -66,6 +70,8 @@ struct DebugLaunchOptions {
     var cloud: String?
     /// `-FluxoDebugNextLaunch`: the routes of the next launch without harness arguments (`NextLaunch`).
     var nextLaunchRoutes: String?
+    /// `-FluxoDebugLibraryFailure`: how the first attempt to open the library fails.
+    var libraryFailure: LibraryOpenFailure?
 
     /// The options of this launch: its arguments, or, for a launch without any harness argument that a run armed with
     /// `-FluxoDebugNextLaunch` (the system launching the app from a notification), the scratch library and the routes
@@ -125,6 +131,12 @@ struct DebugLaunchOptions {
             routes = value.split(separator: ";").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         }
         cloud = string("FluxoDebugCloud")
+        if let value = string("FluxoDebugLibraryFailure") {
+            libraryFailure = LibraryOpenFailure.allCases.first { $0.rawValue.lowercased() == value.lowercased() }
+            if libraryFailure == nil {
+                Self.logger.error("Unknown -FluxoDebugLibraryFailure \(value, privacy: .public) (\(LibraryOpenFailure.allCases.map(\.rawValue).joined(separator: ", "), privacy: .public))")
+            }
+        }
         nextLaunchRoutes = string("FluxoDebugNextLaunch")
         if nextLaunchRoutes != nil {
             // The next launch reopens the library of this one: only the scratch library outlives a launch.
@@ -135,7 +147,7 @@ struct DebugLaunchOptions {
                 nextLaunchRoutes = nil
             }
         }
-        if seed != nil || importURL != nil || !routes.isEmpty || cloud != nil, store == nil {
+        if seed != nil || importURL != nil || !routes.isEmpty || cloud != nil || libraryFailure != nil, store == nil {
             // Seeding, importing and routes always run on an isolated library: some routes write watch history
             // or settings, which must never reach the real ones.
             store = .memory
@@ -270,20 +282,37 @@ final class DebugEnvironment: @unchecked Sendable {
         DebugLaunchOptions.logger.notice("Isolated \(mode.rawValue, privacy: .public) library at \(root.path, privacy: .public)")
     }
 
-    func makeContainer(schema: Schema) -> ModelContainer {
-        // Never SwiftData's CloudKit mirroring (see `ModelContainerFactory.make()`): a signed build has the iCloud
-        // entitlement, and an isolated library must not reach iCloud anyway.
-        let configuration: ModelConfiguration
-        if let storeURL {
-            configuration = ModelConfiguration(schema: schema, url: storeURL, cloudKitDatabase: .none)
-        } else {
-            configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
-        }
-        do {
-            return try ModelContainer(for: schema, configurations: configuration)
-        } catch {
-            fatalError("Could not create the debug store: \(error)")
-        }
+    /// The isolated library's stores (nil for the in-memory one).
+    var libraryLocation: LibraryStoreLocation? {
+        storeURL.map { LibraryStoreLocation.isolated(in: rootDirectory, userStoreName: $0.lastPathComponent) }
     }
+
+    /// Opens the isolated library: in memory, or on disk through `LibraryStore` like the real one (the same split,
+    /// migration and recovery), so the harness exercises them.
+    func openLibrary() -> Result<ModelContainer, LibraryOpenFailure> {
+        guard let libraryLocation else {
+            do {
+                return .success(try LibraryStore.makeInMemoryContainer())
+            } catch {
+                DebugLaunchOptions.logger.error("Could not create the in-memory library: \(error.localizedDescription, privacy: .public)")
+                return .failure(.cannotOpen)
+            }
+        }
+        return LibraryStore.open(libraryLocation)
+    }
+}
+
+extension DebugLaunchOptions {
+    /// `-FluxoDebugLibraryFailure`, once per launch: Try Again then opens the library.
+    @MainActor
+    func takeSimulatedLibraryFailure() -> LibraryOpenFailure? {
+        guard let libraryFailure, !Self.didSimulateLibraryFailure else {
+            return nil
+        }
+        Self.didSimulateLibraryFailure = true
+        return libraryFailure
+    }
+
+    @MainActor private static var didSimulateLibraryFailure = false
 }
 #endif

@@ -31293,6 +31293,9 @@
         }
       }
     },
+    "Couldn't Download" : {
+      "comment" : "Header of the downloads that stopped with an error (each row says why)."
+    },
     "Couldn't Load the Subtitles" : {
       "comment" : "Title of the alert when a subtitle file the user picked cannot be loaded.",
       "localizations" : {
@@ -40276,6 +40279,9 @@
         }
       }
     },
+    "Export a Copy…" : {
+      "comment" : "Library recovery screen: saves a copy of the library file (for example in Files), to keep it or send it for help."
+    },
     "FFmpeg" : {
       "comment" : "Name of the open-source library the app uses (in Settings › About, acknowledgements). Do not translate.",
       "shouldTranslate" : false
@@ -42873,6 +42879,9 @@
       "comment" : "Now Playing title when the channel has no name; the app name.",
       "shouldTranslate" : false
     },
+    "Fluxo Can't Open Your Library" : {
+      "comment" : "Library recovery screen title: the library cannot be opened for another reason."
+    },
     "Fluxo Demo" : {
       "comment" : "Name of the demo playlist that the first-run screen and Add Playlist offer (free test streams and Creative Commons films)."
     },
@@ -42976,6 +42985,9 @@
           }
         }
       }
+    },
+    "Fluxo can't open your library right now. Open Fluxo to see why." : {
+      "comment" : "Error of a Siri or Shortcuts action run while the app's library cannot be opened."
     },
     "Fluxo can't record this channel: %@" : {
       "comment" : "Siri and Shortcuts text (dialog or error) — Siri and Shortcuts. The placeholder is the reason.",
@@ -43380,6 +43392,9 @@
           }
         }
       }
+    },
+    "Fluxo couldn't read its library file. This happens while the device is locked after a restart. Unlock it, then try again. If it keeps happening, restart the device." : {
+      "comment" : "Library recovery screen: explanation when the library file cannot be read right now."
     },
     "Fluxo doesn't provide any channels or content. Add only playlists from providers you subscribe to or have the right to use." : {
       "comment" : "Notice on the first-run screen, in Add Playlist and in Settings › About: the app is only a player and comes with no channels, movies or series."
@@ -44093,6 +44108,15 @@
           }
         }
       }
+    },
+    "Fluxo's library file is damaged and can't be read. You can export a copy to keep it, or start with an empty library." : {
+      "comment" : "Library recovery screen: explanation when the library file is damaged."
+    },
+    "Fluxo's library file is damaged and can't be read. You can start with an empty library." : {
+      "comment" : "Library recovery screen: explanation when the library is damaged and there is no library file left to export."
+    },
+    "Fluxo's library file is damaged and can't be read. You can start with an empty library: the damaged one is kept on this Apple TV." : {
+      "comment" : "Apple TV library recovery screen: explanation when the library file is damaged (there is no export on Apple TV)."
     },
     "For You" : {
       "comment" : "Title of the personal suggestions section.",
@@ -58558,6 +58582,9 @@
         }
       }
     },
+    "No Limit" : {
+      "comment" : "Settings, Recordings: the choice of Stop Recording After that never stops a recording on its own."
+    },
     "No Playlists" : {
       "comment" : "Empty-state title — Search screen, TV guide.",
       "localizations" : {
@@ -60981,6 +61008,9 @@
           }
         }
       }
+    },
+    "Not Enough Space to Open Your Library" : {
+      "comment" : "Library recovery screen title: the library needs to be updated and the device is almost full."
     },
     "Not Now" : {
       "comment" : "Button of a programme reminder on Apple TV: closes the reminder without playing the channel.\nButton of the iCloud playlists sheet: closes it without adding playlists.\nButton of the turn-on-sync question: keeps sync off (Settings › iCloud can turn it on later).\nButton of the restore question: nothing is restored now (Settings › iCloud can restore later); nothing is deleted.\nButton of the mass-removal question: decides later; nothing is removed from the other devices meanwhile.\nButton of the Deleted on Other Devices question: they stay on this device only.",
@@ -76809,6 +76839,9 @@
         }
       }
     },
+    "Recording stopped after %@, the limit set in Settings. What was recorded is saved." : {
+      "comment" : "Player message: a recording reached the maximum length set in Settings (Recordings › Stop Recording After); the placeholder is that length, such as 4 hours."
+    },
     "Recording stopped and saved to Recordings" : {
       "comment" : "VoiceOver announcement; Recordings is the name of the app's recordings screen.",
       "localizations" : {
@@ -76909,6 +76942,9 @@
           }
         }
       }
+    },
+    "Recording stopped because this device is almost full. What was recorded is saved." : {
+      "comment" : "Player message: a recording was stopped because the device ran low on free space; the part already recorded is kept."
     },
     "Recording this channel." : {
       "comment" : "What Siri says or shows — Siri and Shortcuts.",
@@ -77114,6 +77150,9 @@
     },
     "Recordings and downloads play only in Fluxo, for your personal viewing." : {
       "comment" : "Settings, Recordings footer: recordings and offline downloads stay inside the app (they can't be shared or opened in the Files app)."
+    },
+    "Recordings and downloads play only in Fluxo, for your personal viewing. They stay on this device and aren't included in backups. A recording also stops when the device is almost full." : {
+      "comment" : "Settings, Recordings footer: recordings and offline downloads stay inside the app (they can't be shared or opened in the Files app), are excluded from iCloud and computer backups, and a recording stops on its own when free space runs low."
     },
     "Recordings are stored on this device and can't be cast." : {
       "comment" : "Text — Chromecast (Google Cast).",
@@ -82874,6 +82913,9 @@
           }
         }
       }
+    },
+    "Retry All" : {
+      "comment" : "Starts every failed download again."
     },
     "Retry Download" : {
       "comment" : "Menu item: starts a failed download again.",
@@ -92986,6 +93028,12 @@
         }
       }
     },
+    "Something Went Wrong" : {
+      "comment" : "Library recovery screen: title of an alert when exporting or starting over failed."
+    },
+    "Something prevented Fluxo from opening its library. Nothing has been deleted. Try again, or check for an update to Fluxo." : {
+      "comment" : "Library recovery screen: explanation when the library cannot be opened for an unknown reason."
+    },
     "Sort By" : {
       "comment" : "Picker label / label (text with an icon) — category and channel lists.",
       "localizations" : {
@@ -94100,6 +94148,15 @@
         }
       }
     },
+    "Start with an Empty Library" : {
+      "comment" : "Library recovery screen: confirms starting over with an empty library (the current one is kept as a backup)."
+    },
+    "Start with an Empty Library?" : {
+      "comment" : "Library recovery screen: title of the confirmation before starting over with an empty library."
+    },
+    "Start with an Empty Library…" : {
+      "comment" : "Library recovery screen: starts over with an empty library; the current one is kept as a backup (asks first)."
+    },
     "Started at %@." : {
       "comment" : "Programme reminder on Apple TV, shown after the programme started (the app was not running when it was due); the placeholder is the start time, as in 20:15.",
       "localizations" : {
@@ -95064,6 +95121,9 @@
         }
       }
     },
+    "Still not possible. Try again later." : {
+      "comment" : "Library recovery screen: shown under the explanation after Try Again failed once more."
+    },
     "Still recording" : {
       "comment" : "VoiceOver hint of a recording that is still being recorded.",
       "localizations" : {
@@ -95669,6 +95729,9 @@
           }
         }
       }
+    },
+    "Stop Recording After" : {
+      "comment" : "Settings, Recordings: the longest a recording runs before it stops on its own."
     },
     "Stop and Play" : {
       "comment" : "Button — recordings.",
@@ -112383,6 +112446,9 @@
         }
       }
     },
+    "The download couldn't be saved on this device. Try again." : {
+      "comment" : "Download error: the file could not be written on the device (not because the disk is full)."
+    },
     "The download is incomplete. Try again." : {
       "comment" : "Download error: the downloaded stream cannot be played offline.",
       "localizations" : {
@@ -112483,6 +112549,9 @@
           }
         }
       }
+    },
+    "The download stopped unexpectedly. Try again." : {
+      "comment" : "Download error: the system reported an error without a useful description."
     },
     "The file has no subtitles Fluxo can read. Use a SubRip (.srt) or WebVTT (.vtt) file." : {
       "comment" : "Error when loading a subtitle file that has no subtitle lines.",
@@ -114200,6 +114269,9 @@
           }
         }
       }
+    },
+    "The provider sent something that can't be downloaded. Try again later." : {
+      "comment" : "Download error: the server's response was broken, empty or could not be decoded."
     },
     "The quality applies to streams that offer several; other videos download as they are." : {
       "comment" : "Settings footer of the downloads: what the video quality setting changes.",
@@ -116028,6 +116100,9 @@
         }
       }
     },
+    "There isn't enough free space to record. Free up space on this device, then try again." : {
+      "comment" : "Player message: a recording cannot start because the device is almost full."
+    },
     "These playlists are on your other devices. Add them to this Apple TV to watch them here, without typing a single address." : {
       "comment" : "Description of the iCloud playlists sheet on Apple TV.",
       "localizations" : {
@@ -117145,6 +117220,9 @@
         }
       }
     },
+    "This happens once, after an update." : {
+      "comment" : "Under 'Updating Your Library…': the wait happens only once."
+    },
     "This is not a valid web address." : {
       "comment" : "Validation message of the playlist address field.",
       "localizations" : {
@@ -118154,6 +118232,9 @@
           }
         }
       }
+    },
+    "This version of Fluxo needs to update your library, and there isn't enough free space on this device to do it. Free up some space, then try again." : {
+      "comment" : "Library recovery screen: explanation when there is not enough free space to update the library."
     },
     "This video can't be played: its video format (%@) isn't supported." : {
       "comment" : "Player error: the video is in a format the app cannot decode or convert; the placeholder is the technical name of the video codec, in English (for example AV1).",
@@ -119988,7 +120069,7 @@
       }
     },
     "Try Again" : {
-      "comment" : "Button — video player screen, Add / Edit Playlist form.\nApple TV player, button over the video after a seek that could not play: seeks there again.",
+      "comment" : "Button — video player screen, Add / Edit Playlist form.\nApple TV player, button over the video after a seek that could not play: seeks there again.\nLibrary recovery screen: tries to open the library again.",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -123121,6 +123202,9 @@
         }
       }
     },
+    "Update Fluxo to Open Your Library" : {
+      "comment" : "Library recovery screen title: the library was last used by a newer version of the app."
+    },
     "Updating %@" : {
       "comment" : "Text — Home page. The placeholder is the playlist name.",
       "localizations" : {
@@ -123221,6 +123305,9 @@
           }
         }
       }
+    },
+    "Updating Your Library…" : {
+      "comment" : "Shown once, for a few seconds, while the app prepares the library saved by an earlier version."
     },
     "Use Cellular Data" : {
       "comment" : "Settings toggle: downloads may use cellular data (otherwise they wait for Wi-Fi).",
@@ -129343,6 +129430,12 @@
         }
       }
     },
+    "Your Library Can't Be Read Right Now" : {
+      "comment" : "Library recovery screen title: the library file cannot be read at the moment (the device is locked, or a storage error)."
+    },
+    "Your Library Is Damaged" : {
+      "comment" : "Library recovery screen title: the library file is damaged and cannot be read."
+    },
     "Your Playlists from iCloud" : {
       "comment" : "Title of the sheet that offers the playlists of the user's other devices.",
       "localizations" : {
@@ -129443,6 +129536,9 @@
           }
         }
       }
+    },
+    "Your current library is kept as a backup on this device, so nothing is deleted. If iCloud sync was on, Fluxo then offers to restore your playlists, guides and favorites from iCloud." : {
+      "comment" : "Library recovery screen: message of the confirmation before starting over with an empty library."
     },
     "Your device is warm: streams that offer several qualities play at a lower one, and the TV guide waits to refresh until it cools down." : {
       "comment" : "Settings, Playback footer: shown while the device is hot (serious or critical thermal state).",
@@ -129948,6 +130044,15 @@
           }
         }
       }
+    },
+    "Your library holds your playlists, TV guides, favorites, watch history and reminders. Fluxo never deletes it on its own. Offline downloads and recordings are kept separately and aren't affected." : {
+      "comment" : "Library recovery screen: footnote explaining what the library is and that it is never deleted automatically."
+    },
+    "Your library holds your playlists, TV guides, favorites, watch history and reminders. Fluxo never deletes it on its own. Recordings are kept separately and aren't affected." : {
+      "comment" : "Apple TV library recovery screen: footnote explaining what the library is and that it is never deleted automatically (Apple TV has recordings but no offline downloads)."
+    },
+    "Your library was last used by a newer version of Fluxo, and this version can't open it without losing what the newer one added. Update Fluxo from the App Store, then open it again." : {
+      "comment" : "Library recovery screen: explanation when the library was written by a newer version of the app."
     },
     "Your other devices keep their playlists and stop syncing. Turn sync on again to upload this device's library." : {
       "comment" : "Message of the confirmation of Delete iCloud Data.",

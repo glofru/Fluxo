@@ -14,13 +14,12 @@ import SwiftData
 /// `importID` equals `currentImportID` are shown, so a refresh can write a complete new copy next to the old one
 /// and switch over atomically (and a failed or cancelled refresh leaves the old content untouched).
 ///
-/// Ownership:
-/// - Groups are a real relationship with a cascade rule on the playlist side (`groups` <-> `PlaylistChannelGroup.playlist`).
-/// - Channels reference their playlist through the indexed `playlistID` / `importID` keys instead of a relationship.
-///   With a SwiftData inverse to-one, every insert re-materializes the playlist's to-many array, which makes importing
-///   quadratic (measured with batched saves: 20k channels 5.1 s with the relationship vs 0.48 s without).
-///   `PlaylistImporter.deletePlaylist` removes channels with one batch delete, and `purgeOrphanedContent()` removes
-///   rows of playlists deleted any other way.
+/// Ownership: channels, groups and series reference their playlist through the indexed `playlistID` / `importID` keys,
+/// never a relationship. The playlist is user data and lives in the library store, its content is a cache in the cache
+/// store (`LibraryStore`), and a relationship cannot span two stores. (With a SwiftData inverse to-one, every insert
+/// would also re-materialize the playlist's to-many array, which makes importing quadratic: 20k channels 5.1 s with
+/// the relationship vs 0.48 s without.) `PlaylistImporter.deletePlaylist` removes the content with batch deletes, and
+/// `purgeOrphanedContent()` removes the rows of playlists deleted any other way.
 @Model
 final class Playlist: Identifiable {
     #Index<Playlist>([\.createdOn])
@@ -45,11 +44,6 @@ final class Playlist: Identifiable {
     /// `EpisodeParser.version` the visible import was grouped into series with; 0 for imports made before series
     /// existed. `SeriesIndexer` indexes imports with an older version again at launch.
     var seriesIndexVersion: Int = 0
-
-    /// Optional because SwiftData batch deletes of groups fail on a non-optional inverse to-many.
-    /// Never read this for display; query groups by `importID` instead.
-    @Relationship(deleteRule: .cascade, inverse: \PlaylistChannelGroup.playlist)
-    var groups: [PlaylistChannelGroup]? = []
 
     init(uuid: UUID, name: String, url: URL, createdOn: Date) {
         self.uuid = uuid
@@ -210,10 +204,6 @@ final class PlaylistChannelGroup: Identifiable {
     /// Series among the listed entries.
     var seriesCount: Int = 0
 
-    var playlist: Playlist?
-
-    /// Attach new groups by assigning `Playlist.groups` once, not by setting `playlist` on each group:
-    /// SwiftData rebuilds the inverse array on every per-object assignment.
     init(uuid: UUID, name: String, sortIndex: Int, channelCount: Int, importID: UUID, playlistID: UUID, kind: ChannelContentKind = .live) {
         self.uuid = uuid
         self.kindRawValue = kind.rawValue

@@ -5,10 +5,17 @@
 //  Runs and caches the recommendations: "For You" (channels, Home) and "For You Tonight" (programmes, Guide).
 //
 //  A request first publishes the built-in ranking (fast, no model), then, when Apple Intelligence is available,
-//  replaces it with the model's picks. Results are cached per scope and taste fingerprint (the most watched
-//  channels, the favorites, a three-hour slot of the day, whether a guide is loaded): Home and the Guide show the
-//  cached list at once and the model only runs again when one of these changes. The model's channel picks are also
-//  kept in the app's defaults, so a relaunch does not run it again.
+//  replaces it with the model's picks. Results are cached per scope and taste fingerprint (the channels that weigh
+//  most, the favorites and the categories watched most, a three-hour slot of the day, whether a guide is loaded): Home
+//  and the Guide show the cached list at once and the model only runs again when one of these changes. The model's
+//  channel picks are also kept in the app's defaults, so a relaunch does not run it again.
+//
+//  The model is a few seconds of work on the device, so it runs only when it is worth it:
+//  - one run at a time, after a short pause (`modelDelay`): switching playlists quickly runs it for the last one only;
+//  - not on its own in Low Power Mode or while the device is hot (the built-in ranking shows; New Suggestions still
+//    asks the model);
+//  - after a failure, not again for the same taste until a backoff has passed (`ModelBackoff`, kept across launches);
+//    a run cut short (the app went to the background, the scope changed) is not a failure.
 //
 
 import Foundation
@@ -46,6 +53,19 @@ final class RecommendationCenter {
     private var channelTasks: [RecommendationScope: Task<Void, Never>] = [:]
     @ObservationIgnored
     private var programmeTasks: [RecommendationScope: Task<Void, Never>] = [:]
+    /// The last model run asked for: one at a time, in order (`runModel`).
+    @ObservationIgnored
+    private var modelTail: Task<Void, Never>?
+    /// The scope Home or the Guide asked for last: a model run waiting for another scope is skipped.
+    @ObservationIgnored
+    private var latestChannelScope: RecommendationScope?
+    @ObservationIgnored
+    private var latestProgrammeScope: RecommendationScope?
+    @ObservationIgnored
+    private var backoff = ModelBackoff(defaultsKey: "intelligence.forYou.failures")
+
+    /// The pause before the model runs, so requests in quick succession run it once.
+    static let modelDelay: Duration = .milliseconds(1_500)
 
     init(container: ModelContainer, epg: EPGStore) {
         self.container = container
@@ -85,6 +105,7 @@ final class RecommendationCenter {
     }
 
     private func runChannels(for scope: RecommendationScope, force: Bool) async {
+        latestChannelScope = scope
         let container = container
         let now = Date.now
         let profile = await Task.detached(priority: .userInitiated) {
@@ -100,8 +121,10 @@ final class RecommendationCenter {
             useModel ? "ai" : "",
             OnDeviceModel.responseLanguageName,
         ].joined(separator: "#")
+        // Whether the model may run for this request (see the top of the file).
+        let mayRunModel = useModel && (force || (!PowerMonitor.shared.isConstrained && !backoff.isBackingOff(fingerprint, now: now)))
 
-        if !force, let cached = channelLists[scope], cached.fingerprint == fingerprint, cached.isPersonalized || !useModel {
+        if !force, let cached = channelLists[scope], cached.fingerprint == fingerprint, cached.isPersonalized || !mayRunModel {
             return
         }
 
@@ -122,8 +145,11 @@ final class RecommendationCenter {
             return
         }
         let builtInList = ChannelList(items: Array(builtIn), isPersonalized: false, fingerprint: fingerprint, createdAt: now)
-        guard useModel, !ranked.isEmpty else {
-            channelLists[scope] = builtInList
+        guard mayRunModel, !ranked.isEmpty else {
+            // A personalized list of the same scope stays while the model may not run (Low Power Mode, a backoff).
+            if !(channelLists[scope]?.isPersonalized ?? false) || force {
+                channelLists[scope] = builtInList
+            }
             return
         }
         // Keep showing a personalized list while the model works on its replacement.
@@ -136,15 +162,41 @@ final class RecommendationCenter {
             personalizingChannels.remove(scope)
         }
         do {
-            let picks = try await Task.detached(priority: .userInitiated) {
-                try await ChannelRecommender.personalize(ranked: ranked, profile: profile, importIDs: importIDs, container: container, now: now)
-            }.value
+            let picks = try await runModel(isCurrent: { [weak self] in force || self?.latestChannelScope == scope }) {
+                try await Task.detached(priority: .userInitiated) {
+                    try await ChannelRecommender.personalize(ranked: ranked, profile: profile, importIDs: importIDs, container: container, now: now)
+                }.value
+            }
             channelLists[scope] = ChannelList(items: picks, isPersonalized: true, fingerprint: fingerprint, createdAt: .now)
             storePicks(picks, fingerprint: fingerprint)
+            backoff.succeeded(fingerprint)
+        } catch is CancellationError {
+            // Skipped or cut short: the built-in list stays, and the next request runs the model.
         } catch {
             Self.logger.error("For You personalization failed: \(String(describing: error), privacy: .public)")
-            channelLists[scope] = builtInList
+            backoff.failed(fingerprint, now: .now)
+            if !(channelLists[scope]?.isPersonalized ?? false) {
+                channelLists[scope] = builtInList
+            }
         }
+    }
+
+    /// Runs the model after `modelDelay`, after any other model run, unless the request is no longer current by then
+    /// (another scope was asked for meanwhile): then it throws `CancellationError`.
+    private func runModel<T: Sendable>(isCurrent: @escaping @MainActor () -> Bool, _ work: @escaping @MainActor () async throws -> T) async throws -> T {
+        let previous = modelTail
+        let run = Task { @MainActor () async throws -> T in
+            await previous?.value
+            try await Task.sleep(for: Self.modelDelay)
+            guard isCurrent() else {
+                throw CancellationError()
+            }
+            return try await work()
+        }
+        modelTail = Task {
+            _ = try? await run.value
+        }
+        return try await run.value
     }
 
     /// Adds what the live candidates show now (one cached guide lookup each).
@@ -186,6 +238,7 @@ final class RecommendationCenter {
             programmeLists[scope] = nil
             return
         }
+        latestProgrammeScope = scope
         let container = container
         let now = Date.now
         let profile = await Task.detached(priority: .userInitiated) {
@@ -199,8 +252,10 @@ final class RecommendationCenter {
             useModel ? "ai" : "",
             "\(epg.revision)",
         ].joined(separator: "#")
+        let backoffKey = "tonight#" + fingerprint
+        let mayRunModel = useModel && (force || (!PowerMonitor.shared.isConstrained && !backoff.isBackingOff(backoffKey, now: now)))
         if !force, let cached = programmeLists[scope], cached.fingerprint == fingerprint,
-           now.timeIntervalSince(cached.createdAt) < Self.programmeLifetime, cached.isPersonalized || !useModel {
+           now.timeIntervalSince(cached.createdAt) < Self.programmeLifetime, cached.isPersonalized || !mayRunModel {
             return
         }
 
@@ -221,7 +276,7 @@ final class RecommendationCenter {
             ProgrammeRecommendation(programme: candidate.programme, channel: candidate.channel, reason: reason)
         }
         let builtInList = ProgrammeList(items: Array(builtIn), isPersonalized: false, fingerprint: fingerprint, createdAt: now)
-        guard useModel, !ranked.isEmpty else {
+        guard mayRunModel, !ranked.isEmpty else {
             programmeLists[scope] = builtInList
             return
         }
@@ -235,12 +290,18 @@ final class RecommendationCenter {
         }
         let search = makeGuideSearch(scope: scope, profile: profile, favoriteKeys: favoriteKeys, now: now)
         do {
-            let picks = try await Task.detached(priority: .userInitiated) {
-                try await ProgrammeRecommender.personalize(ranked: ranked, profile: profile, search: search, now: now)
-            }.value
+            let picks = try await runModel(isCurrent: { [weak self] in force || self?.latestProgrammeScope == scope }) {
+                try await Task.detached(priority: .userInitiated) {
+                    try await ProgrammeRecommender.personalize(ranked: ranked, profile: profile, search: search, now: now)
+                }.value
+            }
             programmeLists[scope] = ProgrammeList(items: picks, isPersonalized: true, fingerprint: fingerprint, createdAt: .now)
+            backoff.succeeded(backoffKey)
+        } catch is CancellationError {
+            // Skipped or cut short: the built-in list stays.
         } catch {
             Self.logger.error("For You Tonight personalization failed: \(String(describing: error), privacy: .public)")
+            backoff.failed(backoffKey, now: .now)
             programmeLists[scope] = builtInList
         }
     }
@@ -317,5 +378,69 @@ final class RecommendationCenter {
         channelLists.removeAll()
         programmeLists.removeAll()
         UserDefaults.fluxo.removeObject(forKey: Self.storedPicksKey)
+        backoff.reset()
+    }
+}
+
+/// When the model failed for a taste, it does not run again for it before 15 minutes, then 30, 1 hour and so on up
+/// to 6 hours. Kept in the defaults (the newest few tastes), so a model that fails at every launch is not asked at
+/// every launch.
+struct ModelBackoff {
+
+    private struct Entry: Codable {
+        var failures: Int
+        var retryAfter: Date
+    }
+
+    static let firstDelay: TimeInterval = 15 * 60
+    static let longestDelay: TimeInterval = 6 * 3_600
+    static let keptEntries = 8
+
+    let defaultsKey: String
+    private var entries: [String: Entry]
+
+    init(defaultsKey: String) {
+        self.defaultsKey = defaultsKey
+        if let data = UserDefaults.fluxo.data(forKey: defaultsKey), let entries = try? JSONDecoder().decode([String: Entry].self, from: data) {
+            self.entries = entries
+        } else {
+            entries = [:]
+        }
+    }
+
+    func isBackingOff(_ key: String, now: Date) -> Bool {
+        entries[key].map { now < $0.retryAfter } ?? false
+    }
+
+    mutating func failed(_ key: String, now: Date) {
+        let failures = (entries[key]?.failures ?? 0) + 1
+        let delay = min(Self.longestDelay, Self.firstDelay * pow(2, Double(failures - 1)))
+        entries[key] = Entry(failures: failures, retryAfter: now.addingTimeInterval(delay))
+        if entries.count > Self.keptEntries {
+            for (oldKey, _) in entries.sorted(by: { $0.value.retryAfter < $1.value.retryAfter }).prefix(entries.count - Self.keptEntries) {
+                entries[oldKey] = nil
+            }
+        }
+        save()
+    }
+
+    mutating func succeeded(_ key: String) {
+        guard entries.removeValue(forKey: key) != nil else {
+            return
+        }
+        save()
+    }
+
+    mutating func reset() {
+        entries.removeAll()
+        save()
+    }
+
+    private func save() {
+        if entries.isEmpty {
+            UserDefaults.fluxo.removeObject(forKey: defaultsKey)
+        } else if let data = try? JSONEncoder().encode(entries) {
+            UserDefaults.fluxo.set(data, forKey: defaultsKey)
+        }
     }
 }

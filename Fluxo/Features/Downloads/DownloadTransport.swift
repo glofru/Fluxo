@@ -510,7 +510,10 @@ final class DownloadTransport: NSObject, @unchecked Sendable {
     }
 
     private func send(_ event: DownloadTransferEvent) {
-        guard onEvent != nil else {
+        // `DownloadCenter` attaches once the library opens: after a background relaunch while it opens, upgrades or
+        // waits for the first unlock, the events that change a record (a file received, a location, an end) wait in
+        // the queue for it, a few per transfer. Progress is only shown, so it is dropped until then.
+        if case .progress = event, onEvent == nil {
             return
         }
         eventContinuation.yield(event)

@@ -95,7 +95,6 @@ enum PreviewSampleData {
         }
         for playlist in [freeview, cinema] {
             let groups = groupsByPlaylist[playlist.uuid] ?? []
-            playlist.groups = groups
             playlist.currentImportID = playlist.uuid == freeviewID ? freeviewImportID : cinemaImportID
             playlist.groupCount = groups.count
             playlist.channelCount = groups.reduce(0) { $0 + $1.channelCount }

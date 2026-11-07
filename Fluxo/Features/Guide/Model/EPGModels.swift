@@ -87,9 +87,13 @@ final class EPGChannel {
 }
 
 /// A `<programme>` of an XMLTV guide, kept only inside the guide window (6 hours back, 7 days ahead).
+///
+/// Indexes: what a channel shows (`importID`, `channelID`, `start`; its `importID` prefix also serves the deletes of an
+/// import, so `importID` has no index of its own: every index costs time on each of the hundreds of thousands of
+/// inserts of a guide), the prune of ended programmes (`stop`) and what is on now (`start`).
 @Model
 final class EPGProgramme {
-    #Index<EPGProgramme>([\.importID, \.channelID, \.start], [\.importID], [\.stop], [\.start])
+    #Index<EPGProgramme>([\.importID, \.channelID, \.start], [\.stop], [\.start])
 
     var sourceID: UUID
     var importID: UUID

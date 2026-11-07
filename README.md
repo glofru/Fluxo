@@ -61,8 +61,9 @@ xcodebuild -project Fluxo.xcodeproj -scheme Fluxo -configuration Debug -destinat
 
 Without `-configuration`, `xcodebuild build` uses the scheme's Run configuration (Debug).
 
-The SwiftData schema is the list in `Fluxo/App/Database/ModelRegistry.swift`; add new `@Model`
-types there. `.swiftlint.yml` configures [SwiftLint](https://github.com/realm/SwiftLint) for
+The SwiftData schema is versioned (`Fluxo/App/Database/FluxoSchema.swift`) and its models are listed in
+`Fluxo/App/Database/ModelRegistry.swift`, as user data or cache; see "Library store" before changing a model.
+`.swiftlint.yml` configures [SwiftLint](https://github.com/realm/SwiftLint) for
 manual runs (`swiftlint lint`); it is not part of the build.
 
 ### Swift
@@ -176,6 +177,62 @@ the app's container), which the script writes, and the LGPL text (`LICENSE`).
   To add a component, add it to the lists at the top of the script, rebuild and run
   `Tools/FFmpeg/check.sh`, which checks the version, the license and the components, and opens
   any URLs passed to it (`Tools/FFmpeg/check.sh https://…` checks HTTPS).
+
+## Library store
+
+The library is two SwiftData stores in one `ModelContainer` (`LibraryStore`, `ModelContainerFactory`), so a
+`ModelContext` reads and writes both without knowing:
+
+| Store | File | Holds | When it cannot be opened |
+|---|---|---|---|
+| Library | `Application Support/default.store` (backed up) | `ModelRegistry.user`: playlists (addresses, credentials), guide sources and matches chosen by hand, favorites, history and progress, series progress, reminders | Never moved, emptied or recreated on its own: the app shows `LibraryRecoveryView` |
+| Cache | `Caches/Fluxo/Cache.store` (never backed up; iOS and tvOS may purge it) | `ModelRegistry.cache`: the channels, categories and series of the playlists, the channels and programmes of the guides | Recreated empty; the next refresh fills it |
+
+- **Versions** (`FluxoSchema.swift`): `FluxoSchemaV1` (1.0.0) is the frozen schema of the first builds, in one store
+  (SwiftData records 1.0.0 for a store written without a versioned schema); `FluxoSchemaV2` (2.0.0) is the current one,
+  and `FluxoMigrationPlan` goes from one to the other (lightweight: a relationship cannot span two stores, so
+  `Playlist.groups` and its inverse went, groups were always deleted by `playlistID`; and the guide's redundant
+  `[importID]` programme index went). A store at a higher version than the build knows was written by a newer build
+  (TestFlight, then the App Store): it is never opened, as an inferred migration back would drop what that build
+  added. A 1.0.0 store whose hashes the plan does not know (a development build before the versioning) opens with an
+  inferred migration, as every build did before. The steps to change a model are at the top of `FluxoSchema.swift`.
+- **The split of a 1.0.0 store**, once, without copying a row: the file is cloned (APFS: instant, no extra space) to
+  become the cache store, with a new store UUID (Core Data loads only one of two stores with the same UUID); each file
+  then drops the other side's rows, and the library file is compacted (`VACUUM`) at the next launch, before anything
+  opens it (SwiftData cannot close a store, and SQLite cannot shrink a file another connection still has open). Each
+  step is noted first in `.default.store.maintenance.json`, so a kill at any point finishes at the next launch. A large
+  library (100,000 channels, 522,000 programmes, 178 MB) splits in 4.7 s on a Mac, so when a split is pending the
+  library opens off the main thread behind "Updating Your Library…" (`LibrarySession.State.upgrading`; intents wait
+  for it), and so does the launch after it, which compacts the library file, and a Try Again that runs the split. The
+  reminder notification delegate is installed before the library opens (`FluxoApp.init`): a notification tapped to
+  launch the app meanwhile waits for the guide to start.
+- **A lost cache** (purged, a device restored from a backup, recreated after an error): at launch, a playlist whose
+  visible import has no rows is imported again once the device is online (`PlaylistImporter.playlistsMissingContent`),
+  and a guide in the same case loses its HTTP validators and content hash and loads with the stale guides
+  (`EPGImporter.resetSourcesMissingContent`). Favorites, history and progress are untouched: they are in the library.
+- **When the library cannot be opened** (`LibraryOpenFailure`, read from the file and its metadata, as SwiftData's own
+  error says nothing): written by a newer version, cannot be read right now (locked before the first unlock, an I/O
+  error; tried again by itself when the device unlocks), not enough space to migrate it, damaged, or another reason.
+  Nothing of the app runs then (no sync, import, download or guide refresh that could act on an empty library); every
+  window shows why, with Try Again, Export a Copy (a ZIP of the store files, iPhone, iPad and Mac) and Start with an
+  Empty Library (asks first; the store goes to `Application Support/Library Backups/`, the newest two are kept, never
+  deleted on its own). iCloud sync then sees a lost library and offers to restore it (see "Data safety"). App Intents
+  run meanwhile say that the library cannot be opened. There is no `fatalError` left on these paths.
+- **Persistent history**: SwiftData records every insert and delete in the stores' history and never removes it: a
+  guide refresh of 260,000 programmes left about 35 MB of it, twice a day, without bound. Fluxo reads no history, and
+  SwiftData only reads what other contexts of the same process saved meanwhile, so the history of earlier launches is
+  deleted once the library is open, off the main thread (`StoreHistory.pruneEarlierLaunches`: 150 ms on a Mac after a
+  guide of 262,000 programmes), and what is older than an hour after each playlist import and guide refresh.
+- **Checking it**: `Tools/LibraryCheck/run.sh` builds the previous version's sources (`OLD_REV`, `12dd923` by default)
+  to write a library as that version did (a playlist and a guide through their importers, favorites, history with resume
+  positions, a watched series, a guide match chosen by hand, a reminder, a guide the user added), then opens it with
+  this version: every attribute of every user row unchanged, the cache kept, each file purged, both at 2.0.0, no
+  history left, the file compacted at the next launch (a new process); and a second launch, a lost cache, a damaged
+  cache, a damaged library (reported, untouched, exported, Start Over keeps it), a newer library (reported, untouched),
+  a split interrupted by a kill, a new installation. `LIVE=100000 GUIDE_CHANNELS=1500 DAYS=7` times a large one. In the
+  simulator, the debug libraries on disk (`-FluxoDebugStore temp|scratch`) go through the same code: install the
+  previous version's build, seed a scratch library, install this build over it and run `library-log` (see
+  Tools/Simulator/README.md). `-FluxoDebugLibraryFailure <kind>` shows the recovery screen.
 
 ## Playlist import
 
@@ -366,8 +423,8 @@ user's other devices as soon as it finds them ("Your Playlists from iCloud").
     each, and the series), a swipe or Edit in Recently Watched, episodes marked unwatched or watched (when that leaves
     no progress), and the app's own trim of the history to its 200 newest items. Their removals are published at once,
     however many there are, and do not count towards a mass removal; each entry counts for a day too, is withdrawn
-    when the item is watched again first, and goes in the pass that folds it. One that is merely gone (the store recreated by `ModelContainerFactory` after it
-    could not be opened, a migration that lost rows, a purge) stays in iCloud and on the other devices and waits for
+    when the item is watched again first, and goes in the pass that folds it. One that is merely gone (a library started over after it
+    could not be opened, see "Library store", a migration that lost rows, a purge) stays in iCloud and on the other devices and waits for
     the user (`SyncLedger.awaitingRestore`); its favorites and history are never published as removals. The same
     playlist added again by hand takes its old record back (no duplicate), and its favorites return.
   - **Mass removals are held**: when favorites, or the watch history, of playlists still on the device vanish in
@@ -567,6 +624,31 @@ Movies and episodes (never live channels) download to watch without a network (`
 - **Storage**: files in `Application Support/Downloads/<id>/` (excluded from device backups: they can be downloaded
   again), the manifest in `Downloads/downloads.json` (not SwiftData: it describes files and must survive a reset of
   the library store). Downloads are deleted with their playlist.
+- **The manifest outlives builds** (`DownloadManifest`): records are decoded one by one and each field leniently
+  (`DownloadRecord.init(from:)`): a field an earlier build did not write takes its default, a value of a later build
+  (a state, a method, a failure reason) is read as failed, to probe again, an unexpected stop; only a record without
+  its id or link is left out of the list shown, and every save writes it back with all its fields, so a later build
+  still reads it. A file that is not a list at all is kept next to it (`downloads.unreadable-<date>.json`, the newest
+  three) before the next save replaces it, and a file that cannot be opened (locked, an I/O error) is never replaced.
+  The folders whose owner is unknown (every download folder found while the file was not a list, the folders of
+  records this build cannot read) are listed in `downloads.kept-folders.json` before any save, so they stay protected
+  at later launches, after the list that named them is gone; an id leaves it once its folder is gone or a readable
+  record owns it, which only a listing of the folder tells: while the folder cannot be listed, the kept list only
+  grows, and a list lost meanwhile is noted in it (`"*"`: every folder found at the next listing is kept). At launch,
+  folders of downloads no record owns (a crash between adding a download and saving the list) are deleted, never a
+  kept one, and only when the folder could be listed and every record was read or told its id. A transfer that ends
+  while no one listens (a background relaunch while the library opens, upgrades or waits for the first unlock) keeps
+  its file: the transport queues the events that change a record until `DownloadCenter` attaches, and at launch a
+  download whose file already arrived is kept instead of downloaded again. Transfers of records this build cannot
+  read are left running for the build that owns them. `Tools/LibraryCheck` checks it on fixtures, across saves and
+  relaunches, also with a folder that cannot be listed.
+- **Failures** (`DownloadFailure`): the Library lists failed downloads in their own section, Couldn't Download (with
+  Retry All), each with the whole reason and a Retry button when retrying can help. The reasons are sentences, never a
+  bare system error: an unknown URL error ("unknown error", the most common one from AVFoundation) is "The download
+  stopped unexpectedly", a broken response, a file that cannot be written and a full disk have their own, and the
+  "unknown error" texts earlier builds stored read as the same sentence, as does Foundation's text for an error without
+  a description ("The operation couldn’t be completed. (… error -1.)"), recognized in any language by its domain and
+  code.
 - **Simulator**: background HLS downloads need a signed app (an unsigned build fails with "does not have write access
   to destination directory"); `Tools/Simulator/build.sh` builds unsigned, so build the simulator app with
   `CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual` to try them. See the download routes in `Tools/Simulator/README.md`.
@@ -734,6 +816,12 @@ CHANNELS=100000 Tools/HomeQueriesCheck/run.sh
   deleted from the player, the Home toolbar or the macOS sidebar. The conversion writes a
   hidden temporary file that is renamed when complete. Recordings interrupted
   by a crash are converted at the next launch.
+- **Recording limits** (`RecordingLimits`): a recording does not start with less than 1 GB free, stops when the free
+  space falls under 512 MB (checked every 10 s of recording; the engine itself stops only on a write error, once the
+  disk is full), and stops at the length set in Settings › Recordings › Stop Recording After (4 hours unless changed;
+  30 minutes to 6 hours, or No Limit), keeping what it recorded, with a message in the player. The Recordings folder is
+  excluded from device backups (an hour of HD is several GB of the user's iCloud storage); Apple TV keeps them in
+  Caches anyway.
 - **Player screen (iOS)** (`PlayerPresentation`): a layer above the tabs rather than a full-screen
   cover. It grows out of the card or mini player that opened it, follows the finger 1:1 when dragged
   down (the app shows dimmed behind it; dragging up rubber-bands), and closes when released past a
@@ -1509,6 +1597,11 @@ channels that have a guide, programme details, programme search and reminders.
   stored (a failed refresh keeps the previous guide, and so does a file cut short when the previous guide had
   more programmes). When the stored guide was read for the same playlist channels, the request is conditional
   (`If-None-Match` / `If-Modified-Since`): a 304 or an identical file (SHA-256) is not read again.
+- **Import speed** (`Tools/GuideCheck/run.sh`, 1,500 channels x 8 days, half of them wanted): 261,750 programmes
+  import in about 19 s on a Mac (the 161 s once measured came from an overloaded host; parsing alone is about 3 s,
+  the rest is SwiftData inserting). The redundant `[importID]` index was dropped (about 1 %). Batches of 5,000 would
+  be 6 % faster but take 18 MB more at the peak (10,000: no faster, 60 MB more), so they stay at 2,000 for Apple TV
+  and the background refresh. `BATCH=<n>` compares sizes. Each import's history is pruned (see "Library store").
 - **Refresh policy**: at launch and every hour for guides older than 12 hours, after a playlist import (new
   guides of its header load, and guides already loaded for it are read again if its channels changed), from Settings / the Guide / File › Refresh TV Guide (⌥⌘R), and from a background app
   refresh task on iOS (`BGTaskSchedulerPermittedIdentifiers` and the `fetch` background mode in Info.plist).
@@ -1578,7 +1671,12 @@ active). Settings › Apple Intelligence has a switch for the features and expla
   index) to add candidates, at most twice. Picks are numbers checked against the candidates, so nothing can be
   invented. Results are cached per scope and taste fingerprint (most watched channels, favorites, a three-hour
   slot of the day; a SHA-256 digest, the same in every launch): the model runs again only when one of these
-  changes, and its picks survive a relaunch.
+  changes, and its picks survive a relaunch. The taste part is the set of the eight channels that weigh most, the
+  favorites and the three categories watched most, so watching the same channels in another order changes nothing.
+  The model runs one request at a time, after a 1.5 s pause (switching playlists quickly runs it once, for the last
+  one), not on its own in Low Power Mode or while the device is hot (the built-in ranking shows; New Suggestions still
+  asks it), and after a failure not again for the same taste before 15 minutes, then 30, up to 6 hours
+  (`ModelBackoff`, kept across launches). A run cut short is not a failure.
 - **For You Tonight** (Guide; "For You Today" before the evening): programmes on now and in the next six hours on the viewer's channels and groups,
   ranked by channel affinity, timing and recurring categories, then picked and explained by the model
   (`ProgrammePicks`, with a `searchGuide` tool). The strip collapses to one line.
@@ -2055,6 +2153,13 @@ where it is shown and what its placeholders are; add one (`comment:`) to new str
 obvious from the English alone.
 
 ## Memory
+
+- **Playback sessions** (checked with the harness: 2 and then 12 play-and-close cycles in one launch, `heap`): no
+  `AVPlayerItem` or app object outlives its session. One `FigTimebase` (384 bytes) does: the default proxy timebase of
+  each `AVPlayerItem`, which stays registered in `NotificationCenter` by the system frameworks after the item is gone
+  (`leaks --traceTree`: held only by `_CFXNotificationRegistrarAddObject`). Recreating the periodic time observer per
+  session did not release it, and the registrant is inside AVFoundation, not the app: about 38 KB after 100 sessions,
+  left as it is.
 
 - **Logos and posters** (`Fluxo/App/Images`): every image goes through the shared
   `LogoImageLoader`, shown by the `LogoImage` view. Images are decoded off the main

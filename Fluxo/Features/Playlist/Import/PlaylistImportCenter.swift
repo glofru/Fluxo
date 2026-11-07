@@ -7,6 +7,7 @@
 
 import Foundation
 import Observation
+import os
 import SwiftData
 
 /// Main-actor front end for playlist imports: starts, refreshes, cancels and deletes playlists,
@@ -40,15 +41,30 @@ final class PlaylistImportCenter {
         let task: Task<PlaylistImportSummary, any Error>
     }
 
+    private static let logger = Logger(subsystem: "dev.watermelon.Fluxo", category: "PlaylistImportCenter")
+
     private let importer: PlaylistImporter
     @ObservationIgnored
+    private let container: ModelContainer
+    @ObservationIgnored
     private var running: [UUID: RunningImport] = [:]
+    /// Playlists to import again once the device is online (`reimportWhenOnline`).
+    @ObservationIgnored
+    private var pendingReimports: Set<UUID> = []
+    @ObservationIgnored
+    private var networkObserver: UUID?
 
     init(container: ModelContainer) {
         let importer = PlaylistImporter(container: container)
         self.importer = importer
+        self.container = container
         Task.detached(priority: .utility) { [weak self] in
             try? await importer.purgeOrphanedContent()
+            // A cache store that was recreated: the playlists are imported again (their favorites and history are
+            // in the library store and stay).
+            if let missing = try? await importer.playlistsMissingContent(), !missing.isEmpty {
+                await self?.reimportWhenOnline(missing)
+            }
             // Libraries imported before series existed get them without a refresh.
             let indexed = await importer.indexSeriesIfNeeded()
             if !indexed.isEmpty {
@@ -57,6 +73,37 @@ final class PlaylistImportCenter {
                     await ChannelSearchIndex.shared.removeIndex(for: importID)
                 }
                 await self?.seriesWereIndexed()
+            }
+        }
+    }
+
+    /// Imports the content of playlists the cache store lost, once the device is online (offline an import can only
+    /// fail, and the playlists would show an error for content that merely needs a download).
+    private func reimportWhenOnline(_ playlistIDs: [UUID]) {
+        guard NetworkMonitor.shared.isOnline else {
+            pendingReimports.formUnion(playlistIDs)
+            guard networkObserver == nil else {
+                return
+            }
+            networkObserver = NetworkMonitor.shared.addObserver { [weak self] online in
+                guard online, let self, let token = self.networkObserver else {
+                    return
+                }
+                NetworkMonitor.shared.removeObserver(token)
+                self.networkObserver = nil
+                let pending = Array(self.pendingReimports)
+                self.pendingReimports.removeAll()
+                self.reimportWhenOnline(pending)
+            }
+            return
+        }
+        let context = ModelContext(container)
+        for uuid in playlistIDs {
+            var descriptor = FetchDescriptor<Playlist>(predicate: #Predicate { $0.uuid == uuid })
+            descriptor.fetchLimit = 1
+            if let playlist = try? context.fetch(descriptor).first {
+                Self.logger.notice("Importing a playlist again: its content was not in the cache")
+                refresh(playlist)
             }
         }
     }

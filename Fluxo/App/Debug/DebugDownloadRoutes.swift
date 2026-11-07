@@ -113,7 +113,7 @@ enum DebugDownloadRoutes {
                 throw DebugRouteError.invalidArgument("offline", argument)
             }
         },
-        DebugRoute("settings-section:<downloads>", "Settings, scrolled to a section (iOS).") { context, argument in
+        DebugRoute("settings-section:<downloads|recordings>", "Settings, scrolled to a section (iOS).") { context, argument in
             context.navigation.tab = .settings
             try await Task.sleep(for: .milliseconds(600))
             NotificationCenter.default.post(name: .fluxoDebugSettingsSection, object: argument.lowercased())

@@ -80,8 +80,8 @@ enum PlatformFeatures {
 /// Where the app keeps the files the user makes (recordings).
 enum PlatformStorage {
 
-    /// Documents on iPhone, iPad and Mac (backed up, never purged; not shown in the Files app: recordings play only in
-    /// Fluxo, `UIFileSharingEnabled` is off). Apple TV has no Documents folder
+    /// Documents on iPhone, iPad and Mac (never purged; out of the backups, `RecordingStore`; not shown in the Files
+    /// app: recordings play only in Fluxo, `UIFileSharingEnabled` is off). Apple TV has no Documents folder
     /// for apps: Caches there, which the system may empty when it runs out of space (tvOS has no other place for large
     /// files; see `PlatformFeatures.offlineDownloads`).
     static var userFilesDirectory: URL {

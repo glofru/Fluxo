@@ -112,17 +112,28 @@ struct TasteProfile: Sendable {
         return weight / top
     }
 
-    /// Identifies the taste for caching: the most recently watched channels (in order) and the favorites.
+    /// Identifies the taste for caching: the channels that weigh most (as a set: watching them again in another order
+    /// changes nothing), the favorites and the categories watched most. A model run is worth it only when one of these
+    /// changes, not after every channel watched once more.
     ///
     /// The value is persisted with the stored picks, so it must be the same in every process: a SHA-256 digest,
     /// never `Hasher` or `hashValue` (both are seeded randomly per launch).
     var fingerprint: String {
-        let watched = history.prefix(12).compactMap(\.item.bookmarkKey)
+        let heaviest = channelWeights
+            .sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }
+            .prefix(Self.fingerprintChannels)
+            .map(\.key)
+            .sorted()
         let favorite = favorites.compactMap(\.item.bookmarkKey).sorted()
+        let topGroups = groups.prefix(Self.fingerprintGroups).map { "\($0.playlistID.uuidString)|\($0.groupName)" }.sorted()
         // A newline cannot appear in a bookmark key (playlist UUID and stream URL), so it separates them safely.
-        let text = watched.joined(separator: "\n") + "\n--\n" + favorite.joined(separator: "\n")
+        let text = heaviest.joined(separator: "\n") + "\n--\n" + favorite.joined(separator: "\n") + "\n--\n" + topGroups.joined(separator: "\n")
         return Self.stableDigest(text)
     }
+
+    /// The channels and categories `fingerprint` reads.
+    static let fingerprintChannels = 8
+    static let fingerprintGroups = 3
 
     /// A short hex digest of `text` that is identical across launches and devices.
     static func stableDigest(_ text: String) -> String {

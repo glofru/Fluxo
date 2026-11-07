@@ -27,11 +27,23 @@ final class SystemReminderNotifications: ReminderDelivery {
 
     let persistsAcrossLaunches = true
 
-    private let delegate = ReminderNotificationDelegate()
+    /// The app's one notification delegate, installed before the library opens (`installEarly`).
+    private var delegate: ReminderNotificationDelegate {
+        .shared
+    }
 
     func install() {
+        Self.installEarly()
+    }
+
+    /// Installs the notification delegate and the Watch action, once. A response that arrives before `onOpen` is
+    /// set (a notification that launched the app while the library updates) waits in the delegate.
+    static func installEarly() {
         let center = UNUserNotificationCenter.current()
-        center.delegate = delegate
+        guard center.delegate !== ReminderNotificationDelegate.shared else {
+            return
+        }
+        center.delegate = ReminderNotificationDelegate.shared
         let watch = UNNotificationAction(identifier: ReminderCenter.watchActionIdentifier, title: String(localized: "Watch"), options: [.foreground])
         center.setNotificationCategories([UNNotificationCategory(identifier: ReminderCenter.categoryIdentifier, actions: [watch], intentIdentifiers: [])])
     }
@@ -82,12 +94,15 @@ final class SystemReminderNotifications: ReminderDelivery {
 @MainActor
 final class ReminderNotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
 
+    /// The one delegate of the app: `UNUserNotificationCenter` keeps only a weak reference to it.
+    static let shared = ReminderNotificationDelegate()
+
     /// Set at launch (`ReminderCenter.start()`, from the app initializer, so a cold launch from a notification
     /// is handled too); called with the reminder the viewer opened.
     var onOpen: ((OpenedReminder) -> Void)?
 
-    /// Responses that arrived before `onOpen` was set, handed over when it is (none in practice: it is set before
-    /// the app finishes launching, and the system delivers the response after that).
+    /// Responses that arrived before `onOpen` was set, handed over when it is: at the launch that updates the
+    /// library, `ReminderCenter` starts seconds after the system delivered the response that launched the app.
     private var pendingOpens: [OpenedReminder] = []
 
     private nonisolated static let reminderKeyField = "reminderKey"

@@ -57,6 +57,7 @@ final class RecordingStore {
     init(directory: URL? = nil) {
         self.directory = directory ?? Self.defaultDirectory
         try? FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true)
+        Self.excludeFromBackups(self.directory)
         reload()
         if !Self.didRecoverInterruptedRecordings, AppInstanceLock.isPrimaryInstance {
             // Only once per process, at launch, before any recording of this process starts, and
@@ -75,6 +76,16 @@ final class RecordingStore {
         }
         #endif
         return PlatformStorage.userFilesDirectory.appendingPathComponent(folderName, isDirectory: true)
+    }
+
+    /// Recordings stay out of the device's backups (iCloud, the Mac's): an hour of HD video is several GB, which would
+    /// fill the user's iCloud storage, and what they recorded stays watchable in Fluxo on this device. Set on the
+    /// folder, so it covers every recording in it.
+    private static func excludeFromBackups(_ directory: URL) {
+        var url = directory
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? url.setResourceValues(values)
     }
 
     /// Returns a new, unique file URL for a recording of `channelName`. The name is language-independent

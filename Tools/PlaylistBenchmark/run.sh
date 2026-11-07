@@ -35,6 +35,7 @@ done
     "$ROOT/Fluxo/Features/Library/ChannelBookmark.swift" \
     "$ROOT/Fluxo/Features/Playlist/Import/M3UParser.swift" \
     "$ROOT/Fluxo/Features/Playlist/Import/PlaylistImporter.swift" \
+    "$ROOT/Fluxo/App/Database/StoreHistory.swift" \
     "$ROOT/Fluxo/App/Download/DownloadManager.swift" \
     "$ROOT/Fluxo/Features/Library/ChannelLibrary.swift" \
     "$ROOT/Fluxo/App/Sync/SyncDeletionJournal.swift" \

@@ -77,7 +77,6 @@ enum DownloadGroup: Identifiable {
 final class DownloadCenter {
 
     nonisolated static let resumeDataFileName = "resume.data"
-    nonisolated static let manifestFileName = "downloads.json"
     /// The automatic retries of a transfer after network failures.
     static let maximumAutomaticRetries = 3
 
@@ -127,6 +126,9 @@ final class DownloadCenter {
     /// The transfers that survived a relaunch were matched with their records: the queue may start transfers.
     @ObservationIgnored private var isReady = false
     @ObservationIgnored private var saveTask: Task<Void, Never>?
+    /// How the manifest read at launch went: the records this build cannot read (written back by each save) and the
+    /// folders kept for them (the orphan sweep).
+    @ObservationIgnored private var manifestRead = DownloadManifest.ReadResult()
     @ObservationIgnored private var retryTask: Task<Void, Never>?
     /// Downloads queued again after a network error: the queue starts them no earlier than this (5, 20, 80 s).
     @ObservationIgnored private var retryNotBefore: [UUID: Date] = [:]
@@ -146,7 +148,9 @@ final class DownloadCenter {
         self.directory = directory ?? Self.defaultDirectory
         self.transport = transport ?? .shared
         Self.prepareDirectory(self.directory)
-        records = Self.readManifest(in: self.directory)
+        let manifest = DownloadManifest.read(in: self.directory)
+        manifestRead = manifest
+        records = manifest.records
     }
 
     /// Restores the transfers that ran before the app was relaunched, checks the files and starts the queue. Once.
@@ -184,6 +188,7 @@ final class DownloadCenter {
         Task {
             let restored = needsTransport ? await transport.restoreTasks() : [:]
             reconcile(restored: restored)
+            sweepOrphanedFolders()
             isReady = true
             if DownloadPreferences.deletesWatched {
                 deleteWatched(onlyIfIdle: true)
@@ -377,6 +382,11 @@ final class DownloadCenter {
         records.count(where: { $0.status == .paused })
     }
 
+    /// Failed downloads that Retry can start again (not the ones whose format can never play).
+    var retryableFailedCount: Int {
+        records.count(where: { $0.status == .failed && !$0.failureIsPermanent })
+    }
+
     var watchedCount: Int {
         records.count(where: { $0.status == .completed && $0.watchedOn != nil })
     }
@@ -491,6 +501,21 @@ final class DownloadCenter {
             }
         }
         pump()
+    }
+
+    #if DEBUG
+    /// Debug harness (`downloads-fake-failures`): lists a record as it is, without a transfer.
+    func debugInsert(_ record: DownloadRecord) {
+        records.append(record)
+        saveSoon()
+    }
+    #endif
+
+    /// Retry for every failed download that can be retried.
+    func retryAllFailed() {
+        for record in records where record.status == .failed && !record.failureIsPermanent {
+            retry(record.id)
+        }
     }
 
     func deleteAll() {
@@ -1120,13 +1145,18 @@ final class DownloadCenter {
 
     /// Matches the records with the transfers that survived the relaunch.
     private func reconcile(restored: [UUID: DownloadTransport.SessionKind]) {
+        var received: [UUID] = []
         for record in records where !starting.contains(record.id) {
             let id = record.id
             switch record.status {
             case .preparing:
                 update(id) { $0.status = .queued }
             case .downloading:
-                if restored[id] == nil {
+                if restored[id] == nil, hasReceivedFile(record) {
+                    // The transfer ended while no one listened (the app was not running, or the library was not
+                    // open yet): its file is already in the download's folder, so it is kept, not downloaded again.
+                    received.append(id)
+                } else if restored[id] == nil {
                     // The transfer was lost (the app was force-quit): it starts again, from its resume data or
                     // its partial HLS package.
                     update(id) { $0.status = .queued }
@@ -1146,10 +1176,24 @@ final class DownloadCenter {
                 }
             }
         }
-        // Transfers of downloads that no longer exist.
-        for id in restored.keys where record(id: id) == nil {
+        // Transfers of downloads that no longer exist. Not those of records this build cannot read (a newer build's,
+        // written back by every save): that build still owns them.
+        for id in restored.keys where record(id: id) == nil && !manifestRead.unreadableIDs.contains(id) {
             transport.cancel(id: id)
         }
+        for id in received {
+            Self.logger.info("Keeping a download whose transfer finished while the app was not listening")
+            transferDidFinish(id, failure: nil)
+        }
+    }
+
+    /// The file of a file transfer is in the download's folder. The transport moves it there only once the whole
+    /// response arrived with a success status (a partial transfer leaves resume data, never the file).
+    private func hasReceivedFile(_ record: DownloadRecord) -> Bool {
+        guard record.method == .file || record.method == .remux, let name = record.transferFileName else {
+            return false
+        }
+        return FileManager.default.fileExists(atPath: folder(of: record.id).appendingPathComponent(name).path)
     }
 
     /// Completed downloads whose media is gone (the system purged an HLS package, a file was removed) are marked
@@ -1372,28 +1416,26 @@ final class DownloadCenter {
                 snapshot[index].bytesWritten = progress.bytesWritten
             }
         }
-        let url = directory.appendingPathComponent(Self.manifestFileName)
         do {
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            try encoder.encode(snapshot).write(to: url, options: .atomic)
+            try DownloadManifest.write(snapshot, keeping: &manifestRead, in: directory)
         } catch {
             Self.logger.error("Could not save the downloads: \(error.localizedDescription, privacy: .public)")
         }
     }
 
-    private static func readManifest(in directory: URL) -> [DownloadRecord] {
-        let url = directory.appendingPathComponent(manifestFileName)
-        guard let data = try? Data(contentsOf: url) else {
-            return []
+    /// Deletes the folders of downloads no record owns (a crash between adding a download and saving the list, a
+    /// download removed by an earlier build). Once, at launch, before the queue starts anything.
+    private func sweepOrphanedFolders() {
+        let orphans = DownloadManifest.orphanedFolders(in: directory, read: manifestRead, records: records)
+        for folder in orphans {
+            do {
+                try FileManager.default.removeItem(at: folder)
+            } catch {
+                Self.logger.error("Could not delete an orphaned download folder: \(error.localizedDescription, privacy: .public)")
+            }
         }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        do {
-            return try decoder.decode([DownloadRecord].self, from: data)
-        } catch {
-            logger.error("Could not read the downloads: \(error.localizedDescription, privacy: .public)")
-            return []
+        if !orphans.isEmpty {
+            Self.logger.notice("Deleted \(orphans.count, privacy: .public) orphaned download folders")
         }
     }
 

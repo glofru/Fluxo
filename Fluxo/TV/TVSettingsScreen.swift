@@ -26,6 +26,7 @@ struct TVSettingsScreen: View {
     @AppStorage(PlaylistSelection.storageKey) private var selectionRawValue = ""
     @AppStorage(PlayerPreferences.timeShiftMinutesKey) private var timeShiftMinutes = PlayerPreferences.defaultTimeShiftMinutes
     @AppStorage(ReminderCenter.leadMinutesKey) private var leadMinutes = ReminderCenter.defaultLeadMinutes
+    @AppStorage(RecordingLimits.maximumMinutesKey) private var maximumRecordingMinutes = RecordingLimits.defaultMaximumMinutes
     @Environment(PlaylistActions.self) private var actions
     @Environment(PlaylistImportCenter.self) private var importCenter
     @Environment(EPGStore.self) private var epg
@@ -164,6 +165,13 @@ struct TVSettingsScreen: View {
                         .monospacedDigit()
                 } label: {
                     Label(String(localized: "Recordings"), systemImage: "record.circle")
+                }
+                Picker(selection: $maximumRecordingMinutes) {
+                    ForEach(RecordingLimits.maximumMinutesChoices, id: \.self) { minutes in
+                        Text(RecordingLimits.title(minutes: minutes)).tag(minutes)
+                    }
+                } label: {
+                    Label(String(localized: "Stop Recording After", comment: "Settings, Recordings: the longest a recording runs before it stops on its own."), systemImage: "timer")
                 }
                 Button(role: .destructive) {
                     confirmation = .deleteRecordings

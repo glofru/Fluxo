@@ -36,7 +36,8 @@ struct LibraryDownloadsSections: View {
     }
 }
 
-/// The sections of a list of downloads: "Downloading" (the transfers, failed ones included) and "Downloads".
+/// The sections of a list of downloads: "Downloading" (the transfers, queued and paused ones), "Couldn't Download"
+/// (the failed ones, each with its reason; Retry All) and "Downloads".
 private struct DownloadsSections: View {
     let downloads: DownloadCenter
     /// Downloaded groups shown before See All (nil: all of them).
@@ -44,7 +45,8 @@ private struct DownloadsSections: View {
     @Binding var prompts: DownloadPrompts
 
     var body: some View {
-        let pending = downloads.records.filter { $0.status.isPending }
+        let pending = downloads.records.filter { $0.status.isPending && $0.status != .failed }
+        let failed = downloads.records.filter { $0.status == .failed }
         let groups = downloads.completedGroups()
         let shown = limit.map { Array(groups.prefix($0)) } ?? groups
 
@@ -66,6 +68,31 @@ private struct DownloadsSections: View {
                     } else if downloads.pausedCount > 0 {
                         Button(String(localized: "Resume All", comment: "Resumes every paused download.")) {
                             downloads.resumeAll()
+                        }
+                        .font(.footnote.weight(.semibold))
+                        .textCase(nil)
+                    }
+                }
+            } footer: {
+                if groups.isEmpty && failed.isEmpty {
+                    DownloadsFooter(downloads: downloads)
+                }
+            }
+        }
+
+        if !failed.isEmpty {
+            Section {
+                ForEach(failed) { record in
+                    DownloadRow(record: record, prompts: $prompts)
+                }
+            } header: {
+                // At the accessibility sizes Retry All goes under the header, which keeps the width.
+                AdaptiveStack(spacing: 4) {
+                    Text("Couldn't Download", comment: "Header of the downloads that stopped with an error (each row says why).")
+                    Spacer(minLength: 0)
+                    if downloads.retryableFailedCount > 1 {
+                        Button(String(localized: "Retry All", comment: "Starts every failed download again.")) {
+                            downloads.retryAllFailed()
                         }
                         .font(.footnote.weight(.semibold))
                         .textCase(nil)
@@ -109,7 +136,7 @@ struct DownloadsFooter: View {
     var body: some View {
         Text(TextParts.line([
             downloads.completedCount == 0 ? nil : String(localized: "\(downloads.completedCount) downloads", comment: "How many movies and episodes are downloaded, followed by their size (the footer of the downloads list, also with the free space, and Settings)."),
-            DownloadText.bytes(downloads.totalBytes),
+            downloads.totalBytes > 0 ? DownloadText.bytes(downloads.totalBytes) : nil,
             downloads.availableBytes.map { String(localized: "\(DownloadText.bytes($0)) free", comment: "Free space on the device, in the downloads footer; the placeholder is a size such as 41 GB.") },
         ]))
     }
@@ -270,11 +297,25 @@ struct DownloadRow: View {
         record.status == .completed && !record.isMissing
     }
 
+    /// The poster grows with the text up to 80 points, so at the largest sizes the title keeps the room it needs.
+    private var posterWidth: CGFloat {
+        min(artworkWidth, 80)
+    }
+
+    /// A failed download has Retry next to its menu, so less room: its title may take two lines.
+    private var titleLineLimit: Int {
+        if dynamicTypeSize.prefersStackedLayout {
+            return 4
+        }
+        return record.status == .failed && !record.failureIsPermanent ? 2 : 1
+    }
+
     var body: some View {
         if let downloads {
             let item = downloads.playableItem(for: record)
             let progress = record.status.isPending ? downloads.progress(for: record) : nil
-            HStack(spacing: 12) {
+            // At the accessibility sizes Retry and the menu go under the text, which keeps the row's width.
+            AdaptiveStack(spacing: 12) {
                 Button {
                     if isPlayable {
                         playChannel(item)
@@ -288,25 +329,43 @@ struct DownloadRow: View {
                 .accessibilityHint(isPlayable ? Text("Plays the download", comment: "VoiceOver hint of a downloaded movie or episode.") : Text(verbatim: ""))
                 .accessibilityAddTraits(isPlayable ? .isButton : [])
 
-                Menu {
-                    menuItems(item: item, downloads: downloads)
-                } label: {
-                    Group {
-                        if isPlayable {
-                            // Downloaded: the row plays; this is only the menu of its actions.
-                            Image(systemName: "ellipsis.circle")
-                                .font(.system(size: iconSize * 0.85))
-                                .foregroundStyle(Theme.secondaryText)
-                        } else {
-                            DownloadStateIcon(record: record, progress: progress, size: iconSize)
+                HStack(spacing: 12) {
+                    if record.status == .failed && !record.failureIsPermanent {
+                        // Retry in sight, not only in the menu and the swipe actions.
+                        Button {
+                            downloads.retry(record.id)
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: iconSize * 0.7, weight: .semibold))
+                                .frame(width: iconSize + 14, height: iconSize + 14)
+                                .contentShape(.rect)
                         }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.tint)
+                        .accessibilityLabel(Text(DownloadText.retry))
+                        .help(DownloadText.retry)
                     }
-                    .frame(width: iconSize + 14, height: iconSize + 14)
-                    .contentShape(.rect)
+
+                    Menu {
+                        menuItems(item: item, downloads: downloads)
+                    } label: {
+                        Group {
+                            if isPlayable {
+                                // Downloaded: the row plays; this is only the menu of its actions.
+                                Image(systemName: "ellipsis.circle")
+                                    .font(.system(size: iconSize * 0.85))
+                                    .foregroundStyle(Theme.secondaryText)
+                            } else {
+                                DownloadStateIcon(record: record, progress: progress, size: iconSize)
+                            }
+                        }
+                        .frame(width: iconSize + 14, height: iconSize + 14)
+                        .contentShape(.rect)
+                    }
+                    .menuIndicator(.hidden)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text(String(localized: "Download Actions", comment: "VoiceOver label of the menu of a download (pause, resume, delete).")))
                 }
-                .menuIndicator(.hidden)
-                .buttonStyle(.plain)
-                .accessibilityLabel(Text(String(localized: "Download Actions", comment: "VoiceOver label of the menu of a download (pause, resume, delete).")))
             }
             .contentShape(.rect)
             .rowSwipeActions(edge: .trailing) {
@@ -368,10 +427,11 @@ struct DownloadRow: View {
         }
     }
 
+    /// At the accessibility sizes the poster goes above the text, which keeps the whole width of the row.
     private func rowContent(item: ChannelItem, downloads: DownloadCenter, progress: DownloadProgress?) -> some View {
-        HStack(alignment: dynamicTypeSize.prefersStackedLayout ? .top : .center, spacing: 12) {
-            ChannelArtwork(logo: item.logo, name: record.title, kind: record.item.kind == .live ? .movie : record.item.kind, size: CGSize(width: artworkWidth, height: artworkWidth * 1.5))
-                .frame(width: artworkWidth, height: artworkWidth * 1.5)
+        AdaptiveStack(spacing: dynamicTypeSize.prefersStackedLayout ? 8 : 12) {
+            ChannelArtwork(logo: item.logo, name: record.title, kind: record.item.kind == .live ? .movie : record.item.kind, size: CGSize(width: posterWidth, height: posterWidth * 1.5))
+                .frame(width: posterWidth, height: posterWidth * 1.5)
                 .background(Color.artworkPlaceholder.opacity(0.4))
                 .clipShape(.rect(cornerRadius: 6, style: .continuous))
                 .overlay {
@@ -384,13 +444,13 @@ struct DownloadRow: View {
                 if showsSeriesTitle || record.item.series == nil {
                     Text(record.title)
                         .font(.headline)
-                        .lineLimit(dynamicTypeSize.prefersStackedLayout ? 4 : 1)
+                        .lineLimit(titleLineLimit)
                 }
                 if let episode = record.episodeLine {
                     Text(episode)
                         .font(showsSeriesTitle ? .subheadline : .headline)
                         .foregroundStyle(showsSeriesTitle ? Theme.secondaryText : Color.primary)
-                        .lineLimit(dynamicTypeSize.prefersStackedLayout ? 4 : 1)
+                        .lineLimit(titleLineLimit)
                 }
                 DownloadStatusLine(record: record, progress: progress, waiting: downloads.waitingReason(for: record), watchProgress: library.watchProgress(for: item))
             }
@@ -451,10 +511,11 @@ private struct DownloadStatusLine: View {
                     .lineLimit(2)
             }
         case .failed:
+            // The whole reason: it says what to do.
             Text(record.failureMessage ?? DownloadText.state(of: record, fraction: nil))
                 .font(.caption)
                 .foregroundStyle(Theme.warning)
-                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -506,12 +567,17 @@ private struct DownloadSeriesRow: View {
     @Binding var prompts: DownloadPrompts
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @ScaledMetric(relativeTo: .body) private var artworkWidth: CGFloat = 44
+    @ScaledMetric(relativeTo: .body) private var scaledArtworkWidth: CGFloat = 44
+
+    /// As in `DownloadRow`: up to 80 points, above the text at the accessibility sizes.
+    private var artworkWidth: CGFloat {
+        min(scaledArtworkWidth, 80)
+    }
 
     var body: some View {
         if let first = records.first, let key = first.item.seriesKey {
             NavigationLink(value: ChannelRoute.downloadedSeries(playlistID: first.item.playlistID, key: key, title: title)) {
-                HStack(spacing: 12) {
+                AdaptiveStack(spacing: dynamicTypeSize.prefersStackedLayout ? 8 : 12) {
                     ChannelArtwork(logo: downloads.artworkSource(for: first), name: title, kind: .series, size: CGSize(width: artworkWidth, height: artworkWidth * 1.5))
                         .frame(width: artworkWidth, height: artworkWidth * 1.5)
                         .background(Color.artworkPlaceholder.opacity(0.4))

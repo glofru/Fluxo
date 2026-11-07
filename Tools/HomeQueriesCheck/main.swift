@@ -202,7 +202,7 @@ enum HomeQueriesCheck {
                 try context.save()
             }
         }
-        a.groups = groups
+        groups.forEach { context.insert($0) }
 
         // Playlist B: 3 live groups, one channel with diacritics, some without a name.
         var groupsB: [PlaylistChannelGroup] = []
@@ -217,7 +217,7 @@ enum HomeQueriesCheck {
                 ))
             }
         }
-        b.groups = groupsB
+        groupsB.forEach { context.insert($0) }
         // Leftover rows of a previous import of A must stay invisible.
         context.insert(PlaylistChannelGroup(uuid: UUID(), name: "Old", sortIndex: 0, channelCount: 1, importID: stale, playlistID: playlistA, kind: .movie))
         try context.save()
@@ -262,7 +262,7 @@ enum HomeQueriesCheck {
                     try context.save()
                 }
             }
-            playlist.groups = groups
+            groups.forEach { context.insert($0) }
             try context.save()
         }
 

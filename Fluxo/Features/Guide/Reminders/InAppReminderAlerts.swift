@@ -28,6 +28,9 @@ final class InAppReminderAlerts: ReminderDelivery {
 
     func install() {}
 
+    /// The alerts are the app's own: nothing arrives before `ReminderCenter` starts.
+    static func installEarly() {}
+
     /// No permission is needed for the app's own alerts.
     func authorizationStatus() async -> UNAuthorizationStatus {
         .authorized

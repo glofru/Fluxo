@@ -12,145 +12,91 @@ import SwiftUI
 @main
 struct FluxoApp: App {
 
-    private let container: ModelContainer
-    @State private var importCenter: PlaylistImportCenter
-    /// Favorites and watch history.
-    @State private var library: ChannelLibrary
-    /// Add / rename / delete requests, shared by the screens and the menu bar commands.
-    @State private var playlistActions: PlaylistActions
-    /// The single player of the app. It owns the AVPlayer, the Picture in Picture surface, the remux
-    /// engine, the loopback HLS server and the recordings, so there must never be more than one.
-    @State private var player: AVPlayerViewModel
-    /// The TV guide: sources, refreshes, matching and reminders.
-    @State private var epg: EPGStore
-    /// Apple Intelligence (on device): availability, recommendations and summaries.
-    @State private var intelligence: FluxoIntelligence
-    /// The windows of the app (iPad): which one shows the player and the app-wide sheets, and the navigation
-    /// App Intents move.
-    @State private var windows: WindowCoordinator
-    /// Offline downloads of movies and episodes (the transfers continue in the background).
-    @State private var downloads: DownloadCenter
-    /// iCloud sync of playlists, guides, favorites, watch progress and settings across the user's devices.
-    @State private var cloudSync: CloudSync
-    /// The objects above, for App Intents (Siri, Shortcuts, Spotlight).
-    private let services: AppServices
+    /// The library and, once it is open, the app's objects (`AppGraph`). A library that cannot be opened shows
+    /// `LibraryRecoveryView` in every window instead.
+    @State private var session: LibrarySession
 
     init() {
-        let container = ModelContainerFactory.make()
-        self.container = container
         // First: the player, the guide and the downloads ask whether the device is online.
         NetworkMonitor.shared.start()
         // Low Power Mode, the thermal state and the background: the player and the guide adapt to them.
         PowerMonitor.shared.start()
-        let library = ChannelLibrary(container: container)
-        // Chromecast through the Google Cast SDK on iOS; unsupported (no cast UI) on macOS and tvOS.
-        let player = AVPlayerViewModel(cast: .makeDefault())
-        player.zapper = ChannelZapper(container: container, library: library)
-        player.resumePosition = { [weak library] item in
-            library?.watchProgress(for: item)?.position
-        }
-        let downloads = DownloadCenter(container: container)
-        player.downloads = downloads
-        downloads.currentlyPlayingItem = { [weak player] in
-            player?.currentItem
-        }
-        downloads.willDeleteMedia = { [weak player] in
-            player?.stopIfPlayingDownload()
-        }
-        library.onFinishedWatching = { [weak downloads] item in
-            downloads?.itemWasWatched(item)
-        }
-        // Now, not when a view appears: transfers that finished while the app was not running are collected, and
-        // the queue goes on.
-        downloads.start()
-        let importCenter = PlaylistImportCenter(container: container)
-        let epg = EPGStore(container: container)
-        importCenter.onPlaylistImported = { [weak epg] playlistID in
-            epg?.playlistDidImport(playlistID)
-        }
-        importCenter.onPlaylistDeleted = { [weak epg, weak downloads] playlistID in
-            epg?.playlistWasDeleted(playlistID)
-            downloads?.playlistWasDeleted(playlistID)
-        }
-        // Now, not when the first view appears: the reminder notification delegate must be installed before a
-        // notification that launched the app is delivered.
-        epg.start()
-        // After the library, the imports and the guide it applies other devices' changes through.
-        let playlistActions = PlaylistActions()
-        let cloudSync = CloudSync(container: container, importCenter: importCenter, library: library, epg: epg)
-        // The "Your Playlists from iCloud" offer never covers playback or the Add Playlist sheet.
-        cloudSync.mayPresentImportOffer = { [weak player, weak playlistActions] in
-            !(player?.isPresented ?? false) && !(playlistActions?.isPresenting ?? false)
-        }
-        cloudSync.start()
-        let intelligence = FluxoIntelligence(container: container, epg: epg)
-        let windows = WindowCoordinator()
-        let services = AppServices(container: container, library: library, player: player, epg: epg, windows: windows, intelligence: intelligence)
-        // Before any intent runs: intents launched by Siri or Shortcuts read it with @Dependency.
-        AppDependencyManager.shared.add(dependency: services)
-        self.services = services
-        _intelligence = State(initialValue: intelligence)
-        _windows = State(initialValue: windows)
-        _importCenter = State(initialValue: importCenter)
-        _library = State(initialValue: library)
-        _player = State(initialValue: player)
-        _epg = State(initialValue: epg)
-        _downloads = State(initialValue: downloads)
-        _cloudSync = State(initialValue: cloudSync)
-        _playlistActions = State(initialValue: playlistActions)
+        // Before the library opens: a reminder notification that launched the app is delivered as the launch ends,
+        // which can be before the library is open (the launch that updates it). It waits for the guide.
+        PlatformReminderDelivery.installEarly()
+        let session = LibrarySession()
+        // Before any intent runs: intents launched by Siri or Shortcuts read it with @Dependency (an error when the
+        // library cannot be opened).
+        AppDependencyManager.shared.add(dependency: { @Sendable in
+            try await session.services()
+        })
+        _session = State(initialValue: session)
     }
 
     var body: some Scene {
         #if os(macOS)
         // A single main window: the player, its PiP surface and the local server are app-wide.
         Window("Fluxo", id: "main") {
-            mainContent
-                .frame(minWidth: 820, minHeight: 540)
+            LibraryGate(session: session) { graph in
+                mainContent(graph)
+            }
+            .frame(minWidth: 820, minHeight: 540)
         }
-        .modelContainer(container)
         .defaultSize(width: 1_240, height: 800)
         .windowResizability(.contentMinSize)
         .commands {
-            FluxoCommands(player: player, actions: playlistActions, importCenter: importCenter, container: container, epg: epg, windows: windows)
+            if let graph = session.graph {
+                FluxoCommands(player: graph.player, actions: graph.playlistActions, importCenter: graph.importCenter, container: graph.container, epg: graph.epg, windows: graph.windows)
+            }
         }
 
         Settings {
-            SettingsView(player: player)
-                .environment(library)
-                .environment(downloads)
-                .environment(epg)
-                .environment(intelligence)
-                .environment(cloudSync)
-                .environment(importCenter)
-                .modelContainer(container)
-                .defaultAppStorage(.fluxo)
+            LibraryGate(session: session) { graph in
+                SettingsView(player: graph.player)
+                    .environment(graph.library)
+                    .environment(graph.downloads)
+                    .environment(graph.epg)
+                    .environment(graph.intelligence)
+                    .environment(graph.cloudSync)
+                    .environment(graph.importCenter)
+                    .modelContainer(graph.container)
+                    .defaultAppStorage(.fluxo)
+            }
         }
         #elseif os(tvOS)
         // Apple TV: one full-screen window. The player is the system's, presented over the tabs (`TVContentView`).
         WindowGroup(id: Self.mainWindowID) {
-            mainContent
+            LibraryGate(session: session) { graph in
+                mainContent(graph)
+            }
         }
-        .modelContainer(container)
-        .backgroundTask(.appRefresh(EPGBackgroundRefresh.taskIdentifier)) { [epg] in
+        .backgroundTask(.appRefresh(EPGBackgroundRefresh.taskIdentifier)) { [session] in
             // Ask for the next run first, so a refresh that runs out of time is still followed by another.
             EPGBackgroundRefresh.schedule()
-            await epg.performBackgroundRefresh()
+            if let epg = await session.graph?.epg {
+                await epg.performBackgroundRefresh()
+            }
         }
         #else
         // iPad: several windows of the app (File › New Window, or the app's windows in Stage Manager). They share
         // the single player, which shows in one window at a time (see `WindowCoordinator`).
         WindowGroup(id: Self.mainWindowID) {
-            mainContent
+            LibraryGate(session: session) { graph in
+                mainContent(graph)
+            }
         }
-        .modelContainer(container)
         .commands {
-            FluxoCommands(player: player, actions: playlistActions, importCenter: importCenter, container: container, epg: epg, windows: windows)
+            if let graph = session.graph {
+                FluxoCommands(player: graph.player, actions: graph.playlistActions, importCenter: graph.importCenter, container: graph.container, epg: graph.epg, windows: graph.windows)
+            }
         }
         #if os(iOS)
-        .backgroundTask(.appRefresh(EPGBackgroundRefresh.taskIdentifier)) { [epg] in
+        .backgroundTask(.appRefresh(EPGBackgroundRefresh.taskIdentifier)) { [session] in
             // Ask for the next run first, so a refresh that runs out of time is still followed by another.
             EPGBackgroundRefresh.schedule()
-            await epg.performBackgroundRefresh()
+            if let epg = await session.graph?.epg {
+                await epg.performBackgroundRefresh()
+            }
         }
         // Downloads that progressed or finished while the app was suspended or not running: the system relaunches
         // it in the background to deliver their events, and waits until they are handled.
@@ -163,10 +109,12 @@ struct FluxoApp: App {
         // iPad: a channel in a window of its own ("Open in New Window"). A window restored at the next launch waits
         // for a tap instead of playing on its own (see `WindowCoordinator.pendingPlayerWindows`).
         WindowGroup("Player", id: PlayerWindowValue.windowID, for: PlayerWindowValue.self) { $value in
-            PlayerWindowView(value: value, player: player)
-                .modifier(AppEnvironment(importCenter: importCenter, library: library, actions: playlistActions, epg: epg, intelligence: intelligence, windows: windows, player: player, downloads: downloads, cloudSync: cloudSync))
+            LibraryGate(session: session) { graph in
+                PlayerWindowView(value: value, player: graph.player)
+                    .modifier(AppEnvironment(graph: graph))
+                    .modelContainer(graph.container)
+            }
         }
-        .modelContainer(container)
         .defaultSize(width: 960, height: 600)
         #endif
         #endif
@@ -175,58 +123,68 @@ struct FluxoApp: App {
     /// The main window group (iOS, tvOS).
     static let mainWindowID = "main"
 
-    private var mainContent: some View {
-        rootView
-            .appServicesLifecycle(services)
-            .environment(intelligence)
-            .environment(importCenter)
-            .environment(library)
-            .environment(playlistActions)
-            .environment(epg)
-            .environment(windows)
-            .environment(downloads)
-            .environment(cloudSync)
+    private func mainContent(_ graph: AppGraph) -> some View {
+        rootView(graph)
+            .appServicesLifecycle(graph.services)
+            .environment(graph.intelligence)
+            .environment(graph.importCenter)
+            .environment(graph.library)
+            .environment(graph.playlistActions)
+            .environment(graph.epg)
+            .environment(graph.windows)
+            .environment(graph.downloads)
+            .environment(graph.cloudSync)
+            .modelContainer(graph.container)
     }
 
     /// Each main window has its own navigation; the first one adopts the navigation App Intents may already have
     /// moved at launch.
     @ViewBuilder
-    private var rootView: some View {
+    private func rootView(_ graph: AppGraph) -> some View {
         #if os(tvOS)
-        TVContentView(viewModel: player, navigation: windows.makeMainWindowNavigation())
+        TVContentView(viewModel: graph.player, navigation: graph.windows.makeMainWindowNavigation())
         #else
-        ContentView(viewModel: player, navigation: windows.makeMainWindowNavigation())
+        ContentView(viewModel: graph.player, navigation: graph.windows.makeMainWindowNavigation())
         #endif
+    }
+}
+
+/// The content of a window once the library is open; the recovery screen while it cannot be.
+private struct LibraryGate<Content: View>: View {
+    let session: LibrarySession
+    @ViewBuilder let content: (AppGraph) -> Content
+
+    var body: some View {
+        switch session.state {
+        case .upgrading:
+            LibraryUpgradeView()
+        case .ready(let graph):
+            content(graph)
+        case .unavailable(let failure):
+            LibraryRecoveryView(session: session, failure: failure)
+        }
     }
 }
 
 #if !os(tvOS)
 /// The app's shared objects, for a window that is not a `ContentView` (the iPad player window).
 private struct AppEnvironment: ViewModifier {
-    let importCenter: PlaylistImportCenter
-    let library: ChannelLibrary
-    let actions: PlaylistActions
-    let epg: EPGStore
-    let intelligence: FluxoIntelligence
-    let windows: WindowCoordinator
-    let player: AVPlayerViewModel
-    let downloads: DownloadCenter
-    let cloudSync: CloudSync
+    let graph: AppGraph
 
     @State private var navigation = AppNavigation()
 
     func body(content: Content) -> some View {
         content
             // The player is already in this window: playing another channel from it keeps it here.
-            .environment(\.playChannel, PlayChannelAction(library: library, player: player))
-            .environment(importCenter)
-            .environment(library)
-            .environment(actions)
-            .environment(epg)
-            .environment(intelligence)
-            .environment(windows)
-            .environment(downloads)
-            .environment(cloudSync)
+            .environment(\.playChannel, PlayChannelAction(library: graph.library, player: graph.player))
+            .environment(graph.importCenter)
+            .environment(graph.library)
+            .environment(graph.playlistActions)
+            .environment(graph.epg)
+            .environment(graph.intelligence)
+            .environment(graph.windows)
+            .environment(graph.downloads)
+            .environment(graph.cloudSync)
             .environment(navigation)
             .defaultAppStorage(.fluxo)
             .tint(Theme.accent)

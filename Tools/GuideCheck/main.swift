@@ -24,7 +24,8 @@ import SwiftData
 @main
 enum GuideCheck {
 
-    static var failures = 0
+    /// Only the main task counts failures (the checks run one after another).
+    nonisolated(unsafe) static var failures = 0
 
     static func expect(_ condition: Bool, _ message: String) {
         if condition {
@@ -401,7 +402,9 @@ enum GuideCheck {
         try context.save()
         print("== import \(fileURL.lastPathComponent): playlist with \(expectedNames.count) of \(guideChannels.count) guide channels")
 
-        let importer = EPGImporter(container: container)
+        // BATCH=<n> compares batch sizes (the app's default otherwise).
+        let batch = ProcessInfo.processInfo.environment["BATCH"].flatMap(Int.init)
+        let importer = batch.map { EPGImporter(container: container, batchSize: $0) } ?? EPGImporter(container: container)
         let sourceID = try await importer.addSource(url: URL(string: "https://example.com/guide.xml.gz") ?? fileURL, name: "Check")
         var wanted = EPGWantedChannels()
         for channel in try context.fetch(FetchDescriptor<PlaylistChannel>(predicate: #Predicate { $0.kindRawValue == 0 })) {

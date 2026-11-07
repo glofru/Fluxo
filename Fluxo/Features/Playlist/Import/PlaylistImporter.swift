@@ -116,6 +116,25 @@ actor PlaylistImporter {
         try context.save()
     }
 
+    /// Playlists whose visible import has no rows in the cache store: it was recreated (it could not be opened, the
+    /// system purged it, a device restored from a backup, which never holds the cache). Their content is imported
+    /// again (`PlaylistImportCenter`).
+    func playlistsMissingContent() throws -> [UUID] {
+        let context = makeContext()
+        var missing: [UUID] = []
+        for playlist in try context.fetch(FetchDescriptor<Playlist>()) {
+            guard let importID = playlist.currentImportID, playlist.channelCount > 0, !runningImports.contains(importID) else {
+                continue
+            }
+            var descriptor = FetchDescriptor<PlaylistChannel>(predicate: #Predicate { $0.importID == importID })
+            descriptor.fetchLimit = 1
+            if try context.fetchCount(descriptor) == 0 {
+                missing.append(playlist.uuid)
+            }
+        }
+        return missing
+    }
+
     /// Groups the episodes of the visible imports that were stored without series (imported before series
     /// existed, or by an older `EpisodeParser`). Returns the imports it indexed. It runs on the actor, so no
     /// import commits while an import is being indexed.
@@ -208,6 +227,8 @@ actor PlaylistImporter {
             try Task.checkCancellation()
 
             let groupCount = try commit(importID: importID, playlistUUID: playlistUUID, channelCount: stored, groups: groups, series: series, guideURLs: parser.guideURLs)
+            // An import writes a row of history per channel (`StoreHistory`).
+            StoreHistory.prune(in: container, olderThan: StoreHistory.keptAge)
             let summary = PlaylistImportSummary(channelCount: stored, groupCount: groupCount, duration: clock.now - startedAt)
             Self.logger.info("Imported \(summary.channelCount) channels in \(summary.groupCount) groups in \(String(describing: summary.duration), privacy: .public)")
             return summary
@@ -287,8 +308,6 @@ actor PlaylistImporter {
             throw PlaylistImportError.playlistNotFound
         }
 
-        var newGroups: [PlaylistChannelGroup] = []
-        newGroups.reserveCapacity(groups.ordered.count)
         for (index, group) in groups.ordered.enumerated() {
             let model = PlaylistChannelGroup(
                 uuid: UUID(),
@@ -302,11 +321,8 @@ actor PlaylistImporter {
             model.listedCount = group.listedCount
             model.seriesCount = group.seriesCount
             context.insert(model)
-            newGroups.append(model)
         }
         series.insertRows(importID: importID, playlistID: playlistUUID, into: context)
-        // One assignment links all groups (and their inverses) in linear time.
-        playlist.groups = (playlist.groups ?? []) + newGroups
         let previousImportID = playlist.currentImportID
         playlist.currentImportID = importID
         playlist.channelCount = channelCount
