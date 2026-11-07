@@ -3,6 +3,8 @@
 //  Fluxo
 //
 //  Runs and caches the recommendations: "For You" (channels, Home) and "For You Tonight" (programmes, Guide).
+//  Neither suggests adult content while Settings › Recommendations › "Hide adult content from recommendations" is on,
+//  unless the playlists have nothing else (`MatureContentFilter`), nor the same title twice.
 //
 //  A request first publishes the built-in ranking (fast, no model), then, when Apple Intelligence is available,
 //  replaces it with the model's picks. Results are cached per scope and taste fingerprint (the channels that weigh
@@ -108,9 +110,11 @@ final class RecommendationCenter {
         latestChannelScope = scope
         let container = container
         let now = Date.now
-        let profile = await Task.detached(priority: .userInitiated) {
+        let scopeImportIDs = scope.importIDs
+        let (profile, filter) = await Task.detached(priority: .userInitiated) {
             let bookmarks = LibraryLookup.bookmarks(playlistIDs: nil, in: container)
-            return TasteProfile(history: bookmarks.history, favorites: bookmarks.favorites, now: now)
+            let profile = TasteProfile(history: bookmarks.history, favorites: bookmarks.favorites, now: now)
+            return (profile, MatureContentFilter.forScope(importIDs: scopeImportIDs, container: container))
         }.value
         let useModel = modelIsAvailable
         let fingerprint = [
@@ -120,6 +124,7 @@ final class RecommendationCenter {
             epg.hasGuide ? "guide" : "",
             useModel ? "ai" : "",
             OnDeviceModel.responseLanguageName,
+            filter.isActive ? "no-adult" : "",
         ].joined(separator: "#")
         // Whether the model may run for this request (see the top of the file).
         let mayRunModel = useModel && (force || (!PowerMonitor.shared.isConstrained && !backoff.isBackingOff(fingerprint, now: now)))
@@ -130,7 +135,7 @@ final class RecommendationCenter {
 
         let importIDs = scope.importIDs
         var candidates = await Task.detached(priority: .userInitiated) {
-            await ChannelRecommender.candidates(profile: profile, importIDs: importIDs, container: container)
+            await ChannelRecommender.candidates(profile: profile, importIDs: importIDs, filter: filter, container: container)
         }.value
         await attachProgrammes(to: &candidates)
         let ranked = ChannelRecommender.rank(candidates, profile: profile, limit: ChannelRecommender.promptCandidates)
@@ -140,7 +145,7 @@ final class RecommendationCenter {
         }
 
         // A personalized list stored by an earlier launch, for the same taste and time slot.
-        if !force, useModel, let stored = storedPicks(fingerprint: fingerprint, candidates: candidates) {
+        if !force, useModel, let stored = storedPicks(fingerprint: fingerprint, candidates: candidates, filter: filter) {
             channelLists[scope] = ChannelList(items: stored, isPersonalized: true, fingerprint: fingerprint, createdAt: now)
             return
         }
@@ -164,7 +169,7 @@ final class RecommendationCenter {
         do {
             let picks = try await runModel(isCurrent: { [weak self] in force || self?.latestChannelScope == scope }) {
                 try await Task.detached(priority: .userInitiated) {
-                    try await ChannelRecommender.personalize(ranked: ranked, profile: profile, importIDs: importIDs, container: container, now: now)
+                    try await ChannelRecommender.personalize(ranked: ranked, profile: profile, importIDs: importIDs, filter: filter, container: container, now: now)
                 }.value
             }
             channelLists[scope] = ChannelList(items: picks, isPersonalized: true, fingerprint: fingerprint, createdAt: .now)
@@ -241,9 +246,11 @@ final class RecommendationCenter {
         latestProgrammeScope = scope
         let container = container
         let now = Date.now
-        let profile = await Task.detached(priority: .userInitiated) {
+        let scopeImportIDs = scope.importIDs
+        let (profile, filter) = await Task.detached(priority: .userInitiated) {
             let bookmarks = LibraryLookup.bookmarks(playlistIDs: nil, in: container)
-            return TasteProfile(history: bookmarks.history, favorites: bookmarks.favorites, now: now)
+            let profile = TasteProfile(history: bookmarks.history, favorites: bookmarks.favorites, now: now)
+            return (profile, MatureContentFilter.forScope(importIDs: scopeImportIDs, container: container))
         }.value
         let useModel = modelIsAvailable
         let fingerprint = [
@@ -251,6 +258,7 @@ final class RecommendationCenter {
             profile.fingerprint,
             useModel ? "ai" : "",
             "\(epg.revision)",
+            filter.isActive ? "no-adult" : "",
         ].joined(separator: "#")
         let backoffKey = "tonight#" + fingerprint
         let mayRunModel = useModel && (force || (!PowerMonitor.shared.isConstrained && !backoff.isBackingOff(backoffKey, now: now)))
@@ -259,14 +267,14 @@ final class RecommendationCenter {
             return
         }
 
-        let channels = await epg.guideChannels(importIDs: scope.importIDs)
+        let channels = await epg.guideChannels(importIDs: scope.importIDs).filter { filter.allows($0.item) }
         let scanned = ProgrammeRecommender.channelsToScan(channels, profile: profile)
         let favoriteKeys = Set(profile.favorites.compactMap(\.item.bookmarkKey))
         var candidates: [ProgrammeCandidate] = []
         let end = now.addingTimeInterval(ProgrammeRecommender.window)
         for channel in scanned {
             let upcoming = await epg.upcoming(for: channel.ref, from: now, limit: 5)
-            for programme in upcoming where programme.start < end && programme.stop > now {
+            for programme in upcoming where programme.start < end && programme.stop > now && filter.allows(programme: programme, on: channel.item) {
                 candidates.append(Self.makeCandidate(programme, channel: channel, profile: profile, favoriteKeys: favoriteKeys))
             }
         }
@@ -288,7 +296,7 @@ final class RecommendationCenter {
         defer {
             personalizingProgrammes.remove(scope)
         }
-        let search = makeGuideSearch(scope: scope, profile: profile, favoriteKeys: favoriteKeys, now: now)
+        let search = makeGuideSearch(scope: scope, profile: profile, favoriteKeys: favoriteKeys, filter: filter, now: now)
         do {
             let picks = try await runModel(isCurrent: { [weak self] in force || self?.latestProgrammeScope == scope }) {
                 try await Task.detached(priority: .userInitiated) {
@@ -318,13 +326,13 @@ final class RecommendationCenter {
     }
 
     /// The `searchGuide` tool: programme search in the scope, limited to the suggestion window.
-    private func makeGuideSearch(scope: RecommendationScope, profile: TasteProfile, favoriteKeys: Set<String>, now: Date) -> @Sendable @concurrent (String) async -> [ProgrammeCandidate] {
+    private func makeGuideSearch(scope: RecommendationScope, profile: TasteProfile, favoriteKeys: Set<String>, filter: MatureContentFilter, now: Date) -> @Sendable @concurrent (String) async -> [ProgrammeCandidate] {
         let epg = epg
         let importIDs = scope.importIDs
         let end = now.addingTimeInterval(ProgrammeRecommender.window)
         return { keyword in
             let results = await epg.searchProgrammes(keyword, importIDs: importIDs, limit: 30)
-            return results.filter { $0.programme.start < end && $0.programme.stop > now }.map { result in
+            return results.filter { $0.programme.start < end && $0.programme.stop > now && filter.allows(programme: $0.programme, on: $0.channel) }.map { result in
                 Self.makeCandidate(result.programme, channel: GuideChannel(item: result.channel, ref: result.ref), profile: profile, favoriteKeys: favoriteKeys)
             }
         }
@@ -356,7 +364,7 @@ final class RecommendationCenter {
 
     /// The stored picks when they were made for `fingerprint` and are still fresh, resolved against the
     /// candidates (or the library).
-    private func storedPicks(fingerprint: String, candidates: [ChannelCandidate]) -> [ChannelRecommendation]? {
+    private func storedPicks(fingerprint: String, candidates: [ChannelCandidate], filter: MatureContentFilter) -> [ChannelRecommendation]? {
         guard let data = UserDefaults.fluxo.data(forKey: Self.storedPicksKey),
               let stored = try? JSONDecoder().decode(StoredPicks.self, from: data),
               stored.fingerprint == fingerprint,
@@ -370,7 +378,8 @@ final class RecommendationCenter {
             }
             return LibraryLookup.channel(forKey: pick.key, in: container).map { ChannelRecommendation(item: $0, reason: pick.reason, programme: nil) }
         }
-        return picks.count >= 3 ? picks : nil
+        let distinct = ChannelRecommender.distinct(picks, filter: filter)
+        return distinct.count >= 3 ? distinct : nil
     }
 
     /// Forgets every list (e.g. after Apple Intelligence was turned on or off).

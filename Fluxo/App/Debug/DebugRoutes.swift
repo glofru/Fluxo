@@ -324,18 +324,36 @@ enum DebugRoutes {
         DebugRoute("remove-from-history:<channel>", "Removes a Continue Watching card, like its context menu: for an episode, its whole series.") { context, argument in
             context.library.removeFromContinueWatching(try context.channel(named: argument))
         },
-        DebugRoute("featured-series:<playlist>", "Selects a playlist on Home whose billboard then starts at its first series.") { context, argument in
+        DebugRoute("featured-series:<playlist>", "Selects a playlist on Home whose billboard then starts with a series.") { context, argument in
             let playlist = try context.playlist(named: argument)
-            guard let importID = playlist.currentImportID else {
+            guard playlist.currentImportID != nil else {
                 throw DebugRouteError.notFound("import of playlist", argument)
             }
-            var descriptor = HomeQueries.featured(importIDs: [importID], onDemand: true)
-            descriptor.propertiesToFetch = [\.seriesKey]
-            let candidates = (try? context.modelContext.fetch(descriptor)) ?? []
-            let offset = candidates.firstIndex { $0.seriesKey != nil } ?? 0
-            UserDefaults.fluxo.set(offset, forKey: FeaturedCarousel.debugOffsetKey)
+            UserDefaults.fluxo.set("series", forKey: FeaturedLoader.debugLeadKindKey)
             UserDefaults.fluxo.set(playlist.uuid.uuidString, forKey: PlaylistSelection.storageKey)
             context.navigation.show(.home)
+        },
+        DebugRoute("featured-seed:<n|next>", "The featured pages (billboard, Apple TV hero) of a given seed, or of the next rotation (as pull to refresh).") { _, argument in
+            if argument == "next" {
+                FeaturedRotation.shared.debugForcedSeed = nil
+                FeaturedRotation.shared.advance()
+            } else if let seed = Int64(argument) {
+                FeaturedRotation.shared.debugForcedSeed = UInt64(bitPattern: seed)
+            } else {
+                throw DebugRouteError.invalidArgument("featured-seed", argument)
+            }
+        },
+        DebugRoute("featured-page:<n>", "Shows a page of the featured billboard (Apple TV: hero), from 0.") { _, argument in
+            guard let index = Int(argument), index >= 0 else {
+                throw DebugRouteError.invalidArgument("featured-page", argument)
+            }
+            NotificationCenter.default.post(name: .fluxoDebugFeaturedPage, object: index)
+        },
+        DebugRoute("hide-adult-content:<on|off>", "Settings › Recommendations › Hide adult content from recommendations.") { _, argument in
+            guard argument == "on" || argument == "off" else {
+                throw DebugRouteError.invalidArgument("hide-adult-content", argument)
+            }
+            UserDefaults.fluxo.set(argument == "on", forKey: MatureContent.hidesAdultContentKey)
         },
         DebugRoute("favorite-series:<title>", "Adds a series to the favorites.") { context, argument in
             context.library.series.setFavorite(true, for: try context.series(named: argument))

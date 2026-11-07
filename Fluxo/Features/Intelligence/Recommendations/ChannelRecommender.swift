@@ -5,7 +5,9 @@
 //  "For You" on Home: channels the viewer is likely to want now.
 //
 //  1. Candidates (no model): channels of the groups the viewer watches most, channels with a name like the most
-//     watched ones, favorites, and, for a library without history, the first groups of each playlist.
+//     watched ones, favorites, and, for a library without history, the first groups of each playlist. Each title
+//     once (its HD / SD copies, other languages and other playlists count once, a series as a whole), and no adult
+//     content unless the playlists have nothing else (`MatureContentFilter`).
 //  2. Built-in ranking (no model): group affinity, on-air programmes, variety. This is what the row shows at
 //     once, and all it shows without Apple Intelligence.
 //  3. Apple Intelligence (on device): the model reads a short profile and the numbered candidates, may search
@@ -106,7 +108,7 @@ enum ChannelRecommender {
     // MARK: - Candidates
 
     /// Candidates from the library (off the main actor), without programmes yet.
-    @concurrent static func candidates(profile: TasteProfile, importIDs: [UUID], container: ModelContainer) async -> [ChannelCandidate] {
+    @concurrent static func candidates(profile: TasteProfile, importIDs: [UUID], filter: MatureContentFilter, container: ModelContainer) async -> [ChannelCandidate] {
         let playlists = LibraryLookup.visiblePlaylists(in: container).filter { importIDs.contains($0.importID) }
         let importByPlaylist = Dictionary(playlists.map { ($0.playlistID, $0.importID) }, uniquingKeysWith: { first, _ in first })
         var result: [ChannelCandidate] = []
@@ -115,18 +117,21 @@ enum ChannelRecommender {
         let shown = shownKeys(profile: profile, playlistIDs: Set(importByPlaylist.keys))
         var seen: Set<String> = shown.keys
         for entry in shown.entries {
-            seen.insert(nameKey(of: entry.item))
+            seen.formUnion(identityKeys(of: entry.item))
         }
 
         func add(_ item: ChannelItem, _ origin: ChannelCandidate.Origin) {
-            guard item.url != nil else {
+            guard item.url != nil, filter.allows(item) else {
                 return
             }
             // HD / SD copies and backup URLs of one channel count once, and so do the episodes of a series: the
             // series is suggested as a whole (its card opens the series page).
-            guard seen.insert(item.bookmarkKey ?? item.id.uuidString).inserted, seen.insert(nameKey(of: item)).inserted else {
+            let keys = identityKeys(of: item)
+            guard !seen.contains(item.bookmarkKey ?? item.id.uuidString), !keys.contains(where: seen.contains) else {
                 return
             }
+            seen.insert(item.bookmarkKey ?? item.id.uuidString)
+            seen.formUnion(keys)
             result.append(ChannelCandidate(item: item, origin: origin))
         }
 
@@ -173,12 +178,45 @@ enum ChannelRecommender {
         return result
     }
 
-    /// What makes two candidates the same: the series of an episode, otherwise the normalized name.
+    /// What makes two search results of one playlist the same (Smart Search): the series of an episode, otherwise the
+    /// normalized name.
     static func nameKey(of item: ChannelItem) -> String {
         if let seriesKey = item.seriesBookmarkKey {
             return "series|\(seriesKey)"
         }
         return "\(item.playlistID.uuidString)|\(ChannelNameNormalizer.key(item.displayName))"
+    }
+
+    /// What makes two suggestions the same: the series of an episode, and the title whatever its quality, language,
+    /// year or playlist ("Sky Sport F1 HD" and "IT | Sky Sport F1 FHD", "Avatar (2009) [ITA]" and "Avatar 4K",
+    /// `FeaturedTitle`).
+    static func identityKeys(of item: ChannelItem) -> [String] {
+        let title = "title|\(item.kind.rawValue)|\(FeaturedTitle.keys(of: item).duplicate)"
+        if let seriesKey = item.seriesBookmarkKey {
+            return ["series|\(seriesKey)", title]
+        }
+        return [title]
+    }
+
+    /// Removes suggestions that repeat an earlier one (`identityKeys`) or the adult content `filter` leaves out, and
+    /// keeps at most `maximumPerGroup` per group: the model's picks get the same rules as the built-in ranking.
+    static func distinct(_ recommendations: [ChannelRecommendation], filter: MatureContentFilter) -> [ChannelRecommendation] {
+        var seen: Set<String> = []
+        var perGroup: [String: Int] = [:]
+        return recommendations.filter { recommendation in
+            let item = recommendation.item
+            let keys = identityKeys(of: item) + [recommendation.id]
+            guard filter.allows(item), !keys.contains(where: seen.contains) else {
+                return false
+            }
+            let group = "\(item.playlistID.uuidString)|\(item.groupName)"
+            guard perGroup[group, default: 0] < maximumPerGroup else {
+                return false
+            }
+            perGroup[group, default: 0] += 1
+            seen.formUnion(keys)
+            return true
+        }
     }
 
     // MARK: - Built-in ranking
@@ -233,6 +271,7 @@ enum ChannelRecommender {
         ranked: [ChannelCandidate],
         profile: TasteProfile,
         importIDs: [UUID],
+        filter: MatureContentFilter,
         container: ModelContainer,
         now: Date = .now
     ) async throws -> [ChannelRecommendation] {
@@ -242,7 +281,7 @@ enum ChannelRecommender {
         let listed = Array(ranked.prefix(promptCandidates))
         let registry = CandidateRegistry(listed)
         let playlistIDs = Set(LibraryLookup.visiblePlaylists(in: container).filter { importIDs.contains($0.importID) }.map(\.playlistID))
-        let tool = SearchChannelsTool(registry: registry, importIDs: importIDs, excludedKeys: shownKeys(profile: profile, playlistIDs: playlistIDs).keys, container: container)
+        let tool = SearchChannelsTool(registry: registry, importIDs: importIDs, excludedKeys: shownKeys(profile: profile, playlistIDs: playlistIDs).keys, filter: filter, container: container)
         let session = OnDeviceModel.session(tools: [tool], instructions: instructions)
         let prompt = prompt(candidates: listed, profile: profile, now: now)
 
@@ -253,17 +292,13 @@ enum ChannelRecommender {
         }
         logger.notice("For You: \(response.content.picks.count) picks in \(String(describing: clock.now - started), privacy: .public)")
 
-        var seen: Set<String> = []
         let valid = response.content.picks.compactMap { pick in registry.candidate(number: pick.number).map { (pick, $0) } }
         let reasons = await OnDeviceModel.localized(valid.map(\.0.reason))
-        let picks = zip(valid, reasons).compactMap { entry, reason -> ChannelRecommendation? in
+        // The model may pick a number twice, two copies of one title found by its searches, or a whole group.
+        let picks = distinct(zip(valid, reasons).map { entry, reason in
             let candidate = entry.1
-            let recommendation = ChannelRecommendation(item: candidate.item, reason: cleanReason(reason, fallback: candidate.reason), programme: candidate.programme)
-            guard seen.insert(recommendation.id).inserted else {
-                return nil
-            }
-            return recommendation
-        }
+            return ChannelRecommendation(item: candidate.item, reason: cleanReason(reason, fallback: candidate.reason), programme: candidate.programme)
+        }, filter: filter)
         guard picks.count >= 3 else {
             throw RecommendationError.tooFewPicks
         }
@@ -381,6 +416,7 @@ struct SearchChannelsTool: Tool {
     let importIDs: [UUID]
     /// Continue Watching and the Favorites row: never returned.
     let excludedKeys: Set<String>
+    let filter: MatureContentFilter
     let container: ModelContainer
 
     @concurrent func call(arguments: Arguments) async throws -> String {
@@ -389,13 +425,15 @@ struct SearchChannelsTool: Tool {
         }
         let query = arguments.query.trimmingCharacters(in: .whitespacesAndNewlines)
         var known = Set(registry.all.compactMap(\.item.bookmarkKey)).union(excludedKeys)
-        known.formUnion(registry.all.map { ChannelRecommender.nameKey(of: $0.item) })
+        known.formUnion(registry.all.flatMap { ChannelRecommender.identityKeys(of: $0.item) })
         var found: [ChannelCandidate] = []
         for item in await LibraryLookup.searchChannels(query, importIDs: importIDs, limit: 24, in: container) where found.count < 6 {
-            // One candidate per series.
-            guard item.url != nil, !known.contains(item.bookmarkKey ?? ""), known.insert(ChannelRecommender.nameKey(of: item)).inserted else {
+            // One candidate per title and per series.
+            let keys = ChannelRecommender.identityKeys(of: item)
+            guard item.url != nil, filter.allows(item), !known.contains(item.bookmarkKey ?? ""), !keys.contains(where: known.contains) else {
                 continue
             }
+            known.formUnion(keys)
             found.append(ChannelCandidate(item: item, origin: .search(query)))
         }
         guard !found.isEmpty else {

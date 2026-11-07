@@ -508,8 +508,8 @@ struct TVSeriesLandscapeCard: View {
 
 // MARK: - On Now
 
-/// What the user's channels (favorites, then the history, then any channel with a guide) show now. Hidden without a
-/// guide.
+/// What the user's channels (favorites, then the history, then any channel with a guide) show now, without adult
+/// content (`MatureContentFilter`). Hidden without a guide.
 struct TVOnNowShelf: View {
 
     static let limit = 16
@@ -520,6 +520,7 @@ struct TVOnNowShelf: View {
     @Environment(AppNavigation.self) private var navigation
     @Environment(\.modelContext) private var modelContext
     @State private var entries: [OnNowEntry] = []
+    @AppStorage(MatureContent.hidesAdultContentKey) private var hidesAdultContent = MatureContent.hidesAdultContentByDefault
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -551,18 +552,13 @@ struct TVOnNowShelf: View {
                 }
             }
         }
-        .task(id: LoadKey(importIDs: scope.importIDs, revision: epg.revision)) {
+        .task(id: LoadKey(importIDs: scope.importIDs, revision: epg.revision, hidesAdultContent: hidesAdultContent)) {
             while !Task.isCancelled {
                 guard epg.hasGuide else {
                     entries = []
                     return
                 }
-                let loaded = await OnNowLoader.load(candidates: candidates(), epg: epg, limit: Self.limit)
-                var found = loaded
-                if found.count < 8 {
-                    let more = await epg.guideChannels(importIDs: scope.importIDs).prefix(60).map(\.item)
-                    found = await OnNowLoader.load(candidates: loaded.map(\.item) + more, epg: epg, limit: Self.limit)
-                }
+                let found = await OnNowLoader.loadShelf(own: candidates(), importIDs: scope.importIDs, epg: epg, container: modelContext.container, limit: Self.limit, topUpBelow: 8)
                 guard !Task.isCancelled else {
                     return
                 }
@@ -578,6 +574,7 @@ struct TVOnNowShelf: View {
     private struct LoadKey: Hashable {
         let importIDs: [UUID]
         let revision: Int
+        let hidesAdultContent: Bool
     }
 
     private func candidates() -> [ChannelItem] {

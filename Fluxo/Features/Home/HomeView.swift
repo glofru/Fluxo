@@ -191,6 +191,8 @@ struct HomeView: View {
         }
         .forYouRecommendations(scope: scope)
         .refreshable {
+            // New featured pages, and the playlists of the scope downloaded again.
+            FeaturedRotation.shared.advance()
             for playlist in playlistsInScope(scope) {
                 importCenter.refresh(playlist)
             }

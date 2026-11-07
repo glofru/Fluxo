@@ -3,7 +3,8 @@
 //  Fluxo
 //
 //  "On Now": what the user's channels (favorites, then recently watched, then any channel with a guide) are
-//  showing right now, from the TV guide, as large cards with the programme, its time and progress.
+//  showing right now, from the TV guide, as large cards with the programme, its time and progress. Adult channels and
+//  programmes are left out (`MatureContentFilter`).
 //
 
 import SwiftData
@@ -24,10 +25,11 @@ struct OnNowEntry: Identifiable, Hashable, Sendable {
 @MainActor
 enum OnNowLoader {
 
-    static func load(candidates: [ChannelItem], epg: EPGStore, limit: Int, now: Date = .now) async -> [OnNowEntry] {
+    /// `filter` leaves out adult channels and programmes (`MatureContentFilter`).
+    static func load(candidates: [ChannelItem], epg: EPGStore, limit: Int, filter: MatureContentFilter = .inactive, now: Date = .now) async -> [OnNowEntry] {
         var entries: [OnNowEntry] = []
         var seen: Set<String> = []
-        for item in candidates where item.kind == .live {
+        for item in candidates where item.kind == .live && filter.allows(item) {
             guard entries.count < limit, !Task.isCancelled else {
                 break
             }
@@ -35,11 +37,24 @@ enum OnNowLoader {
             guard seen.insert(key).inserted else {
                 continue
             }
-            if let current = await epg.nowNext(for: item, at: now)?.current, current.isOnAir(at: now) {
+            if let current = await epg.nowNext(for: item, at: now)?.current, current.isOnAir(at: now), filter.allows(programme: current, on: item) {
                 entries.append(OnNowEntry(item: item, programme: current))
             }
         }
         return entries
+    }
+
+    /// The On Now shelf of Home, the Apple TV Home and the Top Shelf: what the viewer's own live channels (`own`:
+    /// favorites, then the history) show, topped up with other channels of the scope that have a guide when fewer than
+    /// `topUpBelow` are on air. Adult content is left out unless the scope has nothing else.
+    static func loadShelf(own: [ChannelItem], importIDs: [UUID], epg: EPGStore, container: ModelContainer, limit: Int, topUpBelow: Int, now: Date = .now) async -> [OnNowEntry] {
+        let filter = MatureContentFilter.forScope(importIDs: importIDs, container: container)
+        let loaded = await load(candidates: own, epg: epg, limit: limit, filter: filter, now: now)
+        guard loaded.count < topUpBelow, !Task.isCancelled else {
+            return loaded
+        }
+        let more = await epg.guideChannels(importIDs: importIDs).prefix(60).map(\.item)
+        return await load(candidates: loaded.map(\.item) + more, epg: epg, limit: limit, filter: filter, now: now)
     }
 
     /// When the list changes next: the first of the programmes to end (at most 15 minutes away).
@@ -90,19 +105,14 @@ struct OnNowRow: View {
             }
         }
         .animation(.smooth, value: entries.map(\.id))
-        .task(id: LoadKey(importIDs: scope.importIDs, revision: epg.revision)) {
+        .task(id: LoadKey(importIDs: scope.importIDs, revision: epg.revision, hidesAdultContent: hidesAdultContent)) {
             while !Task.isCancelled {
                 guard epg.hasGuide else {
                     entries = []
                     return
                 }
-                let loaded = await OnNowLoader.load(candidates: candidates(), epg: epg, limit: Self.limit)
-                var found = loaded
-                if found.count < 6 {
-                    // Not enough of the user's own channels on air: add channels of the scope that have a guide.
-                    let more = await epg.guideChannels(importIDs: scope.importIDs).prefix(60).map(\.item)
-                    found = await OnNowLoader.load(candidates: loaded.map(\.item) + more, epg: epg, limit: Self.limit)
-                }
+                // Not enough of the user's own channels on air: channels of the scope that have a guide are added.
+                let found = await OnNowLoader.loadShelf(own: candidates(), importIDs: scope.importIDs, epg: epg, container: modelContext.container, limit: Self.limit, topUpBelow: 6)
                 guard !Task.isCancelled else {
                     return
                 }
@@ -116,10 +126,12 @@ struct OnNowRow: View {
     }
 
     @Environment(AppNavigation.self) private var navigation
+    @AppStorage(MatureContent.hidesAdultContentKey) private var hidesAdultContent = MatureContent.hidesAdultContentByDefault
 
     private struct LoadKey: Hashable {
         let importIDs: [UUID]
         let revision: Int
+        let hidesAdultContent: Bool
     }
 
     /// Favorites first, then the watch history, of the scope.

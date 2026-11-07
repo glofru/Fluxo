@@ -173,7 +173,10 @@ first that contains the text.
 | `watched:<episode>` | Records an episode as played to the end (it counts as watched; Continue moves on). |
 | `remove-from-history:<channel>` | Removes a Continue Watching card like its context menu does (for an episode, its whole series). |
 | `favorite-series:<title>` | Adds a series to the favorites. |
-| `featured-series:<playlist>` | Selects a playlist on Home whose billboard then starts at its first series. |
+| `featured-series:<playlist>` | Selects a playlist on Home whose billboard then starts with a series. |
+| `featured-seed:<n\|next>` | The featured pages (billboard, Apple TV hero) of a given seed, or of the next rotation (as pull to refresh). |
+| `featured-page:<n>` | Shows a page of the featured billboard (Apple TV: the hero), from 0; the app log lists the pages (`Featured (seed …)`). |
+| `hide-adult-content:<on\|off>` | Settings › Recommendations › Hide adult content from recommendations. |
 | `audio-track:<name\|number>` | Chooses an audio track of what plays (by name, e.g. `Italian`, or 1-based number), as the Audio and Subtitles menu does (and so remembers its language). |
 | `subtitles:<automatic\|off\|file\|name\|number>` | Chooses the subtitles of what plays (`file`: the loaded subtitle file). |
 | `subtitle-file:<url>` | Loads a SubRip / WebVTT file (a file URL, or http such as the test server's `/subtitles/clip.srt`) for the movie or episode that plays, as Load Subtitle File… does. |
@@ -236,6 +239,7 @@ first that contains the text.
 | `settings-section:about` | Settings, scrolled to About (version, Acknowledgements, Privacy Policy, Source Code, the no-content notice; iOS). |
 | `settings-section:downloads` | Settings, scrolled to its Downloads section (iOS). |
 | `settings-section:recordings` | Settings, scrolled to Recordings (Stop Recording After; iOS). |
+| `settings-section:recommendations` | Settings, scrolled to Recommendations (Hide adult content from recommendations; iOS). |
 | `library-log` | Writes the rows of every model, the player's recording state and message, and where the stores are (library and cache, their schema versions, a pending maintenance, backups) to `Status/library.log`. |
 | `downloads-fake-failures` | Adds failed downloads of four movies, one per kind of reason (unexpected stop, expired link, offline, a format that cannot play), for the Couldn't Download section. |
 | `recording-limit:<seconds>` | Recordings stop after this many seconds instead of Settings › Recordings › Stop Recording After (0: the setting again). |

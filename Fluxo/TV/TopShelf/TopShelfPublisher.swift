@@ -16,6 +16,10 @@
 //  when a programme ends; the snapshot also carries the next hours of each On Now channel, so the extension keeps
 //  showing what is on air after the app was closed.
 //
+//  The Top Shelf is on the Home Screen, in front of everyone in the room: while Settings › Recommendations › "Hide
+//  adult content from recommendations" is on, none of its sections shows adult content (`MatureContentFilter`),
+//  unless the playlists have nothing else.
+//
 //  Debug builds with an isolated store (the simulator harness) publish their sample library too, which is how the
 //  Top Shelf is checked in the simulator (`topshelf` route, Tools/Simulator/README.md); the next launch on the
 //  real library writes it again.
@@ -63,6 +67,7 @@ private struct TopShelfSources: View {
     @Environment(EPGStore.self) private var epg
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(MatureContent.hidesAdultContentKey) private var hidesAdultContent = MatureContent.hidesAdultContentByDefault
 
     init(scope: LibraryScope, hasPlaylists: Bool, isPlayerOpen: Bool) {
         self.scope = scope
@@ -118,6 +123,7 @@ private struct TopShelfSources: View {
             favorites: favorites.map(\.key) + seriesFavorites.map(\.key),
             favoriteOrder: favorites.map(\.favoriteOrder) + seriesFavorites.map(\.favoriteOrder),
             guideRevision: epg.revision,
+            hidesAdultContent: hidesAdultContent,
             isPlayerOpen: isPlayerOpen,
             isBackground: scenePhase == .background,
             isActive: scenePhase == .active
@@ -130,6 +136,7 @@ private struct TopShelfSources: View {
         let favorites: [String]
         let favoriteOrder: [Double]
         let guideRevision: Int
+        let hidesAdultContent: Bool
         let isPlayerOpen: Bool
         let isBackground: Bool
         let isActive: Bool
@@ -174,6 +181,15 @@ final class TopShelfPublisher {
                 self = .series(SeriesItem(bookmark))
             }
         }
+
+        func isAllowed(by filter: MatureContentFilter) -> Bool {
+            switch self {
+            case .channel(let item):
+                return filter.allows(item)
+            case .series(let series):
+                return filter.allows(series)
+            }
+        }
     }
 
     /// The last snapshot written, without its date, so an unchanged one is not written again.
@@ -212,6 +228,13 @@ final class TopShelfPublisher {
         var sections: [TopShelfSnapshot.Section] = []
         var nextChange: Date?
         if input.hasPlaylists {
+            let filter = MatureContentFilter.forScope(importIDs: input.scope.importIDs, container: container)
+            let input = Input(
+                scope: input.scope,
+                hasPlaylists: input.hasPlaylists,
+                history: input.history.filter { filter.allows($0.1) },
+                favorites: input.favorites.filter { $0.isAllowed(by: filter) }
+            )
             let continueWatching = await continueWatching(input.history, library: library, container: container, images: imagesDirectory)
             if !continueWatching.isEmpty {
                 sections.append(TopShelfSnapshot.Section(
@@ -228,7 +251,7 @@ final class TopShelfPublisher {
                     items: favorites
                 ))
             }
-            let (onNow, ends) = await onNow(input, epg: epg, now: now, images: imagesDirectory)
+            let (onNow, ends) = await onNow(input, epg: epg, container: container, now: now, images: imagesDirectory)
             if !onNow.isEmpty {
                 sections.append(TopShelfSnapshot.Section(kind: .onNow, title: String(localized: "On Now"), items: onNow))
                 nextChange = ends
@@ -321,7 +344,7 @@ final class TopShelfPublisher {
 
     /// What the user's live channels (favorites, then the history, then any channel with a guide) show now, with
     /// their next hours of programmes. Also returns when the first of the programmes on air ends.
-    private func onNow(_ input: Input, epg: EPGStore, now: Date, images: URL) async -> ([TopShelfSnapshot.Item], Date?) {
+    private func onNow(_ input: Input, epg: EPGStore, container: ModelContainer, now: Date, images: URL) async -> ([TopShelfSnapshot.Item], Date?) {
         guard epg.hasGuide else {
             return ([], nil)
         }
@@ -331,11 +354,7 @@ final class TopShelfPublisher {
             }
             return nil
         } + input.history.map(\.1)).filter { $0.kind == .live }
-        var entries = await OnNowLoader.load(candidates: candidates, epg: epg, limit: Self.itemLimit, now: now)
-        if entries.count < 8 {
-            let more = await epg.guideChannels(importIDs: input.scope.importIDs).prefix(60).map(\.item)
-            entries = await OnNowLoader.load(candidates: entries.map(\.item) + more, epg: epg, limit: Self.itemLimit, now: now)
-        }
+        let entries = await OnNowLoader.loadShelf(own: candidates, importIDs: input.scope.importIDs, epg: epg, container: container, limit: Self.itemLimit, topUpBelow: 8, now: now)
         var items: [TopShelfSnapshot.Item] = []
         for entry in entries {
             var programmes = [entry.programme]

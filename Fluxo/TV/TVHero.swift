@@ -2,8 +2,9 @@
 //  TVHero.swift
 //  Fluxo
 //
-//  The full-bleed hero at the top of the Apple TV Home: the day's featured movies, series or live channels (the
-//  picks of the iPhone billboard, `FeaturedCarousel.loadPicks`), one page each, under the tab bar and to the edges
+//  The full-bleed hero at the top of the Apple TV Home: featured movies, series and live channels, all different and
+//  chosen again every few hours and every day (the picks of the iPhone billboard, `FeaturedCarousel.loadPicks`,
+//  `FeaturedRotation`), one page each, under the tab bar and to the edges
 //  of the picture. Each page has a blurred backdrop of its artwork, the artwork itself, the title, what it is, and
 //  Liquid Glass actions: Play (Resume S1 E3, Watch Live), Episodes for a series, and the favorite.
 //
@@ -26,6 +27,8 @@ struct TVHero: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(MatureContent.hidesAdultContentKey) private var hidesAdultContent = MatureContent.hidesAdultContentByDefault
     @State private var items: [ChannelItem] = []
     @State private var currentID: ChannelItem.ID?
     @FocusState private var focus: TVHeroFocus?
@@ -40,7 +43,7 @@ struct TVHero: View {
                 pager
             }
         }
-        .task(id: importIDs) {
+        .task(id: LoadKey(importIDs: importIDs, seed: FeaturedRotation.shared.currentSeed, hidesAdultContent: hidesAdultContent)) {
             let picks = await FeaturedCarousel.loadPicks(importIDs: importIDs, container: modelContext.container)
             guard !Task.isCancelled else {
                 return
@@ -50,6 +53,20 @@ struct TVHero: View {
                 currentID = picks.first?.id
             }
         }
+        .onChange(of: scenePhase) { _, phase in
+            // Other pages when the app comes back after a while (never while it stays on screen).
+            if phase == .active {
+                FeaturedRotation.shared.refreshIfDue()
+            }
+        }
+        #if DEBUG
+        // Debug harness (`featured-page:<n>`): shows a page, for screenshots.
+        .onReceive(NotificationCenter.default.publisher(for: .fluxoDebugFeaturedPage)) { notification in
+            if let index = notification.object as? Int, items.indices.contains(index) {
+                currentID = items[index].id
+            }
+        }
+        #endif
         .task(id: AdvanceKey(ids: items.map(\.id), isFocused: focus != nil, reduceMotion: reduceMotion)) {
             // The pages move on by themselves only while nobody is reading them.
             guard items.count > 1, focus == nil, !reduceMotion else {
@@ -98,6 +115,12 @@ struct TVHero: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(String(localized: "TV.hero.label", defaultValue: "Featured", comment: "VoiceOver: the name of the featured items at the top of the Apple TV Home.")))
+    }
+
+    private struct LoadKey: Hashable {
+        let importIDs: [UUID]
+        let seed: UInt64
+        let hidesAdultContent: Bool
     }
 
     private struct AdvanceKey: Hashable {

@@ -95,11 +95,13 @@ private struct ForYouLoader: ViewModifier {
     @Environment(FluxoIntelligence.self) private var intelligence: FluxoIntelligence?
     @Environment(EPGStore.self) private var epg: EPGStore?
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(MatureContent.hidesAdultContentKey) private var hidesAdultContent = MatureContent.hidesAdultContentByDefault
 
     private struct Key: Equatable {
         let scope: RecommendationScope
         let status: IntelligenceStatus?
         let hasGuide: Bool
+        let hidesAdultContent: Bool
         let isActive: Bool
         /// The player screen covers Home: the on-device model does not run for suggestions nobody sees; they load
         /// when the player closes.
@@ -109,7 +111,7 @@ private struct ForYouLoader: ViewModifier {
     func body(content: Content) -> some View {
         let isBehindPlayer = PowerMonitor.shared.isPlayerScreenOpen
         content
-            .task(id: Key(scope: scope, status: intelligence?.status, hasGuide: epg?.hasGuide ?? false, isActive: scenePhase == .active, isBehindPlayer: isBehindPlayer)) {
+            .task(id: Key(scope: scope, status: intelligence?.status, hasGuide: epg?.hasGuide ?? false, hidesAdultContent: hidesAdultContent, isActive: scenePhase == .active, isBehindPlayer: isBehindPlayer)) {
                 guard let intelligence, !scope.importIDs.isEmpty, scenePhase == .active, !isBehindPlayer else {
                     return
                 }

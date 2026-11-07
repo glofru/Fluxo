@@ -5,7 +5,7 @@
 //  The Settings tab of Apple TV, laid out like the system's Settings app: the app's mark and the library at a
 //  glance on the leading side, the settings as a list on the other: playlists (add, refresh, edit, delete, which
 //  ones Home shows), iCloud sync (`CloudSyncSettingsSection`), TV guide sources (add, turn on or off, refresh, delete; reminders), playback, audio and
-//  subtitles, the watch history, recordings, Siri and Voice Search (`TVSiriScreen`), and About: the version, the
+//  subtitles, recommendations (`RecommendationSettingsSection`), the watch history, recordings, Siri and Voice Search (`TVSiriScreen`), and About: the version, the
 //  acknowledgements (`AcknowledgementsView`), the privacy policy and the notice that Fluxo provides no content.
 //
 //  Addresses are typed in the shared Add Playlist and Add Guide Source sheets: their text fields bring up the tvOS
@@ -150,6 +150,7 @@ struct TVSettingsScreen: View {
                 Text(String(localized: "TV.settings.timeShift.footer", defaultValue: "How far back you can pause and rewind a live channel. Applies the next time a channel starts.", comment: "Apple TV Settings, Playback footer: what the time-shift buffer is."))
             }
             TrackSettingsSection()
+            RecommendationSettingsSection()
             Section {
                 Button(role: .destructive) {
                     confirmation = .clearHistory

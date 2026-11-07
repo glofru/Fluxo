@@ -110,7 +110,12 @@ enum ProgrammeRecommender {
         return picked
     }
 
-    /// Scores the candidates (higher is better) and keeps the best, at most two per channel.
+    /// The same programme on several channels (the HD and SD copies of a channel, a simulcast): suggested once.
+    static func simulcastKey(_ programme: GuideProgramme) -> String {
+        "\(programme.title.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil))|\(Int(programme.start.timeIntervalSince1970))"
+    }
+
+    /// Scores the candidates (higher is better) and keeps the best, at most two per channel and each programme once.
     static func rank(_ candidates: [ProgrammeCandidate], now: Date, limit: Int = listSize) -> [ProgrammeCandidate] {
         // Categories that recur on the viewer's channels tonight say what they like.
         var categoryWeights: [String: Double] = [:]
@@ -140,13 +145,15 @@ enum ProgrammeRecommender {
         }
         scored.sort { $0.score > $1.score }
         var perChannel: [UUID: Int] = [:]
+        var programmes: Set<String> = []
         var result: [ProgrammeCandidate] = []
         for candidate in scored where result.count < limit {
             let count = perChannel[candidate.channel.id, default: 0]
-            guard count < 2 else {
+            guard count < 2, !programmes.contains(simulcastKey(candidate.programme)) else {
                 continue
             }
             perChannel[candidate.channel.id] = count + 1
+            programmes.insert(simulcastKey(candidate.programme))
             result.append(candidate)
         }
         return result
@@ -186,7 +193,7 @@ enum ProgrammeRecommender {
                 channel: candidate.channel,
                 reason: ChannelRecommender.cleanReason(reason, fallback: candidate.reason(now: now))
             )
-            guard seen.insert(recommendation.id).inserted else {
+            guard seen.insert(recommendation.id).inserted, seen.insert(simulcastKey(candidate.programme)).inserted else {
                 return nil
             }
             return recommendation

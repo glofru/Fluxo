@@ -42,6 +42,7 @@ final class LibrarySyncStore: CloudSyncLocalStore {
         SyncedPreference(key: TrackPreferences.subtitleAccessibilityKey, type: .bool),
         SyncedPreference(key: ReminderCenter.leadMinutesKey, type: .int),
         SyncedPreference(key: FluxoIntelligence.enabledKey, type: .bool),
+        SyncedPreference(key: MatureContent.hidesAdultContentKey, type: .bool),
     ]
 
     /// Whether a playlist or guide of another device may be added to this device now (the first-run choice, see

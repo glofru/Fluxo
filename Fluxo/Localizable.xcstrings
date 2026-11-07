@@ -41005,6 +41005,12 @@
         }
       }
     },
+    "Featured items, For You, Because You Watched, On Now and For You Tonight leave out channels, movies and categories for adults, such as XXX or 18+. Search and the categories still show them, and a playlist with nothing else is shown as it is." : {
+      "comment" : "Settings, footer of the Recommendations section: what 'Hide adult content from recommendations' does. For You, Because You Watched, On Now and For You Tonight are the names of sections of the Home page and the TV guide."
+    },
+    "Featured items, On Now, suggestions and the Top Shelf leave out channels, movies and categories for adults, such as XXX or 18+. Search and the categories still show them, and a playlist with nothing else is shown as it is." : {
+      "comment" : "Apple TV Settings, footer of the Recommendations section: what 'Hide adult content from recommendations' does."
+    },
     "Files › On My iPad › Fluxo › %@" : {
       "comment" : "Where recordings are on an iPad, as a path in the Files app. Use the names the Files app shows in this language ('Files', 'On My iPad'). Fluxo is the app's folder; the placeholder is the name of the recordings folder on disk ('Recordings'), which is never translated.",
       "extractionState" : "stale",
@@ -47807,6 +47813,9 @@
           }
         }
       }
+    },
+    "Hide adult content from recommendations" : {
+      "comment" : "Settings › Recommendations: a switch. When on, the featured items, For You, Because You Watched, On Now, For You Tonight and the Apple TV Top Shelf leave out content for adults (XXX, 18+)."
     },
     "Hide the channel list" : {
       "comment" : "Tooltip — player side panel (iPad, Mac).",
@@ -75323,6 +75332,9 @@
           }
         }
       }
+    },
+    "Recommendations" : {
+      "comment" : "Settings: header of the section about what Fluxo suggests (featured items, For You, On Now)."
     },
     "Reconnecting (%lld)…" : {
       "comment" : "Player status: the live stream dropped; the number is the reconnection attempt.",

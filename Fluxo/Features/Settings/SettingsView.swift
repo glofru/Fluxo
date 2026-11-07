@@ -8,7 +8,7 @@
 import SwiftData
 import SwiftUI
 
-/// Playback, audio and subtitles, TV guide, recordings, storage and about, under a header with the library at a glance. A tab on
+/// Playback, audio and subtitles, TV guide, recommendations, recordings, storage and about, under a header with the library at a glance. A tab on
 /// iOS, the Settings window (⌘,) on macOS.
 struct SettingsView: View {
 
@@ -82,6 +82,8 @@ struct SettingsView: View {
             pictureInPictureSection
             #endif
             GuideSettingsSection()
+            RecommendationSettingsSection()
+                .id("recommendations")
             IntelligenceSettingsSection()
             SiriSettingsSection()
             DownloadSettingsSection()

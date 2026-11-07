@@ -19,6 +19,7 @@ struct GuideForYouStrip: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @AppStorage("guide.forYou.isCollapsed") private var isCollapsed = false
+    @AppStorage(MatureContent.hidesAdultContentKey) private var hidesAdultContent = MatureContent.hidesAdultContentByDefault
 
     private var scope: RecommendationScope {
         RecommendationScope(importIDs: importIDs)
@@ -28,6 +29,7 @@ struct GuideForYouStrip: View {
         let scope: RecommendationScope
         let status: IntelligenceStatus?
         let revision: Int
+        let hidesAdultContent: Bool
         let isActive: Bool
         /// The player screen covers the Guide: no model run for suggestions nobody sees (they load when it closes).
         let isBehindPlayer: Bool
@@ -44,7 +46,7 @@ struct GuideForYouStrip: View {
                     .accessibilityHidden(true)
             }
         }
-        .task(id: LoadKey(scope: scope, status: intelligence?.status, revision: epg.revision, isActive: scenePhase == .active, isBehindPlayer: PowerMonitor.shared.isPlayerScreenOpen)) {
+        .task(id: LoadKey(scope: scope, status: intelligence?.status, revision: epg.revision, hidesAdultContent: hidesAdultContent, isActive: scenePhase == .active, isBehindPlayer: PowerMonitor.shared.isPlayerScreenOpen)) {
             guard let intelligence, scenePhase == .active, !importIDs.isEmpty, !PowerMonitor.shared.isPlayerScreenOpen else {
                 return
             }

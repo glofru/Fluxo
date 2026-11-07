@@ -252,6 +252,31 @@ Tools/PlaylistBenchmark/run.sh             # ENTRIES=20000 for a quicker run
 
 ## Home, favorites and search
 
+- **Featured** (the billboard at the top of Home, the hero of the Apple TV Home; `FeaturedPicker`, `FeaturedLoader`,
+  `FeaturedRotation`): eight different things with artwork. Providers list related entries together (a category of
+  every "Fast & Furious" film, "Sky Sport 1…10"), so the pages come from categories, not from a run of the playlist:
+  at most one per category, movies, series and live channels interleaved (about three, three and two; a kind the
+  scope lacks gives its pages to the others), mixed across the playlists and the provider sections of the category
+  names ("IT | …", "UK | …"). A title counts once whatever its quality, language, year or edition tags ("Avatar
+  (2009) [ITA]" and "Avatar 4K"), and so do a series, a franchise ("Toy Story", "Toy Story 3") and a channel family
+  ("Rai 1", "Rai 2"; `FeaturedTitle`). Real artwork comes before placeholders. The categories and kinds the viewer
+  watches are drawn more often (a weighted random draw, so they never take over), and what Continue Watching shows is
+  not featured. The draw follows a seed: the same pages until the app comes back to the foreground on another day or
+  six hours later, or Home is pulled to refresh, never while it stays on screen; the seed is kept, so a relaunch
+  shows the same pages until then. Loading reads a few rows of about a dozen categories on a background context (about
+  20 ms for 120 categories and 20,000 entries, `Tools/FeaturedCheck`).
+- **Adult content** (`MatureContent`, `MatureContentFilter`): Settings › Recommendations › "Hide adult content from
+  recommendations" (on by default, synced with iCloud) leaves channels, movies, series, categories and programmes for
+  adults out of what Fluxo puts forward on its own: Featured, For You, Because You Watched, On Now, For You Tonight
+  and the Apple TV Top Shelf. Search, the categories and the user's own lists (Favorites, Continue Watching, Recently
+  Watched) still show them, and a scope whose categories are all for adults is not filtered (there would be
+  nothing else to show). The classifier reads category, channel, series and programme names, folded (case,
+  diacritics, width) and as whole words: "XXX", "18+" / "+18", "Adult" and its translations ("Adulti", "Para
+  adultos", "Erwachsene", "Для взрослых", "للكبار", "アダルト", "성인방송"…), "Porn", "Erotik", "Hentai", the
+  networks ("Playboy TV", "Dorcel", "Brazzers"), and categories named only "Sex". It leaves "Essex", "Sussex",
+  "Adult Swim", "Adult Contemporary", "Sex Education", "xXx" (the 2002 film) and "Super Bowl XXX" alone. M3U has no
+  standard adult flag (the rare `adult="1"` attributes would need a schema version to store, for what the names
+  already say), so names are what it reads.
 - **Home** (`Features/Home`) shows the featured billboard, a playlist switcher ("All Playlists" plus one
   chip per playlist), Continue Watching (movies and episodes with a progress bar and the time left, live
   channels with what is on now), On Now (large cards of what the user's favorite and recent channels show,
@@ -325,7 +350,7 @@ user's other devices as soon as it finds them ("Your Playlists from iCloud").
 | TV guides added by the user, and whether they are on (guides of a playlist header follow the playlist) | The programmes of the guide, manual guide matches |
 | Favorites of channels, movies and series, in the user's order | Offline downloads, recordings |
 | Watch history, resume positions, watched episodes of a series | Device settings: downloads, Picture in Picture, foldable layouts, the Home selection |
-| Time-shift length, skip intervals, audio and subtitle languages (and audio description / SDH), reminder lead time, Apple Intelligence on or off | |
+| Time-shift length, skip intervals, audio and subtitle languages (and audio description / SDH), reminder lead time, Apple Intelligence on or off, hiding adult content from recommendations | |
 
 ### How it works
 
@@ -711,6 +736,15 @@ search (matches, ranking, typos) and its timings:
 
 ```sh
 CHANNELS=100000 Tools/HomeQueriesCheck/run.sh
+```
+
+To check the featured billboard and the adult-content filter: the classifier on about 200 names that are or only look
+like adult content (in many languages and scripts), the title keys, the picker on synthetic categories (one page per
+category, title and franchise, kinds interleaved, the same pages for a seed, the taste, adult content left out unless
+it is all there is), the rotation, and the loader on an on-disk store:
+
+```sh
+Tools/FeaturedCheck/run.sh            # FILLER=100000 for a larger store
 ```
 
 ## Player
@@ -1255,8 +1289,8 @@ refresh (`BGAppRefreshTask`) runs on tvOS too.
   movies and series. Shelves (`TVShelf`) are focus sections that scroll edge to edge; long ones end with a See All card.
   Action buttons are Liquid Glass (`.glassProminent` for the main one). Every empty page says what to do and has the
   button that does it (Add Playlist, Add Guide Source, Show Channels).
-- **Home** (`TVHomeScreen`, `TVHero`): a full-bleed hero of the day's featured movies, series or channels (the
-  picks of the iPhone billboard, `FeaturedCarousel.loadPicks`) under the tab bar: blurred backdrop, poster, title,
+- **Home** (`TVHomeScreen`, `TVHero`): a full-bleed hero of featured movies, series and channels (the picks of the
+  iPhone billboard, `FeaturedCarousel.loadPicks`, see "Featured") under the tab bar: blurred backdrop, poster, title,
   Play (Resume S1 E3, Watch Live), Episodes, favorite, and page dots. Its pages sit side by side, so moving the focus
   past the last button pages on; while the focus is elsewhere it moves on by itself every 9 s (not with Reduce
   Motion). Then Continue Watching (a series once, with the episode to watch now and Up Next once one is finished),
@@ -1332,6 +1366,8 @@ With Fluxo in the top row of the Home Screen, its Top Shelf shows what Home star
 (channels, movies, episodes and series in the user's order) and **On Now** (what the user's channels show, with the
 programme's progress), as rows of 16:9 images. Selecting an item plays it (a favorite series opens its page);
 Play/Pause plays it (a series where the viewer left off). Without a playlist tvOS shows the static Top Shelf image.
+The Top Shelf is in front of everyone in the room: while "Hide adult content from recommendations" is on, none of its
+rows shows adult content, the user's own included (see "Adult content").
 
 - **The extension** (`FluxoTopShelf`, a `TVTopShelfContentProvider`, embedded in the tvOS app only: the target
   dependency and the Embed Foundation Extensions phase are filtered to tvOS, so the iPhone, iPad and Mac builds never
@@ -1665,11 +1701,13 @@ active). Settings › Apple Intelligence has a switch for the features and expla
 - **For You** (Home, `Features/Intelligence/Recommendations`): candidates come from the library (channels of
   the groups the viewer watches most, channels named like the most watched ones, favorites past the first ones,
   and for a new library the first groups; never what the Continue Watching and Favorites rows next to it already
-  show), a built-in ranking (group affinity, on-air
+  show, a title twice (its HD / SD copies, other languages and other playlists) or adult content, see "Adult
+  content"), a built-in ranking (group affinity, on-air
   programmes, at most three per group, varied reasons) is shown at once, and with Apple Intelligence the model then picks eight and writes a short reason for each
   (`ChannelPicks`, `@Generable` structured output). It may call the `searchChannels` tool (the Search token
   index) to add candidates, at most twice. Picks are numbers checked against the candidates, so nothing can be
-  invented. Results are cached per scope and taste fingerprint (most watched channels, favorites, a three-hour
+  invented, and they go through the rules of the built-in list (each title once, at most three per group, no adult
+  content). Results are cached per scope and taste fingerprint (most watched channels, favorites, a three-hour
   slot of the day; a SHA-256 digest, the same in every launch): the model runs again only when one of these
   changes, and its picks survive a relaunch. The taste part is the set of the eight channels that weigh most, the
   favorites and the three categories watched most, so watching the same channels in another order changes nothing.
@@ -1678,8 +1716,9 @@ active). Settings › Apple Intelligence has a switch for the features and expla
   asks it), and after a failure not again for the same taste before 15 minutes, then 30, up to 6 hours
   (`ModelBackoff`, kept across launches). A run cut short is not a failure.
 - **For You Tonight** (Guide; "For You Today" before the evening): programmes on now and in the next six hours on the viewer's channels and groups,
-  ranked by channel affinity, timing and recurring categories, then picked and explained by the model
-  (`ProgrammePicks`, with a `searchGuide` tool). The strip collapses to one line.
+  ranked by channel affinity, timing and recurring categories (a programme on several channels once, none for
+  adults), then picked and explained by the model (`ProgrammePicks`, with a `searchGuide` tool). The strip collapses
+  to one line.
 - **Smart search** (Search, `Features/Intelligence/Search`): queries of two or more words with a cue the name
   search cannot use ("football tonight", "italian news channels", "something like Sky Sport F1"), or that find
   nothing, become a `SmartSearchPlan` (keywords with synonyms and translations, kind, country, time window, a

@@ -8,7 +8,8 @@
 import SwiftData
 import SwiftUI
 
-/// Hero carousel at the top of Home: a handful of channels with artwork, rotating every day.
+/// Hero carousel at the top of Home: a handful of different movies, series and channels with artwork, chosen
+/// again every few hours, every day and on pull to refresh (`FeaturedPicker`, `FeaturedRotation`).
 ///
 /// Two styles:
 /// - `.billboard` (iOS): full-bleed pages that run under the status bar and the floating glass toolbar. The
@@ -18,8 +19,7 @@ import SwiftUI
 /// - `.cards` (macOS): rounded cards in a paged row, two side by side on wide windows.
 ///
 /// The picks are fetched on a background context and kept as `ChannelItem` values, so the carousel holds no
-/// models and its fetches never run on the main thread. Movie and series posters are preferred; playlists
-/// without on-demand content feature live channels.
+/// models and its fetches never run on the main thread (`FeaturedLoader`).
 struct FeaturedCarousel: View {
 
     enum Style {
@@ -27,10 +27,6 @@ struct FeaturedCarousel: View {
         case billboard
     }
 
-    nonisolated static let itemCount = 8
-    #if DEBUG
-    nonisolated static let debugOffsetKey = "debug.featuredOffset"
-    #endif
     static let cardHeight: CGFloat = 240
     /// Height of a billboard page below the top inset.
     static let billboardHeight: CGFloat = 380
@@ -59,6 +55,8 @@ struct FeaturedCarousel: View {
     /// Series grouped at launch in a library imported before series existed: the picks are made again.
     @Environment(PlaylistImportCenter.self) private var importCenter
     @Environment(DownloadCenter.self) private var downloads: DownloadCenter?
+    @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(MatureContent.hidesAdultContentKey) private var hidesAdultContent = MatureContent.hidesAdultContentByDefault
     /// The picks of the day, as loaded; `items` are those shown.
     @State private var picks: [ChannelItem] = []
     @State private var currentID: UUID?
@@ -71,6 +69,8 @@ struct FeaturedCarousel: View {
     private struct LoadKey: Hashable {
         let importIDs: [UUID]
         let seriesRevision: Int
+        let seed: UInt64
+        let hidesAdultContent: Bool
     }
 
     private struct SideInsets: Equatable {
@@ -109,7 +109,7 @@ struct FeaturedCarousel: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: items.isEmpty)
-        .task(id: LoadKey(importIDs: importIDs, seriesRevision: importCenter.seriesIndexRevision)) {
+        .task(id: LoadKey(importIDs: importIDs, seriesRevision: importCenter.seriesIndexRevision, seed: FeaturedRotation.shared.currentSeed, hidesAdultContent: hidesAdultContent)) {
             let container = modelContext.container
             let picks = await Self.loadPicks(importIDs: importIDs, container: container)
             guard !Task.isCancelled else {
@@ -119,6 +119,20 @@ struct FeaturedCarousel: View {
             currentID = picks.first?.id
             loadedImportIDs = importIDs
         }
+        .onChange(of: scenePhase) { _, phase in
+            // Other pages when the app comes back after a while (never while it stays on screen).
+            if phase == .active {
+                FeaturedRotation.shared.refreshIfDue()
+            }
+        }
+        #if DEBUG
+        // Debug harness (`featured-page:<n>`): shows a page, for screenshots.
+        .onReceive(NotificationCenter.default.publisher(for: .fluxoDebugFeaturedPage)) { notification in
+            if let index = notification.object as? Int, items.indices.contains(index) {
+                currentID = items[index].id
+            }
+        }
+        #endif
         .onChange(of: items.isEmpty, initial: true) { _, isEmpty in
             isShowingBillboard?.wrappedValue = !isEmpty
         }
@@ -223,61 +237,15 @@ struct FeaturedCarousel: View {
         }
     }
 
-    /// Picks `itemCount` consecutive channels with artwork starting at an offset that changes every day. Also the
-    /// picks of the Apple TV Home's hero (`TVHero`).
+    /// The pages of the current rotation for the playlists of `importIDs` (`FeaturedLoader`). Also the pages of
+    /// the Apple TV Home's hero (`TVHero`).
     static func loadPicks(importIDs: [UUID], container: ModelContainer) async -> [ChannelItem] {
-        guard !importIDs.isEmpty else {
-            return []
-        }
-        return await Task.detached(priority: .userInitiated) {
-            let context = ModelContext(container)
-            do {
-                var descriptor = HomeQueries.featured(importIDs: importIDs, onDemand: true)
-                var count = try context.fetchCount(descriptor)
-                if count < 3 {
-                    descriptor = HomeQueries.featured(importIDs: importIDs, onDemand: false)
-                    count = try context.fetchCount(descriptor)
-                }
-                guard count > 0 else {
-                    return []
-                }
-                let day = Calendar.current.ordinality(of: .day, in: .era, for: .now) ?? 0
-                // A wider window than shown: a series listed in several categories counts once (one page
-                // per series, never one per episode), and so do entries listed twice under the same name.
-                let fetched = Self.itemCount * 3
-                let windows = max(1, count - fetched + 1)
-                descriptor.fetchOffset = (day &* 7_919) % windows
-                #if DEBUG
-                // Debug harness (`featured-offset:<n>`): a given window instead of the day's.
-                if let offset = UserDefaults.fluxo.object(forKey: Self.debugOffsetKey) as? Int {
-                    descriptor.fetchOffset = max(0, offset)
-                }
-                #endif
-                descriptor.fetchLimit = fetched
-                var seen: Set<String> = []
-                let candidates = try context.fetch(descriptor).map(ChannelItem.init).filter { item in
-                    let key = item.seriesBookmarkKey ?? "\(item.playlistID.uuidString)|\(item.displayName.lowercased())"
-                    return seen.insert(key).inserted
-                }
-                // A series whose first episode has no artwork shows the series' poster (from a later episode).
-                let withoutArtwork = candidates.compactMap { $0.logo == nil ? $0.seriesItem : nil }
-                var posters: [String: String] = [:]
-                if !withoutArtwork.isEmpty {
-                    for series in SeriesLookup.summaries(of: withoutArtwork, in: container) {
-                        posters[series.bookmarkKey] = series.artwork
-                    }
-                }
-                let picks = candidates.compactMap { item -> ChannelItem? in
-                    guard item.logo == nil else {
-                        return item
-                    }
-                    return item.seriesBookmarkKey.flatMap { posters[$0] }.map(item.replacingLogo)
-                }
-                return Array(picks.prefix(Self.itemCount))
-            } catch {
-                return []
-            }
-        }.value
+        await FeaturedLoader.load(
+            importIDs: importIDs,
+            seed: FeaturedRotation.shared.currentSeed,
+            hidesAdultContent: MatureContent.hidesAdultContent,
+            container: container
+        )
     }
 }
 
@@ -731,3 +699,10 @@ private struct PageIndicator: View {
     }
     .fluxoPreviewEnvironment()
 }
+
+#if DEBUG
+extension Notification.Name {
+    /// Debug harness (`featured-page:<n>`): shows the featured page at the index that is the object.
+    static let fluxoDebugFeaturedPage = Notification.Name("FluxoDebugFeaturedPage")
+}
+#endif

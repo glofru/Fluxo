@@ -11,12 +11,15 @@ import SwiftUI
 
 /// "Because You Watched <channel>": other channels of the category of the most recent entry of the watch
 /// history in the scope (for an episode: the other series and movies of its category, never its own series).
-/// Hidden when the history is empty or the category has nothing else.
+/// Hidden when the history is empty or the category has nothing else. A suggestion: adult content is neither a
+/// source nor suggested (`MatureContentFilter`).
 struct BecauseYouWatchedRow: View {
 
     let scope: LibraryScope
 
     @Query private var recents: [ChannelBookmark]
+    @Environment(\.modelContext) private var modelContext
+    @AppStorage(MatureContent.hidesAdultContentKey) private var hidesAdultContent = MatureContent.hidesAdultContentByDefault
 
     init(scope: LibraryScope) {
         self.scope = scope
@@ -24,15 +27,17 @@ struct BecauseYouWatchedRow: View {
     }
 
     var body: some View {
+        let filter = MatureContentFilter.forScope(importIDs: scope.importIDs, container: modelContext.container, hidesAdultContent: hidesAdultContent)
         // The most recent entry whose playlist is visible (its category is read from the current import).
         let source = recents.lazy.compactMap { bookmark -> (ChannelItem, UUID)? in
             guard let importID = scope.importID(ofPlaylist: bookmark.playlistID) else {
                 return nil
             }
-            return (ChannelItem(bookmark), importID)
+            let item = ChannelItem(bookmark)
+            return filter.allows(item) ? (item, importID) : nil
         }.first
         if let source {
-            BecauseYouWatchedContent(item: source.0, importID: source.1, playlistName: scope.showsPlaylistNames ? scope.playlistNames[source.0.playlistID] : nil)
+            BecauseYouWatchedContent(item: source.0, importID: source.1, playlistName: scope.showsPlaylistNames ? scope.playlistNames[source.0.playlistID] : nil, filter: filter)
                 .id(source.0.bookmarkKey)
         }
     }
@@ -45,19 +50,25 @@ private struct BecauseYouWatchedContent: View {
     let item: ChannelItem
     let importID: UUID
     let playlistName: String?
+    let filter: MatureContentFilter
 
     @Query private var channels: [PlaylistChannel]
 
-    init(item: ChannelItem, importID: UUID, playlistName: String?) {
+    init(item: ChannelItem, importID: UUID, playlistName: String?, filter: MatureContentFilter) {
         self.item = item
         self.importID = importID
         self.playlistName = playlistName
+        self.filter = filter
         _channels = Query(HomeQueries.channels(importID: importID, groupName: item.groupName, limit: Self.fetchLimit + 1))
     }
 
     var body: some View {
         let ownSeries = item.series?.seriesKey
-        let others = channels.filter { $0.url != item.url && (ownSeries == nil || $0.seriesKey != ownSeries) }.prefix(Self.fetchLimit)
+        let others = Array(channels.lazy
+            .filter { $0.url != item.url && (ownSeries == nil || $0.seriesKey != ownSeries) }
+            .map(ChannelItem.init)
+            .filter(filter.allows)
+            .prefix(Self.fetchLimit))
         if others.count >= 2 {
             let route = ChannelRoute.group(importID: importID, groupName: item.groupName, title: item.groupName.isEmpty ? String(localized: "Other") : item.groupName)
             VStack(alignment: .leading, spacing: 10) {
@@ -69,8 +80,8 @@ private struct BecauseYouWatchedContent: View {
                     SeeAllLink(route: route)
                 }
                 CardRow {
-                    ForEach(others) { channel in
-                        ChannelPreview(item: ChannelItem(channel))
+                    ForEach(others) { item in
+                        ChannelPreview(item: item)
                     }
                 }
             }

@@ -156,8 +156,9 @@ enum HomeQueries {
         return descriptor
     }
 
-    /// Candidates for the featured carousel: channels with artwork, on-demand ones (posters) or live ones.
-    /// Use `fetchCount` on it, then pick a window with `fetchOffset` / `fetchLimit`. A series is a candidate
+    /// Candidates for the featured carousel across the imports: channels with artwork, on-demand ones (posters) or
+    /// live ones. `FeaturedLoader` fills with a window of it (`fetchOffset` / `fetchLimit`) the pages its categories
+    /// did not. A series is a candidate
     /// once per category it is in (its first episode there): the carousel keeps one page per series. That first
     /// episode may have no artwork of its own while the series has some (`PlaylistSeries.artwork`, from a later
     /// episode): the carousel takes the series' then, and leaves out series without any.
@@ -170,6 +171,27 @@ enum HomeQueries {
             predicate = #Predicate { importIDs.contains($0.importID) && $0.kindRawValue == live && $0.logo != nil }
         }
         return FetchDescriptor<PlaylistChannel>(predicate: predicate, sortBy: [SortDescriptor(\.sortIndex)])
+    }
+
+    /// Featured candidates of one category (`FeaturedPicker`): entries with artwork, and series (whose first episode
+    /// may have none of its own), a window at a time in playlist order. Uses the `[importID, groupName, sortIndex]`
+    /// index.
+    static func featured(importID: UUID, groupName: String, offset: Int, limit: Int) -> FetchDescriptor<PlaylistChannel> {
+        var descriptor = FetchDescriptor<PlaylistChannel>(
+            predicate: #Predicate { $0.importID == importID && $0.groupName == groupName && $0.isListed == true && ($0.logo != nil || $0.seriesKey != nil) },
+            sortBy: [SortDescriptor(\.sortIndex)]
+        )
+        descriptor.fetchOffset = offset
+        descriptor.fetchLimit = limit
+        return descriptor
+    }
+
+    /// Every category of the imports, in playlist order (the featured picker reads them all: a few hundred rows).
+    static func allGroups(importIDs: [UUID]) -> FetchDescriptor<PlaylistChannelGroup> {
+        FetchDescriptor<PlaylistChannelGroup>(
+            predicate: #Predicate { importIDs.contains($0.importID) },
+            sortBy: [SortDescriptor(\.sortIndex), SortDescriptor(\.name)]
+        )
     }
 
     // MARK: - Search
