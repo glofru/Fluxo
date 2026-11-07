@@ -9,14 +9,15 @@
 # Usage: Tools/Legal/extract-googlecast-licenses.sh [SourcePackages directory] [output file]
 #   The SourcePackages directory is the one of a build that resolved the packages: <derivedDataPath>/SourcePackages.
 #   Without it, the newest ~/Library/Developer/Xcode/DerivedData/Fluxo-*/SourcePackages is used.
-#   Run it after updating the Cast SDK in Package.resolved (and build once first, so the new SDK is downloaded);
-#   Tools/Legal/check-acknowledgements.sh fails until the file matches the SDK of Package.resolved.
+#   Run it after updating the Cast SDK in Vendor/GoogleCast/Package.swift (and build once first, so the new SDK is
+#   downloaded); Tools/Legal/check-acknowledgements.sh fails until the file matches the SDK of that manifest.
 #
 # Every component of Google's index must have a license name below (LICENSES): a new component in an SDK update stops
 # the script until someone reads its text and names its license.
 set -eu
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-RESOLVED=$ROOT/Fluxo.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+# The SDK the app links: the local package that wraps Google's dynamic GoogleCast.xcframework.
+CAST_PACKAGE=$ROOT/Vendor/GoogleCast/Package.swift
 
 source_packages=${1:-}
 if [ -z "$source_packages" ]; then
@@ -28,10 +29,10 @@ if [ -z "$source_packages" ] || [ ! -f "$source_packages/workspace-state.json" ]
     exit 1
 fi
 
-python3 -I - "$RESOLVED" "$source_packages" "$output" <<'EOF'
-import hashlib, json, os, plistlib, sys
+python3 -I - "$CAST_PACKAGE" "$source_packages" "$output" <<'EOF'
+import hashlib, json, os, plistlib, re, sys
 
-resolved_path, source_packages, output = sys.argv[1:4]
+manifest_path, source_packages, output = sys.argv[1:4]
 
 # The license of each component, read from its text in oss_licenses.bin (Cast SDK 4.8.6). Google's index gives only
 # the names. Several texts hold more than one license (gRPC, Eigen, proto): every license they contain is named.
@@ -62,21 +63,21 @@ def fail(message):
     print("error: " + message, file=sys.stderr)
     sys.exit(1)
 
-pins = json.load(open(resolved_path))["pins"]
-version = next((p["state"].get("version", "") for p in pins if p["identity"] == "google-cast-ios-sdk"), "")
-if not version:
-    fail("google-cast-ios-sdk is not in Package.resolved")
+match = re.search(r"GoogleCastSDK-ios-([0-9.]+)_dynamic\.zip", open(manifest_path, encoding="utf-8").read())
+if not match:
+    fail("no GoogleCastSDK-ios-<version>_dynamic.zip archive in " + manifest_path)
+version = match.group(1)
 
-# The SDK the app links (GoogleCastDynamic), and the archive it came from: it must be the version of Package.resolved,
-# or the DerivedData is stale.
+# The SDK the app links (the binary target of Vendor/GoogleCast), and the archive it came from: it must be the version
+# of the manifest, or the DerivedData is stale.
 state = json.load(open(os.path.join(source_packages, "workspace-state.json")))
 artifact = next((a for a in state["object"]["artifacts"]
-                 if a["packageRef"]["identity"] == "google-cast-ios-sdk" and a["targetName"] == "GoogleCastDynamicBinary"), None)
+                 if a["packageRef"]["identity"] == "googlecast" and a["targetName"] == "GoogleCast"), None)
 if artifact is None:
-    fail(source_packages + " has no GoogleCastDynamicBinary artifact; build the iOS app once to download it")
+    fail(source_packages + " has no GoogleCast artifact of Vendor/GoogleCast; build the iOS app once to download it")
 source = artifact.get("source", {})
 if "-" + version + "_" not in source.get("url", ""):
-    fail("the Cast SDK in %s is %s, not %s of Package.resolved; build again to download it"
+    fail("the Cast SDK in %s is %s, not %s of Vendor/GoogleCast/Package.swift; build again to download it"
          % (source_packages, source.get("url", "?"), version))
 
 folder = os.path.join(os.path.dirname(artifact["path"]), "OpenSourceLicenses")

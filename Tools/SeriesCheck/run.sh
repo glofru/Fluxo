@@ -24,7 +24,7 @@ F="$ROOT/Fluxo"
 
 if [ "${PARSER_ONLY:-0}" = 1 ]; then
     "${SWIFTC[@]}" -o "$OUT/parser" "$F/Features/Series/EpisodeParser.swift" "$F/Features/Playlist/ChannelContentKind.swift" \
-        "$HERE/ParserCases.swift" "$HERE/ParserChecks.swift" "$HERE/ParserOnlyMain.swift" 2> "$OUT/build-parser.log" \
+        "$ROOT/FluxoTests/Fixtures/EpisodeParserCases.swift" "$HERE/ParserChecks.swift" "$HERE/ParserOnlyMain.swift" 2> "$OUT/build-parser.log" \
         || { cat "$OUT/build-parser.log"; exit 1; }
     "$OUT/parser"
     exit 0
@@ -56,7 +56,7 @@ fi
     "$F/App/Database/StoreHistory.swift" \
     "$F/Features/Guide/Model/EPGModels.swift" \
     "$F/Features/Guide/Model/GuideValues.swift" \
-    "$HERE/ParserCases.swift" "$HERE/ParserChecks.swift" "$HERE/SyntheticPlaylist.swift" "$HERE/StoreCheck.swift" "$HERE/ToolStubs.swift" "$HERE/main.swift" \
+    "$ROOT/FluxoTests/Fixtures/EpisodeParserCases.swift" "$HERE/ParserChecks.swift" "$HERE/SyntheticPlaylist.swift" "$HERE/StoreCheck.swift" "$HERE/ToolStubs.swift" "$HERE/main.swift" \
     2> "$OUT/build.log" || { cat "$OUT/build.log"; exit 1; }
 
 echo "== parser"

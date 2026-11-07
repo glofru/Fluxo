@@ -1,5 +1,5 @@
 {
-  "originHash" : "9892343be19f8b9269cf665e3531903485146c46b9ec0985267f3ff0ad369d13",
+  "originHash" : "66d1ec1f446cfbbceaf4d262bcb9bb99a3e8d7a3fd4d166fa2c99483a748b38a",
   "pins" : [
     {
       "identity" : "flyingfox",
@@ -8,24 +8,6 @@
       "state" : {
         "revision" : "de429870282bed7b01bf6c384f5f29d55907aa10",
         "version" : "0.24.1"
-      }
-    },
-    {
-      "identity" : "google-cast-ios-sdk",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/googlecast/google-cast-ios-sdk",
-      "state" : {
-        "revision" : "104500df8ce2a827ca3b3392bf16877fae413a33",
-        "version" : "4.8.6"
-      }
-    },
-    {
-      "identity" : "gtm-session-fetcher",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/google/gtm-session-fetcher.git",
-      "state" : {
-        "revision" : "a2ab612cb980066ee56d90d60d8462992c07f24b",
-        "version" : "3.5.0"
       }
     }
   ],

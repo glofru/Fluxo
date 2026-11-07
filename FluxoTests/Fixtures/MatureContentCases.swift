@@ -1,12 +1,17 @@
 //
-//  ClassifierCases.swift
-//  FeaturedCheck
+//  MatureContentCases.swift
+//  FluxoTests
 //
 //  Names the adult-content classifier (`MatureContent`) must recognize, and names it must leave alone: category
-//  names and titles as IPTV providers write them, in many languages and scripts.
+//  names and titles as IPTV providers write them, in many languages and scripts; and the title keys of the featured
+//  billboard (`FeaturedTitle`). Shared by the unit tests (FeaturedTests) and Tools/FeaturedCheck, which compiles this
+//  file with the app's sources (there is no Fluxo module to import then).
 //
 
 import Foundation
+#if canImport(Fluxo)
+@testable import Fluxo
+#endif
 
 enum ClassifierCases {
 

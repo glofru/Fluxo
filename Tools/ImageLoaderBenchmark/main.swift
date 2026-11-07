@@ -138,7 +138,11 @@ do {
         for _ in 0..<40 {
             group.addTask { await loader.image(for: request) != nil }
         }
-        return await group.reduce(0) { $0 + ($1 ? 1 : 0) }
+        var images = 0
+        for await loaded in group where loaded {
+            images += 1
+        }
+        return images
     }
     let after = loader.currentStatistics()
     print("coalescing: 40 concurrent requests -> \(results) images, \(after.remoteLoads - before.remoteLoads) load, \(after.joinedLoads - before.joinedLoads) joined")

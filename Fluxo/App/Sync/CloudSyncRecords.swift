@@ -4,7 +4,7 @@
 //
 //  The values iCloud sync exchanges between devices: one record per playlist, guide source, favorite, watch
 //  progress and setting. Plain values (Foundation only), so `Tools/SyncCheck` can compile and test them without the
-//  app. See "iCloud sync" in the README.
+//  app. See docs/icloud-sync.md.
 //
 
 import CryptoKit

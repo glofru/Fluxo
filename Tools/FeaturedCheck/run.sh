@@ -45,7 +45,7 @@ xcrun swiftc -O "${FLUXO_SWIFT_LANGUAGE[@]}" -parse-as-library -o "$OUT/check" \
     "$F/App/Design/TextParts.swift" \
     "$ROOT/Tools/SeriesCheck/ToolStubs.swift" \
     "$HERE/Stubs.swift" \
-    "$HERE/ClassifierCases.swift" \
+    "$ROOT/FluxoTests/Fixtures/MatureContentCases.swift" \
     "$HERE/main.swift" 2> "$OUT/build.log" || { cat "$OUT/build.log"; exit 1; }
 
 "$OUT/check" "$OUT/store.sqlite" "$FILLER"

@@ -7,6 +7,10 @@
 #                        libswscale, libswresample and libavutil linked into a single dylib that exports
 #                        only the public av* / sw* symbols. Slices: iOS arm64, iOS Simulator arm64 +
 #                        x86_64, macOS arm64 + x86_64, tvOS arm64, tvOS Simulator arm64 + x86_64.
+#                        Each platform's library has the framework's debug symbols next to it
+#                        (<library>/dSYMs/FFmpeg.framework.dSYM, see make_framework): Xcode copies them into
+#                        the archive, so FFmpeg frames of crash reports are symbolicated. The binaries
+#                        themselves are stripped of debug information.
 #   include/             the public libavformat / libavcodec / libswscale / libswresample / libavutil
 #                        headers (identical for every slice; the script checks it).
 #   BUILD_INFO.txt       version, tarball checksum and the exact configure flags.
@@ -20,6 +24,8 @@
 #   Tools/FFmpeg/build-xcframework.sh
 # Environment:
 #   WORK=/tmp/fluxo-ffmpeg-build   scratch directory (download, sources, objects)
+#   OUT=<folder>                    where the result goes instead of Vendor/FFmpeg: a copy of Vendor/FFmpeg, to try
+#                                   a build without touching the repository (the platforms not built come from it)
 #   JOBS=<n>                        parallel make jobs (default: number of CPUs)
 #   SLICES="ios-arm64 ..."          subset of slices to build (default: all of them). The platforms of
 #                                   the slices not listed are taken unchanged (byte for byte) from the
@@ -34,6 +40,10 @@
 # are used: pkg-config lookups are disabled and every external library is off except the system
 # zlib, Secure Transport (the TLS backend for https on Apple platforms) and VideoToolbox (the
 # system's video decoders and encoders).
+#
+# Debug information: --enable-debug compiles with -g, which leaves the generated code as it is. The debug
+# information goes into the dSYMs (dsymutil, before the binaries are stripped), with the build paths mapped to
+# fixed ones (-fdebug-prefix-map), so the same sources give the same dSYMs on every Mac.
 #
 # License: the configuration below never passes --enable-gpl, --enable-version3 or
 # --enable-nonfree, so the result is LGPL v2.1 or later. It is linked dynamically, so the framework
@@ -53,7 +63,7 @@ FRAMEWORK_VERSION=$FFMPEG_VERSION
 BUNDLE_ID=dev.watermelon.FFmpeg
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-OUT=$ROOT/Vendor/FFmpeg
+OUT=${OUT:-$ROOT/Vendor/FFmpeg}
 SOURCE_TARBALL=$OUT/source/ffmpeg-$FFMPEG_VERSION.tar.xz
 WORK=${WORK:-/tmp/fluxo-ffmpeg-build}
 JOBS=${JOBS:-$(sysctl -n hw.ncpu)}
@@ -116,7 +126,7 @@ join_enable() { # kind list
 
 CONFIGURE_FLAGS="--disable-everything --disable-autodetect --disable-programs --disable-doc \
 --disable-avdevice --disable-avfilter --enable-swscale --enable-swresample \
---enable-static --disable-shared --enable-pic --disable-debug \
+--enable-static --disable-shared --enable-pic --enable-debug \
 --enable-pthreads --enable-zlib --enable-securetransport --enable-videotoolbox --enable-network \
 $(join_enable demuxer "$DEMUXERS")$(join_enable muxer "$MUXERS")$(join_enable protocol "$PROTOCOLS")\
 $(join_enable parser "$PARSERS")$(join_enable decoder "$DECODERS")$(join_enable encoder "$ENCODERS")\
@@ -204,7 +214,8 @@ build_slice() {
         --cc="$cc" --sysroot="$sysroot" \
         --ar="$(xcrun -f ar)" --nm="$(xcrun -f nm)" --ranlib="$(xcrun -f ranlib)" --strip="$(xcrun -f strip)" \
         --pkg-config=false \
-        --extra-cflags="-target $TRIPLE" --extra-ldflags="-target $TRIPLE" \
+        --extra-cflags="-target $TRIPLE -fdebug-prefix-map=$(cd "$SRC" && pwd -P)=/ffmpeg-$FFMPEG_VERSION -fdebug-prefix-map=$(cd "$build" && pwd -P)=/ffmpeg-build" \
+        --extra-ldflags="-target $TRIPLE" \
         $asm_flags $CONFIGURE_FLAGS > "$build/configure.out" 2>&1) || {
         tail -n 40 "$build/config.log" >&2
         exit 1
@@ -225,6 +236,8 @@ build_slice() {
     # One dylib for the five libraries. Only the public API is exported (the av_, avio_, avcodec_,
     # avformat_, avutil_, avsubtitle_, swr_ and sws_ prefixes; not the internal avpriv_ and ff_
     # functions), so the linker strips every internal function the enabled components never reach.
+    # The dylib keeps its debug map (the objects of the static libraries it was linked from): make_framework
+    # makes the dSYM from it, then strips it.
     if [ "$PLATFORM" = macos ]; then
         install_name=@rpath/FFmpeg.framework/Versions/A/FFmpeg
     else
@@ -237,14 +250,48 @@ build_slice() {
         "$prefix/lib/pkgconfig/libswscale.pc" "$prefix/lib/pkgconfig/libswresample.pc" \
         | awk '{ for (i = 1; i <= NF; i++) { w = $i; if (w == "-framework") { w = w " " $(++i) }
                  if (w ~ /^-L/ || w ~ /^-lav/ || w ~ /^-lsw/ || seen[w]++) continue; printf "%s ", w } }')
+    # Every object of the five static libraries (what -all_load would take), under names of their own: an archive
+    # keeps only the base name of each object, and several have the same one (libavcodec's parser.o and
+    # aarch64/parser.o), which leaves dsymutil unable to tell them apart in the debug map.
+    unpack_archives "$build/objects" "$prefix/lib/libavformat.a" "$prefix/lib/libavcodec.a" "$prefix/lib/libswscale.a" \
+        "$prefix/lib/libswresample.a" "$prefix/lib/libavutil.a" > "$build/objects.txt"
     # shellcheck disable=SC2086 # extra_libs is a list of linker words.
     "$cc" -target "$TRIPLE" -isysroot "$sysroot" -dynamiclib \
         -install_name "$install_name" \
         -compatibility_version 9.0.0 -current_version "$FFMPEG_VERSION" \
-        -Wl,-all_load "$prefix/lib/libavformat.a" "$prefix/lib/libavcodec.a" "$prefix/lib/libswscale.a" "$prefix/lib/libswresample.a" \
-        "$prefix/lib/libavutil.a" \
+        -Wl,-filelist,"$build/objects.txt" \
         -Wl,-exported_symbols_list,"$build/exports.txt" -Wl,-dead_strip -Wl,-dead_strip_dylibs -Wl,-x \
         $extra_libs -o "$build/FFmpeg"
+}
+
+# Writes every object member of the archives to <folder>/<archive>/<position>-<name> and prints their paths, in order.
+unpack_archives() { # folder archive...
+    python3 -I - "$@" <<'PYTHON'
+import os, sys
+folder, archives = sys.argv[1], sys.argv[2:]
+for archive in archives:
+    data = open(archive, "rb").read()
+    if not data.startswith(b"!<arch>\n"):
+        sys.exit("error: %s is not an archive" % archive)
+    out = os.path.join(folder, os.path.basename(archive))
+    os.makedirs(out, exist_ok=True)
+    offset, position = 8, 0
+    while offset + 60 <= len(data):
+        header = data[offset:offset + 60]
+        name, size = header[:16].decode().strip(), int(header[48:58].decode().strip())
+        body = data[offset + 60:offset + 60 + size]
+        if name.startswith("#1/"):
+            length = int(name[3:])
+            name, body = body[:length].rstrip(b"\0").decode(), body[length:]
+        offset += 60 + size + (size % 2)
+        if not name.endswith(".o"):
+            continue  # the symbol table
+        position += 1
+        path = os.path.join(out, "%04d-%s" % (position, name))
+        with open(path, "wb") as file:
+            file.write(body)
+        print(path)
+PYTHON
 }
 
 # MARK: - Frameworks
@@ -336,6 +383,7 @@ make_framework() { # platform
             mkdir -p "$dir/Versions/A/Resources"
             # shellcheck disable=SC2086
             lipo -create $binaries -output "$dir/Versions/A/FFmpeg"
+            make_dsym "$1" "$dir/Versions/A/FFmpeg"
             write_info_plist "$dir/Versions/A/Resources/Info.plist" MacOSX LSMinimumSystemVersion "$MACOS_MIN"
             cp "$SRC/COPYING.LGPLv2.1" "$dir/Versions/A/Resources/LICENSE"
             write_privacy_manifest "$dir/Versions/A/Resources/PrivacyInfo.xcprivacy"
@@ -347,6 +395,7 @@ make_framework() { # platform
             mkdir -p "$dir"
             # shellcheck disable=SC2086
             lipo -create $binaries -output "$dir/FFmpeg"
+            make_dsym "$1" "$dir/FFmpeg"
             case "$1" in
                 ios) platform_name=iPhoneOS; min_os=$IOS_MIN ;;
                 iossim) platform_name=iPhoneSimulator; min_os=$IOS_MIN ;;
@@ -361,7 +410,28 @@ make_framework() { # platform
     # Ad-hoc signature so that the binaries load as they are (smoke tests, the simulator); Xcode
     # signs them again with the app's identity when it embeds them.
     codesign --force --sign - --timestamp=none "$dir" > /dev/null
-    FRAMEWORK_ARGS="$FRAMEWORK_ARGS -framework $dir"
+    FRAMEWORK_ARGS="$FRAMEWORK_ARGS -framework $dir -debug-symbols $WORK/frameworks/$1/FFmpeg.framework.dSYM"
+}
+
+# The debug symbols of a platform's framework binary (every architecture), from the debug map the linker left in it,
+# then the binary stripped of its debug information (the exported symbols stay). Fails unless every architecture of
+# the dSYM has the UUID of the binary's.
+make_dsym() { # platform binary
+    dsym=$WORK/frameworks/$1/FFmpeg.framework.dSYM
+    rm -rf "$dsym"
+    dsymutil "$2" -o "$dsym" > "$WORK/frameworks/$1/dsymutil.out" 2>&1 || { cat "$WORK/frameworks/$1/dsymutil.out" >&2; exit 1; }
+    if grep -q "warning:" "$WORK/frameworks/$1/dsymutil.out"; then
+        echo "error: dsymutil could not read every object of the $1 framework:" >&2
+        grep "warning:" "$WORK/frameworks/$1/dsymutil.out" | head -n 20 >&2
+        exit 1
+    fi
+    strip -S -x "$2"
+    binary_uuids=$(dwarfdump --uuid "$2" | awk '{print $2, $3}' | sort)
+    dsym_uuids=$(dwarfdump --uuid "$dsym" | awk '{print $2, $3}' | sort)
+    if [ -z "$binary_uuids" ] || [ "$binary_uuids" != "$dsym_uuids" ]; then
+        echo "error: the $1 dSYM does not match its binary ($dsym_uuids / $binary_uuids)" >&2
+        exit 1
+    fi
 }
 
 # The library identifier (directory) of a platform's framework in an existing xcframework, or nothing.
@@ -402,6 +472,14 @@ reuse_framework() { # platform
         codesign --force --sign - --timestamp=none "$WORK/frameworks/$1/FFmpeg.framework" > /dev/null
     fi
     FRAMEWORK_ARGS="$FRAMEWORK_ARGS -framework $WORK/frameworks/$1/FFmpeg.framework"
+    # Its debug symbols, when the build it comes from made them (the code is unchanged, so they still match).
+    if [ -d "$OUT/FFmpeg.xcframework/$library/dSYMs/FFmpeg.framework.dSYM" ]; then
+        cp -Rp "$OUT/FFmpeg.xcframework/$library/dSYMs/FFmpeg.framework.dSYM" "$WORK/frameworks/$1/"
+        FRAMEWORK_ARGS="$FRAMEWORK_ARGS -debug-symbols $WORK/frameworks/$1/FFmpeg.framework.dSYM"
+    else
+        echo "note: the $1 framework kept from the previous build has no dSYM; rebuild that platform to get one." >&2
+        WITHOUT_DSYMS="$WITHOUT_DSYMS $library"
+    fi
     REUSED="$REUSED $library"
 }
 
@@ -475,6 +553,7 @@ slices_in_xcframework() {
 log "Creating FFmpeg.xcframework"
 FRAMEWORK_ARGS=""
 REUSED=""
+WITHOUT_DSYMS=""
 for platform in $ALL_PLATFORMS; do
     if builds_platform "$platform"; then
         make_framework "$platform"
@@ -497,7 +576,12 @@ cp "$SRC/LICENSE.md" "$OUT/LICENSE.md"
     echo "License: LGPL v2.1 or later (no GPL, version3 or nonfree components)"
     echo "Built by: Tools/FFmpeg/build-xcframework.sh with $(xcodebuild -version | tr '\n' ' ')"
     echo "Slices: $(slices_in_xcframework) (iOS $IOS_MIN, macOS $MACOS_MIN, tvOS $TVOS_MIN)"
-    [ -z "$REUSED" ] || echo "Kept unchanged from the previous build:$REUSED (same version and configure flags)"
+    [ -z "$REUSED" ] || echo "Kept unchanged from the previous build:$REUSED (same version)"
+    if [ -z "$WITHOUT_DSYMS" ]; then
+        echo "Debug symbols: <library>/dSYMs/FFmpeg.framework.dSYM in every library of the xcframework"
+    else
+        echo "Debug symbols: <library>/dSYMs/FFmpeg.framework.dSYM, except:$WITHOUT_DSYMS (built before the dSYMs)"
+    fi
     echo
     echo "Configure flags (plus per-slice toolchain flags):"
     echo "$CONFIGURE_FLAGS" | tr ' ' '\n' | grep -v '^$' | sed 's/^/  /'
@@ -505,4 +589,5 @@ cp "$SRC/LICENSE.md" "$OUT/LICENSE.md"
 
 log "Done"
 du -sh "$OUT/FFmpeg.xcframework"
-find "$OUT/FFmpeg.xcframework" -name FFmpeg -type f -exec lipo -info {} \;
+find "$OUT/FFmpeg.xcframework" -path '*.dSYM' -prune -o -name FFmpeg -type f -exec lipo -info {} \;
+find "$OUT/FFmpeg.xcframework" -path '*.dSYM/Contents/Resources/DWARF/FFmpeg' -type f -exec dwarfdump --uuid {} \;

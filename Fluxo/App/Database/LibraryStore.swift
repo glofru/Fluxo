@@ -2,7 +2,7 @@
 //  LibraryStore.swift
 //  Fluxo
 //
-//  Opens the app's SwiftData stores (see "Library store" in the README):
+//  Opens the app's SwiftData stores (see docs/library-store.md):
 //
 //  - the library store (`default.store`, Application Support, backed up): what the user made (`ModelRegistry.user`).
 //    It is never moved, emptied or recreated without the user's say: when it cannot be opened the app shows

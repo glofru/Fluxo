@@ -29,6 +29,8 @@ struct SettingsView: View {
     @State private var showsAcknowledgements = false
     /// The component page the harness opens with it (`acknowledgements:<id>`).
     @State private var acknowledgementsComponentID: String?
+    /// Settings › About › Diagnostic Reports: a sheet on the Mac; pushed by the harness elsewhere.
+    @State private var showsDiagnostics = false
 
     private enum Confirmation: Identifiable {
         case deleteRecordings
@@ -54,6 +56,10 @@ struct SettingsView: View {
                     acknowledgementsComponentID = notification.object as? String
                     showsAcknowledgements = true
                 }
+                // Debug harness (`diagnostics[:sample]`): Settings › About › Diagnostic Reports.
+                .onReceive(NotificationCenter.default.publisher(for: .fluxoDebugDiagnostics)) { _ in
+                    showsDiagnostics = true
+                }
                 #endif
         }
         #if os(macOS)
@@ -63,10 +69,21 @@ struct SettingsView: View {
             }
             .frame(minWidth: 520, minHeight: 560)
         }
+        .sheet(isPresented: $showsDiagnostics) {
+            NavigationStack {
+                DiagnosticReportsView(isModal: true)
+            }
+            .frame(minWidth: 520, minHeight: 480)
+        }
         #else
         .navigationDestination(isPresented: $showsAcknowledgements) {
             AcknowledgementsView(initialComponentID: acknowledgementsComponentID)
         }
+        #if !os(tvOS)
+        .navigationDestination(isPresented: $showsDiagnostics) {
+            DiagnosticReportsView()
+        }
+        #endif
         #endif
     }
 
@@ -276,6 +293,9 @@ struct SettingsView: View {
                 SettingsLabel("FFmpeg", systemImage: "film.stack", tint: .gray)
             }
             acknowledgementsRow
+            #if !os(tvOS)
+            diagnosticsRow
+            #endif
             SettingsWebLink(url: LegalLinks.privacyPolicy) {
                 SettingsLabel("Privacy Policy", systemImage: "hand.raised.fill", tint: Theme.cyan)
             }
@@ -308,6 +328,28 @@ struct SettingsView: View {
         }
         #endif
     }
+
+    #if !os(tvOS)
+    /// The crash and performance reports kept on this device (`DiagnosticReportsView`). Pushed where Settings is a
+    /// navigation stack (iPhone, iPad); a sheet in the Mac's Settings window.
+    @ViewBuilder
+    private var diagnosticsRow: some View {
+        #if os(macOS)
+        Button {
+            showsDiagnostics = true
+        } label: {
+            SettingsLabel("Diagnostic Reports", systemImage: "stethoscope", tint: .gray)
+        }
+        .buttonStyle(.plain)
+        #else
+        NavigationLink {
+            DiagnosticReportsView()
+        } label: {
+            SettingsLabel("Diagnostic Reports", systemImage: "stethoscope", tint: .gray)
+        }
+        #endif
+    }
+    #endif
 
     // MARK: - Helpers
 
@@ -499,5 +541,7 @@ extension Notification.Name {
     static let fluxoDebugSettingsSection = Notification.Name("FluxoDebugSettingsSection")
     /// Debug harness (`acknowledgements[:<id>]`): opens Settings › About › Acknowledgements (and a component's page).
     static let fluxoDebugAcknowledgements = Notification.Name("FluxoDebugAcknowledgements")
+    /// Debug harness (`diagnostics[:sample]`): opens Settings › About › Diagnostic Reports.
+    static let fluxoDebugDiagnostics = Notification.Name("FluxoDebugDiagnostics")
 }
 #endif

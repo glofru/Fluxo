@@ -580,16 +580,21 @@ enum GuideCheck {
         expect(true, "deleting it again does nothing")
 
         // Deleted while its guide is being imported (a playlist sync or another path that does not wait for the
-        // refresh to stop): the import fails, and nothing of the source is left once it has stopped.
+        // refresh to stop): the import fails, and nothing of the source is left once it has stopped. The import is
+        // held on its parse thread at its first programme until the source is deleted, so the deletion always lands
+        // in the middle of it (a small guide is otherwise read before a polling check sees it start).
         let racing = try await importer.addSource(url: URL(string: "https://example.com/racing.xml.gz") ?? fileURL, name: "Racing")
+        let gate = ParseGate()
         let racingImport = Task {
-            try await importer.importFile(fileURL, sourceID: racing, wanted: wanted) { _ in }
+            try await importer.importFile(fileURL, sourceID: racing, wanted: wanted) { gate.holdOnce($0) }
         }
         let deadline = clock.now + .seconds(120)
-        while try ModelContext(container).fetchCount(FetchDescriptor<EPGProgramme>(predicate: #Predicate { $0.sourceID == racing })) == 0, clock.now < deadline {
-            try await Task.sleep(for: .milliseconds(50))
+        while !gate.isHeld, clock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
         }
+        expect(gate.isHeld, "the import of the source to delete is under way")
         try await importer.deleteSource(racing)
+        gate.open()
         let racingResult = await racingImport.result
         if case .success = racingResult {
             expect(false, "the import of a deleted source fails")
@@ -710,5 +715,39 @@ enum GuideCheck {
         }
         buffer += "</tv>\n"
         try flush(force: true)
+    }
+}
+
+/// Holds a guide import on its parse thread at its first programme (its first `reading` progress) until `open()`: a
+/// check can then act in the middle of the import whatever the size of the guide and the speed of the Mac. The parse
+/// thread holds no store transaction there, and the importer actor is free meanwhile (it awaits the parse).
+final class ParseGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var held = false
+    private let release = DispatchSemaphore(value: 0)
+
+    var isHeld: Bool {
+        lock.withLock { held }
+    }
+
+    /// The import's progress callback.
+    func holdOnce(_ progress: EPGRefreshProgress) {
+        guard progress.phase == .reading else {
+            return
+        }
+        let isFirst = lock.withLock {
+            defer {
+                held = true
+            }
+            return !held
+        }
+        if isFirst {
+            // Never forever: a check that fails must not hang the script.
+            _ = release.wait(timeout: .now() + 60)
+        }
+    }
+
+    func open() {
+        release.signal()
     }
 }

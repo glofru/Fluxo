@@ -9,13 +9,20 @@
 /* Begin PBXBuildFile section */
 		99E70F112F0C000000A1B2C3 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 99E70F102F0C000000A1B2C3 /* LaunchScreen.storyboard */; platformFilters = (tvos, ); };
 		99E70F022F0C000000A1B2C3 /* FluxoTopShelf.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 99E70F012F0C000000A1B2C3 /* FluxoTopShelf.appex */; platformFilters = (tvos, ); settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		99CA57022F0B000000C4A571 /* GoogleCastDynamic in Frameworks */ = {isa = PBXBuildFile; platformFilters = (ios, ); productRef = 99CA57032F0B000000C4A571 /* GoogleCastDynamic */; };
+		99CA57022F0B000000C4A571 /* GoogleCast in Frameworks */ = {isa = PBXBuildFile; platformFilters = (ios, ); productRef = 99CA57032F0B000000C4A571 /* GoogleCast */; };
 		997F92342E1A3931008E2656 /* FlyingFox in Frameworks */ = {isa = PBXBuildFile; productRef = 997F92332E1A3931008E2656 /* FlyingFox */; };
 		99F0FF022F0A000000D3E9A1 /* FFmpeg.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 99F0FF012F0A000000D3E9A1 /* FFmpeg.xcframework */; platformFilters = (ios, macos, tvos, ); };
 		99F0FF032F0A000000D3E9A1 /* FFmpeg.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 99F0FF012F0A000000D3E9A1 /* FFmpeg.xcframework */; platformFilters = (ios, macos, tvos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		99FE57072F0D000000E5C0DE /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 99B5FABC2DEAF9DC0095A78E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 99B5FAC32DEAF9DC0095A78E;
+			remoteInfo = Fluxo;
+		};
 		99E70F042F0C000000A1B2C3 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 99B5FABC2DEAF9DC0095A78E /* Project object */;
@@ -51,6 +58,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		99FE57022F0D000000E5C0DE /* FluxoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FluxoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		99E70F102F0C000000A1B2C3 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		99E70F012F0C000000A1B2C3 /* FluxoTopShelf.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FluxoTopShelf.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		99B5FAC42DEAF9DC0095A78E /* Fluxo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Fluxo.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -91,6 +99,11 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		99FE57032F0D000000E5C0DE /* FluxoTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = FluxoTests;
+			sourceTree = "<group>";
+		};
 		99E70F062F0C000000A1B2C3 /* FluxoTopShelf */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -111,6 +124,13 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		99FE57052F0D000000E5C0DE /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		99E70F0A2F0C000000A1B2C3 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -124,7 +144,7 @@
 			files = (
 				99F0FF022F0A000000D3E9A1 /* FFmpeg.xcframework in Frameworks */,
 				997F92342E1A3931008E2656 /* FlyingFox in Frameworks */,
-				99CA57022F0B000000C4A571 /* GoogleCastDynamic in Frameworks */,
+				99CA57022F0B000000C4A571 /* GoogleCast in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -144,6 +164,7 @@
 			children = (
 				99B5FAC62DEAF9DC0095A78E /* Fluxo */,
 				99E70F062F0C000000A1B2C3 /* FluxoTopShelf */,
+				99FE57032F0D000000E5C0DE /* FluxoTests */,
 				99E70F122F0C000000A1B2C3 /* FluxoTV */,
 				99F0FF042F0A000000D3E9A1 /* Vendor/FFmpeg */,
 				99B5FAC52DEAF9DC0095A78E /* Products */,
@@ -155,6 +176,7 @@
 			children = (
 				99B5FAC42DEAF9DC0095A78E /* Fluxo.app */,
 				99E70F012F0C000000A1B2C3 /* FluxoTopShelf.appex */,
+				99FE57022F0D000000E5C0DE /* FluxoTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -170,6 +192,29 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		99FE57012F0D000000E5C0DE /* FluxoTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 99FE570B2F0D000000E5C0DE /* Build configuration list for PBXNativeTarget "FluxoTests" */;
+			buildPhases = (
+				99FE57042F0D000000E5C0DE /* Sources */,
+				99FE57052F0D000000E5C0DE /* Frameworks */,
+				99FE57062F0D000000E5C0DE /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				99FE57082F0D000000E5C0DE /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				99FE57032F0D000000E5C0DE /* FluxoTests */,
+			);
+			name = FluxoTests;
+			packageProductDependencies = (
+			);
+			productName = FluxoTests;
+			productReference = 99FE57022F0D000000E5C0DE /* FluxoTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		99E70F0C2F0C000000A1B2C3 /* FluxoTopShelf */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 99E70F0F2F0C000000A1B2C3 /* Build configuration list for PBXNativeTarget "FluxoTopShelf" */;
@@ -213,7 +258,7 @@
 			name = Fluxo;
 			packageProductDependencies = (
 				997F92332E1A3931008E2656 /* FlyingFox */,
-				99CA57032F0B000000C4A571 /* GoogleCastDynamic */,
+				99CA57032F0B000000C4A571 /* GoogleCast */,
 			);
 			productName = Fluxo;
 			productReference = 99B5FAC42DEAF9DC0095A78E /* Fluxo.app */;
@@ -234,6 +279,10 @@
 					};
 					99E70F0C2F0C000000A1B2C3 = {
 						CreatedOnToolsVersion = 27.2;
+					};
+					99FE57012F0D000000E5C0DE = {
+						CreatedOnToolsVersion = 27.2;
+						TestTargetID = 99B5FAC32DEAF9DC0095A78E;
 					};
 				};
 			};
@@ -264,7 +313,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				997F92322E1A3931008E2656 /* XCRemoteSwiftPackageReference "FlyingFox" */,
-				99CA57012F0B000000C4A571 /* XCRemoteSwiftPackageReference "google-cast-ios-sdk" */,
+				99CA57012F0B000000C4A571 /* XCLocalSwiftPackageReference "Vendor/GoogleCast" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 99B5FAC52DEAF9DC0095A78E /* Products */;
@@ -273,11 +322,19 @@
 			targets = (
 				99B5FAC32DEAF9DC0095A78E /* Fluxo */,
 				99E70F0C2F0C000000A1B2C3 /* FluxoTopShelf */,
+				99FE57012F0D000000E5C0DE /* FluxoTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		99FE57062F0D000000E5C0DE /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		99E70F0B2F0C000000A1B2C3 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -296,6 +353,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		99FE57042F0D000000E5C0DE /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		99E70F092F0C000000A1B2C3 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -313,6 +377,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		99FE57082F0D000000E5C0DE /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 99B5FAC32DEAF9DC0095A78E /* Fluxo */;
+			targetProxy = 99FE57072F0D000000E5C0DE /* PBXContainerItemProxy */;
+		};
 		99E70F052F0C000000A1B2C3 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			platformFilters = (tvos, );
@@ -322,6 +391,54 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		99FE57092F0D000000E5C0DE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 4MJXMYZ3D9;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/Vendor/FFmpeg/include";
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.watermelon.FluxoTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator iphoneos iphonesimulator macosx";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				"TARGETED_DEVICE_FAMILY[sdk=appletvos*]" = 3;
+				"TARGETED_DEVICE_FAMILY[sdk=appletvsimulator*]" = 3;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Fluxo.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Fluxo";
+				TVOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Debug;
+		};
+		99FE570A2F0D000000E5C0DE /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 4MJXMYZ3D9;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/Vendor/FFmpeg/include";
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.watermelon.FluxoTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator iphoneos iphonesimulator macosx";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				"TARGETED_DEVICE_FAMILY[sdk=appletvos*]" = 3;
+				"TARGETED_DEVICE_FAMILY[sdk=appletvsimulator*]" = 3;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Fluxo.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Fluxo";
+				TVOS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Release;
+		};
 		99E70F0D2F0C000000A1B2C3 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -634,6 +751,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		99FE570B2F0D000000E5C0DE /* Build configuration list for PBXNativeTarget "FluxoTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				99FE57092F0D000000E5C0DE /* Debug */,
+				99FE570A2F0D000000E5C0DE /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		99E70F0F2F0C000000A1B2C3 /* Build configuration list for PBXNativeTarget "FluxoTopShelf" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -663,6 +789,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		99CA57012F0B000000C4A571 /* XCLocalSwiftPackageReference "Vendor/GoogleCast" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Vendor/GoogleCast;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		997F92322E1A3931008E2656 /* XCRemoteSwiftPackageReference "FlyingFox" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -670,14 +803,6 @@
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 0.24.1;
-			};
-		};
-		99CA57012F0B000000C4A571 /* XCRemoteSwiftPackageReference "google-cast-ios-sdk" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/googlecast/google-cast-ios-sdk";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 4.8.6;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
@@ -688,10 +813,9 @@
 			package = 997F92322E1A3931008E2656 /* XCRemoteSwiftPackageReference "FlyingFox" */;
 			productName = FlyingFox;
 		};
-		99CA57032F0B000000C4A571 /* GoogleCastDynamic */ = {
+		99CA57032F0B000000C4A571 /* GoogleCast */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 99CA57012F0B000000C4A571 /* XCRemoteSwiftPackageReference "google-cast-ios-sdk" */;
-			productName = GoogleCastDynamic;
+			productName = GoogleCast;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

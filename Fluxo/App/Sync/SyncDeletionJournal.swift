@@ -3,7 +3,7 @@
 //  Fluxo
 //
 //  What the user deleted on purpose, for iCloud sync: only these deletions reach the other devices (see "Data
-//  safety" under "iCloud sync" in the README). Compiled by `Tools/SyncCheck` too.
+//  safety" in docs/icloud-sync.md). Compiled by `Tools/SyncCheck` too.
 //
 
 import Foundation

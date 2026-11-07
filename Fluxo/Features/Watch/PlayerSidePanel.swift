@@ -140,6 +140,9 @@ struct PlayerSidePanel: View {
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .glassEffect(.regular, in: .rect(cornerRadius: 28, style: .continuous))
+        // UI tests find the rows inside the panel (the app under the player has rows of the same channels).
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("player.sidePanel")
         .padding(.vertical, 12)
         .padding(.trailing, 12)
         .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: tab)
@@ -334,6 +337,7 @@ private struct PlayerChannelRow: View {
         .channelDraggable(item)
         .accessibilityAddTraits(isCurrent ? .isSelected : [])
         .accessibilityHint(isCurrent ? "" : String(localized: "Plays the channel"))
+        .accessibilityIdentifier("player.sidePanel.channel")
     }
 
     /// The panel's own channel menu. Unlike `ChannelContextMenu` it has nothing that presents over the app

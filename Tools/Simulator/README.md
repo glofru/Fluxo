@@ -193,7 +193,7 @@ first that contains the text.
 | `probe-tracks[:<a\|v\|av>]` | Checks that what plays has enabled audio and / or video tracks (default both) and logs their formats (`Playback tracks after probe-tracks: video=[avc1] audio=[aac] …` in `app.log`; streams the engine converted show as `avc1` / `aac`). |
 | `close-player`, `stop` | Closes the player screen (playback continues); stops playback. |
 | `skip:<seconds>`, `seek:<seconds\|percent%>` | Skips (negative: back) like the skip buttons; seeks like the scrubber. Then checks that playback continues there with video frames that are not black and keep up with the clock (`video-lag`: a picture frozen over running audio fails), and logs how long the seek took to play (`latency`): a failure is reported as the step's problem. |
-| `probe-playback[:<seconds>]` | The same check without moving (near `<seconds>` when given), e.g. after a relaunch that resumes. |
+| `probe-playback[:<seconds>]` | The same check without moving (near `<seconds>` when given), e.g. after a relaunch that resumes. Near a target means from a little before it (half the jump, 1.5 s to 8 s: a seek may land at an earlier frame) up to where playback has gone since the probe started, plus 2 s (`DebugPlaybackProbe.isAtTarget`): a probe that starts once playback is past the target, because the seek landed during an earlier `wait:` or the seeker settled a few seconds after landing, no longer fails. |
 | `drag:<from>-<to>` | Drags the scrubber from one point to another (seconds or percentages, `drag:10%-40%`) in 20 moves over 0.8 s and releases it, then the same check. |
 | `scrub-hold:<seconds\|percent%>`, `scrub-release` | Holds the scrubber at a point as a finger would (the time and, for movies AVPlayer plays itself, the frame preview over the knob; screenshots); releases it there (it seeks; add `probe-playback`). |
 | `skip-burst:<seconds>x<count>` | Taps a skip button `<count>` times 150 ms apart (`skip-burst:30x4`): the taps add up into one seek. Then the same check. |
@@ -236,6 +236,7 @@ first that contains the text.
 | `downloads-log` | Appends every download (state, method, sizes, quality, languages, file, failure) to `Status/downloads.log`. |
 | `offline:<on\|off\|system>` | Pretends the device is offline (Home's offline section, the player's offline error), online, or follows the system; `-FluxoDebugOffline YES` does it from launch. Loopback URLs still play offline. |
 | `acknowledgements[:<fluxo\|ffmpeg\|flyingfox\|googlecast\|gtmsessionfetcher\|googlecast/<part>\|source-offer\|source-offer-sha>]` | Settings › About › Acknowledgements (pushed; a sheet in the Mac's Settings window), a component's page with its license texts, a part of the Google Cast SDK with Google's notice (`googlecast/eigen-3`, `googlecast/material-components-for-ios`: the name in lowercase, other characters as `-`; iOS), or the page scrolled to the FFmpeg source offer (`source-offer-sha`: to its checksum, for large text sizes). A later step in the same launch goes back to the page and opens the next one. |
+| `diagnostics[:sample\|clear]` | Settings › About › Diagnostic Reports (iPhone, iPad and Mac; pushed, a sheet in the Mac's Settings window): the MetricKit reports kept on the device (`DiagnosticReportsView`). `sample` first keeps one invented report of each kind (marked as invented, nothing from MetricKit, for screenshots of the list); `clear` deletes the kept reports. A harness run keeps its reports in its isolated folder (`Diagnostics` in the library folder). |
 | `settings-section:about` | Settings, scrolled to About (version, Acknowledgements, Privacy Policy, Source Code, the no-content notice; iOS). |
 | `settings-section:downloads` | Settings, scrolled to its Downloads section (iOS). |
 | `settings-section:recordings` | Settings, scrolled to Recordings (Stop Recording After; iOS). |
@@ -538,7 +539,9 @@ leaves it turned, and as a clone keeps its last orientation, later `run.sh` runs
 `simctl launch`) are in landscape too. `testDragChannelOntoLibraryTab`
 (iPad) drags a channel row onto Library in the sidebar and checks that it became a favorite.
 `testSidePanelScheduleMenu` (iPad) opens the context menu of a row in the player's side panel, checks that it has
-no guide matching, and that Today's Schedule shows the schedule in the panel, with a way back.
+no guide matching, and that Today's Schedule shows the schedule in the panel, with a way back. It waits for the
+player first and finds the row inside the panel (`player.sidePanel`, rows `player.sidePanel.channel`): a query of
+the whole app used to press the same channel's card on Home while the player was still opening over it.
 
 ## Driving the simulator (taps and swipes)
 

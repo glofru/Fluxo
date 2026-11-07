@@ -32004,6 +32004,9 @@
         }
       }
     },
+    "Crash" : {
+      "comment" : "Settings › About › Diagnostic Reports: a report of the app quitting unexpectedly."
+    },
     "DVR" : {
       "comment" : "Shortcuts search keyword of the Start or Stop Recording action (digital video recorder). Use the term common in your language.",
       "localizations" : {
@@ -32104,6 +32107,9 @@
           }
         }
       }
+    },
+    "Daily Performance Metrics" : {
+      "comment" : "Settings › About › Diagnostic Reports: the system's daily summary of the app's performance (launch time, battery, memory, network use)."
     },
     "Delete" : {
       "comment" : "Button (verb): delete.",
@@ -33114,6 +33120,9 @@
         }
       }
     },
+    "Delete All Diagnostic Reports?" : {
+      "comment" : "Settings › About › Diagnostic Reports: title of the confirmation before deleting them."
+    },
     "Delete All Downloads" : {
       "comment" : "Confirmation button: deletes every download.",
       "localizations" : {
@@ -33921,6 +33930,9 @@
           }
         }
       }
+    },
+    "Delete All Reports" : {
+      "comment" : "Settings › About › Diagnostic Reports: deletes every kept report."
     },
     "Delete Download" : {
       "comment" : "Menu item: deletes a downloaded movie or episode from the device.",
@@ -35739,6 +35751,9 @@
           }
         }
       }
+    },
+    "Diagnostic Reports" : {
+      "comment" : "Title of Settings › About › Diagnostic Reports, and its row in Settings › About: the crash and performance reports the system gives Fluxo, kept on the device."
     },
     "Dismisses the message" : {
       "comment" : "VoiceOver hint — video player screen.",
@@ -47511,6 +47526,12 @@
         }
       }
     },
+    "Hang" : {
+      "comment" : "Settings › About › Diagnostic Reports: a report of the app not responding for a while."
+    },
+    "Heavy Storage Writes" : {
+      "comment" : "Settings › About › Diagnostic Reports: a report of the app writing a lot of data to storage."
+    },
     "Hide Channel List" : {
       "comment" : "Button / VoiceOver label — video player screen.",
       "localizations" : {
@@ -48018,6 +48039,9 @@
           }
         }
       }
+    },
+    "High Processor Use" : {
+      "comment" : "Settings › About › Diagnostic Reports: a report of the app using the processor heavily for a long time."
     },
     "History" : {
       "comment" : "Synonym Siri accepts for the Recently Watched screen.",
@@ -49543,6 +49567,9 @@
         }
       }
     },
+    "If you share analytics with app developers (Settings › Privacy & Security › Analytics & Improvements), the system gives Fluxo reports about its crashes, hangs and performance. Fluxo keeps the latest ones on this device only and never sends them anywhere: they leave it only if you share them yourself." : {
+      "comment" : "Settings › About › Diagnostic Reports: footer of the switch. Name the system settings as the system does in the user's language."
+    },
     "Imported %lld channels…" : {
       "comment" : "Playlist import progress while downloading; the number grows as channels are read.",
       "localizations" : {
@@ -50400,6 +50427,9 @@
           }
         }
       }
+    },
+    "Keep Diagnostic Reports" : {
+      "comment" : "Settings › About › Diagnostic Reports: the switch that lets Fluxo keep the crash and performance reports the system gives it."
     },
     "Keep your playlists, TV guides, favorites and watch progress the same on all your devices. Playlist addresses are encrypted before they leave this device. You can change this in Settings." : {
       "comment" : "Message of the question asked once to a user who updates the app with playlists on the device: what iCloud sync does and how addresses are protected.",
@@ -54687,6 +54717,9 @@
           }
         }
       }
+    },
+    "Memory Limit Reached" : {
+      "comment" : "Settings › About › Diagnostic Reports: a report of the app using more memory than the system allows."
     },
     "Mini Player" : {
       "comment" : "VoiceOver label — mini player and main window.",
@@ -60613,6 +60646,9 @@
           }
         }
       }
+    },
+    "No reports. The system delivers them at most once a day, and only on devices that share analytics with app developers." : {
+      "comment" : "Settings › About › Diagnostic Reports: shown when no report has been kept."
     },
     "No results" : {
       "comment" : "Text — Search screen.",
@@ -67036,6 +67072,9 @@
           }
         }
       }
+    },
+    "Other Report" : {
+      "comment" : "Settings › About › Diagnostic Reports: a kind of report this version does not know."
     },
     "Part of the %@. Its notice, as shipped with the %@, follows." : {
       "comment" : "Settings › Acknowledgements, the page of a part of the Google Cast SDK (such as Abseil): the first line. Both placeholders are the SDK's name (Google Cast SDK)."
@@ -80906,6 +80945,9 @@
         }
       }
     },
+    "Reports" : {
+      "comment" : "Settings › About › Diagnostic Reports: header of the list of kept reports."
+    },
     "Reset (%@)" : {
       "comment" : "Player's Subtitle Timing menu: removes the shift of a subtitle file; the placeholder is the shift, as in '+1.5 s'.",
       "localizations" : {
@@ -88848,6 +88890,9 @@
         }
       }
     },
+    "Share Reports…" : {
+      "comment" : "Settings › About › Diagnostic Reports: shares the kept reports as one file (share sheet)."
+    },
     "Share…" : {
       "comment" : "Menu item (verb): share the recording file.",
       "extractionState" : "stale",
@@ -92938,6 +92983,9 @@
           }
         }
       }
+    },
+    "Slow Launch" : {
+      "comment" : "Settings › About › Diagnostic Reports: a report of the app taking long to open."
     },
     "Smart Results" : {
       "comment" : "Label (text with an icon) — Apple Intelligence features.",
@@ -99279,6 +99327,9 @@
           }
         }
       }
+    },
+    "The file holds the reports as the system writes them: the app and system versions, the device model, and the code addresses involved. It holds nothing from your library, such as channel names or playlist addresses." : {
+      "comment" : "Settings › About › Diagnostic Reports: what the shared file contains."
     },
     "The reminder for “%@” no longer exists. Find the programme in the TV guide." : {
       "comment" : "Message of the Reminder Not Found alert (the reminder, or the playlist of its channel, was deleted since its notification was delivered); the placeholder is the programme's title."

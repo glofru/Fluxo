@@ -10,8 +10,8 @@
 //  fields.
 //
 //  `CKContainer` traps when the app is not signed with the CloudKit entitlement, so `CloudSync` creates this
-//  transport only when the build says it has it (`FluxoCloudKitContainer` in Info.plist; see "iCloud sync" in the
-//  README).
+//  transport only when the build says it has it (`FluxoCloudKitContainer` in Info.plist; see "Capabilities and
+//  signing" in docs/icloud-sync.md).
 //
 
 import CloudKit

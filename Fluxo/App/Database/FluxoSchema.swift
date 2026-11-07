@@ -2,7 +2,7 @@
 //  FluxoSchema.swift
 //  Fluxo
 //
-//  The versions of the SwiftData schema and the migration plan between them (see "Library store" in the README).
+//  The versions of the SwiftData schema and the migration plan between them (see docs/library-store.md).
 //
 //  - `FluxoSchemaV1` (1.0.0) is frozen: the models as the first builds stored them, in a single store
 //    (`default.store`). SwiftData records 1.0.0 for a store written without a versioned schema, so this is the version

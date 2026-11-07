@@ -1,8 +1,9 @@
 #!/bin/sh
 # Checks that Settings › About › Acknowledgements (Fluxo/App/Legal/LegalInfo.swift) lists the versions that ship:
-# the Swift packages of Package.resolved and the FFmpeg version and tarball SHA-256 of Vendor/FFmpeg/BUILD_INFO.txt,
-# that every bundled license text exists and matches its source, and that the notices of the open-source software
-# inside the Google Cast SDK (Licenses/GoogleCast-OSS.json) are those of the SDK in Package.resolved.
+# FlyingFox of Package.resolved, the Google Cast SDK of Vendor/GoogleCast/Package.swift (GTMSessionFetcher ships inside
+# it), and the FFmpeg version and tarball SHA-256 of Vendor/FFmpeg/BUILD_INFO.txt; that every bundled license text
+# exists and matches its source; and that the notices of the open-source software inside the Google Cast SDK
+# (Licenses/GoogleCast-OSS.json) are those of that SDK.
 # Run it after updating a package or rebuilding FFmpeg (and in CI).
 #
 # Usage: Tools/Legal/check-acknowledgements.sh [SourcePackages directory]
@@ -13,6 +14,7 @@ set -eu
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 INFO=$ROOT/Fluxo/App/Legal/LegalInfo.swift
 RESOLVED=$ROOT/Fluxo.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+CAST_PACKAGE=$ROOT/Vendor/GoogleCast/Package.swift
 BUILD_INFO=$ROOT/Vendor/FFmpeg/BUILD_INFO.txt
 status=0
 
@@ -36,9 +38,26 @@ pins = json.load(open(sys.argv[1]))["pins"]
 print(next(p["state"].get("version", "") for p in pins if p["identity"] == sys.argv[2]))' "$RESOLVED" "$1"
 }
 
+# The version of the Cast SDK archive Vendor/GoogleCast links (GoogleCastSDK-ios-<version>_dynamic.zip).
+cast_sdk_version() {
+    sed -n 's/.*GoogleCastSDK-ios-\([0-9.]*\)_dynamic\.zip.*/\1/p' "$CAST_PACKAGE" | head -1
+}
+
 check FlyingFox "$(resolved_version flyingfox)" "$(listed_version flyingfox)"
-check "Google Cast SDK" "$(resolved_version google-cast-ios-sdk)" "$(listed_version googlecast)"
-check GTMSessionFetcher "$(resolved_version gtm-session-fetcher)" "$(listed_version gtmsessionfetcher)"
+check "Google Cast SDK" "$(cast_sdk_version)" "$(listed_version googlecast)"
+# GTMSessionFetcher is the copy inside GoogleCast.framework (no package of its own, so no version of its own): listed
+# without a version, and among the SDK's notices.
+check "GTMSessionFetcher (inside the Google Cast SDK) without a version:" "" "$(listed_version gtmsessionfetcher)"
+if python3 -I -c 'import json, sys; sys.exit(0 if any(c["name"] == "gtm_session_fetcher" for c in json.load(open(sys.argv[1]))["components"]) else 1)' "$ROOT/Fluxo/App/Legal/Licenses/GoogleCast-OSS.json"; then
+    echo "ok: GTMSessionFetcher is among the Google Cast SDK notices"
+else
+    echo "error: GoogleCast-OSS.json does not list gtm_session_fetcher" >&2
+    status=1
+fi
+if grep -q '"gtm-session-fetcher"\|"google-cast-ios-sdk"' "$RESOLVED"; then
+    echo "error: Package.resolved pins gtm-session-fetcher or google-cast-ios-sdk: GTMSessionFetcher would be in the app twice (see Vendor/GoogleCast/Package.swift)" >&2
+    status=1
+fi
 
 ffmpeg_version=$(sed -n 's/^FFmpeg \([0-9.]*\) .*/\1/p' "$BUILD_INFO")
 ffmpeg_sha=$(sed -n 's/^SHA-256: //p' "$BUILD_INFO")
@@ -73,7 +92,7 @@ fi
 
 # The Google Cast SDK's open-source notices.
 CAST_JSON=$ROOT/Fluxo/App/Legal/Licenses/GoogleCast-OSS.json
-cast_version=$(resolved_version google-cast-ios-sdk)
+cast_version=$(cast_sdk_version)
 check "Google Cast SDK notices (GoogleCast-OSS.json)" "$cast_version" "$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["sdkVersion"])' "$CAST_JSON")"
 source_packages=${1:-$(ls -dt "$HOME"/Library/Developer/Xcode/DerivedData/Fluxo-*/SourcePackages 2>/dev/null | head -1 || true)}
 if [ -n "$source_packages" ] && [ -f "$source_packages/workspace-state.json" ]; then

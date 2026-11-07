@@ -34,6 +34,8 @@ enum DebugPlaybackProbe {
         var videoLag: TimeInterval?
         /// From the start of the probe (right after the seek) until playback was there; nil when it never was.
         var latency: TimeInterval?
+        /// From the start of the probe until sampling started: the latency, or the whole timeout.
+        var waited: TimeInterval = 0
 
         var description: String {
             let frame = brightness.map { String(format: "%.0f", $0) } ?? "none"
@@ -52,10 +54,10 @@ enum DebugPlaybackProbe {
         }
         let began = ContinuousClock.now
         let deadline = began + .seconds(timeout)
-        // A short skip (5 s back) lands within 8 s of where it started: the tolerance shrinks with the distance, so the
-        // sample does not start before the seek has landed.
+        // A short skip (5 s back) lands within 8 s of where it started: the tolerance before the target shrinks with
+        // the distance, so the sample does not start before the seek has landed.
         let before = player.player.currentItem?.currentTime().seconds ?? 0
-        let tolerance = target.map { max(1.5, min(8, abs($0 - before) / 2)) } ?? 8
+        let tolerance = target.map { landingTolerance(target: $0, from: before) } ?? 8
         func isThere() -> Bool {
             guard player.playbackState == .playing, !player.seeker.isBusy else {
                 return false
@@ -63,13 +65,13 @@ enum DebugPlaybackProbe {
             guard let target, let time = player.player.currentItem?.currentTime().seconds, time.isFinite else {
                 return true
             }
-            return abs(time - target) <= tolerance
+            return isAtTarget(time, target: target, elapsed: interval(ContinuousClock.now - began), tolerance: tolerance)
         }
         while !isThere() && ContinuousClock.now < deadline {
             try? await Task.sleep(for: .milliseconds(50))
         }
-        let elapsed = ContinuousClock.now - began
-        let latency: TimeInterval? = isThere() ? Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18 : nil
+        let waited = interval(ContinuousClock.now - began)
+        let latency: TimeInterval? = isThere() ? waited : nil
         let start = player.player.currentItem?.currentTime().seconds ?? 0
         // Only frames delivered from now on count: the output may still hold one from before the seek (it reports
         // no new frame until the next one), which would look like a picture frozen far behind the audio.
@@ -95,10 +97,31 @@ enum DebugPlaybackProbe {
         let time = item?.currentTime().seconds ?? 0
         let duration = item.map { $0.duration.isNumeric ? $0.duration.seconds : 0 } ?? 0
         return Sample(state: player.playbackState.label, time: time, duration: duration, advanced: time - start,
-                      brightness: brightness, videoLag: worstLag, latency: latency)
+                      brightness: brightness, videoLag: worstLag, latency: latency, waited: waited)
     }
 
-    /// Fails unless the player plays near `target` (within `tolerance` seconds of where it started) with real frames.
+    /// How far before `target` a seek from `position` may land: half the distance, from 1.5 s to 8 s.
+    nonisolated static func landingTolerance(target: TimeInterval, from position: TimeInterval) -> TimeInterval {
+        max(1.5, min(8, abs(target - position) / 2))
+    }
+
+    /// Margin after the target for a landing, on top of what playback advanced while the probe waited.
+    nonisolated static let landingLead: TimeInterval = 2
+
+    /// Whether a playback position `elapsed` seconds after the probe began is where a seek to `target` lands: at
+    /// most `tolerance` before it, and after it by at most what playback advanced meanwhile plus `landingLead`. A
+    /// fixed window around the target alone fails a probe that starts once playback is already past it (the seek
+    /// landed while the route before it waited, or the seeker settled a few seconds after the landing).
+    nonisolated static func isAtTarget(_ position: TimeInterval, target: TimeInterval, elapsed: TimeInterval, tolerance: TimeInterval) -> Bool {
+        position >= target - tolerance && position <= target + max(0, elapsed) + landingLead
+    }
+
+    private nonisolated static func interval(_ duration: Duration) -> TimeInterval {
+        Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
+    }
+
+    /// Fails unless the player plays near `target` (from `tolerance` seconds before it to where playback advanced to
+    /// meanwhile, see `isAtTarget`) with real frames.
     static func check(_ player: AVPlayerViewModel, near target: TimeInterval?, route: String, tolerance: TimeInterval = 8) async throws {
         let sample = await sample(player, near: target)
         DebugLaunchOptions.logger.notice("Playback probe after \(route, privacy: .public): \(sample.description, privacy: .public)")
@@ -119,7 +142,9 @@ enum DebugPlaybackProbe {
             // picture (items AVPlayer plays directly may keep vending a queued one, see `sample`).
             problems.append("video frozen (no frame since the seek)")
         }
-        if let target, abs(sample.time - sample.advanced - target) > tolerance {
+        // Where sampling started: a seek may land a little before its target, and playback goes on while the probe
+        // waits for it to settle (`isAtTarget`).
+        if let target, !isAtTarget(sample.time - sample.advanced, target: target, elapsed: sample.waited, tolerance: tolerance) {
             problems.append(String(format: "at %.0f s instead of %.0f s", sample.time - sample.advanced, target))
         }
         if !problems.isEmpty {

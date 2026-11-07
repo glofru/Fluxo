@@ -613,9 +613,16 @@ final class GestureTests: XCTestCase {
         try XCTSkipIf(UIDevice.current.userInterfaceIdiom != .pad, "iPad only")
         XCUIDevice.shared.orientation = .landscapeLeft
         let app = launch("seed-guide;side-panel:channels;player:Sky Sport F1;wait:2")
-        let row = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Sky Sport MotoGP'")).firstMatch
+        // The row inside the player's side panel, once the player covers the app: a query of the whole app can find
+        // the channel's card on Home first (it is there until the player has opened over it), and press that.
+        waitPlayerSettled(app, timeout: 40)
+        let panel = app.descendants(matching: .any)["player.sidePanel"]
+        XCTAssertTrue(panel.waitForExistence(timeout: 30), "the player's side panel")
+        let row = panel.buttons
+            .matching(NSPredicate(format: "identifier == 'player.sidePanel.channel' AND label CONTAINS 'Sky Sport MotoGP'")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 30), "the channel row in the side panel")
-        sleep(2)
+        let hittable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isHittable == true"), object: row)
+        XCTAssertEqual(XCTWaiter().wait(for: [hittable], timeout: 10), .completed, "the row can be pressed")
         row.press(forDuration: 1.2)
         let schedule = app.buttons["Today's Schedule"]
         XCTAssertTrue(schedule.waitForExistence(timeout: 5), "Today's Schedule in the menu")

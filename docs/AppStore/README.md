@@ -25,7 +25,7 @@ iPhone, iPad, Mac and Apple TV (bundle ID `dev.watermelon.Fluxo`, universal purc
 3. **Demo playlist**: every stream of `docs/demo/fluxo-demo.m3u` still plays (`docs/demo/README.md`).
 4. **Archive** each platform (scheme Fluxo, Archive uses Release) and **Generate Privacy Report** in the Organizer
    (`app-privacy.md`). It has not been generated yet: do it on the first archive, and check that it lists the
-   manifests of the app, the Top Shelf extension, every `FFmpeg.framework`, GoogleCast and GTMSessionFetcher (iOS),
+   manifests of the app, the Top Shelf extension, every `FFmpeg.framework` and GoogleCast (iOS),
    with the reasons of `Fluxo/PrivacyInfo.xcprivacy`.
 5. **macOS**: Release is signed automatically by team `4MJXMYZ3D9` with the hardened runtime and library validation
    on (`Fluxo/Fluxo-macOS.entitlements`; the ad hoc Debug build uses `Fluxo-macOS-Debug.entitlements`). After

@@ -56,7 +56,6 @@ CONTENT_TYPES = {
     ".ts": "video/mp2t",
     ".mp4": "video/mp4",
     ".vtt": "text/vtt",
-    ".mkv": "video/x-matroska",
     ".srt": "application/x-subrip",
 }
 
@@ -125,6 +124,7 @@ class Streams:
         self.prepare_matroska()
 
     def prepare_matroska(self):
+        """/movie/clip.mkv (and /movie/play/42): the MP4 clip remuxed to Matroska."""
         if os.path.exists(self.clip_mkv):
             return
         subprocess.run(
@@ -180,7 +180,7 @@ class Streams:
                 '#EXT-X-STREAM-INF:BANDWIDTH=2000000,CODECS="avc1.64001f,mp4a.40.2",RESOLUTION=1280x720,AUDIO="aud",SUBTITLES="subs"\n'
                 "main.m3u8\n")
 
-    def prepare_matroska(self):
+    def prepare_tracks_matroska(self):
         """/movie/tracks.mkv and /subtitles/clip.srt."""
         if os.path.exists(self.tracks_mkv) and os.path.exists(self.clip_srt):
             return
@@ -231,6 +231,21 @@ class Streams:
                 separator = " \t\n" if index % 2 else "\n"
                 file.write(f"{index + 1}\n00:00:{start:02d},200 --> 00:00:{start + 3:02d},600\n"
                            f"External subtitle {index + 1}, from a <b>.srt</b> file\n{text}\n{separator}")
+
+    def check_files(self):
+        """Fails at startup when a file the server advertises is missing, rather than with a 404 in the middle of a
+        test (a missing clip once hid every Matroska download test)."""
+        advertised = {
+            "/movie/clip.mp4": self.clip_mp4,
+            "/movie/clip.ts": self.clip_ts,
+            "/movie/clip.mkv": self.clip_mkv,
+            "/tracks/master.m3u8": os.path.join(self.tracks_dir, "master.m3u8"),
+            "/movie/tracks.mkv": self.tracks_mkv,
+            "/subtitles/clip.srt": self.clip_srt,
+        }
+        missing = [path for path, file in advertised.items() if not os.path.isfile(file) or os.path.getsize(file) == 0]
+        if missing:
+            raise SystemExit(f"test_stream_server: not generated: {', '.join(missing)}")
 
     def live_input_arguments(self, pattern):
         return ["-re", "-f", "lavfi", "-i", f"{pattern}=size=1280x720:rate=30",
@@ -489,7 +504,8 @@ def main():
     streams = Streams(arguments.ffmpeg, arguments.work, arguments.port)
     streams.prepare_clips()
     streams.prepare_tracks()
-    streams.prepare_matroska()
+    streams.prepare_tracks_matroska()
+    streams.check_files()
     streams.start_hls()
 
     Handler.streams = streams

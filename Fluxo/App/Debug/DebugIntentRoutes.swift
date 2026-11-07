@@ -10,7 +10,7 @@
 //      -FluxoDebugRoute "seed-guide;intent:play:Sky F1;intent:whats-on:Rai 1;siri-names"
 //
 //  What it does not check is Siri itself (speech, phrase matching, the system's process launch): see
-//  "Siri & Apple Intelligence" in the README for the device steps.
+//  "Siri & Apple Intelligence" in docs/siri-and-apple-intelligence.md for the device steps.
 //
 
 #if DEBUG

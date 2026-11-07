@@ -1,9 +1,10 @@
 //
-//  ParserCases.swift
-//  Fluxo
+//  EpisodeParserCases.swift
+//  FluxoTests
 //
-//  The names `EpisodeParser` is checked against (Tools/SeriesCheck): real-world styles of IPTV providers, scene
-//  releases and localized playlists, plus movies and live channels that must not be read as episodes.
+//  The names `EpisodeParser` is checked against: real-world styles of IPTV providers, scene releases and localized
+//  playlists, plus movies and live channels that must not be read as episodes. Shared by the unit tests
+//  (EpisodeParserTests) and Tools/SeriesCheck, which compiles this file with the app's sources.
 //
 
 import Foundation

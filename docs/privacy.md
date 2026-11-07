@@ -4,7 +4,7 @@ title: Fluxo Privacy Policy
 
 # Fluxo Privacy Policy
 
-*Last updated: November 6, 2026. Applies to Fluxo for iPhone, iPad, Mac and Apple TV.*
+*Last updated: November 7, 2026. Applies to Fluxo for iPhone, iPad, Mac and Apple TV.*
 
 Fluxo is a player for the M3U playlists and XMLTV guides **you** add. Its developer runs no server, has no account
 system, and does not collect, receive, sell or share any data about you. There is no advertising, no analytics and
@@ -19,7 +19,12 @@ Everything Fluxo knows about you stays on your device:
 - favorites, watch history, resume points, reminders and settings;
 - recordings and offline downloads. They play only in Fluxo and are not shared with other apps;
 - recommendations ("For You"), smart search and programme summaries. They are computed **on the device**, with
-  Apple's on-device models where available. Nothing is sent to the developer or to a cloud AI service.
+  Apple's on-device models where available. Nothing is sent to the developer or to a cloud AI service;
+- crash and performance reports. If you share analytics with app developers (Settings › Privacy & Security ›
+  Analytics & Improvements on iPhone, iPad and Mac), the system gives Fluxo reports about its crashes, hangs and
+  performance (the app and system versions, the device model, the code involved; nothing from your library). Fluxo
+  keeps the latest ones on your device (Settings › About › Diagnostic Reports) and never sends them anywhere. You can
+  share them yourself from there, for example with a bug report, delete them, or turn off keeping them.
 
 ## What Fluxo connects to, and why
 

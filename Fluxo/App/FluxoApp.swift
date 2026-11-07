@@ -21,6 +21,9 @@ struct FluxoApp: App {
         NetworkMonitor.shared.start()
         // Low Power Mode, the thermal state and the background: the player and the guide adapt to them.
         PowerMonitor.shared.start()
+        // Crash, hang and performance reports from MetricKit, kept on this device only (Settings › About ›
+        // Diagnostic Reports).
+        DiagnosticsCollector.shared.start()
         // Before the library opens: a reminder notification that launched the app is delivered as the launch ends,
         // which can be before the library is open (the launch that updates it). It waits for the guide.
         PlatformReminderDelivery.installEarly()

@@ -116,6 +116,33 @@ enum DebugLinkRoutes {
             try await Task.sleep(for: .milliseconds(600))
             NotificationCenter.default.post(name: .fluxoDebugAcknowledgements, object: argument.isEmpty ? nil : argument.lowercased())
         },
+        DebugRoute("diagnostics[:sample|clear]", "Settings › About › Diagnostic Reports: pushed in Settings, a sheet in the Mac's Settings window. `sample` first keeps one invented report of each kind (screenshots of the list; nothing from MetricKit), `clear` deletes the kept reports. The reports of a harness run are in its isolated folder.") { context, argument in
+            #if os(tvOS)
+            throw DebugRouteError.unsupported("diagnostics")
+            #else
+            let store = DiagnosticsCollector.shared.store
+            switch argument.lowercased() {
+            case "":
+                break
+            case "sample":
+                for (index, kind) in DiagnosticReportEntry.Kind.allCases.enumerated() {
+                    let sample = Data("{\"debugSample\":\"\(kind.rawValue)\",\"note\":\"Invented by the debug harness; not a MetricKit report.\"}".utf8)
+                    try store.save(sample, kind: kind, receivedOn: Date.now.addingTimeInterval(Double(-index) * 3_600))
+                }
+            case "clear":
+                store.deleteAll()
+            default:
+                throw DebugRouteError.invalidArgument("diagnostics", argument)
+            }
+            if let openSettings = context.openSettings {
+                openSettings()
+            } else {
+                context.navigation.tab = .settings
+            }
+            try await Task.sleep(for: .milliseconds(600))
+            NotificationCenter.default.post(name: .fluxoDebugDiagnostics, object: nil)
+            #endif
+        },
     ]
 
     private static func report(_ line: String) {

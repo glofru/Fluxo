@@ -1,5 +1,5 @@
 #!/bin/bash
-# Checks the library store (see "Library store" in the README):
+# Checks the library store (see docs/library-store.md):
 #   1. OLD_REV's sources (the last version before the versioned schema, by default) write a library as that version
 #      did: a playlist and a guide through their importers, favorites, history with resume positions, a watched
 #      series, a guide match chosen by hand, a reminder, a guide the user added;

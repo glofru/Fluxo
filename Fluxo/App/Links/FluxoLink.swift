@@ -19,7 +19,7 @@
 //
 //  A channel is named by its `ChannelEntity` identifier (the playlist UUID and a keyed digest of the stream URL), never
 //  by its stream URL, which can carry the account's user name and password. The identifier is made with a secret of
-//  this installation, so a link made on another device does not resolve here (see "Apple TV › Siri" in the README).
+//  this installation, so a link made on another device does not resolve here (see "Siri, voice search and links" in docs/apple-tv.md).
 //  Plain values (Foundation only). Apple TV only: iPhone, iPad and the Mac register no URL scheme (their way in from
 //  outside is Siri, Shortcuts, Spotlight and Handoff), so they do not carry the code.
 //

@@ -1,0 +1,96 @@
+# Builds every platform, runs the unit tests and the Tools checks. See docs/ci.md (Xcode 27.2 on GitHub-hosted
+# runners, and how to use a self-hosted Mac instead).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # The Xcode the project is built with (README › Building). The job fails when the runner does not have it.
+  FLUXO_XCODE_VERSION: "27.2"
+  LOG_DIR: ${{ github.workspace }}/ci-logs
+
+jobs:
+  build:
+    name: Build ${{ matrix.gate }}
+    # GitHub's Xcode 27 image by default; a repository variable FLUXO_RUNS_ON (JSON, e.g. ["self-hosted", "macOS",
+    # "xcode-27.2"]) runs every job on a self-hosted Mac instead.
+    runs-on: ${{ fromJSON(vars.FLUXO_RUNS_ON || '"xcode-27"') }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        gate: [ios, iossim, mac, tvos, tvsim]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode ${{ env.FLUXO_XCODE_VERSION }}
+        run: Tools/CI/select-xcode.sh "$FLUXO_XCODE_VERSION"
+      - name: Build
+        run: Tools/CI/build.sh ${{ matrix.gate }} "$RUNNER_TEMP/dd-${{ matrix.gate }}"
+      - name: Keep the log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.gate }}
+          path: ci-logs
+          if-no-files-found: ignore
+
+  test:
+    name: Unit tests (${{ matrix.platform }})
+    runs-on: ${{ fromJSON(vars.FLUXO_RUNS_ON || '"xcode-27"') }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [ios, mac]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode ${{ env.FLUXO_XCODE_VERSION }}
+        run: Tools/CI/select-xcode.sh "$FLUXO_XCODE_VERSION"
+      - name: Test
+        run: Tools/CI/test.sh ${{ matrix.platform }} "$RUNNER_TEMP/dd-test-${{ matrix.platform }}"
+      - name: Keep the results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tests-${{ matrix.platform }}
+          path: ci-logs
+          if-no-files-found: ignore
+
+  checks:
+    name: Tools checks
+    runs-on: ${{ fromJSON(vars.FLUXO_RUNS_ON || '"xcode-27"') }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # SeriesCheck, LibraryCheck and PlaylistBenchmark compile the sources of older commits too.
+          fetch-depth: 0
+      - name: Select Xcode ${{ env.FLUXO_XCODE_VERSION }}
+        run: Tools/CI/select-xcode.sh "$FLUXO_XCODE_VERSION"
+      - name: Install the ffmpeg command line program (test streams only; nothing links it)
+        run: command -v ffmpeg || brew install ffmpeg
+      - name: Resolve the Swift packages (for the acknowledgements check)
+        run: xcodebuild -resolvePackageDependencies -project Fluxo.xcodeproj -scheme Fluxo -derivedDataPath "$RUNNER_TEMP/dd-checks"
+      - name: Checks
+        env:
+          SOURCE_PACKAGES: ${{ runner.temp }}/dd-checks/SourcePackages
+          REQUIRE_FFMPEG: "1"
+        run: Tools/CI/checks.sh
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checks
+          path: ci-logs
+          if-no-files-found: ignore

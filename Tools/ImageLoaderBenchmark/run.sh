@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Benchmarks LogoImageLoader against the former logo path (macOS).
 #
 #   Tools/ImageLoaderBenchmark/run.sh          # 200 logos
@@ -6,7 +6,7 @@
 #
 # A 1024x1024 PNG is generated with the ffmpeg command line tool and served by a Python HTTP server bound to
 # 127.0.0.1 only; every request uses a distinct query string, so each one is a distinct logo URL.
-set -eu
+set -euo pipefail
 
 FFMPEG=${FFMPEG:-$(command -v ffmpeg || echo /opt/homebrew/bin/ffmpeg)}
 PORT=${PORT:-18931}
@@ -16,8 +16,12 @@ ROOT=$(cd "$HERE/../.." && pwd)
 WORK=$(mktemp -d /tmp/fluxo-image-bench.XXXXXX)
 mkdir -p "$WORK/www"
 
+# Only the server this script started: `kill 0` (an unset PID) would signal the whole process group, the shell
+# that ran the script included.
 cleanup() {
-    kill "${HTTP_PID:-0}" 2>/dev/null || true
+    if [ -n "${HTTP_PID:-}" ]; then
+        kill "$HTTP_PID" 2>/dev/null || true
+    fi
     rm -rf "$WORK"
 }
 trap cleanup EXIT INT TERM
@@ -27,7 +31,7 @@ ls -l "$WORK/www/logo.png" | awk '{print "source logo: 1024x1024 PNG, " $5 " byt
 
 source "$ROOT/Tools/swift-language.sh"
 xcrun swiftc -O "${FLUXO_SWIFT_LANGUAGE[@]}" -D FLUXO_LOADER_STATISTICS -o "$WORK/bench" \
-    "$ROOT/Fluxo/App/Images/LogoImageLoader.swift" "$HERE/main.swift" 2> "$WORK/build.log" \
+    "$ROOT/Fluxo/App/Images/LogoImageLoader.swift" "$HERE/Stubs.swift" "$HERE/main.swift" 2> "$WORK/build.log" \
     || { cat "$WORK/build.log"; exit 1; }
 
 python3 -I -m http.server "$PORT" --bind 127.0.0.1 --directory "$WORK/www" > /dev/null 2> "$WORK/http.log" &

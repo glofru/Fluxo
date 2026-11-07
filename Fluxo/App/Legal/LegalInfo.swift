@@ -158,10 +158,12 @@ struct OpenSourceComponent: Identifiable, Hashable {
         includedSoftwareResource: "GoogleCast-OSS"
     )
 
+    /// The copy inside GoogleCast.framework (the app links no other, see Vendor/GoogleCast/Package.swift): it has no
+    /// version of its own.
     static let gtmSessionFetcher = OpenSourceComponent(
         id: "gtmsessionfetcher",
         name: "GTMSessionFetcher",
-        version: "3.5.0",
+        version: "",
         copyright: "Copyright (c) Google LLC",
         license: .apache2,
         purpose: String(localized: "A networking library the Google Cast SDK uses.", comment: "Settings › Acknowledgements: what GTMSessionFetcher does in Fluxo (a dependency of the Google Cast SDK)."),

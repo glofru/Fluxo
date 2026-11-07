@@ -2,7 +2,7 @@
 
 The answers for App Store Connect › App Privacy, with the reasons. They match the privacy manifests in the build
 (`Fluxo/PrivacyInfo.xcprivacy`, `FluxoTopShelf/PrivacyInfo.xcprivacy`, each `FFmpeg.framework` slice, and the
-manifests Google ships in `GoogleCast.framework` and the GTMSessionFetcher bundles) and the privacy policy
+manifest Google ships in `GoogleCast.framework`, which contains GTMSessionFetcher) and the privacy policy
 (`docs/privacy.md`).
 
 **Privacy Policy URL:** `https://glofru.github.io/Fluxo/privacy.html` once GitHub Pages publishes the `docs/` folder
@@ -38,6 +38,12 @@ Not collected (do not declare):
   partners of the app, the private CloudKit database is not readable by the developer, and the Chromecast receiver
   only plays what it is given.
 - **Recommendations, smart search, programme summaries**: computed on the device.
+- **Crash and performance reports** (Diagnostics › Crash Data, Performance Data, Other Diagnostic Data, for Fluxo's
+  own code): MetricKit gives them to the app on the device (only where the user shares analytics with app
+  developers), and Fluxo keeps them there (Settings › About › Diagnostic Reports, `docs/diagnostics.md`). The app
+  never sends them: they leave the device only if the user chooses to share the file from the share sheet, to a
+  destination the user picks. The crash reports Apple shows the developer in Xcode's Organizer come from Apple's own
+  opt-in, not from the app, and are not declared by apps.
 
 Fluxo is one App Store record for iPhone, iPad, Mac and Apple TV (one bundle ID, universal purchase), and App Privacy
 answers belong to the record: they must cover the iPhone and iPad build, the only one with the Cast SDK. The Mac and
@@ -63,7 +69,7 @@ is in `export-compliance.md`.
 
 1. Product › Archive (scheme Fluxo, any iOS device; then again for tvOS and macOS).
 2. Organizer › select the archive › **Generate Privacy Report** (right click). The PDF must list Fluxo, FFmpeg,
-   GoogleCast and GTMSessionFetcher (iOS), Fluxo, FluxoTopShelf and FFmpeg (tvOS), Fluxo and FFmpeg (macOS), with the
+   and GoogleCast (iOS; GTMSessionFetcher is inside it), Fluxo, FluxoTopShelf and FFmpeg (tvOS), Fluxo and FFmpeg (macOS), with the
    reasons above and no missing-manifest warnings.
 3. Without an archive, the manifests of a build can be listed with
    `find <Fluxo.app> -name PrivacyInfo.xcprivacy -exec plutil -p {} \;`.

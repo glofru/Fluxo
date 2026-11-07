@@ -65,7 +65,7 @@ Options, from least to most change:
    live IPTV.
 3. Replace the AAC encoder by Apple's (AudioToolbox `AudioConverter`), which Apple licenses.
 
-Nothing was removed in this release: the formats are documented features (README › Formats), and dropping them is a
+Nothing was removed in this release: the formats are documented features (docs/player.md › Formats), and dropping them is a
 product decision that should follow the legal answer.
 
 ## 3. Built-in TV guide (report item M5): removed

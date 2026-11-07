@@ -5,7 +5,7 @@
 //  iCloud sync of the library across the user's iPhone, iPad, Mac and Apple TV: playlists (name and address), the TV
 //  guides the user added, favorites, watch history and resume positions, and the player's main settings. The screens
 //  read this object (Settings › iCloud, the "Your Playlists from iCloud" sheet); the work is done by the
-//  `CloudSyncReconciler` over a `LibrarySyncStore` and a transport (CloudKit). See "iCloud sync" in the README.
+//  `CloudSyncReconciler` over a `LibrarySyncStore` and a transport (CloudKit). See docs/icloud-sync.md.
 //
 
 import CloudKit
