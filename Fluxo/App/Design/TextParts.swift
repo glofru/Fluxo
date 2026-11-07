@@ -16,15 +16,66 @@ import Foundation
 /// The Arabic separator carries a letter mark, which makes the whole line right-to-left. Spoken text
 /// (VoiceOver) needs no isolates, but uses the punctuation of the language (Japanese and Chinese have 、
 /// and 。).
+///
+/// A line that wraps never starts with a separator: the space before each one (the app's ·, and those inside the
+/// provider's names, as in "Serie TV | Drama") is a no-break space, so the separator stays at the end of the line
+/// before (`keepingSeparatorsAttached(_:)`).
 enum TextParts {
 
     /// "Live TV · Sport · Freeview": the parts of a subtitle line. Nil and empty parts are left out.
     static func line(_ parts: [String?]) -> String {
         let parts = parts.compactMap { $0 }.filter { !$0.isEmpty }
         guard parts.count > 1 else {
-            return parts.first ?? ""
+            return parts.first.map(keepingSeparatorsAttached) ?? ""
         }
-        return parts.map(isolated).joined(separator: lineSeparator)
+        return parts.map { isolated(keepingSeparatorsAttached($0)) }.joined(separator: attachedToPrevious(lineSeparator))
+    }
+
+    /// `text` with the space before each separator between words (" | ", " · ", " - ", " – ", " / "…) made a
+    /// no-break space, so that text wrapping there leaves the separator at the end of a line ("Serie TV |" then
+    /// "Drama") instead of starting the next one with it ("| Drama"). Cheap when there is nothing to change.
+    static func keepingSeparatorsAttached(_ text: String) -> String {
+        guard text.unicodeScalars.contains(where: { separatorScalars.contains($0) }) else {
+            return text
+        }
+        var scalars = Array(text.unicodeScalars)
+        var changed = false
+        for index in scalars.indices.dropFirst().dropLast() where separatorScalars.contains(scalars[index]) {
+            if scalars[index - 1] == " " && scalars[index + 1] == " " {
+                scalars[index - 1] = noBreakSpace
+                changed = true
+            }
+        }
+        guard changed else {
+            return text
+        }
+        var result = String.UnicodeScalarView()
+        result.append(contentsOf: scalars)
+        return String(result)
+    }
+
+    /// `text` with its spaces made no-break spaces, so that a short phrase ("10 episodes", "2 seasons") is never
+    /// split over two lines.
+    static func keepingWordsTogether(_ text: String) -> String {
+        text.replacing(" ", with: "\u{00A0}")
+    }
+
+    /// Separators that providers and the app put between words, with a space on both sides.
+    private static let separatorScalars: Set<Unicode.Scalar> = [
+        "|", "\u{00A6}", "\u{00B7}", "\u{2022}", "\u{2027}", "\u{30FB}", "-", "\u{2013}", "\u{2014}", "/", "\\", ">", "\u{00BB}", "\u{203A}", "\u{2192}",
+    ]
+
+    private static let noBreakSpace: Unicode.Scalar = "\u{00A0}"
+
+    /// A separator whose leading space is a no-break space (" · " becomes "\u{00A0}· "), so that it ends the line
+    /// before when the text wraps there.
+    private static func attachedToPrevious(_ separator: String) -> String {
+        guard separator.unicodeScalars.first == " " else {
+            return separator
+        }
+        var scalars = separator.unicodeScalars
+        scalars.replaceSubrange(scalars.startIndex...scalars.startIndex, with: [noBreakSpace])
+        return String(scalars)
     }
 
     /// "Evening News, BBC One, 20:00–21:30": the parts of a VoiceOver label, read with a short pause between

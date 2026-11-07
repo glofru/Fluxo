@@ -48,6 +48,7 @@ struct LibraryView: View {
         }
         .listStyle(.insetGrouped)
         .navigationTitle(Text(LibraryText.title))
+        .largeTitleAdaptingToTextSize()
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 RecordingsMoreMenu(store: store, isRecordingActive: player.isRecording, prompts: $prompts)
@@ -155,7 +156,9 @@ private struct LibraryRecordingsSection: View {
 }
 
 /// A row of the Library's first section: a tinted symbol tile, the title and an optional line under it. Not a
-/// `Label`: at the accessibility text sizes a list row's label lets the title flow under the icon.
+/// `Label`: at the accessibility text sizes a list row's label lets the title flow under the icon. There the tile
+/// goes above the title, so the title has the row's whole width (beside the tile, "Favoriten" broke into
+/// "Favo-riten").
 private struct LibraryRowLabel: View {
     let title: String
     var subtitle: String?
@@ -166,7 +169,7 @@ private struct LibraryRowLabel: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(alignment: dynamicTypeSize.prefersStackedLayout ? .top : .center, spacing: 14) {
+        AdaptiveStack(verticalAlignment: .center, spacing: dynamicTypeSize.prefersStackedLayout ? 8 : 14) {
             Image(systemName: systemImage)
                 .font(.body.weight(.semibold))
                 .foregroundStyle(.white)

@@ -24,8 +24,11 @@
 //  asks for the link, and only the full URL plays elsewhere, so it is copied as it is. When it looks like it holds
 //  credentials (`StreamLink.containsCredentials`), the toast and the announcement say so ("Includes your account
 //  login. Share it with care."), so a link pasted into a chat is a choice, not an accident; plain links get a
-//  plain confirmation, so the warning keeps its meaning. On macOS such a link is also marked concealed
-//  (`org.nspasteboard.ConcealedType`), so clipboard history managers do not keep the password.
+//  plain confirmation, so the warning keeps its meaning. Such a link also stays on this device and does not stay
+//  for long (`StreamLinkPasteboard`): it is not offered to the user's other devices through Universal Clipboard, and
+//  it leaves the clipboard after `StreamLinkPasteboard.credentialsLifetime` (the toast says so), unless something
+//  else was copied meanwhile. On macOS it is marked concealed too (`org.nspasteboard.ConcealedType`), so clipboard
+//  history managers do not keep the password.
 //
 
 import SwiftData
@@ -95,13 +98,29 @@ struct StreamLink: Equatable, Sendable {
 // MARK: - Pasteboard
 
 enum StreamLinkPasteboard {
-    /// Puts `link` on the general pasteboard, as a URL and as plain text (so it pastes into any text field).
+    /// How long a link with credentials stays on the clipboard (`LinkCopyFeedback.Confirmation.expiry` says it).
+    static let credentialsLifetime: Duration = .seconds(120)
+
+    /// `credentialsLifetime` in whole minutes, rounded up, as the toast says it.
+    static var credentialsLifetimeMinutes: Int {
+        let seconds = Int(credentialsLifetime.components.seconds)
+        return max(1, (seconds + 59) / 60)
+    }
+
+    /// Puts `link` on the general pasteboard, as a URL and as plain text (so it pastes into any text field). A link
+    /// with credentials stays on this device (no Universal Clipboard) and leaves the pasteboard after
+    /// `credentialsLifetime`.
     @MainActor
     static func copy(_ link: StreamLink) {
         let text = link.url.absoluteString
         #if os(macOS)
         let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
+        if link.containsCredentials {
+            // Clears the pasteboard like `clearContents()`, and keeps what follows off the user's other devices.
+            pasteboard.prepareForNewContents(with: .currentHostOnly)
+        } else {
+            pasteboard.clearContents()
+        }
         let item = NSPasteboardItem()
         item.setString(text, forType: .URL)
         item.setString(text, forType: .string)
@@ -110,19 +129,43 @@ enum StreamLinkPasteboard {
             item.setData(Data(), forType: concealedType)
         }
         pasteboard.writeObjects([item])
+        if link.containsCredentials {
+            clearLater(changeCount: pasteboard.changeCount)
+        }
         #elseif os(tvOS)
         // No pasteboard on Apple TV: the menus do not offer Copy Link there (`PlatformFeatures.pasteboard`).
         _ = text
         #else
-        UIPasteboard.general.setItems([[
+        let items: [[String: Any]] = [[
             UTType.url.identifier: link.url,
             UTType.utf8PlainText.identifier: text,
-        ]])
+        ]]
+        if link.containsCredentials {
+            UIPasteboard.general.setItems(items, options: [
+                .localOnly: true,
+                .expirationDate: Date.now.addingTimeInterval(TimeInterval(credentialsLifetime.components.seconds)),
+            ])
+        } else {
+            UIPasteboard.general.setItems(items)
+        }
         #endif
     }
 
     #if os(macOS)
     private static let concealedType = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
+
+    /// The Mac's pasteboard has no expiration date: the link is removed after `credentialsLifetime` if it is still
+    /// what the pasteboard holds (nothing was copied since).
+    @MainActor
+    private static func clearLater(changeCount: Int) {
+        Task { @MainActor in
+            try? await Task.sleep(for: credentialsLifetime)
+            let pasteboard = NSPasteboard.general
+            if pasteboard.changeCount == changeCount {
+                pasteboard.clearContents()
+            }
+        }
+    }
     #endif
 }
 
@@ -155,16 +198,34 @@ final class LinkCopyFeedback {
             return String(localized: "LinkCopied.credentials", defaultValue: "Includes your account login. Share it with care.", comment: "Second line of the Link Copied toast when the copied stream link contains the user name and password (or access token) of the IPTV account.")
         }
 
+        /// A link with credentials leaves the clipboard after a while (`StreamLinkPasteboard.credentialsLifetime`).
+        var expiry: String? {
+            guard containsCredentials else {
+                return nil
+            }
+            let minutes = StreamLinkPasteboard.credentialsLifetimeMinutes
+            return String(localized: "LinkCopied.expiryMinutes", defaultValue: "Removed from the clipboard in \(minutes) minutes.", comment: "Last line of the Link Copied toast when the copied stream link contains the IPTV account's login: the link is removed from the clipboard (and is not shared with the user's other devices) this many minutes after it was copied. The placeholder is the number of minutes.")
+        }
+
         var spokenText: String {
             let spokenTitle = episode.map {
                 String(localized: "LinkCopied.episodeSpoken", defaultValue: "Link to \(EpisodeFormat.spokenCode($0)) copied", comment: "VoiceOver, after Copy Episode Link of a series. The placeholder is the spoken season and episode, such as 'Season 1, episode 4'.")
             }
-            return TextParts.sentences([spokenTitle ?? title, detail])
+            return TextParts.sentences([spokenTitle ?? title, detail.map(Self.withoutFinalStop), expiry.map(Self.withoutFinalStop)])
         }
 
-        /// Long enough to read the warning.
+        /// `sentences(_:)` adds the full stops between sentences itself.
+        private static func withoutFinalStop(_ sentence: String) -> String {
+            var sentence = sentence
+            while let last = sentence.last, ".。।".contains(last) {
+                sentence.removeLast()
+            }
+            return sentence
+        }
+
+        /// Long enough to read the warning and the expiry.
         var duration: Duration {
-            containsCredentials ? .seconds(3.5) : .seconds(2)
+            containsCredentials ? .seconds(5) : .seconds(2)
         }
     }
 
@@ -276,6 +337,11 @@ private struct LinkCopiedToast: View {
                     .font(.subheadline.weight(.semibold))
                 if let detail = confirmation.detail {
                     Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if let expiry = confirmation.expiry {
+                    Text(expiry)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

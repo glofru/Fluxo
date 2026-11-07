@@ -71,8 +71,9 @@ struct NextEpisodeOverlay: View {
     static let countdown = 8
 
     let viewModel: AVPlayerViewModel
-    /// The controls are on screen: the button sits above the bottom bar.
-    let controlsVisible: Bool
+    /// The room the controls take while they show (zero while they are hidden): the button sits above the bottom
+    /// bar, the end card between the bars.
+    let clearance: PlayerChromeClearance
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.playChannel) private var playChannel
@@ -96,13 +97,16 @@ struct NextEpisodeOverlay: View {
                         cancel: { cancelledFor = current }
                     )
                     .id(current)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.top, clearance.top + Self.margin)
+                    .padding(.bottom, clearance.bottom + Self.margin)
                     .transition(reduceMotion ? .opacity : .scale(scale: 0.94).combined(with: .opacity))
                 } else {
                     CreditsButton(viewModel: viewModel, next: next) {
                         play(next)
                     }
                     .padding(.trailing, 20)
-                    .padding(.bottom, controlsVisible ? Self.controlsClearance : 28)
+                    .padding(.bottom, clearance.bottom > 0 ? clearance.bottom + Self.margin : 28)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                 }
             }
@@ -113,13 +117,9 @@ struct NextEpisodeOverlay: View {
         }
     }
 
-    /// Room for the bottom bar (timeline and transport).
-    private static var controlsClearance: CGFloat {
-        #if os(macOS)
-        return 110
-        #else
-        return 150
-        #endif
+    /// Space between the button or the card and the controls.
+    private static var margin: CGFloat {
+        12
     }
 
     private func play(_ next: ChannelItem) {
@@ -188,14 +188,44 @@ private struct NextEpisodeEndCard: View {
     @State private var secondsLeft = NextEpisodeOverlay.countdown
 
     var body: some View {
-        VStack(spacing: 14) {
-            Text("Up Next", comment: "Label of the episode of a series to watch next (Continue Watching, the series page, the player).")
-                .font(.caption.weight(.heavy))
-                .textCase(.uppercase)
-                .foregroundStyle(Theme.Player.secondaryLabel)
+        // Where the room between the controls is low (large text, a phone in landscape), without the label and the
+        // poster, so the buttons stay in view.
+        ViewThatFits(in: .vertical) {
+            card(isCompact: false)
+            card(isCompact: true)
+        }
+        .task(id: autoplays) {
+            guard autoplays else {
+                return
+            }
+            AccessibilityAnnouncer.announce(String(localized: "Next episode in \(NextEpisodeOverlay.countdown) seconds", comment: "VoiceOver: the next episode starts after a countdown."))
+            secondsLeft = NextEpisodeOverlay.countdown
+            while secondsLeft > 0 {
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled else {
+                    return
+                }
+                withAnimation {
+                    secondsLeft -= 1
+                }
+            }
+            play()
+        }
+    }
+
+    private func card(isCompact: Bool) -> some View {
+        VStack(spacing: isCompact ? 10 : 14) {
+            if !isCompact {
+                Text("Up Next", comment: "Label of the episode of a series to watch next (Continue Watching, the series page, the player).")
+                    .font(.caption.weight(.heavy))
+                    .textCase(.uppercase)
+                    .foregroundStyle(Theme.Player.secondaryLabel)
+            }
             HStack(spacing: 14) {
-                ChannelLogoTile(item: next, size: CGSize(width: 54, height: 81), cornerRadius: 8)
-                    .accessibilityHidden(true)
+                if !isCompact {
+                    ChannelLogoTile(item: next, size: CGSize(width: 54, height: 81), cornerRadius: 8)
+                        .accessibilityHidden(true)
+                }
                 VStack(alignment: .leading, spacing: 3) {
                     Text(next.series?.seriesTitle ?? next.displayName)
                         .font(.headline)
@@ -213,63 +243,63 @@ private struct NextEpisodeEndCard: View {
             .accessibilityElement(children: .combine)
 
             GlassEffectContainer(spacing: 10) {
-                HStack(spacing: 10) {
-                    Button(action: play) {
-                        Label {
-                            if autoplays {
-                                Text("Play in \(secondsLeft) s", comment: "Player: the next episode starts after a countdown; the number is the seconds left.")
-                                    .monospacedDigit()
-                                    .contentTransition(.numericText(countsDown: true))
-                            } else {
-                                Text("Play Next Episode")
-                            }
-                        } icon: {
-                            Image(systemName: "play.fill")
-                        }
-                        .font(.headline)
-                        .padding(.horizontal, 6)
+                // Side by side, or Play over the other button when both do not fit on one line (long
+                // translations, large text): the titles are never wrapped into syllables.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) {
+                        buttons
                     }
-                    .buttonStyle(.glassProminent)
-                    .tint(Theme.accentFill)
-
-                    if autoplays {
-                        Button("Cancel", action: cancel)
-                            .buttonStyle(.glass)
-                            // Glass buttons draw their label in the tint (the app's accent otherwise).
-                            .tint(.white)
-                    } else {
-                        Button("Play Again", systemImage: "arrow.counterclockwise", action: playAgain)
-                            .labelStyle(.iconOnly)
-                            .buttonStyle(.glass)
-                            .buttonBorderShape(.circle)
+                    VStack(spacing: 10) {
+                        buttons
                     }
                 }
             }
             .controlSize(.large)
         }
-        .padding(22)
+        .padding(isCompact ? 16 : 22)
         .frame(maxWidth: 400)
         // Darkened, so the text stays readable over bright video (the tint of the glass alone stays too light).
         .background(.black.opacity(0.45), in: .rect(cornerRadius: 24))
         .glassEffect(.regular.tint(.black.opacity(0.4)), in: .rect(cornerRadius: 24))
         .padding(.horizontal)
         .dynamicTypeSize(...DynamicTypeSize.accessibility3)
-        .task(id: autoplays) {
-            guard autoplays else {
-                return
-            }
-            AccessibilityAnnouncer.announce(String(localized: "Next episode in \(NextEpisodeOverlay.countdown) seconds", comment: "VoiceOver: the next episode starts after a countdown."))
-            secondsLeft = NextEpisodeOverlay.countdown
-            while secondsLeft > 0 {
-                try? await Task.sleep(for: .seconds(1))
-                guard !Task.isCancelled else {
-                    return
+    }
+
+    @ViewBuilder
+    private var buttons: some View {
+        Button(action: play) {
+            Label {
+                if autoplays {
+                    Text("Play in \(secondsLeft) s", comment: "Player: the next episode starts after a countdown; the number is the seconds left.")
+                        .monospacedDigit()
+                        .contentTransition(.numericText(countsDown: true))
+                        // One line, a little smaller if needed, rather than broken over two inside the button.
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                } else {
+                    Text("Play Next Episode")
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
                 }
-                withAnimation {
-                    secondsLeft -= 1
-                }
+            } icon: {
+                Image(systemName: "play.fill")
             }
-            play()
+            .font(.headline)
+            .padding(.horizontal, 6)
+        }
+        .buttonStyle(.glassProminent)
+        .tint(Theme.accentFill)
+
+        if autoplays {
+            Button("Cancel", action: cancel)
+                .buttonStyle(.glass)
+                // Glass buttons draw their label in the tint (the app's accent otherwise).
+                .tint(.white)
+        } else {
+            Button("Play Again", systemImage: "arrow.counterclockwise", action: playAgain)
+                .labelStyle(.iconOnly)
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
         }
     }
 }

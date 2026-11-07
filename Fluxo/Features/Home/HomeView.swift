@@ -38,6 +38,8 @@ struct HomeView: View {
     @State private var groupCounts: [ChannelContentKind: Int]?
     /// iOS: the billboard runs under the toolbar; the title fades in once it has scrolled away.
     @State private var isShowingBillboard = false
+    /// The billboard's height below the top inset, as laid out (it grows with large text and long titles).
+    @State private var billboardHeight = FeaturedCarousel.billboardHeight
     @State private var isScrolledPastHero = false
     /// Navigation path of a playlist's Home (`fixedPlaylistID`).
     @State private var playlistPath = NavigationPath()
@@ -73,7 +75,8 @@ struct HomeView: View {
             }
             .navigationTitle(title(for: scope))
             #if os(iOS)
-            .toolbarTitleDisplayMode(playlists.isEmpty ? .large : .inline)
+            // Large over the empty state (inline at the accessibility text sizes, where a large title is cut).
+            .toolbarTitleDisplayMode(playlists.isEmpty && !dynamicTypeSize.prefersStackedLayout ? .large : .inline)
             #endif
             .toolbar {
                 toolbarContent(scope: scope)
@@ -91,7 +94,7 @@ struct HomeView: View {
             scrollContent(scope: scope, topInset: proxy.safeAreaInsets.top)
                 .ignoresSafeArea(edges: .top)
                 .onScrollGeometryChange(for: Bool.self) { geometry in
-                    let threshold = isShowingBillboard ? FeaturedCarousel.billboardHeight(for: dynamicTypeSize) - 40 : 24
+                    let threshold = isShowingBillboard ? billboardHeight - 40 : 24
                     return geometry.contentOffset.y + geometry.contentInsets.top > threshold
                 } action: { _, isPast in
                     isScrolledPastHero = isPast
@@ -112,7 +115,7 @@ struct HomeView: View {
                     // Offline, the featured pages are only downloads, and the downloads row comes first: what
                     // plays without a network is at the top.
                     #if os(iOS)
-                    FeaturedCarousel(importIDs: scope.importIDs, style: .billboard, topInset: topInset, isShowingBillboard: $isShowingBillboard)
+                    FeaturedCarousel(importIDs: scope.importIDs, style: .billboard, topInset: topInset, isShowingBillboard: $isShowingBillboard, billboardHeight: $billboardHeight)
                         .padding(.bottom, -12)
 
                     OfflineHomeSection()

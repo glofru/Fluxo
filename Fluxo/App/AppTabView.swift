@@ -128,6 +128,7 @@ struct AppTabView: View {
                 NavigationStack {
                     SettingsView(player: player)
                         .navigationTitle("Settings")
+                        .largeTitleAdaptingToTextSize()
                 }
             }
             .customizationID("tab.settings")

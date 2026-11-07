@@ -17,11 +17,31 @@ and `Features/Player/MediaSelection.swift`, and the colors in `App/Design/Theme.
   does on its own, wherever the user is: the channel that starts ("Sky Sport F1, live"), buffering or
   connecting that lasts more than 2 s, reconnecting, failures (high priority), the end, recording started /
   stopped / failed, back to live and Cast. Search says how many results a query found.
-- **Dynamic Type** up to AX5: rows, headers (See All moves under the title), the billboard, Settings and the
-  On Now cards stack at the accessibility sizes; cards of the horizontal rows grow (`CardScale`) and their
-  titles get more lines; segmented pickers become menus; the guide switches to a list of channels with now /
-  next (Automatic layout; Grid and List can be chosen in its menu). Controls that keep their size (the
-  player's buttons, the mini player) show in the Large Content Viewer; the player's text grows up to AX2.
+- **Dynamic Type** up to AX5: rows, headers (See All moves under the title), the billboard, Settings and its rows
+  (`SettingsLabel`: the tile above the title), the Library rows, the Continue Watching and On Now cards stack at
+  the accessibility sizes, so a label has the whole width and a word that fits a line is not broken into syllables
+  ("Favo-riten"); cards of the horizontal rows grow (`CardScale`) and their titles get more lines; segmented
+  pickers become menus; the guide switches to a list of channels with now / next (Automatic layout; Grid and List
+  can be chosen in its menu). Large titles (Library, Settings, Search…) become inline titles there
+  (`largeTitleAdaptingToTextSize()`): a large title is one line that is cut ("Einstellung…"). The billboard grows
+  to the height its tallest page needs, its pages' content then starts at the top (so a shorter page's Play is in
+  view first), and it pages back into place when its width changes (a rotation). The Play button of the billboard
+  and of a series page (`HeroActions`) shares its row with the round buttons while its title fits on one line,
+  else it takes the whole width with them under it; its title is always one line (up to AX3, then the Large
+  Content Viewer). Controls that keep their size (the player's buttons, the mini player) show in the Large Content
+  Viewer; the player's text grows up to AX2. The player's messages (an error, offline, the end, the next episode)
+  stay between its top bar and its controls as they are laid out (`PlayerChromeClearance`), never under them: when
+  the card does not fit, only its message scrolls, its title and buttons always show (on a phone in landscape,
+  where the room between the bars is lowest, the card's text grows up to AX1). The scrolling message shows whole
+  lines only (never a line cut through its glyphs), fades out over its last line when there is more, and is left
+  out of the card, read by VoiceOver with the title, when not even one line fits; the card's buttons keep their
+  titles on one line (they shrink a little, the Large Content Viewer shows them whole), and the card is wider
+  where the player is wide (an iPad) at the accessibility sizes.
+- **Lines of parts** (`TextParts.line`): the space before a separator (the app's ·, a provider's " | " or " - ")
+  is a no-break space, so a wrapped line never starts with one ("| Drama"); the series page and the billboard
+  leave out a category's kind prefix that repeats what the page says ("Serie TV | Drama" under Series is "Drama",
+  `ChannelContentKind.category(fromGroupName:)`). A series' counts keep each number with its noun ("10 Folgen",
+  `TextParts.keepingWordsTogether`).
 - **Contrast** (WCAG 2.2 AA, measured in `Theme.swift`): text and thin glyph colors pass 4.5:1 on the
   backgrounds of their mode, icons 3:1; white text sits on fill colors that pass in both modes
   (`accentFill`, `liveFill`, `cyanFill`, `favoriteFill`). Secondary and tertiary text use `Theme.secondaryText`

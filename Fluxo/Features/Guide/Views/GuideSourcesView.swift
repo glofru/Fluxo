@@ -92,6 +92,8 @@ private struct GuideSourceRow: View {
     let progress: EPGRefreshProgress?
 
     @Environment(EPGStore.self) private var epg
+    @Environment(\.linkCopyFeedback) private var linkCopyFeedback
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// The name of the source the delete confirmation asks about, taken when it was asked.
     @State private var deletionName: String?
 
@@ -103,12 +105,12 @@ private struct GuideSourceRow: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
                 Text(source.name)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.prefersStackedLayout ? 3 : 1)
                     .truncationMode(.middle)
                 Text(origin)
                     .font(.caption)
                     .foregroundStyle(Theme.secondaryText)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.prefersStackedLayout ? 3 : 1)
                 status
                     .font(.caption)
                     .lineLimit(2)
@@ -164,9 +166,12 @@ private struct GuideSourceRow: View {
             epg.refresh(source.uuid)
         }
         .disabled(progress != nil)
-        if PlatformFeatures.pasteboard {
+        if PlatformFeatures.pasteboard, let link = StreamLink(source.url) {
             Button("Copy Address", systemImage: "doc.on.doc") {
-                copy(source.url.absoluteString)
+                // As Copy Link of a channel: providers' guide addresses often carry the account's login
+                // (`xmltv.php?username=…&password=…`), which then stays on this device for a short while, with the
+                // warning.
+                LinkCopyFeedback.copy(link, feedback: linkCopyFeedback)
             }
         }
         if source.isUserAdded {
@@ -218,15 +223,6 @@ private struct GuideSourceRow: View {
             Text("Not loaded yet")
                 .foregroundStyle(Theme.secondaryText)
         }
-    }
-
-    private func copy(_ string: String) {
-        #if os(macOS)
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(string, forType: .string)
-        #elseif os(iOS)
-        UIPasteboard.general.string = string
-        #endif
     }
 }
 

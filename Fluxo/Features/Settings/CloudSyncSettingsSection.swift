@@ -12,6 +12,9 @@ import SwiftUI
 struct CloudSyncSettingsSection: View {
 
     @Environment(CloudSync.self) private var sync
+    #if os(iOS)
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    #endif
     #if os(macOS)
     @State private var showsPrivacy = false
     #endif
@@ -210,12 +213,32 @@ struct CloudSyncSettingsSection: View {
         #endif
     }
 
+    /// As `SettingsLabel`: at the accessibility text sizes (iPhone, iPad) the symbol goes above the title, which then
+    /// has the row's whole width ("Synchronisierte Daten und Datenschutz" broke into "Daten-schutz" beside it).
+    @ViewBuilder
     private func rowTitle(_ title: Text, systemImage: String) -> some View {
+        #if os(iOS)
+        if dynamicTypeSize.prefersStackedLayout {
+            VStack(alignment: .leading, spacing: 8) {
+                Image(systemName: systemImage)
+                    .foregroundStyle(.tint)
+                    .accessibilityHidden(true)
+                title
+            }
+        } else {
+            Label {
+                title
+            } icon: {
+                Image(systemName: systemImage)
+            }
+        }
+        #else
         Label {
             title
         } icon: {
             Image(systemName: systemImage)
         }
+        #endif
     }
 }
 
@@ -325,6 +348,7 @@ struct CloudSyncPrivacyView: View {
         }
         .formStyle(.grouped)
         .navigationTitle(Text("iCloud Sync", comment: "Title of the iCloud privacy page."))
+        .largeTitleAdaptingToTextSize()
         .toolbar {
             if isModal {
                 ToolbarItem(placement: .confirmationAction) {

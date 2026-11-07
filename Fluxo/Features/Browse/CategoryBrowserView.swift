@@ -37,6 +37,7 @@ struct CategoryBrowserView: View {
             .scrollDismissesKeyboard(.immediately)
         }
         .navigationTitle(title)
+        .largeTitleAdaptingToTextSize()
         .searchable(text: $searchText, prompt: Text("Search categories"))
         .toolbar {
             ToolbarItem {

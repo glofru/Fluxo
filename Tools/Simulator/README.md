@@ -175,7 +175,7 @@ first that contains the text.
 | `favorite-series:<title>` | Adds a series to the favorites. |
 | `featured-series:<playlist>` | Selects a playlist on Home whose billboard then starts with a series. |
 | `featured-seed:<n\|next>` | The featured pages (billboard, Apple TV hero) of a given seed, or of the next rotation (as pull to refresh). |
-| `featured-page:<n>` | Shows a page of the featured billboard (Apple TV: the hero), from 0; the app log lists the pages (`Featured (seed …)`). |
+| `featured-page:<n>` | Shows a page of the featured billboard (the Mac's featured cards, the Apple TV hero), from 0; on iPhone, iPad and Mac it pages as a swipe does. The app log lists the pages (`Featured (seed …)`). E.g. `featured-page:2;orientation:landscape;orientation:portrait` checks that a rotation keeps that page aligned. |
 | `hide-adult-content:<on\|off>` | Settings › Recommendations › Hide adult content from recommendations. |
 | `audio-track:<name\|number>` | Chooses an audio track of what plays (by name, e.g. `Italian`, or 1-based number), as the Audio and Subtitles menu does (and so remembers its language). |
 | `subtitles:<automatic\|off\|file\|name\|number>` | Chooses the subtitles of what plays (`file`: the loaded subtitle file). |

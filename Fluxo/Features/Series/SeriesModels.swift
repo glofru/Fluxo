@@ -182,9 +182,10 @@ struct SeriesItem: Identifiable, Hashable, Sendable {
         self.init(playlistID: bookmark.playlistID, key: bookmark.seriesKey, title: bookmark.title, artwork: bookmark.artwork, groupName: bookmark.groupName)
     }
 
-    /// "3 seasons · 30 episodes", "12 episodes"; nil when the counts are unknown.
+    /// "3 seasons · 30 episodes", "12 episodes"; nil when the counts are unknown. A line that wraps never separates a
+    /// number from its noun ("10" then "episodes").
     var countsLine: String? {
-        countParts.isEmpty ? nil : TextParts.line(countParts)
+        countParts.isEmpty ? nil : TextParts.line(countParts.map(TextParts.keepingWordsTogether))
     }
 
     /// The counts as separate parts ("3 seasons", "30 episodes"), for VoiceOver (`TextParts.spoken`); empty when

@@ -97,6 +97,14 @@ Tools/PlaylistBenchmark/run.sh             # ENTRIES=20000 for a quicker run
   (see [Offline downloads](downloads.md)), then the recordings are listed in place (play, delete; Delete All in the More
   menu). Library replaced the Favorites tab: Favorites already lead Home (a row with See All), so a tab repeated Home,
   while the recordings were only reachable from a Home toolbar button or the player's menu.
+- **Copy Link and Share** (`Features/Library/ChannelLinkSharing.swift`) are in every channel menu; Settings › TV
+  Guide's Copy Address goes the same way. A link that looks like it carries the account's login (`StreamLink`:
+  `user:pass@`, a password or token parameter, an Xtream Codes path) is copied with the warning "Includes your
+  account login", stays on this device (`localOnly` on iPhone and iPad, `currentHostOnly` on the Mac: no Universal
+  Clipboard) and leaves the clipboard after 2 minutes (`StreamLinkPasteboard.credentialsLifetime`; an expiration
+  date on iPhone and iPad; on the Mac it is cleared then if nothing else was copied meanwhile, and it is marked
+  concealed for clipboard managers). The toast says so, in the window it was copied in (the Mac's Settings window
+  too).
 - **macOS** uses a sidebar (Home, TV Guide, Search, a Library section with Favorites, Recently Watched, Downloads
   and Recordings, and each playlist) and a Settings window (Cmd-,). iPhone uses tabs; iPad uses a sidebar-adaptable
   tab view (see [iPad](interface.md#ipad)).

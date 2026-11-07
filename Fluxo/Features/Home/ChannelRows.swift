@@ -460,7 +460,9 @@ struct CompactChannelCard: View {
         Button {
             playChannel(item, from: sourceID)
         } label: {
-            HStack(spacing: 12) {
+            // At the accessibility text sizes the artwork goes above the text, which then has the card's whole
+            // width (next to it, names broke mid-word: "(MPEG-T S)", "Quar-ter-").
+            AdaptiveStack(spacing: 12) {
                 ChannelLogoTile(item: item, size: item.kind.usesPosterArtwork ? Self.posterSize : Self.logoSize, cornerRadius: 10)
                     // The name follows as text.
                     .accessibilityHidden(true)
@@ -486,7 +488,7 @@ struct CompactChannelCard: View {
                         .fixedSize(horizontal: false, vertical: true)
 
                     if let episode = item.series {
-                        HStack(spacing: 5) {
+                        AdaptiveStack(spacing: 5) {
                             if isUpNext {
                                 Text("Up Next", comment: "Label of the episode of a series to watch next (Continue Watching, the series page, the player).")
                                     .font(Theme.Typography.cardSubtitle.weight(.bold))
@@ -494,7 +496,7 @@ struct CompactChannelCard: View {
                             }
                             Text(TextParts.line([EpisodeFormat.code(episode), episode.episodeTitle]))
                                 .font(Theme.Typography.cardSubtitle.weight(.medium))
-                                .lineLimit(1)
+                                .lineLimit(CardTextMetrics.titleLineLimit(1, at: dynamicTypeSize))
                                 .accessibilityLabel(Text(TextParts.spoken([EpisodeFormat.spokenCode(episode), episode.episodeTitle])))
                         }
                     }
@@ -507,7 +509,7 @@ struct CompactChannelCard: View {
                     } else if item.kind == .live {
                         NowNextReader(item: item) { nowNext in
                             if let current = nowNext?.current {
-                                HStack(spacing: 5) {
+                                AdaptiveStack(spacing: 5) {
                                     LiveBadge(compact: true)
                                     Text(current.title)
                                         .font(Theme.Typography.cardSubtitle)
@@ -649,6 +651,7 @@ struct HistoryView: View {
             }
         }
         .navigationTitle("Recently Watched")
+        .largeTitleAdaptingToTextSize()
         .toolbar {
             // Clear History empties all of it: not offered on a page that shows part of it.
             if !bookmarks.isEmpty, kinds == nil {

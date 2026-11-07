@@ -247,13 +247,15 @@ struct RowProgrammeInfo: View {
                         .font(.caption.weight(.medium))
                         .lineLimit(dynamicTypeSize.prefersStackedLayout ? 3 : 1)
                 }
-                HStack(spacing: 8) {
+                // At the accessibility text sizes the time left goes under the progress, with the whole width
+                // ("Noch 28…" next to it).
+                AdaptiveStack(spacing: dynamicTypeSize.prefersStackedLayout ? 4 : 8) {
                     ProgrammeProgressBar(progress: current.progress(at: now), tint: Theme.live, height: 3)
                         .frame(maxWidth: 140)
                     Text(GuideFormat.remaining(current, at: now))
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(Theme.secondaryText)
-                        .lineLimit(1)
+                        .lineLimit(dynamicTypeSize.prefersStackedLayout ? 2 : 1)
                 }
             }
             if let next = nowNext.next {

@@ -67,6 +67,45 @@ enum ChannelContentKind: Int, CaseIterable, Identifiable, Sendable {
 
     private static let seriesGroupKeywords = ["series", "serie", "séries", "seriale", "tv show", "tv-show", "shows", "episod"]
 
+    /// A category name without the kind the page already shows: providers often start the names of their on-demand
+    /// categories with it ("Serie TV | Drama", "SERIES: Sci-Fi", "Film - Azione"), and next to "Series" or "Movie"
+    /// that prefix says nothing ("Drama"). Only a prefix that is the kind's name and nothing else goes (from a short
+    /// list in the languages providers use), before the first separator; anything else is left as it is ("Talk Shows
+    /// | US", "IT | Rai 1"), and so are live channels' categories, whose prefixes are countries or providers.
+    func category(fromGroupName groupName: String) -> String {
+        let prefixes: Set<String>
+        switch self {
+        case .live:
+            return groupName
+        case .movie:
+            prefixes = Self.movieGroupPrefixes
+        case .series:
+            prefixes = Self.seriesGroupPrefixes
+        }
+        guard let separator = groupName.range(of: Self.groupPrefixSeparator, options: .regularExpression) else {
+            return groupName
+        }
+        let prefix = groupName[..<separator.lowerBound].trimmingCharacters(in: .whitespaces).lowercased()
+        let rest = groupName[separator.upperBound...].trimmingCharacters(in: .whitespaces)
+        guard !rest.isEmpty, prefixes.contains(prefix) else {
+            return groupName
+        }
+        return rest
+    }
+
+    /// The first separator of a category name: a bar, a colon, a bullet or a guillemet (with or without spaces), or a
+    /// dash between spaces (not the hyphen of "Sci-Fi").
+    private static let groupPrefixSeparator = #"\s*[|\u00A6\u2502:\u2022\u00B7\u00BB\u203A]\s*|\s+[-\u2013\u2014]\s+"#
+
+    private static let seriesGroupPrefixes: Set<String> = [
+        "series", "serie", "serie tv", "series tv", "tv series", "tv serie", "tv-series", "séries", "séries tv", "séries télé",
+        "seriale", "seriale tv", "serien", "tv-serien", "tv shows", "tv show", "shows", "dizi", "diziler", "series de tv",
+    ]
+
+    private static let movieGroupPrefixes: Set<String> = [
+        "movies", "movie", "film", "films", "filme", "filmes", "filmy", "vod", "películas", "peliculas", "filmler",
+    ]
+
     /// Classifies an entry. Cheap enough to run for every entry of a large playlist: the name scan only
     /// runs for on-demand URLs and the group keywords are matched once per call on a lowercased copy.
     static func classify(url: URL?, groupName: String, name: String?) -> ChannelContentKind {

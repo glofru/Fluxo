@@ -105,6 +105,7 @@ struct AcknowledgementsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle(Text("Acknowledgements", comment: "Title of Settings › About › Acknowledgements (licenses of the app and of the software it includes)."))
+        .largeTitleAdaptingToTextSize()
         .navigationDestination(item: $openComponent) { component in
             OpenSourceComponentView(component: component, initialPartID: openPartID)
         }
@@ -294,6 +295,7 @@ struct OpenSourceComponentView: View {
         }
         .formStyle(.grouped)
         .navigationTitle(Text(verbatim: component.name))
+        .largeTitleAdaptingToTextSize()
         .navigationDestination(item: $openPart) { part in
             IncludedSoftwareView(part: part, component: component)
         }
@@ -339,6 +341,7 @@ private struct IncludedSoftwareView: View {
         }
         .formStyle(.grouped)
         .navigationTitle(Text(verbatim: part.name))
+        .largeTitleAdaptingToTextSize()
     }
 }
 

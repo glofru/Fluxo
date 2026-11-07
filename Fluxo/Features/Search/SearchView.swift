@@ -68,6 +68,7 @@ struct SearchView: View {
         NavigationStack(path: $navigation.searchPath) {
             content(request: request, libraryScope: libraryScope)
                 .navigationTitle("Search")
+                .largeTitleAdaptingToTextSize()
                 .searchable(text: $navigation.searchText, prompt: "Channels, movies and series")
                 .searchScopes($scope, activation: .onSearchStart) {
                     ForEach(Scope.allCases, id: \.self) { scope in

@@ -49,6 +49,8 @@ struct FeaturedCarousel: View {
     var topInset: CGFloat = 0
     /// Billboard: set to whether the billboard shows (false while loading and when nothing has artwork).
     var isShowingBillboard: Binding<Bool>?
+    /// Billboard: set to the height of its pages below the top inset, as laid out.
+    var billboardHeight: Binding<CGFloat>?
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -65,6 +67,8 @@ struct FeaturedCarousel: View {
     /// Billboard: the side safe areas (a phone in landscape, the vertical bar of a foldable iPhone's cover
     /// display). The pages run under them, their content stays clear of them.
     @State private var sideInsets = SideInsets()
+    /// Billboard: the natural height of each page's content (`BillboardPage.onContentHeight`).
+    @State private var contentHeights: [UUID: CGFloat] = [:]
 
     private struct LoadKey: Hashable {
         let importIDs: [UUID]
@@ -118,6 +122,9 @@ struct FeaturedCarousel: View {
             self.picks = picks
             currentID = picks.first?.id
             loadedImportIDs = importIDs
+            // Only the new picks' heights size the billboard: the others are forgotten.
+            let ids = Set(picks.map(\.id))
+            contentHeights = contentHeights.filter { ids.contains($0.key) }
         }
         .onChange(of: scenePhase) { _, phase in
             // Other pages when the app comes back after a while (never while it stays on screen).
@@ -125,16 +132,11 @@ struct FeaturedCarousel: View {
                 FeaturedRotation.shared.refreshIfDue()
             }
         }
-        #if DEBUG
-        // Debug harness (`featured-page:<n>`): shows a page, for screenshots.
-        .onReceive(NotificationCenter.default.publisher(for: .fluxoDebugFeaturedPage)) { notification in
-            if let index = notification.object as? Int, items.indices.contains(index) {
-                currentID = items[index].id
-            }
-        }
-        #endif
         .onChange(of: items.isEmpty, initial: true) { _, isEmpty in
             isShowingBillboard?.wrappedValue = !isEmpty
+        }
+        .onChange(of: pageHeight, initial: true) { _, height in
+            billboardHeight?.wrappedValue = height
         }
         .onChange(of: items.map(\.id)) { _, ids in
             // Offline (or back online) the shown pages change: the current one stays if it is still shown.
@@ -148,6 +150,17 @@ struct FeaturedCarousel: View {
         } action: { insets in
             sideInsets = insets
         }
+        #if DEBUG
+        // Debug harness (`featured-page:<n>`): pages as a swipe does.
+        .onReceive(NotificationCenter.default.publisher(for: .fluxoDebugFeaturedPage)) { notification in
+            guard let index = notification.object as? Int, items.indices.contains(index) else {
+                return
+            }
+            withAnimation {
+                currentID = items[index].id
+            }
+        }
+        #endif
     }
 
     @ViewBuilder
@@ -201,21 +214,45 @@ struct FeaturedCarousel: View {
             Color.clear
                 .frame(height: topInset)
         } else {
-            ScrollView(.horizontal) {
-                LazyHStack(spacing: 0) {
-                    ForEach(items) { item in
-                        BillboardPage(item: item, topInset: topInset, leadingInset: sideInsets.leading, trailingInset: sideInsets.trailing)
-                            .containerRelativeFrame(.horizontal)
+            let height = pageHeight
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal) {
+                    if dynamicTypeSize.prefersStackedLayout {
+                        // Every page is built at once at the accessibility text sizes, so the tallest one is measured
+                        // before it scrolls in and the billboard never changes height while paging.
+                        HStack(spacing: 0) {
+                            pages(height: height)
+                        }
+                        .scrollTargetLayout()
+                    } else {
+                        LazyHStack(spacing: 0) {
+                            pages(height: height)
+                        }
+                        .scrollTargetLayout()
                     }
                 }
-                .scrollTargetLayout()
+                // Pages as wide as the screen: inside the side safe areas the next page would show under them.
+                .ignoresSafeArea(.container, edges: .horizontal)
+                .scrollTargetBehavior(.paging)
+                .scrollPosition(id: $currentID)
+                .scrollIndicators(.hidden)
+                .onGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.size.width
+                } action: { _ in
+                    // The pages are as wide as the pager: when it changes width (rotation, an iPad window resized),
+                    // the page shown is laid out again in full. A non-lazy stack keeps its scroll offset instead,
+                    // which in a right-to-left layout leaves the pager between two pages.
+                    guard let currentID else {
+                        return
+                    }
+                    var transaction = Transaction(animation: nil)
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        proxy.scrollTo(currentID)
+                    }
+                }
             }
-            // Pages as wide as the screen: inside the side safe areas the next page would show under them.
-            .ignoresSafeArea(.container, edges: .horizontal)
-            .scrollTargetBehavior(.paging)
-            .scrollPosition(id: $currentID)
-            .scrollIndicators(.hidden)
-            .frame(height: topInset + Self.billboardHeight(for: dynamicTypeSize))
+            .frame(height: topInset + height)
             // One backdrop for every page, behind the pager rather than inside it: the pager clips its pages,
             // and the backdrop has to grow above the billboard when Home is pulled down. It cross-fades to the
             // artwork of the page that settles.
@@ -236,6 +273,33 @@ struct FeaturedCarousel: View {
             .transition(.opacity)
         }
     }
+
+    private func pages(height: CGFloat) -> some View {
+        ForEach(items) { item in
+            BillboardPage(item: item, topInset: topInset, height: height, leadingInset: sideInsets.leading, trailingInset: sideInsets.trailing) { contentHeight in
+                if contentHeights[item.id] != contentHeight {
+                    contentHeights[item.id] = contentHeight
+                }
+            }
+            .containerRelativeFrame(.horizontal)
+            .id(item.id)
+        }
+    }
+
+    /// The height of the billboard's pages below the top inset: the design's, or more when a page's content needs
+    /// it (its natural height, the room above it under the navigation bar and below it over the page indicator).
+    private var pageHeight: CGFloat {
+        let design = Self.billboardHeight(for: dynamicTypeSize)
+        guard let tallest = items.compactMap({ contentHeights[$0.id] }).max() else {
+            return design
+        }
+        return max(design, (tallest + Self.billboardContentMargins).rounded(.up))
+    }
+
+    /// Room around a billboard page's content: 16 points under the navigation bar, 30 over the page indicator.
+    private static let billboardContentMargins: CGFloat = billboardTopMargin + 30
+    /// Room between the navigation bar and the content of a billboard page.
+    static let billboardTopMargin: CGFloat = 16
 
     /// The pages of the current rotation for the playlists of `importIDs` (`FeaturedLoader`). Also the pages of
     /// the Apple TV Home's hero (`TVHero`).
@@ -258,8 +322,12 @@ private struct BillboardPage: View {
 
     let item: ChannelItem
     let topInset: CGFloat
+    /// The height of every page below the top inset (`FeaturedCarousel.pageHeight`).
+    let height: CGFloat
     var leadingInset: CGFloat = 0
     var trailingInset: CGFloat = 0
+    /// Reports the natural height of the page's title, artwork and buttons.
+    var onContentHeight: (CGFloat) -> Void = { _ in }
 
     @Environment(\.playChannel) private var playChannel
     @Environment(ChannelLibrary.self) private var library
@@ -275,7 +343,12 @@ private struct BillboardPage: View {
         let series = item.seriesItem
         let isFavorite = series.map(library.series.isFavorite) ?? library.isFavorite(item)
         let isLarge = dynamicTypeSize.prefersStackedLayout
-        ZStack(alignment: .bottomLeading) {
+        // The category without the kind the badge already says ("Film | Azione" under "Featured Movie").
+        let category = item.kind.category(fromGroupName: item.groupName)
+        // At the accessibility text sizes every page is as tall as the tallest one, which can be taller than the
+        // screen: the content starts at the top, so a shorter page's title and Play are in view first, with the room
+        // left below them rather than above.
+        ZStack(alignment: isLarge ? .topLeading : .bottomLeading) {
             Color.clear
 
             VStack(alignment: .leading, spacing: 16) {
@@ -301,14 +374,14 @@ private struct BillboardPage: View {
                                 .foregroundStyle(.tint)
                             Text(series?.title ?? item.displayName)
                                 .font(Theme.Typography.heroTitle)
-                                .lineLimit(isLarge ? 4 : 3)
+                                .lineLimit(isLarge ? 6 : 3)
                                 .minimumScaleFactor(0.85)
                                 .multilineTextAlignment(.leading)
-                            if !item.groupName.isEmpty {
-                                Text(item.groupName)
+                            if !category.isEmpty {
+                                Text(TextParts.keepingSeparatorsAttached(category))
                                     .font(.subheadline)
                                     .foregroundStyle(Theme.secondaryText)
-                                    .lineLimit(isLarge ? 2 : 1)
+                                    .lineLimit(isLarge ? 3 : 1)
                             }
                         }
                         .accessibilityElement(children: .combine)
@@ -317,46 +390,43 @@ private struct BillboardPage: View {
                 }
 
                 // Glass belongs to the controls, not to the artwork.
-                GlassEffectContainer(spacing: 10) {
-                    HStack(spacing: 10) {
+                HeroActions(title: playTitle(series), systemImage: "play.fill") {
+                    play(series)
+                } secondary: {
+                    if item.url != nil {
                         Button {
-                            play(series)
-                        } label: {
-                            Label(playTitle(series), systemImage: "play.fill")
-                                .font(.headline)
-                                .padding(.horizontal, 8)
-                                .contentTransition(.numericText())
-                        }
-                        .buttonStyle(.glassProminent)
-                        .tint(Theme.accentFill)
-
-                        if item.url != nil {
-                            Button {
-                                if let series {
-                                    library.series.toggleFavorite(series)
-                                } else {
-                                    library.toggleFavorite(item)
-                                }
-                            } label: {
-                                Image(systemName: isFavorite ? "star.fill" : "star")
-                                    .font(.headline)
-                                    .foregroundStyle(isFavorite ? Theme.favorite : Color.primary)
-                                    .contentTransition(.symbolEffect(.replace))
-                                    .frame(width: 22, height: 22)
+                            if let series {
+                                library.series.toggleFavorite(series)
+                            } else {
+                                library.toggleFavorite(item)
                             }
-                            .buttonStyle(.glass)
-                            .buttonBorderShape(.circle)
-                            .accessibilityLabel(isFavorite ? "Remove from Favorites" : "Add to Favorites")
+                        } label: {
+                            Image(systemName: isFavorite ? "star.fill" : "star")
+                                .font(.headline)
+                                .foregroundStyle(isFavorite ? Theme.favorite : Color.primary)
+                                .contentTransition(.symbolEffect(.replace))
+                                .frame(width: 22, height: 22)
                         }
+                        .buttonStyle(.glass)
+                        .buttonBorderShape(.circle)
+                        .accessibilityLabel(isFavorite ? "Remove from Favorites" : "Add to Favorites")
                     }
                 }
-                .controlSize(.large)
+            }
+            // Its natural height, measured: the carousel makes every page as tall as the tallest one needs (large
+            // text, long titles), so nothing is compressed or cut.
+            .fixedSize(horizontal: false, vertical: true)
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.height
+            } action: { height in
+                onContentHeight(height)
             }
             .padding(.leading, HomeLayout.horizontalMargin + leadingInset)
             .padding(.trailing, HomeLayout.horizontalMargin + trailingInset)
+            .padding(.top, isLarge ? topInset + FeaturedCarousel.billboardTopMargin : 0)
             .padding(.bottom, 30)
         }
-        .frame(height: topInset + FeaturedCarousel.billboardHeight(for: dynamicTypeSize))
+        .frame(height: topInset + height)
         .contentShape(.rect)
         .onTapGesture {
             // A series opens from its artwork and title; elsewhere a tap does nothing rather than start an
@@ -702,7 +772,7 @@ private struct PageIndicator: View {
 
 #if DEBUG
 extension Notification.Name {
-    /// Debug harness (`featured-page:<n>`): shows the featured page at the index that is the object.
+    /// Debug harness (`featured-page:<n>`): pages the featured carousel to the page at the index that is the object.
     static let fluxoDebugFeaturedPage = Notification.Name("FluxoDebugFeaturedPage")
 }
 #endif

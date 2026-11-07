@@ -136,6 +136,8 @@ struct GuideView: View {
             NavigationStack {
                 GuideSourcesView()
             }
+            // Copy Address confirms in the sheet, over it (the window's toast would be under the sheet).
+            .linkCopyFeedbackHost()
             .mediumAndLargeDetentsAdaptingToTextSize()
         }
     }

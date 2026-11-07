@@ -126,6 +126,28 @@ private struct AdaptiveDetents: ViewModifier {
     }
 }
 
+extension View {
+    /// The screen's usual title (large at the top of a tab or a list), inline at the accessibility text sizes: a large
+    /// title is one line that does not wrap, so a long word is cut there ("Einstellung…") while the inline title
+    /// keeps the whole width of the bar. Nothing changes on platforms without large titles.
+    func largeTitleAdaptingToTextSize() -> some View {
+        modifier(AdaptiveTitleDisplayMode())
+    }
+}
+
+private struct AdaptiveTitleDisplayMode: ViewModifier {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        content
+            .toolbarTitleDisplayMode(dynamicTypeSize.prefersStackedLayout ? .inline : .automatic)
+        #else
+        content
+        #endif
+    }
+}
+
 // MARK: - Large Content Viewer, Smart Invert, Button Shapes
 
 extension View {

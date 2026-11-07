@@ -343,7 +343,7 @@ enum DebugRoutes {
                 throw DebugRouteError.invalidArgument("featured-seed", argument)
             }
         },
-        DebugRoute("featured-page:<n>", "Shows a page of the featured billboard (Apple TV: hero), from 0.") { _, argument in
+        DebugRoute("featured-page:<n>", "Shows a page of the featured billboard (the Mac's featured cards, the Apple TV hero), from 0; on iPhone, iPad and Mac it pages as a swipe does.") { _, argument in
             guard let index = Int(argument), index >= 0 else {
                 throw DebugRouteError.invalidArgument("featured-page", argument)
             }

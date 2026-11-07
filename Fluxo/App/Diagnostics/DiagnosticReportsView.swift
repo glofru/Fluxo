@@ -80,6 +80,7 @@ struct DiagnosticReportsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle(Text("Diagnostic Reports", comment: "Title of Settings › About › Diagnostic Reports."))
+        .largeTitleAdaptingToTextSize()
         .toolbar {
             if isModal {
                 ToolbarItem(placement: .confirmationAction) {

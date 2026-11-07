@@ -170,6 +170,7 @@ struct DownloadsView: View {
             }
         }
         .navigationTitle(Text(DownloadText.downloads))
+        .largeTitleAdaptingToTextSize()
     }
 }
 

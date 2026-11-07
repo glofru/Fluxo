@@ -153,6 +153,12 @@ struct TVSeriesScreen: View {
         }
     }
 
+    /// The series' category without a "Serie TV |" in front (the page says Series above it); nil without one.
+    private static func category(of series: SeriesItem) -> String? {
+        let category = ChannelContentKind.series.category(fromGroupName: series.groupName)
+        return category.isEmpty ? nil : ChannelCandidate.displayGroup(category)
+    }
+
     private func header(series: SeriesItem, nextUp: SeriesNextUp?, season: Int?, state: SeriesWatchState?) -> some View {
         let isFavorite = library.series.isFavorite(series)
         let seasonEpisodes = season.flatMap { episodes?.episodes(inSeason: $0) } ?? []
@@ -172,7 +178,7 @@ struct TVSeriesScreen: View {
                     .lineLimit(2)
                     .minimumScaleFactor(0.6)
                     .accessibilityAddTraits(.isHeader)
-                if let meta = TextParts.line([series.groupName.isEmpty ? nil : ChannelCandidate.displayGroup(series.groupName), series.year.map { EpisodeFormat.number($0) }, series.countsLine]).nilIfEmpty {
+                if let meta = TextParts.line([Self.category(of: series), series.year.map { EpisodeFormat.number($0) }, series.countsLine]).nilIfEmpty {
                     Text(meta)
                         .font(.callout)
                         .foregroundStyle(.secondary)

@@ -175,61 +175,52 @@ private struct SeriesHero: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            GlassEffectContainer(spacing: 10) {
-                HStack(spacing: 10) {
-                    Button {
-                        if let nextUp {
-                            playChannel(nextUp.episode, from: sourceID)
-                        }
-                    } label: {
-                        Label(SeriesPlayback.buttonTitle(for: nextUp), systemImage: nextUp?.reason == .rewatch ? "arrow.counterclockwise" : "play.fill")
-                            .font(.headline)
-                            .padding(.horizontal, 8)
-                            .contentTransition(.numericText())
-                    }
-                    .buttonStyle(.glassProminent)
-                    .tint(Theme.accentFill)
-                    .disabled(nextUp == nil)
-
-                    Button {
-                        library.series.toggleFavorite(series)
-                    } label: {
-                        Image(systemName: isFavorite ? "star.fill" : "star")
-                            .font(.headline)
-                            .foregroundStyle(isFavorite ? Theme.favorite : Color.primary)
-                            .contentTransition(.symbolEffect(.replace))
-                            .frame(width: 22, height: 22)
-                    }
-                    .buttonStyle(.glass)
-                    .buttonBorderShape(.circle)
-                    .accessibilityLabel(isFavorite ? "Remove from Favorites" : "Add to Favorites")
-
-                    Menu {
-                        watchedActions
-                        // Copy Link and Share of the episode the Play button plays, named, since the page is
-                        // the series'.
-                        if let nextUp, let episode = nextUp.episode.series, StreamLink(nextUp.episode.url) != nil {
-                            Divider()
-                            StreamLinkMenuItems(url: nextUp.episode.url, name: nextUp.episode.displayName, target: .episode(episode))
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis")
-                            .font(.headline)
-                            .frame(width: 22, height: 22)
-                    }
-                    .buttonStyle(.glass)
-                    .buttonBorderShape(.circle)
-                    .accessibilityLabel("More Actions")
-                    .disabled(episodes.isEmpty)
+            HeroActions(
+                title: SeriesPlayback.buttonTitle(for: nextUp),
+                systemImage: nextUp?.reason == .rewatch ? "arrow.counterclockwise" : "play.fill",
+                isDisabled: nextUp == nil
+            ) {
+                if let nextUp {
+                    playChannel(nextUp.episode, from: sourceID)
                 }
+            } secondary: {
+                Button {
+                    library.series.toggleFavorite(series)
+                } label: {
+                    Image(systemName: isFavorite ? "star.fill" : "star")
+                        .font(.headline)
+                        .foregroundStyle(isFavorite ? Theme.favorite : Color.primary)
+                        .contentTransition(.symbolEffect(.replace))
+                        .frame(width: 22, height: 22)
+                }
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
+                .accessibilityLabel(isFavorite ? "Remove from Favorites" : "Add to Favorites")
+
+                Menu {
+                    watchedActions
+                    // Copy Link and Share of the episode the Play button plays, named, since the page is
+                    // the series'.
+                    if let nextUp, let episode = nextUp.episode.series, StreamLink(nextUp.episode.url) != nil {
+                        Divider()
+                        StreamLinkMenuItems(url: nextUp.episode.url, name: nextUp.episode.displayName, target: .episode(episode))
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.headline)
+                        .frame(width: 22, height: 22)
+                }
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
+                .accessibilityLabel("More Actions")
+                .disabled(episodes.isEmpty)
             }
-            .controlSize(.large)
 
             if let nextUp, let detail = upNextDetail(nextUp) {
                 Text(detail.shown)
                     .font(.footnote)
                     .foregroundStyle(Theme.secondaryText)
-                    .lineLimit(2)
+                    .lineLimit(dynamicTypeSize.prefersStackedLayout ? 4 : 2)
                     .accessibilityLabel(Text(detail.spoken))
             }
         }
@@ -246,10 +237,12 @@ private struct SeriesHero: View {
         }
     }
 
-    /// "2008 · 5 seasons · 62 episodes · Drama".
+    /// "2008 · 5 seasons · 62 episodes · Drama" (the category without a "Serie TV |" in front: the page says Series
+    /// above).
     private var metaLine: String? {
         let year = series.year.map { $0.formatted(.number.grouping(.never)) }
-        let group = series.groupName.isEmpty ? nil : series.groupName
+        let category = ChannelContentKind.series.category(fromGroupName: series.groupName)
+        let group = category.isEmpty ? nil : category
         return TextParts.line([year, series.countsLine, group]).nilIfEmpty
     }
 

@@ -377,11 +377,18 @@ struct SettingsView: View {
     }
 }
 
-/// A settings row title with its symbol on a small colored tile, as in the system Settings.
+/// A settings row title with its symbol on a small colored tile, as in the system Settings. At the accessibility text
+/// sizes (iPhone, iPad) the tile goes above the title, as in the Library's rows: the title then has the row's whole
+/// width (beside the tile, German titles broke into syllables, "Aufnah-men"), and the tile keeps its size (a list
+/// row's label icon shrank it to a sliver there).
 struct SettingsLabel: View {
     let title: Text
     let systemImage: String
     let tint: Color
+
+    #if os(iOS)
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    #endif
 
     init(_ title: LocalizedStringKey, systemImage: String, tint: Color) {
         self.title = Text(title)
@@ -398,15 +405,37 @@ struct SettingsLabel: View {
     }
 
     var body: some View {
+        #if os(iOS)
+        if dynamicTypeSize.prefersStackedLayout {
+            VStack(alignment: .leading, spacing: 8) {
+                // A fixed size: the tile is decoration (the title says it all), and one that grew with the text
+                // would only push the title down.
+                tile(symbolFont: .system(size: 22, weight: .semibold), side: 40, cornerRadius: 10)
+                    .accessibilityHidden(true)
+                title
+            }
+        } else {
+            label
+        }
+        #else
+        label
+        #endif
+    }
+
+    private var label: some View {
         Label {
             title
         } icon: {
-            Image(systemName: systemImage)
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.white)
-                .frame(width: 28, height: 28)
-                .background(tint.gradient, in: .rect(cornerRadius: 7, style: .continuous))
+            tile(symbolFont: .footnote.weight(.semibold), side: 28, cornerRadius: 7)
         }
+    }
+
+    private func tile(symbolFont: Font, side: CGFloat, cornerRadius: CGFloat) -> some View {
+        Image(systemName: systemImage)
+            .font(symbolFont)
+            .foregroundStyle(.white)
+            .frame(width: side, height: side)
+            .background(tint.gradient, in: .rect(cornerRadius: cornerRadius, style: .continuous))
     }
 }
 
@@ -472,30 +501,81 @@ private struct SettingsHeader: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Four tiles side by side; one row each at the accessibility text sizes.
-            let layout = dynamicTypeSize.prefersStackedLayout ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
-            layout {
-                stat(value: playlists.count, title: "Playlists", systemImage: "list.bullet.rectangle")
-                stat(value: playlists.reduce(0) { $0 + $1.channelCount }, title: "Channels", systemImage: "play.tv")
-                stat(value: library.favoriteKeys.count, title: "Favorites", systemImage: "star.fill")
-                stat(value: recordingCount, title: "Recordings", systemImage: "record.circle")
+            // Four tiles side by side, or two by two when their titles do not fit on one line next to each other
+            // (long translations, large text); one row each at the accessibility text sizes.
+            if dynamicTypeSize.prefersStackedLayout {
+                VStack(spacing: 8) {
+                    stats
+                }
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        stats
+                    }
+                    Grid(horizontalSpacing: 8, verticalSpacing: 8) {
+                        GridRow {
+                            playlistsStat
+                            channelsStat
+                        }
+                        GridRow {
+                            favoritesStat
+                            recordingsStat
+                        }
+                    }
+                }
             }
         }
         .padding(.vertical, 6)
     }
 
     @ViewBuilder
+    private var stats: some View {
+        playlistsStat
+        channelsStat
+        favoritesStat
+        recordingsStat
+    }
+
+    private var playlistsStat: some View {
+        stat(value: playlists.count, title: "Playlists", systemImage: "list.bullet.rectangle")
+    }
+
+    private var channelsStat: some View {
+        stat(value: playlists.reduce(0) { $0 + $1.channelCount }, title: "Channels", systemImage: "play.tv")
+    }
+
+    private var favoritesStat: some View {
+        stat(value: library.favoriteKeys.count, title: "Favorites", systemImage: "star.fill")
+    }
+
+    private var recordingsStat: some View {
+        stat(value: recordingCount, title: "Recordings", systemImage: "record.circle")
+    }
+
+    @ViewBuilder
     private func stat(value: Int, title: LocalizedStringKey, systemImage: String) -> some View {
         if dynamicTypeSize.prefersStackedLayout {
-            HStack(spacing: 10) {
-                Image(systemName: systemImage)
-                    .foregroundStyle(.tint)
-                    .accessibilityHidden(true)
-                Text(value, format: .number.notation(.compactName))
-                    .font(.headline.monospacedDigit())
-                Text(title)
-                    .foregroundStyle(Theme.secondaryText)
-                Spacer(minLength: 0)
+            // The symbol, the number and the title on one line; the title under them when it does not fit (a single
+            // word is cut, never wrapped: "4 Playli…").
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    statSymbol(systemImage)
+                    statValue(value)
+                    Text(title)
+                        .foregroundStyle(Theme.secondaryText)
+                        .fixedSize()
+                    Spacer(minLength: 0)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 10) {
+                        statSymbol(systemImage)
+                        statValue(value)
+                    }
+                    Text(title)
+                        .foregroundStyle(Theme.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -504,6 +584,18 @@ private struct SettingsHeader: View {
         } else {
             statTile(value: value, title: title, systemImage: systemImage)
         }
+    }
+
+    private func statSymbol(_ systemImage: String) -> some View {
+        Image(systemName: systemImage)
+            .foregroundStyle(.tint)
+            .accessibilityHidden(true)
+    }
+
+    private func statValue(_ value: Int) -> some View {
+        Text(value, format: .number.notation(.compactName))
+            .font(.headline.monospacedDigit())
+            .fixedSize()
     }
 
     private func statTile(value: Int, title: LocalizedStringKey, systemImage: String) -> some View {

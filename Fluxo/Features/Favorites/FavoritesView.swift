@@ -138,6 +138,7 @@ struct FavoritesView: View {
             }
         }
         .navigationTitle("Favorites")
+        .largeTitleAdaptingToTextSize()
         // Channels dragged here (from another window, or the player's channel list) become favorites.
         .favoritesDropDestination(library: library)
         .toolbar {

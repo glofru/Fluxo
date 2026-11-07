@@ -64,6 +64,8 @@ struct FluxoApp: App {
                     .environment(graph.importCenter)
                     .modelContainer(graph.container)
                     .defaultAppStorage(.fluxo)
+                    // Copy Address (Settings › TV Guide) confirms in this window: the login warning and the expiry.
+                    .linkCopyFeedbackHost()
             }
         }
         #elseif os(tvOS)
