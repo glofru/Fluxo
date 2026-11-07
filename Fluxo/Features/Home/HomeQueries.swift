@@ -250,6 +250,21 @@ enum HomeQueries {
         return descriptor
     }
 
+    /// The watch history of some kinds only (Continue Watching of the Movies and Series pages on Apple TV), most
+    /// recent first.
+    static func recents(playlistIDs: [UUID]?, kinds: Set<ChannelContentKind>, limit: Int) -> FetchDescriptor<ChannelBookmark> {
+        let kindValues = kinds.map(\.rawValue)
+        let predicate: Predicate<ChannelBookmark>
+        if let playlistIDs {
+            predicate = #Predicate { $0.lastWatchedAt != nil && playlistIDs.contains($0.playlistID) && kindValues.contains($0.kindRawValue) }
+        } else {
+            predicate = #Predicate { $0.lastWatchedAt != nil && kindValues.contains($0.kindRawValue) }
+        }
+        var descriptor = FetchDescriptor<ChannelBookmark>(predicate: predicate, sortBy: [SortDescriptor(\.lastWatchedAt, order: .reverse)])
+        descriptor.fetchLimit = limit
+        return descriptor
+    }
+
     /// Favorites, most recently added first. `playlistIDs == nil` means every playlist.
     static func favorites(playlistIDs: [UUID]?, limit: Int) -> FetchDescriptor<ChannelBookmark> {
         let predicate: Predicate<ChannelBookmark>

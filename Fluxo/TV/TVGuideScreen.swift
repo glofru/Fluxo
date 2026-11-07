@@ -72,8 +72,10 @@ struct TVGuideScreen: View {
         .sheet(item: $selection) { selection in
             TVProgrammeScreen(programme: selection.programme, channel: selection.channel.item, ref: selection.channel.ref)
         }
-        .sheet(isPresented: $showsAddSource) {
+        // A page of its own, as Add Playlist (`tvFormPage`).
+        .fullScreenCover(isPresented: $showsAddSource) {
             AddGuideSourceView()
+                .tvFormPage()
         }
         .task(id: ChannelsKey(importIDs: scope.importIDs, revision: epg.revision)) {
             let loaded = await epg.guideChannels(importIDs: scope.importIDs)
@@ -185,6 +187,9 @@ struct TVGuideScreen: View {
                         Label(groupFilter.map(ChannelCandidate.displayGroup) ?? String(localized: "All Categories"), systemImage: "line.3.horizontal.decrease.circle")
                     }
                     .pickerStyle(.menu)
+                    // The menu's title is its choice: VoiceOver says what it chooses, then the choice.
+                    .accessibilityLabel(Text(String(localized: "TV.guide.categoryMenu", defaultValue: "Category", comment: "VoiceOver: the menu of the Apple TV TV guide that shows one category of channels (its value is the category shown, or All Categories).")))
+                    .accessibilityValue(Text(groupFilter.map(ChannelCandidate.displayGroup) ?? String(localized: "All Categories")))
                 }
             }
         }
@@ -448,6 +453,8 @@ private struct TVGuideWindowControls: View {
             }
             .pickerStyle(.menu)
             .fixedSize()
+            .accessibilityLabel(Text(String(localized: "TV.guide.dayMenu", defaultValue: "Day", comment: "VoiceOver: the menu of the Apple TV TV guide that chooses the day shown (its value is the day, as Today or Tomorrow).")))
+            .accessibilityValue(Text(GuideFormat.day(shownDay)))
         }
     }
 }
@@ -745,6 +752,16 @@ private struct TVGuideRow: View {
             channelCell
             endCell(isLater: false, isEnabled: model.canGoEarlier)
             ZStack(alignment: .leading) {
+                // The line of now, behind the programmes' opaque tiles (`TVGuideCellStyle`): it shows between them
+                // and the rows, and never crosses their titles.
+                if window.contains(now) {
+                    Rectangle()
+                        .fill(Theme.live)
+                        .frame(width: 3, height: TVGuideMetrics.rowHeight)
+                        .offset(x: TVGuideMetrics.x(of: now, in: window) - 1.5)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
                 if let programmes {
                     if programmes.isEmpty {
                         emptyCell
@@ -755,14 +772,6 @@ private struct TVGuideRow: View {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(.primary.opacity(0.05))
                         .frame(width: TVGuideMetrics.timelineWidth, height: TVGuideMetrics.rowHeight - 12)
-                }
-                if window.contains(now) {
-                    Rectangle()
-                        .fill(Theme.live)
-                        .frame(width: 3, height: TVGuideMetrics.rowHeight)
-                        .offset(x: TVGuideMetrics.x(of: now, in: window) - 1.5)
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
                 }
             }
             .frame(width: TVGuideMetrics.timelineWidth, height: TVGuideMetrics.rowHeight, alignment: .leading)
@@ -788,20 +797,30 @@ private struct TVGuideRow: View {
             playChannel(channel.item)
         } label: {
             HStack(spacing: 18) {
+                // The number on the logo, so the name has the cell's height for two lines in every script (Arabic,
+                // Thai and Devanagari lines are taller than Latin ones).
                 TVLandscapeArtwork(item: channel.item, size: CGSize(width: 120, height: 68))
                     .clipShape(.rect(cornerRadius: 10, style: .continuous))
-                VStack(alignment: .leading, spacing: 2) {
-                    if let number = channel.item.number {
-                        Text(number.formatted(.number.grouping(.never)))
-                            .font(.caption2.weight(.semibold))
-                            .monospacedDigit()
-                            .opacity(0.7)
+                    .overlay(alignment: .bottomLeading) {
+                        if let number = channel.item.number {
+                            Text(number.formatted(.number.grouping(.never)))
+                                .font(.caption2.weight(.bold))
+                                .monospacedDigit()
+                                .lineLimit(1)
+                                .fixedSize()
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 1)
+                                .background(.black.opacity(0.65), in: .capsule)
+                                .offset(x: -6, y: 8)
+                        }
                     }
-                    Text(channel.item.displayName)
-                        .font(.caption.weight(.semibold))
-                        .lineLimit(2)
-                }
-                Spacer(minLength: 0)
+                Text(channel.item.displayName)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+                    .allowsTightening(true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.horizontal, 12)
             .frame(width: TVGuideMetrics.channelColumnWidth, height: TVGuideMetrics.rowHeight - 12)
@@ -929,6 +948,9 @@ struct TVGuideCellStyle: ButtonStyle {
             configuration.label
                 .foregroundStyle(isFocused ? Color.white : textColor)
                 .background(background, in: .rect(cornerRadius: 12, style: .continuous))
+                // Opaque, on the page's color: the line of now passes behind the tiles, in the gaps between them,
+                // never through their titles.
+                .background(Color.tvPageBackground(colorScheme), in: .rect(cornerRadius: 12, style: .continuous))
                 .scaleEffect(isFocused ? 1.04 : (configuration.isPressed ? 0.98 : 1))
                 .shadow(color: .black.opacity(isFocused ? 0.35 : 0), radius: 16, y: 8)
                 .zIndex(isFocused ? 1 : 0)
@@ -965,15 +987,23 @@ private struct TVUpNextRow: View {
     let programme: GuideProgramme
     let channel: ChannelItem
     let now: Date
+    /// Plays the channel: what selecting the programme on air does.
+    let onWatch: () -> Void
 
     @Environment(EPGStore.self) private var epg
 
     var body: some View {
         let isScheduled = epg.reminders.isScheduled(programme)
         let canRemind = ReminderCenter.canRemind(programme, now: now)
+        let isOnAir = programme.isOnAir(at: now)
+        let isPast = programme.stop <= now
         Button {
-            Task {
-                await epg.reminders.toggle(programme, on: channel)
+            if isOnAir {
+                onWatch()
+            } else {
+                Task {
+                    await epg.reminders.toggle(programme, on: channel)
+                }
             }
         } label: {
             HStack(alignment: .firstTextBaseline, spacing: 20) {
@@ -984,7 +1014,9 @@ private struct TVUpNextRow: View {
                     .font(.callout)
                     .lineLimit(1)
                 Spacer(minLength: 12)
-                if isScheduled || canRemind {
+                if isOnAir {
+                    LiveBadge()
+                } else if isScheduled || canRemind {
                     Image(systemName: isScheduled ? "bell.fill" : "bell")
                         .font(.callout)
                         .foregroundStyle(isScheduled ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
@@ -996,10 +1028,12 @@ private struct TVUpNextRow: View {
             .padding(.vertical, 10)
             .frame(width: 640, alignment: .leading)
         }
-        .buttonStyle(TVGuideCellStyle(kind: .programme(isOnAir: false, isPast: false)))
-        .disabled(!canRemind && !isScheduled)
-        .accessibilityLabel(Text(TextParts.spoken([GuideFormat.time(programme.start), programme.title, isScheduled ? String(localized: "TV.programme.reminderSet", defaultValue: "Reminder Set", comment: "Apple TV, a programme: the reminder is set (selecting it removes it).") : nil])))
-        .accessibilityHint(Text(isScheduled ? String(localized: "TV.programme.removeReminderHint", defaultValue: "Removes the reminder", comment: "VoiceOver hint of a programme that follows, on Apple TV, when a reminder is set for it.") : String(localized: "TV.programme.remindHint", defaultValue: "Reminds you before it starts", comment: "VoiceOver hint of a programme that follows, on Apple TV: selecting it sets a reminder.")))
+        .buttonStyle(TVGuideCellStyle(kind: .programme(isOnAir: isOnAir, isPast: isPast)))
+        // A programme on air plays the channel; one still to come sets or removes its reminder; one that ended (while
+        // the page was open) does nothing.
+        .disabled(!isOnAir && !canRemind && !isScheduled)
+        .accessibilityLabel(Text(TextParts.spoken([GuideFormat.time(programme.start), programme.title, isOnAir ? String(localized: "On Now") : nil, isScheduled ? String(localized: "TV.programme.reminderSet", defaultValue: "Reminder Set", comment: "Apple TV, a programme: the reminder is set (selecting it removes it).") : nil])))
+        .accessibilityHint(Text(isOnAir ? String(localized: TVText.playsHint(for: channel)) : isScheduled ? String(localized: "TV.programme.removeReminderHint", defaultValue: "Removes the reminder", comment: "VoiceOver hint of a programme that follows, on Apple TV, when a reminder is set for it.") : String(localized: "TV.programme.remindHint", defaultValue: "Reminds you before it starts", comment: "VoiceOver hint of a programme that follows, on Apple TV: selecting it sets a reminder.")))
     }
 }
 
@@ -1028,6 +1062,7 @@ struct TVProgrammeScreen: View {
     @Environment(EPGStore.self) private var epg
     @Environment(\.playChannel) private var playChannel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
     @State private var upNext: [GuideProgramme] = []
     @FocusState private var isWatchFocused: Bool
     @FocusState private var isRecordFocused: Bool
@@ -1044,11 +1079,22 @@ struct TVProgrammeScreen: View {
                     artwork
                     if !upNext.isEmpty {
                         VStack(alignment: .leading, spacing: 14) {
-                            Text("Up Next on \(channel.displayName)", comment: "Apple TV, a programme of the TV guide shown full screen: header of the programmes that follow on the channel; the placeholder is the channel name.")
-                                .font(.headline)
-                                .accessibilityAddTraits(.isHeader)
+                            // After a programme that ended, what the channel shows from now on (the one on air first).
+                            Group {
+                                if programme.stop <= now {
+                                    Text("Later on \(channel.displayName)", comment: "Text — TV programme details. The placeholder is the channel name.")
+                                } else {
+                                    Text("Up Next on \(channel.displayName)", comment: "Apple TV, a programme of the TV guide shown full screen: header of the programmes that follow on the channel; the placeholder is the channel name.")
+                                }
+                            }
+                            .font(.headline)
+                            .accessibilityAddTraits(.isHeader)
                             ForEach(upNext) { next in
-                                TVUpNextRow(programme: next, channel: channel, now: now)
+                                TVUpNextRow(programme: next, channel: channel, now: now) {
+                                    afterDismissal {
+                                        playChannel(channel)
+                                    }
+                                }
                             }
                         }
                     }
@@ -1116,7 +1162,9 @@ struct TVProgrammeScreen: View {
             guard let ref else {
                 return
             }
-            upNext = await epg.upcoming(for: ref, from: programme.stop, limit: 4).filter { $0.start >= programme.stop }
+            // What follows the programme; for one that ended, what has not ended yet (from the one on air).
+            let from = max(programme.stop, .now)
+            upNext = await epg.upcoming(for: ref, from: from, limit: 4).filter { $0.start >= programme.stop && $0.stop > from }
         }
     }
 
@@ -1143,11 +1191,15 @@ struct TVProgrammeScreen: View {
     private var artwork: some View {
         let size = CGSize(width: 640, height: 360)
         return ZStack {
-            TVLandscapeArtwork(item: channel, size: size)
             if let icon = programme.icon {
+                // The programme's image on an opaque ground (one with transparent parts would show the channel's logo
+                // through it); the channel's artwork while it loads or when it cannot be loaded.
                 LogoImage(source: icon, size: size, contentMode: .fill) { _ in
-                    Color.clear
+                    TVLandscapeArtwork(item: channel, size: size)
                 }
+                .background(Color.tvPageBackground(colorScheme))
+            } else {
+                TVLandscapeArtwork(item: channel, size: size)
             }
         }
         .frame(width: size.width, height: size.height)

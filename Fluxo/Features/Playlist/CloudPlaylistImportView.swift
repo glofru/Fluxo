@@ -8,6 +8,7 @@
 //  `cloudPlaylistImport()` at the root of the window, and from Settings › iCloud › Playlists in iCloud.
 //
 
+import Accessibility
 import SwiftUI
 
 extension View {
@@ -21,7 +22,8 @@ extension View {
 
 /// The questions of `CloudSync.Prompt`, as system alerts: on Apple TV they take the screen with large focusable
 /// buttons, the first one focused, and Menu picks the cancel button (Not Now); VoiceOver reads the title and message.
-/// The mass-removal question is a page of its own on Apple TV, focused on Not Now (`HeldRemovalsQuestion`).
+/// The mass-removal question is a page of its own on Apple TV, focused on Not Now (`HeldRemovalsQuestion`), and an
+/// alert elsewhere whose cancel button is Not Now (on a Mac also the default button, Return).
 private struct CloudSyncPromptPresenter: ViewModifier {
     @Environment(CloudSync.self) private var sync: CloudSync?
 
@@ -29,27 +31,26 @@ private struct CloudSyncPromptPresenter: ViewModifier {
         if let sync {
             content
                 .alert(
-                    title(sync.prompt),
+                    Text(title(sync.prompt)),
                     // Every button answers; nothing else closes the alert (the buttons clear `prompt`).
                     isPresented: Binding(get: { sync.prompt.map(Self.usesAlert) ?? false }, set: { _ in }),
                     presenting: sync.prompt
                 ) { prompt in
                     actions(prompt, sync: sync)
                 } message: { prompt in
-                    message(prompt)
+                    Text(message(prompt))
                 }
                 #if os(tvOS)
                 // The mass-removal question on Apple TV: an alert there focuses its first button and always puts the
                 // cancel button (Not Now) last, so this page focuses Not Now instead (`HeldRemovalsQuestion`). Menu
-                // closes it, and that is Not Now.
-                .fullScreenCover(isPresented: Binding(get: { sync.prompt.map { !Self.usesAlert($0) } ?? false }, set: { presented in
-                    if !presented, let prompt = sync.prompt, !Self.usesAlert(prompt) {
+                // closes it, and that is Not Now. Presented with its item, which SwiftUI keeps for the page while it
+                // slides away once answered (the prompt is already nil then: the page would go blank).
+                .fullScreenCover(item: Binding(get: { sync.prompt.flatMap { Self.usesAlert($0) ? nil : $0 } }, set: { presented in
+                    if presented == nil, let prompt = sync.prompt, !Self.usesAlert(prompt) {
                         sync.postponeHeldRemovals()
                     }
-                })) {
-                    if let prompt = sync.prompt {
-                        HeldRemovalsQuestion(title: title(prompt), message: message(prompt), sync: sync)
-                    }
+                })) { prompt in
+                    HeldRemovalsQuestion(title: title(prompt), message: message(prompt), sync: sync)
                 }
                 #endif
                 // A question that waited for the player, the Add Playlist sheet or the iCloud playlists sheet is
@@ -75,20 +76,20 @@ private struct CloudSyncPromptPresenter: ViewModifier {
         return true
     }
 
-    private func title(_ prompt: CloudSync.Prompt?) -> Text {
+    private func title(_ prompt: CloudSync.Prompt?) -> String {
         switch prompt {
         case .turnOn, nil:
-            Text("Sync Your Library with iCloud?", comment: "Title of the question asked once to a user who updates the app with playlists on the device: turn on iCloud sync?")
+            String(localized: "Sync Your Library with iCloud?", comment: "Title of the question asked once to a user who updates the app with playlists on the device: turn on iCloud sync?")
         case .restoreLibrary(let playlists) where playlists == 0:
-            Text("Restore Your TV Guides from iCloud?", comment: "Title of the question asked when TV guides this device had are missing (its library was reset) but iCloud still has them.")
+            String(localized: "Restore Your TV Guides from iCloud?", comment: "Title of the question asked when TV guides this device had are missing (its library was reset) but iCloud still has them.")
         case .restoreLibrary:
-            Text("Restore Your Playlists from iCloud?", comment: "Title of the question asked when playlists this device had are missing (its library was reset) but iCloud still has them.")
+            String(localized: "Restore Your Playlists from iCloud?", comment: "Title of the question asked when playlists this device had are missing (its library was reset) but iCloud still has them.")
         case .confirmRemovals(_, let history) where history == 0:
-            Text("Remove Favorites from All Your Devices?", comment: "Title of the question asked when many favorites vanished from this device at once: remove them from the user's other devices too?")
+            String(localized: "Remove Favorites from All Your Devices?", comment: "Title of the question asked when many favorites vanished from this device at once: remove them from the user's other devices too?")
         case .confirmRemovals(let favorites, _) where favorites == 0:
-            Text("Remove Watch History from All Your Devices?", comment: "Title of the question asked when much of the watch history vanished from this device at once: remove it from the user's other devices too?")
+            String(localized: "Remove Watch History from All Your Devices?", comment: "Title of the question asked when much of the watch history vanished from this device at once: remove it from the user's other devices too?")
         case .confirmRemovals:
-            Text("Remove from All Your Devices?", comment: "Title of the question asked when many favorites and watched items vanished from this device at once: remove them from the user's other devices too?")
+            String(localized: "Remove from All Your Devices?", comment: "Title of the question asked when many favorites and watched items vanished from this device at once: remove them from the user's other devices too?")
         }
     }
 
@@ -128,34 +129,36 @@ private struct CloudSyncPromptPresenter: ViewModifier {
             } label: {
                 HeldRemovalsQuestion.removeLabel
             }
-            // The preferred button (Return on a keyboard; bold): it changes nothing anywhere, so it neither undoes a
-            // removal the user meant (Restore Them) nor removes anything elsewhere. It asks again a day later
-            // (`SyncHeldRemovalsReminder`). Apple TV shows `HeldRemovalsQuestion` instead, focused on it.
+            // The safe answer: it changes nothing anywhere, so it neither undoes a removal the user meant (Restore
+            // Them) nor removes anything elsewhere, and it asks again a day later (`SyncHeldRemovalsReminder`). The
+            // cancel button (last; Escape), and on the Mac the default one too (Return). Not the preferred action on
+            // iPhone and iPad: iOS 27.2 draws that as a blue capsule with its title in the app's violet tint, about
+            // 1.1:1, unreadable (checked in the Simulator). Apple TV shows `HeldRemovalsQuestion`, focused on it.
             Button(role: .cancel) {
                 sync.postponeHeldRemovals()
             } label: {
                 HeldRemovalsQuestion.notNowLabel
             }
-            #if !os(tvOS)
+            #if os(macOS)
             .keyboardShortcut(.defaultAction)
             #endif
         }
     }
 
-    private func message(_ prompt: CloudSync.Prompt) -> Text {
+    private func message(_ prompt: CloudSync.Prompt) -> String {
         switch prompt {
         case .turnOn:
-            Text("Keep your playlists, TV guides, favorites and watch progress the same on all your devices. Playlist addresses are encrypted before they leave this device. You can change this in Settings.", comment: "Message of the question asked once to a user who updates the app with playlists on the device: what iCloud sync does and how addresses are protected.")
+            String(localized: "Keep your playlists, TV guides, favorites and watch progress the same on all your devices. Playlist addresses are encrypted before they leave this device. You can change this in Settings.", comment: "Message of the question asked once to a user who updates the app with playlists on the device: what iCloud sync does and how addresses are protected.")
         case .restoreLibrary(let playlists) where playlists == 0:
-            Text("TV guides that were on this device are missing, but they're still in iCloud and on your other devices. Nothing was deleted from them.", comment: "Message of the restore question when only TV guides are missing.")
+            String(localized: "TV guides that were on this device are missing, but they're still in iCloud and on your other devices. Nothing was deleted from them.", comment: "Message of the restore question when only TV guides are missing.")
         case .restoreLibrary(let playlists):
-            Text("\(playlists) playlists that were on this device are missing, but they're still in iCloud and on your other devices. Restore them with their favorites, watch history and TV guides?", comment: "Message of the restore question; the placeholder is how many playlists are missing (one: 1 playlist that was on this device is missing).")
+            String(localized: "\(playlists) playlists that were on this device are missing, but they're still in iCloud and on your other devices. Restore them with their favorites, watch history and TV guides?", comment: "Message of the restore question; the placeholder is how many playlists are missing (one: 1 playlist that was on this device is missing).")
         case .confirmRemovals(let favorites, let history) where history == 0:
-            Text("\(favorites) favorites are missing on this device at once. If you removed them, remove them from your other devices too. If not, restore them from iCloud.", comment: "Message of the mass-removal question when only favorites vanished; the placeholder is how many (always 3 or more).")
+            String(localized: "\(favorites) favorites are missing on this device at once. If you removed them, remove them from your other devices too. If not, restore them from iCloud.", comment: "Message of the mass-removal question when only favorites vanished; the placeholder is how many (always 3 or more).")
         case .confirmRemovals(let favorites, let history) where favorites == 0:
-            Text("\(history) watched items are missing from the history on this device at once. If you cleared them, clear them on your other devices too. If not, restore them from iCloud.", comment: "Message of the mass-removal question when only watch history vanished; the placeholder is how many watched items (always 3 or more).")
+            String(localized: "\(history) watched items are missing from the history on this device at once. If you cleared them, clear them on your other devices too. If not, restore them from iCloud.", comment: "Message of the mass-removal question when only watch history vanished; the placeholder is how many watched items (always 3 or more).")
         case .confirmRemovals(let favorites, let history):
-            Text("\(favorites + history) favorites and watched items are missing on this device at once. If you removed them, remove them from your other devices too. If not, restore them from iCloud.", comment: "Message of the mass-removal question; the placeholder is how many favorites and watched items vanished (always 3 or more).")
+            String(localized: "\(favorites + history) favorites and watched items are missing on this device at once. If you removed them, remove them from your other devices too. If not, restore them from iCloud.", comment: "Message of the mass-removal question; the placeholder is how many favorites and watched items vanished (always 3 or more).")
         }
     }
 }
@@ -176,8 +179,8 @@ private struct HeldRemovalsQuestion: View {
         Text("Remove Everywhere", comment: "Button of the mass-removal question: removes the missing favorites and watched items from the user's other devices too.")
     }
 
-    let title: Text
-    let message: Text
+    let title: String
+    let message: String
     let sync: CloudSync
 
     #if os(tvOS)
@@ -190,10 +193,10 @@ private struct HeldRemovalsQuestion: View {
     var body: some View {
         VStack(spacing: 48) {
             VStack(spacing: 24) {
-                title
+                Text(title)
                     .font(.title2.bold())
                     .accessibilityAddTraits(.isHeader)
-                message
+                Text(message)
                     .font(.body)
                     .foregroundStyle(.secondary)
             }
@@ -205,18 +208,26 @@ private struct HeldRemovalsQuestion: View {
                 } label: {
                     Self.notNowLabel.frame(minWidth: 620)
                 }
+                .tvActionButton(prominent: true)
                 .focused($focused, equals: .notNow)
+                // VoiceOver lands on Not Now, the focused button, and reads only the buttons of a page: the question
+                // comes with it (its title is announced as the page opens, below).
+                .accessibilityHint(Text(message))
                 Button {
                     sync.resolveHeldRemovals(remove: false)
                 } label: {
                     Self.restoreLabel.frame(minWidth: 620)
                 }
+                .tvActionButton()
                 .focused($focused, equals: .restore)
                 Button(role: .destructive) {
                     sync.resolveHeldRemovals(remove: true)
                 } label: {
-                    Self.removeLabel.frame(minWidth: 620)
+                    Self.removeLabel
+                        .foregroundStyle(TVActionLabelStyle(isProminent: false, isDestructive: true))
+                        .frame(minWidth: 620)
                 }
+                .tvActionButton()
                 .focused($focused, equals: .remove)
             }
         }
@@ -231,6 +242,12 @@ private struct HeldRemovalsQuestion: View {
             .ignoresSafeArea()
         }
         .defaultFocus($focused, .notNow)
+        .task {
+            // A full-screen page of its own: VoiceOver says what it asks once the cover is up (posted earlier, the
+            // presentation's own screen change would cut it off).
+            try? await Task.sleep(for: .milliseconds(700))
+            AccessibilityNotification.ScreenChanged(title).post()
+        }
     }
     #else
     var body: some View {
@@ -519,6 +536,7 @@ struct CloudPlaylistImportView: View {
                     Text(isFinished ? String(localized: "Done") : String(localized: "Continue in Background", comment: "Button of the iCloud playlists sheet while playlists import: closes it, the imports go on."))
                         .frame(minWidth: 420)
                 }
+                .tvActionButton(prominent: true)
                 .focused($focusedRow, equals: "done")
             } else {
                 Button {
@@ -527,6 +545,7 @@ struct CloudPlaylistImportView: View {
                     Text(addTitle)
                         .frame(minWidth: 420)
                 }
+                .tvActionButton(prominent: true)
                 .disabled(selected.isEmpty)
                 .focused($focusedRow, equals: "add")
                 Button {
@@ -535,6 +554,7 @@ struct CloudPlaylistImportView: View {
                     Text("Not Now", comment: "Button of the iCloud playlists sheet: closes it without adding playlists.")
                         .frame(minWidth: 240)
                 }
+                .tvActionButton()
                 .focused($focusedRow, equals: "not-now")
             }
         }
@@ -646,9 +666,13 @@ struct CloudPlaylistImportView: View {
     // MARK: - Text
 
     private var addTitle: String {
-        selected.count == shown.count && shown.count > 1
-            ? String(localized: "Add All \(shown.count) Playlists", comment: "Button of the iCloud playlists sheet when every playlist is checked (always more than one); the placeholder is how many.")
-            : String(localized: "Add \(selected.count) Playlists", comment: "Button of the iCloud playlists sheet; the placeholder is how many playlists are checked (one: Add Playlist).")
+        guard selected.count == shown.count, shown.count > 1 else {
+            return String(localized: "Add \(selected.count) Playlists", comment: "Button of the iCloud playlists sheet; the placeholder is how many playlists are checked (one: Add Playlist).")
+        }
+        // "Add All 2 Playlists" is not how anyone says it.
+        return shown.count == 2
+            ? String(localized: "Add Both Playlists", comment: "Button of the iCloud playlists sheet when it lists two playlists and both are checked.")
+            : String(localized: "Add All \(shown.count) Playlists", comment: "Button of the iCloud playlists sheet when every playlist is checked (always three or more); the placeholder is how many.")
     }
 
     private var description: String {

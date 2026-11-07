@@ -498,6 +498,9 @@ final class LibrarySyncStore: CloudSyncLocalStore {
             bookmark.watchCount = progress.watchCount
             bookmark.resumePosition = progress.resumePosition
             bookmark.knownDuration = progress.knownDuration
+            // Watched on another device: in the history here again, so a removal of it the journal still holds is
+            // not one to publish (as `ChannelLibrary.recordWatch` withdraws it).
+            SyncDeletionJournal.withdrawHistoryRemoval(SyncIdentity.localHistoryKey(playlistID: playlistID, url: channel.url), in: defaults)
         default:
             break
         }
@@ -566,6 +569,9 @@ final class LibrarySyncStore: CloudSyncLocalStore {
             bookmark.lastSeason = progress.lastSeason
             bookmark.lastEpisode = progress.lastEpisode
             bookmark.watchedEpisodeCodes = progress.watchedEpisodeCodes
+            if Self.hasProgress(bookmark) {
+                SyncDeletionJournal.withdrawHistoryRemoval(SyncIdentity.localHistoryKey(playlistID: playlistID, seriesKey: series.seriesKey), in: defaults)
+            }
         default:
             break
         }

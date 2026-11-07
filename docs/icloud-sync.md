@@ -102,16 +102,21 @@ user's other devices as soon as it finds them ("Your Playlists from iCloud").
     the defaults, before the row goes, so a playlist or guide deleted while sync is off or just before a quit is still
     deleted elsewhere), and the reconciler folds the journal. A deletion that fails withdraws its entry
     (`SyncDeletionJournal.withdraw`), so the row it left is never deleted elsewhere if the store is lost later; the
-    journal keeps the newest 200 entries (a device with sync off never folds it), and one dropped is the safe way: the
-    item is merely gone for sync. Clear History counts for a day (`historyIntentLifetime`): a history cleared longer
+    journal keeps the newest 200 deletions of playlists and guides and the newest 2,000 watched items removed
+    (`SyncDeletionJournal.capacity`, `historyCapacity`: a device with sync off never folds it, and a series removed
+    from Continue Watching is one entry per episode), and one dropped is the safe way: the item is merely gone for
+    sync. Clear History counts for a day (`historyIntentLifetime`): a history cleared longer
     before sync runs (sync off, turned on later) is a held mass removal, and the user is asked. Watched items the
     user removes from the history are journaled the same way, one entry each (`SyncDeletionJournal.noteHistoryRemoved`,
     a hash of the local playlist and the stream address or series, `SyncIdentity.localHistoryKey`, so the defaults
     hold no address): Remove from History on a Continue Watching card (a series: every episode watched, one record
     each, and the series), a swipe or Edit in Recently Watched, episodes marked unwatched or watched (when that leaves
-    no progress), and the app's own trim of the history to its 200 newest items. Their removals are published at once,
-    however many there are, and do not count towards a mass removal; each entry counts for a day too, is withdrawn
-    when the item is watched again first, and goes in the pass that folds it. One that is merely gone (a library started over after it
+    no progress), Play from Beginning on an item that was only started and never in the history (its progress goes),
+    and the app's own trim of the history to its 200 newest items. Their removals are published at once, however many
+    there are, and do not count towards a mass removal; each entry counts for a day too, and goes in the pass that
+    folds it. An entry is withdrawn when the item is back in the history first: watched again, a position saved for
+    it, an episode of the series marked watched, or another device's record of it applied
+    (`SyncDeletionJournal.withdrawHistoryRemoval`), so a loss of it later is held like any other. One that is merely gone (a library started over after it
     could not be opened, see [Library store](library-store.md), a migration that lost rows, a purge) stays in iCloud and on the other devices and waits for
     the user (`SyncLedger.awaitingRestore`); its favorites and history are never published as removals. The same
     playlist added again by hand takes its old record back (no duplicate), and its favorites return.
@@ -124,17 +129,22 @@ user's other devices as soon as it finds them ("Your Playlists from iCloud").
     measured against the history that remains.
   - **Only known records**: a deletion is published only for an item this device compared before (`lastSeenLocal`),
     never for one it never had.
-  - **Questions** (`CloudSync.Prompt`, system alerts presented by `cloudPlaylistImport()`, never over the player or a
+  - **Questions** (`CloudSync.Prompt`, presented by `cloudPlaylistImport()` as system alerts, except the held-removals
+    question on Apple TV, a page of its own (below); never over the player or a
     sheet in use, and asked as soon as it closes; the root of the window cannot present an alert over another sheet
     or popover, e.g. Settings on iPhone, so while the key window shows one the question waits and is checked again
     every 2 s, `CloudSync.windowIsCovered`): "Restore Your Playlists from iCloud?" when playlists are awaiting
     a restore (Restore adds them back through the import pipeline, with the progress sheet, their favorites, history
     and guides; Not Now is final for those playlists, which stay in Settings › iCloud › Playlists in iCloud, until
     they are restored: lost again, they are asked about again); "Remove Favorites (Watch History)
-    from All Your Devices?" for held removals (Restore Them; Remove Everywhere, destructive; Not Now, the preferred
-    button, as it changes nothing anywhere: a click neither undoes a removal the user meant nor removes anything
-    elsewhere. A tvOS alert focuses its first button and puts the cancel button last, so on Apple TV the question is
-    a full-screen page of its own, focused on Not Now, where Menu is Not Now too: `HeldRemovalsQuestion`). Not Now asks again a day later, not at every launch, or sooner when more removals are
+    from All Your Devices?" for held removals (Restore Them; Remove Everywhere, destructive; Not Now, the safe
+    answer, as it changes nothing anywhere: a click neither undoes a removal the user meant nor removes anything
+    elsewhere. It is the cancel button, last in the alert, and on a Mac the default button too, which Return presses;
+    it is not the preferred action on iPhone and iPad, which iOS 27.2 draws as a blue capsule titled in the app's
+    violet, unreadable). A tvOS alert focuses
+    its first button and puts the cancel button last, so on Apple TV the question is a full-screen page of its own,
+    focused on Not Now, where Menu is Not Now too: `HeldRemovalsQuestion`; VoiceOver hears its title as it opens and
+    the question with Not Now, and the page stays drawn while it slides away). Not Now asks again a day later, not at every launch, or sooner when more removals are
     held than when it was put off (`SyncHeldRemovalsReminder`); nothing is removed elsewhere meanwhile, and Settings ›
     iCloud › Restore from iCloud offers them all along.
   - **One engine at a time**: CloudKit forbids two `CKSyncEngine`s on the same database in production
@@ -255,7 +265,10 @@ large numbers (held, then restored or removed once confirmed), while a few remov
 deleted one by one sync at once; a series removed from Continue Watching with its 4 episodes, most of the history
 (nothing held, the other device loses that series and keeps the rest); several swipes in the history in one pass and
 more between passes, with a movie watched again right after its swipe (kept); a removal from the history with an
-unexplained loss in the same pass (the loss is still held) and one made two days before sync runs (held); the
+unexplained loss in the same pass (the loss is still held) and one made two days before sync runs (held); items back
+in the history before their removal was folded (a position saved, an episode marked watched, another device's record
+applied: withdrawn, so a loss of them later is held); Play from Beginning on items only started (published as the
+user's removal, not held as a loss; on an item in the history, an edit); the
 held-removals question after Not Now (a day later, sooner with more held); a rename against a deletion on two offline devices (the later wins, nothing else is
 lost); the same playlist added again by hand after the store was lost (no duplicate, its favorites return); a guide
 gone without a deletion; Restore from iCloud; a playlist kept despite its deletion elsewhere, listed and synced again

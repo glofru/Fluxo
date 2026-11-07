@@ -109,12 +109,7 @@ struct TVWelcome: View {
                 .ignoresSafeArea()
                 .accessibilityHidden(true)
             VStack(spacing: 30) {
-                Image(systemName: "play.tv.fill")
-                    .font(.system(size: 100, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 200, height: 200)
-                    .glassEffect(.regular.tint(Theme.accent.opacity(0.6)), in: .circle)
-                    .accessibilityHidden(true)
+                TVAppMark(size: 200)
                 Text("Welcome to Fluxo")
                     .font(.title.bold())
                     .accessibilityAddTraits(.isHeader)
@@ -277,31 +272,41 @@ struct TVContinueWatchingShelf: View {
     init(playlistIDs: [UUID]?, kinds: Set<ChannelContentKind> = Set(ChannelContentKind.allCases)) {
         self.playlistIDs = playlistIDs
         self.kinds = kinds
-        _history = Query(HomeQueries.recents(playlistIDs: playlistIDs, limit: Self.fetchLimit * 2))
+        // Room for the episodes of a series shown once, and one more than the shelf shows (See All).
+        if kinds == Set(ChannelContentKind.allCases) {
+            _history = Query(HomeQueries.recents(playlistIDs: playlistIDs, limit: Self.fetchLimit * 2))
+        } else {
+            _history = Query(HomeQueries.recents(playlistIDs: playlistIDs, kinds: kinds, limit: Self.fetchLimit * 2))
+        }
     }
 
-    private var bookmarks: [ChannelBookmark] {
+    /// The cards, and whether the history of these kinds has more than they show (an episode of a series shown
+    /// once, or more than `fetchLimit`): only then does the shelf end with See All.
+    private var shelf: (bookmarks: [ChannelBookmark], hasMore: Bool) {
         var seenSeries: Set<String> = []
-        let entries = history.filter { bookmark in
-            guard kinds.contains(bookmark.kind) else {
-                return false
-            }
+        let ofKinds = history.filter { kinds.contains($0.kind) }
+        let entries = ofKinds.filter { bookmark in
             guard let seriesKey = bookmark.seriesKey else {
                 return true
             }
             return seenSeries.insert(SeriesBookmark.key(playlistID: bookmark.playlistID, seriesKey: seriesKey)).inserted
         }
-        return Array(entries.prefix(Self.fetchLimit))
+        let shown = Array(entries.prefix(Self.fetchLimit))
+        return (shown, ofKinds.count > shown.count)
     }
 
     var body: some View {
-        let bookmarks = bookmarks
-        if !bookmarks.isEmpty {
+        let shelf = shelf
+        if !shelf.bookmarks.isEmpty {
             TVShelf(title: String(localized: "Continue Watching", comment: "Home page section: videos and channels watched recently."), systemImage: "clock.arrow.circlepath") {
-                ForEach(bookmarks) { bookmark in
+                ForEach(shelf.bookmarks) { bookmark in
                     TVContinueCard(lastWatched: ChannelItem(bookmark), watchedAt: bookmark.lastWatchedAt)
                 }
-                TVSeeAllCard(route: .history(playlistIDs: playlistIDs), focusName: "see-all-history")
+                if shelf.hasMore {
+                    // The history of the shelf's kinds (the Movies page's lists no live channels).
+                    let isEveryKind = kinds == Set(ChannelContentKind.allCases)
+                    TVSeeAllCard(route: .history(playlistIDs: playlistIDs, kinds: isEveryKind ? nil : kinds), focusName: "see-all-history")
+                }
             }
         }
     }

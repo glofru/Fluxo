@@ -281,6 +281,52 @@ final class FakeLibrary: CloudSyncLocalStore {
         bookmarks[key] = bookmark
     }
 
+    /// A position saved without a new watch, as `ChannelLibrary.saveWatchProgress` does (the player's saves, a
+    /// pause; Play from Beginning saves 0): an item with progress again withdraws its removal from the journal, and
+    /// a reset that leaves it without any (only started, never in the history) is journaled as the user's removal.
+    func saveProgress(_ channel: String, in playlistID: UUID, position: Double, duration: Double = 6_000) {
+        let url = Self.channelURL(channel)
+        let key = "\(playlistID)|\(url)"
+        let historyKey = SyncIdentity.localHistoryKey(playlistID: playlistID, url: url)
+        guard var bookmark = bookmarks[key] ?? (position > 0 ? Bookmark(playlistID: playlistID, url: url, name: channel) : nil) else {
+            return
+        }
+        let hadProgress = bookmark.lastWatchedAt != nil || bookmark.resumePosition > 0
+        bookmark.resumePosition = max(0, position)
+        bookmark.knownDuration = duration
+        if bookmark.lastWatchedAt != nil || bookmark.resumePosition > 0 {
+            SyncDeletionJournal.withdrawHistoryRemoval(historyKey, in: defaults, now: clock())
+            bookmarks[key] = bookmark
+            return
+        }
+        if hadProgress {
+            SyncDeletionJournal.noteHistoryRemoved([historyKey], in: defaults, now: clock())
+        }
+        bookmarks[key] = bookmark.isFavorite ? bookmark : nil
+    }
+
+    /// Marks an episode of a series as watched or not, as `SeriesLibrary.setWatched` does: a series left without a
+    /// watch state is journaled as removed; one that has a state again withdraws its removal.
+    func setEpisodeWatched(_ number: Int, of show: String, in playlistID: UUID, watched: Bool) {
+        let key = "\(playlistID)|\(show)"
+        let historyKey = SyncIdentity.localHistoryKey(playlistID: playlistID, seriesKey: show)
+        var value = series[key] ?? Series(playlistID: playlistID, seriesKey: show, title: show)
+        var codes = Set(value.watchedEpisodeCodes)
+        if watched {
+            codes.insert("S1E\(number)")
+        } else {
+            codes.remove("S1E\(number)")
+        }
+        value.watchedEpisodeCodes = codes.sorted()
+        if value.lastWatchedAt == nil && value.lastEpisodeURL == nil && value.watchedEpisodeCodes.isEmpty {
+            SyncDeletionJournal.noteHistoryRemoved([historyKey], in: defaults, now: clock())
+            series[key] = nil
+        } else {
+            SyncDeletionJournal.withdrawHistoryRemoval(historyKey, in: defaults, now: clock())
+            series[key] = value
+        }
+    }
+
     func bookmark(_ channel: String, in playlistID: UUID?) -> Bookmark? {
         guard let playlistID else {
             return nil
@@ -404,6 +450,8 @@ final class FakeLibrary: CloudSyncLocalStore {
                 bookmark.resumePosition = progress.resumePosition
                 bookmark.knownDuration = progress.knownDuration
                 bookmarks[key] = bookmark
+                // As `LibrarySyncStore`: watched again on another device, so back in the history here.
+                SyncDeletionJournal.withdrawHistoryRemoval(SyncIdentity.localHistoryKey(playlistID: playlistID, url: progress.channel.url), in: defaults, now: clock())
             case nil where record.id.kind == .channelFavorite || record.id.kind == .channelProgress:
                 let playlistNames = Dictionary(links.playlists.map { ($0.value, $0.key) }, uniquingKeysWith: { first, _ in first })
                 guard let (key, _) = bookmarks.first(where: { entry in
@@ -434,6 +482,7 @@ final class FakeLibrary: CloudSyncLocalStore {
                     lastEpisodeURL: progress.lastEpisodeURL,
                     watchedEpisodeCodes: progress.watchedEpisodeCodes
                 )
+                SyncDeletionJournal.withdrawHistoryRemoval(SyncIdentity.localHistoryKey(playlistID: playlistID, seriesKey: progress.series.seriesKey), in: defaults, now: clock())
             case nil where record.id.kind == .seriesProgress:
                 let playlistNames = Dictionary(links.playlists.map { ($0.value, $0.key) }, uniquingKeysWith: { first, _ in first })
                 series = series.filter { _, value in

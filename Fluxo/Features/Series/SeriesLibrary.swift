@@ -211,7 +211,7 @@ final class SeriesLibrary {
         }
         bookmark.watchedEpisodeCodes = codes.sorted().map(\.rawValue)
         states[series.bookmarkKey] = SeriesWatchState(bookmark)
-        noteIfHistoryRemoved(bookmark)
+        journalHistoryChange(bookmark)
         deleteIfUnused(bookmark)
         save()
     }
@@ -237,7 +237,7 @@ final class SeriesLibrary {
             }
         }
         states[key] = SeriesWatchState(bookmark)
-        noteIfHistoryRemoved(bookmark)
+        journalHistoryChange(bookmark)
         deleteIfUnused(bookmark)
         save()
     }
@@ -340,11 +340,15 @@ final class SeriesLibrary {
         SyncIdentity.localHistoryKey(playlistID: bookmark.playlistID, seriesKey: bookmark.seriesKey)
     }
 
-    /// The user's change left the series without a watch state (its last episode removed from the history, its
-    /// episodes marked unwatched): its synced progress goes from the other devices too, at once.
-    private func noteIfHistoryRemoved(_ bookmark: SeriesBookmark) {
+    /// For iCloud sync, after the user's change: a series left without a watch state (its last episode removed from
+    /// the history, its episodes marked unwatched) has its synced progress removed from the other devices too, at
+    /// once; one with a state (an episode marked watched) is in the history again, so a removal of it that sync has
+    /// not folded yet is withdrawn, as `recordWatch` does.
+    private func journalHistoryChange(_ bookmark: SeriesBookmark) {
         if bookmark.lastWatchedAt == nil && bookmark.lastEpisodeURL == nil && bookmark.watchedEpisodeCodes.isEmpty {
             SyncDeletionJournal.noteHistoryRemoved([Self.historyKey(of: bookmark)])
+        } else {
+            SyncDeletionJournal.withdrawHistoryRemoval(Self.historyKey(of: bookmark))
         }
     }
 

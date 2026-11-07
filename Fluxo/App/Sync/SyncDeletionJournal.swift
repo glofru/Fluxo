@@ -51,8 +51,10 @@ enum SyncDeletionJournal {
     }
 
     /// The user removed these watched items from the history (`SyncIdentity.localHistoryKey`: Remove from History
-    /// on a Continue Watching card, a swipe in the history, a series marked unwatched): their removal is published
-    /// at once, however many there are (a series with all its episodes), instead of being held as a mass loss.
+    /// on a Continue Watching card, a swipe in the history, a series marked unwatched, Play from Beginning on an
+    /// item only started, the app's trim of the history): their removal is published at once, however many there
+    /// are (a series with all its episodes), instead of being held as a mass loss. The newest `historyCapacity`
+    /// entries are kept.
     static func noteHistoryRemoved(_ keys: some Sequence<String>, in defaults: UserDefaults = .fluxo, now: Date = .now) {
         let keys = Array(keys)
         guard !keys.isEmpty else {
@@ -69,8 +71,9 @@ enum SyncDeletionJournal {
         defaults.set(entries, forKey: removedHistoryKey)
     }
 
-    /// The item is in the history again (watched again before sync folded its removal): its removal is not one to
-    /// publish if the store is lost later.
+    /// The item is in the history again before sync folded its removal (watched again, a position saved, an episode
+    /// marked watched, another device's record of it applied): its removal is not one to publish if the store is
+    /// lost later.
     static func withdrawHistoryRemoval(_ key: String, in defaults: UserDefaults = .fluxo, now: Date = .now) {
         guard defaults.object(forKey: removedHistoryKey) != nil else {
             return

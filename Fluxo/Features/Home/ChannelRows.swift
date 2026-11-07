@@ -14,7 +14,8 @@ enum ChannelRoute: Hashable {
     /// Every category of a kind in the given imports (the category browser).
     case categories(importIDs: [UUID], kind: ChannelContentKind)
     case favorites(playlistIDs: [UUID]?)
-    case history(playlistIDs: [UUID]?)
+    /// The watch history; `kinds` narrows it (Continue Watching of the Movies and Series pages on Apple TV).
+    case history(playlistIDs: [UUID]?, kinds: Set<ChannelContentKind>? = nil)
     /// A series of a playlist (its visible import is looked up, so the route survives a refresh).
     case series(playlistID: UUID, key: String, title: String)
     /// Every offline download (See All of the Library's downloads).
@@ -50,8 +51,8 @@ private struct ChannelDestinations: ViewModifier {
                         .zoomTransition(sourceID: route, in: namespace)
                 case .favorites(let playlistIDs):
                     FavoritesView(playlistIDs: playlistIDs)
-                case .history(let playlistIDs):
-                    HistoryView(playlistIDs: playlistIDs)
+                case let .history(playlistIDs, kinds):
+                    HistoryView(playlistIDs: playlistIDs, kinds: kinds)
                 case let .series(playlistID, key, title):
                     SeriesDetailView(playlistID: playlistID, seriesKey: key, title: title)
                         .id(route)
@@ -594,14 +595,24 @@ struct HistoryView: View {
 
     /// nil: every playlist.
     let playlistIDs: [UUID]?
+    /// nil: every kind.
+    var kinds: Set<ChannelContentKind>?
 
-    @Query private var bookmarks: [ChannelBookmark]
+    @Query private var history: [ChannelBookmark]
     @State private var confirmsClear = false
     @Environment(ChannelLibrary.self) private var library
 
-    init(playlistIDs: [UUID]?) {
+    init(playlistIDs: [UUID]?, kinds: Set<ChannelContentKind>? = nil) {
         self.playlistIDs = playlistIDs
-        _bookmarks = Query(HomeQueries.recents(playlistIDs: playlistIDs, limit: ChannelLibrary.historyLimit))
+        self.kinds = kinds
+        _history = Query(HomeQueries.recents(playlistIDs: playlistIDs, limit: ChannelLibrary.historyLimit))
+    }
+
+    private var bookmarks: [ChannelBookmark] {
+        guard let kinds else {
+            return history
+        }
+        return history.filter { kinds.contains($0.kind) }
     }
 
     var body: some View {
@@ -639,7 +650,8 @@ struct HistoryView: View {
         }
         .navigationTitle("Recently Watched")
         .toolbar {
-            if !bookmarks.isEmpty {
+            // Clear History empties all of it: not offered on a page that shows part of it.
+            if !bookmarks.isEmpty, kinds == nil {
                 Button("Clear History", systemImage: "trash") {
                     confirmsClear = true
                 }

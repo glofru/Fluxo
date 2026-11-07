@@ -73,6 +73,8 @@ struct TVSettingsScreen: View {
                 }
             }
         }
+        // Icons in a column of their own, clear of their titles, as in the system's Settings (pushed pages too).
+        .labelStyle(TVSettingsLabelStyle())
         // Open Screen (Siri, a fluxo:// link): Settings from its root.
         .onChange(of: navigation.rootRequest) { _, request in
             if request?.tab == .settings {
@@ -93,8 +95,10 @@ struct TVSettingsScreen: View {
             path = [.acknowledgements(notification.object as? String)]
         }
         #endif
-        .sheet(isPresented: $showsAddSource) {
+        // A page of its own, as Add Playlist (`tvFormPage`).
+        .fullScreenCover(isPresented: $showsAddSource) {
             AddGuideSourceView()
+                .tvFormPage()
         }
         .confirmationDialog(confirmationTitle, isPresented: Binding(get: { confirmation != nil }, set: { if !$0 { confirmation = nil } }), titleVisibility: .visible, presenting: confirmation) { item in
             switch item {
@@ -310,6 +314,18 @@ struct TVSettingsScreen: View {
     }
 }
 
+/// A row's icon and title in Settings: the icons in a column of one width, centered in it, and the title after the
+/// spacing of the system's rows (the default style of a List row on tvOS sets the title against its icon).
+struct TVSettingsLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 22) {
+            configuration.icon
+                .frame(width: 44)
+            configuration.title
+        }
+    }
+}
+
 enum TVSettingsRoute: Hashable {
     case playlist(UUID)
     case guideSource(UUID)
@@ -330,13 +346,7 @@ private struct TVSettingsHeader: View {
 
     var body: some View {
         VStack(spacing: 30) {
-            Image(systemName: "play.tv.fill")
-                .font(.system(size: 120, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 280, height: 280)
-                .background(Theme.brandGradient, in: .rect(cornerRadius: 60, style: .continuous))
-                .shadow(color: .black.opacity(0.3), radius: 30, y: 16)
-                .accessibilityHidden(true)
+            TVAppMark(size: 280)
             VStack(spacing: 8) {
                 Text("Fluxo")
                     .font(.title2.bold())

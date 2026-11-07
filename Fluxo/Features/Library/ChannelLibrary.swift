@@ -230,13 +230,23 @@ final class ChannelLibrary {
 
     /// Stores the playback position of an on-demand item. Near the end (the credits), the item counts as
     /// watched and its position is cleared, so it starts from the beginning next time. `isPeriodic`: one of the
-    /// saves made every few seconds during playback (not a pause, a stop or the end).
+    /// saves made every few seconds during playback (not a pause, a stop or the end). Position 0 starts the item
+    /// over (Play from Beginning).
+    ///
+    /// For iCloud sync (`SyncDeletionJournal`): an item that has progress again is back in the history, so a removal
+    /// of it that sync has not folded yet is withdrawn; a reset that leaves it with no progress at all (only started,
+    /// never in the history) is the user's removal of that progress, published at once rather than counted as a loss.
     func saveWatchProgress(for item: ChannelItem, position: TimeInterval, duration: TimeInterval, isPeriodic: Bool = false) {
         guard item.kind != .live, duration > 0, position.isFinite, let key = item.bookmarkKey else {
             return
         }
-        let bookmark = upsertBookmark(for: item, key: key)
         let finished = WatchProgress.isFinished(position: position, duration: duration)
+        let newPosition = finished ? 0 : max(0, position)
+        guard newPosition > 0 || finished || existingBookmark(key: key) != nil else {
+            // Starting over something never started: nothing to store (no empty bookmark).
+            return
+        }
+        let bookmark = upsertBookmark(for: item, key: key)
         let episode = item.adding(series: bookmark.episodeRef)
         if finished, episode.series != nil, !series.isWatched(episode) {
             // An episode played to the end counts as watched ("Continue" moves on to the next one).
@@ -246,13 +256,21 @@ final class ChannelLibrary {
             // Idempotent on the other side: the last saves of an item may all be past its end.
             onFinishedWatching?(episode)
         }
-        let newPosition = finished ? 0 : max(0, position)
         guard abs(bookmark.resumePosition - newPosition) >= 1 || bookmark.knownDuration != duration else {
             return
         }
+        let hadProgress = bookmark.lastWatchedAt != nil || bookmark.resumePosition > 0
         bookmark.resumePosition = newPosition
         bookmark.knownDuration = duration
         watchProgressByKey[key] = WatchProgress(bookmark)
+        if bookmark.lastWatchedAt != nil || newPosition > 0 {
+            SyncDeletionJournal.withdrawHistoryRemoval(Self.historyKey(of: bookmark))
+        } else {
+            if hadProgress {
+                SyncDeletionJournal.noteHistoryRemoved([Self.historyKey(of: bookmark)])
+            }
+            deleteIfUnused(bookmark)
+        }
         isSavingPeriodicProgress = isPeriodic && !finished
         save()
         isSavingPeriodicProgress = false

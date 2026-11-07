@@ -25,8 +25,8 @@ extension View {
                     .id(route)
             case .favorites(let playlistIDs):
                 TVFavoritesScreen(playlistIDs: playlistIDs)
-            case .history(let playlistIDs):
-                TVHistoryScreen(playlistIDs: playlistIDs)
+            case let .history(playlistIDs, kinds):
+                TVHistoryScreen(playlistIDs: playlistIDs, kinds: kinds)
             case let .series(playlistID, key, title):
                 TVSeriesScreen(playlistID: playlistID, seriesKey: key, title: title)
                     .id(route)
@@ -395,14 +395,24 @@ struct TVFavoritesScreen: View {
 /// The watch history, newest first, in sections by day.
 struct TVHistoryScreen: View {
     let playlistIDs: [UUID]?
+    /// nil: every kind (Continue Watching of the Movies and Series pages narrows it to theirs).
+    var kinds: Set<ChannelContentKind>?
 
-    @Query private var bookmarks: [ChannelBookmark]
+    @Query private var history: [ChannelBookmark]
     @Environment(ChannelLibrary.self) private var library
     @State private var confirmsClear = false
 
-    init(playlistIDs: [UUID]?) {
+    init(playlistIDs: [UUID]?, kinds: Set<ChannelContentKind>? = nil) {
         self.playlistIDs = playlistIDs
-        _bookmarks = Query(HomeQueries.recents(playlistIDs: playlistIDs, limit: ChannelLibrary.historyLimit))
+        self.kinds = kinds
+        _history = Query(HomeQueries.recents(playlistIDs: playlistIDs, limit: ChannelLibrary.historyLimit))
+    }
+
+    private var bookmarks: [ChannelBookmark] {
+        guard let kinds else {
+            return history
+        }
+        return history.filter { kinds.contains($0.kind) }
     }
 
     var body: some View {
@@ -411,7 +421,8 @@ struct TVHistoryScreen: View {
                 HStack(alignment: .bottom) {
                     TVPageTitle(title: String(localized: "Recently Watched"))
                     Spacer()
-                    if !bookmarks.isEmpty {
+                    // Clear History empties all of it: not offered on a page that shows part of it.
+                    if !bookmarks.isEmpty, kinds == nil {
                         Button(String(localized: "Clear History"), systemImage: "trash") {
                             confirmsClear = true
                         }

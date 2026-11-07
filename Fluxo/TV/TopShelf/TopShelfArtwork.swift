@@ -90,7 +90,7 @@ enum TopShelfArtworkRenderer {
             return names
         }
         let names = fileNames(drawn)
-        let isDarkLogo = !art.kind.usesPosterArtwork && image.map(isDarkOnTransparent) == true
+        let isDarkLogo = !art.kind.usesPosterArtwork && image.map(LogoTone.isDarkOnTransparent) == true
         for (name, scale) in [(names.0, CGFloat(1)), (names.1, CGFloat(2))] {
             let renderer = ImageRenderer(content: TopShelfArtworkView(art: drawn, image: image, size: size, isDarkLogo: isDarkLogo))
             renderer.scale = scale
@@ -139,46 +139,6 @@ enum TopShelfArtworkRenderer {
             return nil
         }
         return await LogoImageLoader.shared.image(for: request)
-    }
-
-    /// Whether a logo is dark artwork on a transparent background (black or navy lettering), which disappears on
-    /// the dark tile: it gets a light one. Opaque logos (a badge with its own background) never do.
-    private static func isDarkOnTransparent(_ image: CGImage) -> Bool {
-        let side = 24
-        var pixels = [UInt8](repeating: 0, count: side * side * 4)
-        let drawn = pixels.withUnsafeMutableBytes { buffer -> Bool in
-            guard let context = CGContext(
-                data: buffer.baseAddress, width: side, height: side, bitsPerComponent: 8, bytesPerRow: side * 4,
-                space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-            ) else {
-                return false
-            }
-            context.interpolationQuality = .medium
-            context.draw(image, in: CGRect(x: 0, y: 0, width: side, height: side))
-            return true
-        }
-        guard drawn else {
-            return false
-        }
-        var coverage = 0.0
-        var luminance = 0.0
-        for index in stride(from: 0, to: pixels.count, by: 4) {
-            let alpha = Double(pixels[index + 3]) / 255
-            guard alpha > 0.05 else {
-                continue
-            }
-            // Premultiplied: divide by alpha for the color's own luminance, weighted by how opaque it is.
-            let red = Double(pixels[index]) / 255 / alpha
-            let green = Double(pixels[index + 1]) / 255 / alpha
-            let blue = Double(pixels[index + 2]) / 255 / alpha
-            luminance += (0.2126 * red + 0.7152 * green + 0.0722 * blue) * alpha
-            coverage += alpha
-        }
-        let pixelCount = Double(side * side)
-        guard coverage > 0, coverage / pixelCount < 0.85 else {
-            return false
-        }
-        return luminance / coverage < 0.28
     }
 
     private static func jpeg(_ image: CGImage) -> Data? {

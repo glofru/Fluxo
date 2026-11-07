@@ -76,14 +76,21 @@ refresh (`BGAppRefreshTask`) runs on tvOS too.
   title beneath it, which moves down while the card is focused, as in the TV app; each card is one VoiceOver element
   with a label and a hint, and has a long-press menu (play, Record on live channels the engine plays, favorite, Show
   in TV Guide, Go to Series, Remove from History). Landscape cards (400 × 225) for channels, Continue Watching, On Now and episodes; posters (248 × 372) for
-  movies and series. Shelves (`TVShelf`) are focus sections that scroll edge to edge; long ones end with a See All card.
-  Action buttons are Liquid Glass (`.glassProminent` for the main one). Every empty page says what to do and has the
+  movies and series. A channel's logo sits on an opaque tile (nothing under a card or a sheet shows through it):
+  graphite, or light for a logo of dark lettering on a transparent background, which would vanish on graphite (the
+  Top Shelf's rule, `LogoTone`). Shelves (`TVShelf`) are focus sections that scroll edge to edge; long ones end with a
+  See All card (Continue Watching's only when the history has more than it shows, and on the Movies and Series pages
+  it opens the history of that kind only). Action buttons are Liquid Glass (`.glassProminent` for the main one); their
+  titles are white on the accent and on the glass, and the brand's ink once focused, on the light platter the focus
+  turns them into (where the styles' violet title was about 2.6:1, `TVActionLabelStyle`). Every empty page says what to do and has the
   button that does it (Add Playlist, Add Guide Source, Show Channels).
 - **Home** (`TVHomeScreen`, `TVHero`): a full-bleed hero of featured movies, series and channels (the picks of the
   iPhone billboard, `FeaturedCarousel.loadPicks`, see "Featured") under the tab bar: blurred backdrop, poster, title,
   Play (Resume S1 E3, Watch Live), Episodes, favorite, and page dots. Its pages sit side by side, so moving the focus
   past the last button pages on; while the focus is elsewhere it moves on by itself every 9 s (not with Reduce
-  Motion). Then Continue Watching (a series once, with the episode to watch now and Up Next once one is finished),
+  Motion). Entering the hero, down from any tab or up from the shelves, lands on the Play of the page on screen, also
+  while it pages (each page is a focus section as wide as the screen; `HomeHeroFocusTests` checks it with the Siri
+  Remote). Then Continue Watching (a series once, with the episode to watch now and Up Next once one is finished),
   Favorites (channels and series), On Now (from the guide, ending with a TV Guide card), and the first live, movie and
   series categories. It follows the playlist selection, which Settings changes.
 - **Live TV** (`TVGuideScreen`): Guide or Channels. The guide is a grid of channels × time for the focus engine: a
@@ -91,9 +98,13 @@ refresh (`BGAppRefreshTask`) runs on tvOS too.
   rows scrolling. Each programme is a button as wide as its time in the window, so swiping moves across a channel's
   programmes and up or down to what airs at the same time on the next channel. The narrow cells at the ends of each
   row move the window an hour back or on and focus the programme that came into view (`TVGuideModel`); Earlier, Now,
-  Later and the day menu above jump further, and the category menu filters. A line marks now; programmes on air are
-  tinted with their progress, ended ones dimmed. Selecting a programme opens it full screen (Watch Now or Watch
-  Channel, Record, Remind Me, and what follows on the channel, each with its own reminder); Play/Pause plays the
+  Later and the day menu above jump further, and the category menu filters. A line marks now, behind the programmes' opaque tiles, so it shows between
+  them and never crosses a title; programmes on air are tinted with their progress, ended ones dimmed. A channel's
+  number is on its logo, so its name has two lines in every script; the day and category menus say what they choose
+  to VoiceOver ("Day, Today"). Selecting a programme opens it full screen (Watch Now or Watch
+  Channel, Record, Remind Me, and what follows on the channel, each with its own reminder; after a programme that
+  ended, "Later on" lists what the channel shows from now, the programme on air marked LIVE, and selecting it plays
+  the channel); Play/Pause plays the
   channel; selecting a channel's name plays it. Record (a programme on air, on a channel the engine plays: not one
   AVPlayer plays straight from HLS) plays the channel and starts recording as soon as its stream is open
   (`PlayChannelAction.playAndRecord`, as Siri's "Record this"); while the channel records (Picture in Picture), the
@@ -115,7 +126,7 @@ refresh (`BGAppRefreshTask`) runs on tvOS too.
 - **Library** (`TVLibraryScreen`): Continue Watching, Favorites, Favorite Series, Recently Watched and the recordings
   (the channel's logo, kept with the recording since this version, else its initials; when it was made and how long
   it is, "45 sec" under a minute; Recording or Saving… over the artwork until it can play; long press deletes one),
-  on `AppNavigation.libraryPath`.
+  on `AppNavigation.libraryPath`. Empty, it offers Find Something to Watch (Home), or Add Playlist without playlists.
 - **Search** (`TVSearchScreen`): the system search field and keyboard (dictation with the Siri Remote's microphone,
   the Continuity Keyboard of an iPhone), results as shelves: live channels, programmes of the guide, movies and series
   (a series named exactly as typed first). Before typing: what was watched last and the favorites. A sentence (what
@@ -127,10 +138,12 @@ refresh (`BGAppRefreshTask`) runs on tvOS too.
   buffer, audio and subtitle languages (the shared `TrackSettingsSection`), Clear Watch History, the recordings, Siri and
   Voice Search (`TVSiriScreen`, below) and the version; every choice opens its own list. iCloud (the shared `CloudSyncSettingsSection`, after the playlists, with
   the same plain row symbols): the switch, the status, Playlists in iCloud, Sync Now, and What's Synced and Privacy
-  (a page of focusable lines the remote scrolls through, and Delete iCloud Data). Addresses are typed in the shared Add Playlist and Add Guide Source sheets,
-  whose text fields bring up the tvOS keyboard, dictation and the Continuity Keyboard on a nearby iPhone or iPad; on
-  tvOS their Add button is a row of the form (the sheet's bar has no room for the title and two buttons) and Menu
-  cancels.
+  (a page of focusable lines the remote scrolls through, and Delete iCloud Data). Addresses are typed in the shared Add Playlist and Add Guide Source forms,
+  whose text fields bring up the tvOS keyboard, dictation and the Continuity Keyboard on a nearby iPhone or iPad. On
+  Apple TV they are full-screen pages (`tvFormPage()`: opaque, the fields 1,240 points wide, so a whole address shows;
+  a sheet there is a narrow translucent card), their Add button is a row of the form and Menu cancels. The rows'
+  icons are a column of their own, clear of their titles (`TVSettingsLabelStyle`), and the header shows the app's
+  icon (`TVAppMark`).
 - **Focus**: each page has a sensible first focus (the hero's Play, the series' Continue, the programme on air on the
   first channel, the Add Playlist of an empty page, or Add Playlists from iCloud next to it on the welcome screen when
   iCloud has playlists of the user's other devices); the system brings the focus back to the card or programme that
@@ -147,7 +160,8 @@ refresh (`BGAppRefreshTask`) runs on tvOS too.
   image, a white glyph dark and an ink one light), so the launch dissolves into Home in both. Both assets have the tv
   idiom only, so the iPhone, iPad and Mac catalogs do not carry them; the mark is drawn by
   `Design/Icon/render_tvos_launch.swift`. (On tvOS 27.2 a `UILaunchScreen` dictionary is drawn plain black.) iPhone
-  and iPad keep their generated launch screen.
+  and iPad keep their generated launch screen. The welcome screen and Settings show the icon itself, flat
+  (`TVAppMark`, tv idiom only, drawn from `Design/Icon/Fluxo-flat.svg` by `xcrun swift Design/Icon/render_tvos_mark.swift`).
 
 ## Top Shelf
 

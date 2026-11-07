@@ -47,9 +47,29 @@ extension Color {
 }
 
 extension View {
+    /// A form presented over the app (Add Playlist, Add Guide Source) as a full-screen page: opaque (what is under
+    /// it never shows through) and its fields as wide as a whole address, centered.
+    func tvFormPage() -> some View {
+        modifier(TVFormPage())
+    }
+
     /// The page's own background, edge to edge: the hero and the series page fade into exactly this color.
     func tvPageBackground() -> some View {
         modifier(TVPageBackground())
+    }
+}
+
+private struct TVFormPage: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        content
+            .frame(maxWidth: 1_240)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background {
+                Color.tvPageBackground(colorScheme)
+                    .ignoresSafeArea()
+            }
     }
 }
 
@@ -456,19 +476,72 @@ struct TVLandscapeArtworkView: View {
                     .shadow(color: .black.opacity(0.45), radius: 12)
                 }
             } else {
-                Theme.tileBackground
-                LogoImage(source: logo, size: CGSize(width: size.width * 0.65, height: size.height * 0.62), contentMode: .fit) { phase in
-                    if phase == .unavailable {
-                        ArtworkPlaceholder(name: name, kind: kind)
-                    } else {
-                        Color.clear
-                    }
-                }
+                TVLogoTile(logo: logo, name: name, kind: kind, logoSize: CGSize(width: size.width * 0.65, height: size.height * 0.62))
             }
         }
         .frame(width: size.width, height: size.height)
         .clipped()
         .accessibilityHidden(true)
+    }
+}
+
+/// A channel's logo on its tile. The tile is opaque (the page, a sheet's blurred content or the backdrop never show
+/// through it) and graphite, or light for a logo of dark lettering on a transparent background, which would vanish
+/// on graphite: the rule of the Top Shelf's images (`LogoTone`).
+private struct TVLogoTile: View {
+    let logo: String?
+    let name: String
+    let kind: ChannelContentKind
+    let logoSize: CGSize
+
+    @Environment(\.displayScale) private var displayScale
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var tone: LogoTone.Result?
+
+    var body: some View {
+        let request = LogoRequest(source: logo, pointSize: logoSize, scale: displayScale, contentMode: .fit)
+        let isDark = (tone?.key == request?.key ? tone?.isDarkOnTransparent : request.flatMap(LogoTone.cached)) ?? false
+        ZStack {
+            if isDark {
+                LinearGradient(colors: [Color(white: 0.95), Color(white: 0.8)], startPoint: .topLeading, endPoint: .bottomTrailing)
+            } else {
+                Color.tvPageBackground(colorScheme)
+                Theme.tileBackground
+            }
+            LogoImage(source: logo, size: logoSize, contentMode: .fit) { phase in
+                if phase == .unavailable {
+                    ArtworkPlaceholder(name: name, kind: kind)
+                } else {
+                    Color.clear
+                }
+            }
+        }
+        .task(id: request?.key) {
+            guard let request, LogoTone.cached(request) == nil else {
+                return
+            }
+            // The image LogoImage shows, from the same cache: measured once per logo and size.
+            guard let image = await LogoImageLoader.shared.image(for: request), !Task.isCancelled else {
+                return
+            }
+            tone = LogoTone.Result(key: request.key, isDarkOnTransparent: LogoTone.measure(image, for: request))
+        }
+    }
+}
+
+/// The app's icon, flat (`TVAppMark`, drawn from the icon's artwork by `Design/Icon/render_tvos_mark.swift`), with the
+/// corners of an app icon: Settings' header and the welcome screen.
+struct TVAppMark: View {
+    let size: CGFloat
+
+    var body: some View {
+        Image("TVAppMark")
+            .resizable()
+            .interpolation(.high)
+            .frame(width: size, height: size)
+            .clipShape(.rect(cornerRadius: size * 0.22, style: .continuous))
+            .shadow(color: .black.opacity(0.3), radius: size * 0.1, y: size * 0.055)
+            .accessibilityHidden(true)
     }
 }
 
@@ -638,6 +711,10 @@ struct TVSeeAllCard: View {
 /// `isProminent` picks one of two button styles, so changing it replaces the button: a focused button whose
 /// prominence follows the focus or a selection loses the focus. Keep it fixed while the button can have the focus
 /// (the season tabs of the series page have their own single style for that reason).
+///
+/// Their labels are white on the accent (the main one) or the primary color on the glass, and the brand's ink once
+/// focused: the focused button turns into a light platter, where the tint the styles give the label would be violet
+/// on lilac, about 2.6:1 (`TVActionLabelStyle`).
 struct TVActionButtonStyle: ViewModifier {
     let isProminent: Bool
 
@@ -646,10 +723,33 @@ struct TVActionButtonStyle: ViewModifier {
             content
                 .buttonStyle(.glassProminent)
                 .tint(Theme.accentFill)
+                .foregroundStyle(TVActionLabelStyle(isProminent: true))
         } else {
             content
                 .buttonStyle(.glass)
+                .foregroundStyle(TVActionLabelStyle(isProminent: false))
         }
+    }
+}
+
+/// The color of an action button's label, by focus (`EnvironmentValues.isFocused` is the button's inside its
+/// label): the ink of the brand on the focused platter, else white on the accent or the primary color on glass.
+struct TVActionLabelStyle: ShapeStyle {
+    let isProminent: Bool
+    /// A destructive action on glass: red until focused (apply it to the label, inside the button).
+    var isDestructive = false
+
+    func resolve(in environment: EnvironmentValues) -> Color {
+        if environment.isFocused {
+            return Color(.sRGB, red: 0.078, green: 0.059, blue: 0.235)
+        }
+        if isDestructive {
+            return Theme.error
+        }
+        if isProminent || environment.colorScheme == .dark {
+            return .white
+        }
+        return .black
     }
 }
 

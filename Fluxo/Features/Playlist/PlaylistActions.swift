@@ -129,20 +129,22 @@ private struct PlaylistManagementPresenter: ViewModifier {
             .windowPresentation(.playlistSheet, isActive: actions.sheet != nil)
             .windowPresentation(.playlistDelete, isActive: actions.playlistToDelete != nil)
             .windowPresentation(.playlistFailure, isActive: importCenter.failure != nil)
-            .sheet(item: sheetBinding) { sheet in
-                NavigationStack {
-                    switch sheet {
-                    case .add:
-                        AddPlaylistView(initialURL: actions.urlToAdd, initialName: actions.nameToAdd)
-                    case .edit(let playlist):
-                        AddPlaylistView(playlist: playlist)
-                    }
-                }
-                .mediumAndLargeDetentsAdaptingToTextSize()
-                #if os(macOS)
-                .frame(minWidth: 460, minHeight: 300)
-                #endif
+            #if os(tvOS)
+            // Apple TV: a page of its own, opaque and wide enough for a whole address (a sheet there is a narrow
+            // translucent card that cuts it off).
+            .fullScreenCover(item: sheetBinding) { sheet in
+                sheetContent(sheet)
+                    .tvFormPage()
             }
+            #else
+            .sheet(item: sheetBinding) { sheet in
+                sheetContent(sheet)
+                    .mediumAndLargeDetentsAdaptingToTextSize()
+                    #if os(macOS)
+                    .frame(minWidth: 460, minHeight: 300)
+                    #endif
+            }
+            #endif
             .alert("Delete Playlist?", isPresented: deleteAlertBinding, presenting: actions.playlistToDelete) { playlist in
                 Button("Delete", role: .destructive) {
                     delete(playlist)
@@ -156,6 +158,17 @@ private struct PlaylistManagementPresenter: ViewModifier {
             } message: { failure in
                 Text("\(failure.playlistName): \(failure.message)")
             }
+    }
+
+    private func sheetContent(_ sheet: PlaylistActions.Sheet) -> some View {
+        NavigationStack {
+            switch sheet {
+            case .add:
+                AddPlaylistView(initialURL: actions.urlToAdd, initialName: actions.nameToAdd)
+            case .edit(let playlist):
+                AddPlaylistView(playlist: playlist)
+            }
+        }
     }
 
     /// What goes with the playlist: its offline downloads (`DownloadCenter.playlistWasDeleted`), and its copies on

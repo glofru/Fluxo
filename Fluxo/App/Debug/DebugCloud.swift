@@ -190,7 +190,7 @@ enum DebugCloud {
             await context.wait(timeout: 10) { sync.prompt != nil }
             try await Task.sleep(for: .milliseconds(600))
         },
-        DebugRoute("cloud-answer:<primary|remove|cancel>", "Answers the sync question on screen: its first button (Turn On, Restore, Restore Them), Remove Everywhere, or Not Now.") { _, argument in
+        DebugRoute("cloud-answer:<primary|remove|cancel>", "Answers the sync question on screen as its button does: primary is Turn On iCloud Sync, Restore or Restore Them (the first button of the alert; on Apple TV's page of held removals the second, after Not Now), remove is Remove Everywhere, cancel is Not Now.") { _, argument in
             let sync = try current()
             switch (sync.prompt, argument.lowercased()) {
             case (.turnOn, "primary"): sync.answerSyncChoice(turnOn: true)

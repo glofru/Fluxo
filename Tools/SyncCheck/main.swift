@@ -1128,6 +1128,82 @@ func run() async {
         check(phone2.library.historyCount == 4, "the iPhone keeps its history meanwhile")
     }
 
+    await scenario("Back in the history before sync folds its removal (a saved position, an episode marked watched, another device's record): a loss later is held") {
+        let cloud = MemoryCloudBackend()
+        let phone = Device("iphone", cloud: cloud)
+        let tv = Device("appletv", cloud: cloud)
+        let id = phone.library.addPlaylist("Cinema", "https://cinema.example/c.m3u")
+        for film in ["Dune", "Heat", "Alien", "Ran"] {
+            phone.library.watch(film, in: id, position: 600, duration: 6_000)
+            world.advance(60)
+        }
+        for number in 1...2 {
+            phone.library.watchEpisode(number, of: "Severance", in: id)
+            world.advance(60)
+        }
+        await settle([phone, tv])
+        tv.library.finishImports()
+        let tvCinema = tv.library.playlist(named: "Cinema")!
+        // The TV does not sync meanwhile (sync paused, the app in the background): its journal is not folded.
+        tv.library.removeFromHistory("Dune", in: tvCinema)
+        tv.library.saveProgress("Dune", in: tvCinema, position: 300)
+        check(tv.library.journal.removedHistory.isEmpty, "a position saved again withdraws the movie's removal")
+        tv.library.removeSeriesFromHistory("Severance", in: tvCinema)
+        tv.library.setEpisodeWatched(1, of: "Severance", in: tvCinema, watched: true)
+        check(tv.library.journal.removedHistory.count == 2, "an episode marked watched withdraws the series' removal, not its episodes' (\(tv.library.journal.removedHistory.count) left)")
+        tv.library.removeFromHistory("Heat", in: tvCinema)
+        // The iPhone's record of Heat reaches the TV (applied as a pass applies it).
+        if let heat = cloud.allRecords.first(where: { record in
+            if case .channelProgress(let progress) = record.payload {
+                return progress.channel.url == FakeLibrary.channelURL("Heat")
+            }
+            return false
+        }), case .channelProgress(let progress) = heat.payload {
+            var links = SyncLinks(playlists: [progress.channel.playlist: tvCinema])
+            _ = await tv.library.apply([heat], links: &links)
+        }
+        check(tv.library.bookmark("Heat", in: tvCinema)?.lastWatchedAt != nil, "the record brought Heat back")
+        check(tv.library.journal.removedHistory.count == 2, "a synced record withdraws the movie's removal (\(tv.library.journal.removedHistory.count) left)")
+        // Then the TV's history vanishes unexplained (a damaged store) before its next pass.
+        tv.library.loseHistory()
+        world.advance(60)
+        await settle([phone, tv])
+        check(tv.reconciler.heldDeletionIDs.count == 5, "the 4 movies and the series are held (\(tv.reconciler.heldDeletionIDs.count))")
+        check(phone.library.historyCount == 4 && phone.library.seriesHistoryCount == 1, "the iPhone keeps its movies and the series (\(phone.library.historyCount), \(phone.library.seriesHistoryCount))")
+        check(phone.library.bookmark(FakeLibrary.episode(1, of: "Severance"), in: id) == nil, "the episodes removed on purpose left the iPhone")
+    }
+
+    await scenario("Play from Beginning on items only started (never in the history) syncs as the user's removal, not as a loss") {
+        let cloud = MemoryCloudBackend()
+        let phone = Device("iphone", cloud: cloud)
+        let tv = Device("appletv", cloud: cloud)
+        let id = phone.library.addPlaylist("Cinema", "https://cinema.example/c.m3u")
+        // Positions synced from a device that saves progress without a watch date, and one movie watched.
+        for film in ["Dune", "Heat", "Alien"] {
+            phone.library.saveProgress(film, in: id, position: 900)
+        }
+        phone.library.watch("Ran", in: id, position: 600, duration: 6_000)
+        await settle([phone, tv])
+        tv.library.finishImports()
+        let tvCinema = tv.library.playlist(named: "Cinema")!
+        check(tv.library.bookmark("Alien", in: tvCinema)?.resumePosition == 900, "the TV has the positions")
+        // Play from Beginning on each (the player then fails to open them, so nothing is watched again).
+        for film in ["Dune", "Heat", "Alien"] {
+            tv.library.saveProgress(film, in: tvCinema, position: 0)
+        }
+        check(tv.library.journal.removedHistory.count == 3, "each reset is journaled (\(tv.library.journal.removedHistory.count))")
+        await settle([phone, tv])
+        check(tv.reconciler.heldDeletionIDs.isEmpty, "nothing is held (\(tv.reconciler.heldDeletionIDs.count))")
+        check(["Dune", "Heat", "Alien"].allSatisfy { (phone.library.bookmark($0, in: id)?.resumePosition ?? 0) == 0 }, "the iPhone starts them from the beginning too")
+        check(phone.library.bookmark("Ran", in: id)?.resumePosition == 600, "the movie watched keeps its position")
+        // A reset of an item that stays in the history is an edit, not a removal.
+        tv.library.saveProgress("Ran", in: tvCinema, position: 0)
+        check(tv.library.journal.removedHistory.isEmpty, "a reset that keeps the item in the history journals nothing")
+        await settle([phone, tv])
+        check(phone.library.bookmark("Ran", in: id)?.resumePosition == 0 && phone.library.bookmark("Ran", in: id)?.lastWatchedAt != nil, "the iPhone keeps Ran in the history, from the beginning")
+        check(converged([phone, tv]), "both devices agree")
+    }
+
     await scenario("The held-removals question comes back a day after Not Now, not at every launch; sooner when more are held") {
         let start = world.now
         var reminder = SyncHeldRemovalsReminder()

@@ -19,6 +19,7 @@ struct TVLibraryScreen: View {
     @Query(HomeQueries.favorites(playlistIDs: nil, limit: 40)) private var favorites: [ChannelBookmark]
     @Query(SeriesQueries.favorites(playlistIDs: nil, limit: 40)) private var favoriteSeries: [SeriesBookmark]
     @Query(HomeQueries.recents(playlistIDs: nil, limit: 40)) private var recents: [ChannelBookmark]
+    @Query private var playlists: [Playlist]
     @Environment(AppNavigation.self) private var navigation
 
     var body: some View {
@@ -27,11 +28,25 @@ struct TVLibraryScreen: View {
         NavigationStack(path: $navigation.libraryPath) {
             Group {
                 if favorites.isEmpty, favoriteSeries.isEmpty, recents.isEmpty, recordings.isEmpty {
-                    TVEmptyState(
-                        title: String(localized: LibraryText.title),
-                        message: String(localized: "TV.library.empty", defaultValue: "Your favorites, what you watched and your recordings show here.", comment: "Apple TV Library, when it is empty."),
-                        systemImage: "rectangle.stack"
-                    )
+                    if playlists.isEmpty {
+                        TVNoPlaylistsState(message: String(localized: "TV.library.empty", defaultValue: "Your favorites, what you watched and your recordings show here.", comment: "Apple TV Library, when it is empty."), systemImage: "rectangle.stack")
+                    } else {
+                        // Never a dead end: the button goes to where something can be watched (and favorited).
+                        TVEmptyState(
+                            title: String(localized: LibraryText.title),
+                            message: String(localized: "TV.library.empty", defaultValue: "Your favorites, what you watched and your recordings show here.", comment: "Apple TV Library, when it is empty."),
+                            systemImage: "rectangle.stack"
+                        ) {
+                            Button {
+                                navigation.tab = .home
+                            } label: {
+                                Label(String(localized: "TV.library.browse", defaultValue: "Find Something to Watch", comment: "Apple TV Library, when it is empty: the button that opens Home."), systemImage: "play.rectangle.on.rectangle")
+                                    .font(.headline)
+                                    .padding(.horizontal, 12)
+                            }
+                            .tvActionButton(prominent: true)
+                        }
+                    }
                 } else {
                     ScrollView(.vertical) {
                         LazyVStack(alignment: .leading, spacing: TVLayout.shelfSpacing) {

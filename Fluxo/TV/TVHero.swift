@@ -32,6 +32,8 @@ struct TVHero: View {
     @State private var items: [ChannelItem] = []
     @State private var currentID: ChannelItem.ID?
     @FocusState private var focus: TVHeroFocus?
+    /// The hero went off screen (a pushed page, the player): the focus the system gives back on return is kept.
+    @State private var isReturningFromPage = false
 
     var body: some View {
         Group {
@@ -105,12 +107,38 @@ struct TVHero: View {
         .scrollClipDisabled()
         .frame(height: Self.height)
         .focusSection()
-        .onChange(of: focus) { _, focus in
-            // The page of the focused button settles in place.
-            if let id = focus?.itemID, id != currentID {
-                withAnimation(.smooth(duration: 0.45)) {
-                    currentID = id
+        // Entering the hero (down from the tab bar, up from the shelves) lands on the Play of the page on screen,
+        // also while it pages by itself: the nearest button could be on a page half scrolled in, or the favorite
+        // under the tab bar. `defaultFocus` with `.userInitiated` is not applied to a move into the paging scroll
+        // view (checked with the Siri Remote in the tvOS 27.2 Simulator, `HomeHeroFocusTests`), so the move is
+        // redirected; the focus the system gives back after a pushed page (Episodes) is kept.
+        .onChange(of: focus) { old, new in
+            guard let new, let currentID else {
+                return
+            }
+            if old == nil, new != .play(currentID) {
+                if isReturningFromPage {
+                    isReturningFromPage = false
+                } else {
+                    focus = .play(currentID)
+                    return
                 }
+            }
+            // The page of the focused button settles in place.
+            if new.itemID != currentID {
+                withAnimation(.smooth(duration: 0.45)) {
+                    self.currentID = new.itemID
+                }
+            }
+        }
+        .onDisappear {
+            isReturningFromPage = true
+        }
+        .onAppear {
+            // Shown again by something other than a push (a tab switch): nothing to keep for long.
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1))
+                isReturningFromPage = false
             }
         }
         .accessibilityElement(children: .contain)
@@ -172,6 +200,11 @@ private struct TVHeroPage: View {
             }
             .padding(.horizontal, TVLayout.margin)
             .padding(.bottom, 70)
+            // As wide as the screen: a move down from any tab of the tab bar enters the page (its buttons sit at the
+            // leading edge), rather than passing it for the shelf below (the pager's own focus section does not
+            // catch it: the paging scroll view is wider than the screen).
+            .contentShape(.rect)
+            .focusSection()
         }
         .frame(height: TVHero.height)
         .clipped()

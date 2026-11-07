@@ -362,8 +362,8 @@ enum DebugRoutes {
             context.navigation.scheduleChannel = try context.channel(named: argument)
         },
         DebugRoute(
-            "programme:<channel>[,<artwork>][,long]",
-            "Opens the TV Guide and the programme on now on a channel (needs a guide, e.g. seed-guide), with a sample image (\(DebugArtwork.ProgrammeArtwork.allCases.map(\.rawValue).joined(separator: ", ")), or none) and, with long, a long title and description."
+            "programme:<channel>[,<artwork>][,long][,ended]",
+            "Opens the TV Guide and the programme on now on a channel (needs a guide, e.g. seed-guide), with a sample image (\(DebugArtwork.ProgrammeArtwork.allCases.map(\.rawValue).joined(separator: ", ")), or none), with long, a long title and description, and with ended, as the programme that ended just before it."
         ) { context, argument in
             let parts = argument.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
             guard let name = parts.first, !name.isEmpty else {
@@ -371,7 +371,7 @@ enum DebugRoutes {
             }
             let options = Set(parts.dropFirst().map { $0.lowercased() })
             let artworks = DebugArtwork.ProgrammeArtwork.allCases.filter { options.contains($0.rawValue) }
-            guard options.subtracting(artworks.map(\.rawValue)).subtracting(["none", "long"]).isEmpty, artworks.count <= 1 else {
+            guard options.subtracting(artworks.map(\.rawValue)).subtracting(["none", "long", "ended"]).isEmpty, artworks.count <= 1 else {
                 throw DebugRouteError.invalidArgument("programme", argument)
             }
             let item = try context.channel(named: name)
@@ -381,12 +381,13 @@ enum DebugRoutes {
                 throw DebugRouteError.notFound("programme on now on", name)
             }
             let isLong = options.contains("long")
+            let isEnded = options.contains("ended")
             let icon = artworks.first.flatMap(DebugArtwork.programmeArtwork) ?? (options.contains("none") ? nil : programme.icon)
             let shown = GuideProgramme(
                 sourceID: programme.sourceID,
                 channelID: programme.channelID,
-                start: programme.start,
-                stop: programme.stop,
+                start: isEnded ? programme.start.addingTimeInterval(-3_600) : programme.start,
+                stop: isEnded ? programme.start : programme.stop,
                 title: isLong ? "\(programme.title): The Extraordinarily Long Special Edition With an Unusually Verbose Title" : programme.title,
                 subtitle: programme.subtitle,
                 summary: isLong
