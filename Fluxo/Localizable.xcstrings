@@ -15609,6 +15609,9 @@
         }
       }
     },
+    "A networking library the Google Cast SDK uses." : {
+      "comment" : "Settings › Acknowledgements: what GTMSessionFetcher does in Fluxo (a dependency of the Google Cast SDK)."
+    },
     "A secure connection to the server could not be made." : {
       "comment" : "Download error (a TV guide or an offline download): the server's certificate is not valid, or the address needs https.",
       "localizations" : {
@@ -15911,6 +15914,9 @@
           }
         }
       }
+    },
+    "Acknowledgements" : {
+      "comment" : "Settings › About: opens the licenses of the app and of the software it includes.\nTitle of Settings › About › Acknowledgements (licenses of the app and of the software it includes)."
     },
     "Action" : {
       "comment" : "Shortcuts parameter title of Start or Stop Recording: whether to start or stop.",
@@ -30981,6 +30987,9 @@
         }
       }
     },
+    "Copy SHA-256" : {
+      "comment" : "Settings › Acknowledgements, FFmpeg source offer: context menu item that copies the checksum of the FFmpeg source tarball."
+    },
     "Could Not Delete the Guide Source" : {
       "comment" : "Title of the alert shown when deleting a TV guide source failed.",
       "localizations" : {
@@ -31892,6 +31901,7 @@
     },
     "Country" : {
       "comment" : "Picker label — TV guide sources (Settings).",
+      "extractionState" : "stale",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -38647,6 +38657,9 @@
         }
       }
     },
+    "Each with the notice shipped with the %@." : {
+      "comment" : "Settings › Acknowledgements, the Google Cast SDK's page: footer of the list of the open-source software inside the SDK; each row opens the part's license notice. The placeholder is the SDK's name (Google Cast SDK)."
+    },
     "Edit Playlist" : {
       "comment" : "Screen title — Add / Edit Playlist form.",
       "localizations" : {
@@ -40267,6 +40280,18 @@
       "comment" : "Name of the open-source library the app uses (in Settings › About, acknowledgements). Do not translate.",
       "shouldTranslate" : false
     },
+    "FFmpeg %@ is licensed under the GNU Lesser General Public License, version 2.1 or later. Its complete source code, the exact release this build is made from, and the script that builds it are published with Fluxo's source code, and stay available for at least three years after the last release that includes them." : {
+      "comment" : "Settings › Acknowledgements: the FFmpeg source offer of the LGPL. The placeholder is the FFmpeg version (9.0.2)."
+    },
+    "FFmpeg Build Script" : {
+      "comment" : "Settings › Acknowledgements: link to the script that builds FFmpeg for the app."
+    },
+    "FFmpeg Source Code" : {
+      "comment" : "Settings › Acknowledgements: header of the FFmpeg source offer.\nSettings › Acknowledgements: link to the FFmpeg source tarball in the app's repository."
+    },
+    "FFmpeg is a separate library inside the app (FFmpeg.framework), which can be replaced with a modified build of it. Fluxo's terms of use don't apply to FFmpeg: it is licensed to you under the LGPL alone, which also allows changing it and reverse engineering for debugging such changes." : {
+      "comment" : "Settings › Acknowledgements: the LGPL notice that FFmpeg is a replaceable library and that the app's terms (EULA) don't restrict it."
+    },
     "Favorite" : {
       "comment" : "Button (verb) to add a channel to favorites, or the state of a channel that is a favorite.",
       "localizations" : {
@@ -40976,6 +41001,7 @@
     },
     "Files › On My iPad › Fluxo › %@" : {
       "comment" : "Where recordings are on an iPad, as a path in the Files app. Use the names the Files app shows in this language ('Files', 'On My iPad'). Fluxo is the app's folder; the placeholder is the name of the recordings folder on disk ('Recordings'), which is never translated.",
+      "extractionState" : "stale",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -41077,6 +41103,7 @@
     },
     "Files › On My iPhone › Fluxo › %@" : {
       "comment" : "Where recordings are on an iPhone, as a path in the Files app. Use the names the Files app shows in this language ('Files', 'On My iPhone'). Fluxo is the app's folder; the placeholder is the name of the recordings folder on disk ('Recordings'), which is never translated.",
+      "extractionState" : "stale",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -42846,6 +42873,9 @@
       "comment" : "Now Playing title when the channel has no name; the app name.",
       "shouldTranslate" : false
     },
+    "Fluxo Demo" : {
+      "comment" : "Name of the demo playlist that the first-run screen and Add Playlist offer (free test streams and Creative Commons films)."
+    },
     "Fluxo Screen" : {
       "comment" : "Shortcuts: name of the type that lists the app's screens (Home, TV Guide, Search, …).",
       "localizations" : {
@@ -43351,6 +43381,9 @@
         }
       }
     },
+    "Fluxo doesn't provide any channels or content. Add only playlists from providers you subscribe to or have the right to use." : {
+      "comment" : "Notice on the first-run screen, in Add Playlist and in Settings › About: the app is only a player and comes with no channels, movies or series."
+    },
     "Fluxo has no TV guide for this channel. Add a guide in Settings › TV Guide." : {
       "comment" : "Siri and Shortcuts text (dialog or error) — Siri and Shortcuts.",
       "localizations" : {
@@ -43653,6 +43686,9 @@
           }
         }
       }
+    },
+    "Fluxo is free and open-source software, released under the MIT License. You can read, build and change its code." : {
+      "comment" : "Settings › Acknowledgements: the first line, about the app's own license."
     },
     "Fluxo is not recording." : {
       "comment" : "Siri and Shortcuts text (dialog or error) — Siri and Shortcuts.",
@@ -44817,6 +44853,7 @@
     },
     "Free Guides" : {
       "comment" : "Text — TV guide sources (Settings).",
+      "extractionState" : "stale",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -44915,6 +44952,9 @@
           }
         }
       }
+    },
+    "Free test streams and open movies, to see how Fluxo works." : {
+      "comment" : "VoiceOver hint of the Try the Demo Playlist button."
     },
     "From %@" : {
       "comment" : "Text — TV guide sources (Settings), Apple Intelligence suggestions. The placeholder is playlist name.",
@@ -51439,6 +51479,15 @@
         }
       }
     },
+    "License" : {
+      "comment" : "Settings › Acknowledgements, a library's page: the name of its license."
+    },
+    "License on the Web" : {
+      "comment" : "Settings › Acknowledgements, a library's page: link to its license or terms on the web."
+    },
+    "License texts are shown in English, the language they are written in." : {
+      "comment" : "Settings › Acknowledgements: footer of the list of libraries; the license texts are not translated."
+    },
     "Like %@" : {
       "comment" : "Text — Apple Intelligence suggestions, smart search. The placeholder is a name.",
       "localizations" : {
@@ -53294,6 +53343,7 @@
     },
     "Location" : {
       "comment" : "Settings › Recordings: where the recordings are saved.",
+      "extractionState" : "stale",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -56018,6 +56068,9 @@
           }
         }
       }
+    },
+    "Multicast streams (udp://@239…) can't be played on iPhone and iPad. Ask your provider for an http:// address of this channel." : {
+      "comment" : "Player error for a multicast IPTV stream address, which iOS does not let the app receive."
     },
     "Mute" : {
       "comment" : "VoiceOver label (verb) of the Chromecast volume button.",
@@ -66232,6 +66285,9 @@
         }
       }
     },
+    "Open-Source Software in %@" : {
+      "comment" : "Settings › Acknowledgements, the Google Cast SDK's page: header of the list of the open-source software inside the SDK. The placeholder is the SDK's name (Google Cast SDK)."
+    },
     "Opens Fluxo's search with your words. Searches like “football tonight” also show matching programmes." : {
       "comment" : "Shortcuts action description — Siri and Shortcuts.",
       "localizations" : {
@@ -66636,6 +66692,9 @@
         }
       }
     },
+    "Opens, converts and records the streams the system player can't play directly. Fluxo uses the libavformat, libavcodec, libavutil, libswscale and libswresample libraries, built without any GPL or non-free part." : {
+      "comment" : "Settings › Acknowledgements: what FFmpeg does in Fluxo. Keep the library names as they are."
+    },
     "Options" : {
       "comment" : "Menu with more options.",
       "localizations" : {
@@ -66938,6 +66997,9 @@
           }
         }
       }
+    },
+    "Part of the %@. Its notice, as shipped with the %@, follows." : {
+      "comment" : "Settings › Acknowledgements, the page of a part of the Google Cast SDK (such as Abseil): the first line. Both placeholders are the SDK's name (Google Cast SDK)."
     },
     "Pause" : {
       "comment" : "Button (verb): pause playback.",
@@ -72550,6 +72612,9 @@
         }
       }
     },
+    "Plays channels on Chromecast and other Google Cast devices. The SDK, including the Google Sans fonts it contains, is licensed under the Google Cast SDK Terms of Service. It also contains open-source software, listed below with the notices Google ships with the SDK." : {
+      "comment" : "Settings › Acknowledgements: what the Google Cast SDK does in Fluxo and how it is licensed. A list of the open-source software inside it follows. iPhone and iPad only."
+    },
     "Plays the channel" : {
       "comment" : "VoiceOver hint — TV guide, channel card, Home page.",
       "localizations" : {
@@ -74064,6 +74129,9 @@
           }
         }
       }
+    },
+    "Privacy Policy" : {
+      "comment" : "Settings › About: link to the app's privacy policy (a web page)."
     },
     "Program Guide" : {
       "comment" : "Synonym Siri accepts for the TV guide screen (American spelling).",
@@ -77043,6 +77111,9 @@
           }
         }
       }
+    },
+    "Recordings and downloads play only in Fluxo, for your personal viewing." : {
+      "comment" : "Settings, Recordings footer: recordings and offline downloads stay inside the app (they can't be shared or opened in the Files app)."
     },
     "Recordings are stored on this device and can't be cast." : {
       "comment" : "Text — Chromecast (Google Cast).",
@@ -88421,6 +88492,7 @@
     },
     "Share" : {
       "comment" : "Swipe action (verb): share the recording file.",
+      "extractionState" : "stale",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -88724,6 +88796,7 @@
     },
     "Share…" : {
       "comment" : "Menu item (verb): share the recording file.",
+      "extractionState" : "stale",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -89633,6 +89706,7 @@
     },
     "Show in Finder" : {
       "comment" : "Button — recordings, Settings.",
+      "extractionState" : "stale",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -93113,6 +93187,9 @@
           }
         }
       }
+    },
+    "Source Code" : {
+      "comment" : "Settings › About and Acknowledgements: link to the app's source code on GitHub."
     },
     "Specials" : {
       "comment" : "Season 0 of a series: the specials.",
@@ -111694,6 +111771,9 @@
         }
       }
     },
+    "The app itself. Its source code is open: you can read, build and change it." : {
+      "comment" : "Settings › Acknowledgements: what the Fluxo entry is (the app's own open-source code)."
+    },
     "The broadcast ended." : {
       "comment" : "Apple TV player: a live channel stopped sending video.",
       "localizations" : {
@@ -111794,6 +111874,9 @@
           }
         }
       }
+    },
+    "The demo playlist has a live test stream and open movies from the Blender Foundation, free to watch." : {
+      "comment" : "Add Playlist: what the demo playlist contains."
     },
     "The device can't be reached. Check that it's on the same Wi-Fi network as this device." : {
       "comment" : "Text — Chromecast (Google Cast).",
@@ -115134,6 +115217,9 @@
         }
       }
     },
+    "The small web server, reachable only from this device, that gives converted streams to the system player." : {
+      "comment" : "Settings › Acknowledgements: what FlyingFox (an HTTP server library) does in Fluxo: the loopback server of the player."
+    },
     "The stream configuration is invalid." : {
       "comment" : "Player error from the streaming engine.",
       "localizations" : {
@@ -116345,6 +116431,12 @@
           }
         }
       }
+    },
+    "Third-Party Software" : {
+      "comment" : "Settings › Acknowledgements: header of the list of the libraries the app includes."
+    },
+    "This address isn't encrypted: your provider's user name and password in it travel as plain text. Use https:// if your provider offers it." : {
+      "comment" : "Add Playlist: warning for an http:// playlist address that contains an account name or password."
     },
     "This can't be played: its audio format (%@) isn't supported." : {
       "comment" : "Player error: an audio-only stream is in a format the app cannot decode or convert; the placeholder is the technical name of the audio codec, in English.",
@@ -119996,6 +120088,9 @@
         }
       }
     },
+    "Try the Demo Playlist" : {
+      "comment" : "First-run screen: opens Add Playlist with the demo playlist filled in (free test streams and Creative Commons films)."
+    },
     "Turn On iCloud Sync" : {
       "comment" : "Button of the turn-on-sync question: turns iCloud sync on for this device.",
       "localizations" : {
@@ -123230,6 +123325,7 @@
     },
     "Use Free Guide for %@" : {
       "comment" : "Button — TV guide sources (Settings). The placeholder is region).",
+      "extractionState" : "stale",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -123429,6 +123525,9 @@
           }
         }
       }
+    },
+    "Use the Demo Playlist" : {
+      "comment" : "Add Playlist: fills in the demo playlist (free test streams and Creative Commons films)."
     },
     "Use the record button while watching a live channel." : {
       "comment" : "Text — recordings.",
@@ -125903,6 +126002,9 @@
           }
         }
       }
+    },
+    "Website" : {
+      "comment" : "Settings › Acknowledgements, a library's page: link to its website."
     },
     "Welcome to Fluxo" : {
       "comment" : "Text — Home page.",
@@ -130051,6 +130153,7 @@
     },
     "epgshare01 publishes free guides by country, updated every day. Use them for channels you are allowed to watch." : {
       "comment" : "Text — TV guide sources (Settings).",
+      "extractionState" : "stale",
       "localizations" : {
         "ar" : {
           "stringUnit" : {

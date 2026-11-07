@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<!-- Debug only: the Debug build is signed ad hoc ("Sign to Run Locally") so it builds without a Mac
+	     Development certificate. An ad hoc signature has no Team ID, so the hardened runtime's library
+	     validation would refuse the embedded FFmpeg.framework. Release is signed by the team
+	     (Fluxo-macOS.entitlements), whose signature covers the framework, and does not need it. -->
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>com.apple.security.network.server</key>
+	<true/>
+</dict>
+</plist>

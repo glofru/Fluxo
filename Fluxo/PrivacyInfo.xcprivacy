@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The privacy manifest of Fluxo.app (iPhone, iPad, Mac and Apple TV). Fluxo has no account, no server, no
+  analytics and no ads: it does no tracking and collects no data itself. The frameworks it embeds declare their own
+  (FFmpeg.framework; GoogleCast.framework and GTMSessionFetcher on iPhone and iPad), and Xcode merges them into the
+  archive's privacy report (see docs/AppStore/app-privacy.md, which also has the App Privacy answers).
+
+  APIs that need a declared reason, as the app's own code uses them:
+  - UserDefaults (CA92.1): the app's settings (@AppStorage, UserDefaults.standard), read and written by the app only.
+    The Top Shelf extension shares files through the App Group, not defaults.
+  - File timestamps (C617.1): creation and modification dates of files in the app's own container: recordings
+    (RecordingStore), the cache of downloaded subtitles (ExternalSubtitles), the simulated iCloud store of the Debug
+    harness (SimulatedCloud).
+  - Disk space (E174.1, 85F4.1): the free space of the device before a recording, a download or the time-shift buffer
+    is written (PlatformStorage.availableCapacity), and shown to the person in Downloads ("41 GB free").
+-->
+<plist version="1.0">
+<dict>
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>C617.1</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryDiskSpace</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>E174.1</string>
+				<string>85F4.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

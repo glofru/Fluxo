@@ -1,9 +1,9 @@
 FFmpeg 9.0.2 (https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz)
 SHA-256: 8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e
+Source: Vendor/FFmpeg/source/ffmpeg-9.0.2.tar.xz (this tarball, published with the repository)
 License: LGPL v2.1 or later (no GPL, version3 or nonfree components)
 Built by: Tools/FFmpeg/build-xcframework.sh with Xcode 27.2 Build version 27B52 
-Slices: ios-arm64 iossim-arm64 iossim-x86_64 macos-arm64 macos-x86_64 tvos-arm64 tvossim-arm64 tvossim-x86_64 (iOS 26.0, macOS 26.0, tvOS 26.0)
-Kept unchanged from the previous build: ios-arm64 ios-arm64_x86_64-simulator macos-arm64_x86_64 (same version and configure flags)
+Slices: ios-arm64 iossim-arm64 iossim-x86_64 macos-arm64 macos-x86_64 tvos-arm64 tvossim-arm64 tvossim-x86_64 (iOS 27.0, macOS 26.0, tvOS 26.0)
 
 Configure flags (plus per-slice toolchain flags):
   --disable-everything

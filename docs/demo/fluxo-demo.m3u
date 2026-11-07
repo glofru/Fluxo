@@ -1,0 +1,13 @@
+#EXTM3U
+# Fluxo demo playlist: free, legal content only, to try the app (and for App Review). See README.md here for the
+# licences and the attribution of each item. Fluxo itself provides no channels or content.
+#EXTINF:-1 tvg-id="FluxoDemo.live" tvg-name="Live Test Stream" group-title="Demo Live",Live Test Stream
+https://demo.unified-streaming.com/k8s/live/stable/live.isml/.m3u8
+#EXTINF:-1 tvg-id="FluxoDemo.bipbop" tvg-name="Apple HLS Example" group-title="Demo Live",Apple HLS Example
+https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8
+#EXTINF:-1 tvg-name="Tears of Steel (2012)" group-title="Open Movies · © Blender Foundation, CC BY",Tears of Steel (2012)
+https://download.blender.org/demo/movies/ToS/tears_of_steel_720p.mov
+#EXTINF:-1 tvg-name="Sintel (2010)" group-title="Open Movies · © Blender Foundation, CC BY",Sintel (2010)
+https://download.blender.org/durian/movies/Sintel.2010.1080p.mkv
+#EXTINF:-1 tvg-name="Elephants Dream (2006)" group-title="Open Movies · © Blender Foundation, CC BY",Elephants Dream (2006)
+https://download.blender.org/ED/elephantsdream-720-h264-st-aac.mov

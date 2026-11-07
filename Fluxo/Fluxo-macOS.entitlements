@@ -2,12 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- The Mac app in Release (Mac App Store and Developer ID): signed automatically by the team, with the
+	     hardened runtime and library validation on. The Debug build uses Fluxo-macOS-Debug.entitlements. -->
 	<key>com.apple.security.app-sandbox</key>
-	<true/>
-	<!-- Required only while the macOS build is signed ad hoc ("Sign to Run Locally"): an ad hoc
-	     signature has no Team ID, so library validation rejects every embedded framework,
-	     including FFmpeg.framework. Remove it when signing with a development team. -->
-	<key>com.apple.security.cs.disable-library-validation</key>
 	<true/>
 	<key>com.apple.security.network.client</key>
 	<true/>

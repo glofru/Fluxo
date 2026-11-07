@@ -97,7 +97,7 @@ nothing when none of these is passed.
 | Argument | Effect |
 |---|---|
 | `-FluxoDebugStore memory\|temp\|scratch` | Isolated library: in memory; a fresh SQLite store in `tmp/FluxoDebug` (deleted at the next launch); or a separate store in `Application Support/FluxoDebug/Scratch`, kept between launches (seeded only while it is empty). Settings (`UserDefaults.fluxo`, a separate suite, cleared for `memory` / `temp`) and recordings are isolated too. An unknown value falls back to `memory`, never to the real library. |
-| `-FluxoDebugSeed sample\|large` | Seeds the library (implies `-FluxoDebugStore memory`). See "Seeded content". |
+| `-FluxoDebugSeed sample\|large\|store` | Seeds the library (implies `-FluxoDebugStore memory`); `store` has only invented names, for App Store screenshots. See "Seeded content". |
 | `-FluxoDebugImportPlaylist <url>` | Imports a playlist through the real pipeline at launch (implies `-FluxoDebugStore memory`). |
 | `-FluxoDebugRoute "<route>[;<route>…]"` | Opens screens once the library is ready, see "Routes" (implies `-FluxoDebugStore memory`: some routes write watch history and settings). |
 | `-FluxoDebugPauseAfterEachRoute YES` | After each route, waits (up to 60 s) until the script has taken its screenshots (`run.sh --step-shots`). |
@@ -137,7 +137,7 @@ first that contains the text.
 | `cloud-reject-saves:<on\|off>` | The simulated cloud refuses every save as CloudKit does when iCloud storage is full (not retried; Settings › iCloud shows the error); `off` accepts them again, and the next `cloud-sync` sends what was refused. |
 | `cloud-add:<all\|name,…>` | Adds playlists from iCloud as Add in the sheet does (the others are left out). |
 | `cloud-wait-imports` | Waits (60 s at most) until the playlists added from iCloud are imported. |
-| `cloud-focus:<name\|add\|not-now\|done\|sync-toggle\|restore\|kept\|kept-ask\|privacy\|welcome-add\|welcome-icloud>` | Apple TV: focuses a row or button of the sheet, of Settings › iCloud or of the welcome screen (Add Playlist, Add Playlists from iCloud), for screenshots of the focused state; `kept-ask` asks the Deleted on Other Devices question. |
+| `cloud-focus:<name\|add\|not-now\|done\|sync-toggle\|restore\|kept\|kept-ask\|privacy\|welcome-add\|welcome-icloud\|welcome-demo>` | Apple TV: focuses a row or button of the sheet, of Settings › iCloud or of the welcome screen (Add Playlist, Add Playlists from iCloud, Try the Demo Playlist), for screenshots of the focused state; `kept-ask` asks the Deleted on Other Devices question. |
 | `cloud-privacy` | Shows What's Synced and Privacy as a sheet (full screen on Apple TV). |
 | `cloud-log` | Writes the sync state (records with hosts only, links, imports, baseline, awaiting restore, held removals) to `Status/cloud.log`. |
 | `cloud-favorite:<channel,…>` | Adds channels to the favorites by name (for the mass-removal checks). |
@@ -231,6 +231,8 @@ first that contains the text.
 | `play-download:<channel>` | Plays a completed download full screen and appends where it plays from to `Status/downloads.log`. |
 | `downloads-log` | Appends every download (state, method, sizes, quality, languages, file, failure) to `Status/downloads.log`. |
 | `offline:<on\|off\|system>` | Pretends the device is offline (Home's offline section, the player's offline error), online, or follows the system; `-FluxoDebugOffline YES` does it from launch. Loopback URLs still play offline. |
+| `acknowledgements[:<fluxo\|ffmpeg\|flyingfox\|googlecast\|gtmsessionfetcher\|googlecast/<part>\|source-offer\|source-offer-sha>]` | Settings › About › Acknowledgements (pushed; a sheet in the Mac's Settings window), a component's page with its license texts, a part of the Google Cast SDK with Google's notice (`googlecast/eigen-3`, `googlecast/material-components-for-ios`: the name in lowercase, other characters as `-`; iOS), or the page scrolled to the FFmpeg source offer (`source-offer-sha`: to its checksum, for large text sizes). A later step in the same launch goes back to the page and opens the next one. |
+| `settings-section:about` | Settings, scrolled to About (version, Acknowledgements, Privacy Policy, Source Code, the no-content notice; iOS). |
 | `settings-section:downloads` | Settings, scrolled to its Downloads section (iOS). |
 | `power:<low-power\|normal\|fair\|serious\|critical\|system>` | Pretends Low Power Mode is on, or a thermal state (`normal`: neither), or follows the system (`-FluxoDebugPower <value>` does it from launch): the player's quality limits (`PlaybackEnergyProfile`), the symbol animations and the guide refresh follow it. |
 | `energy-check` | Checks the rules of `PlaybackEnergyProfile` (position sampling, quality limits, display sleep, video decoding for the player screen, the mini player, the background, Picture in Picture, Low Power Mode and the thermal states) and writes `energy-check: ok` or the failures to `Status/power.log`. |
@@ -383,6 +385,17 @@ drawn locally and stored as `data:image` URIs, in the styles real playlists use:
 dark-on-transparent (hard to read in dark mode), wide and square; every ninth channel has none, and two
 have logos that cannot load. Other seeded streams use the host `seed.fluxo.invalid`, which never
 resolves: playing one shows the player's error state.
+
+`store` is for **App Store screenshots** and demos: it has no real broadcaster, network or brand name. "Fluxo
+Home" has 45 invented live channels in 8 groups (News, Sports, Movies, Entertainment, Documentaries, Kids, Music,
+Lifestyle: "Aurora News", "Northwind Sports", "Cinevista", "Wildframe"…), every one with a logo that loads, and
+"Fluxo Movies & Series": Cinema Club's invented films and series, but in plain groups ("Action", "Drama Series"),
+every episode named "Show S01E02" and every poster loading (none of the "IT:", "[MULTI] FHD", "Serie TV |" or
+"4K UHD" of a resold IPTV list, which `sample` keeps for the parser). Northwind Sports and Wildframe play the live HLS test pattern, Aurora News
+the raw MPEG-TS one and Tempo Music the one with two audio tracks (`test-stream.sh`), for screenshots of the player.
+Its favorites, history and recordings use those names (`Northwind Sports`, `Aurora News`, `Wildframe`). `seed-guide` gives it a guide like
+the others. Use `--seed store` for anything that leaves the team; `sample` keeps real channel names on purpose (the
+name matching, spoken names and Siri checks are about them).
 
 `large` adds "Mega IPTV" (30,000 live channels in 300 groups) and "Mega VOD" (12,000 movies and 4,200
 episodes in 30 groups), about 6 s. Their logos are http URLs of the test-stream server; without it they

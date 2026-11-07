@@ -33,9 +33,7 @@ struct TVHomeScreen: View {
         NavigationStack(path: $navigation.homePath) {
             Group {
                 if playlists.isEmpty {
-                    TVWelcome {
-                        actions.add()
-                    }
+                    TVWelcome(onAddPlaylist: actions.add, onTryDemo: actions.addDemo)
                 } else {
                     ScrollViewReader { proxy in
                         ScrollView(.vertical) {
@@ -92,6 +90,8 @@ enum TVHomeSection: String {
 /// playlists of the user's other devices (the way to watch without typing an address with the remote).
 struct TVWelcome: View {
     let onAddPlaylist: () -> Void
+    /// Add Playlist with the demo playlist filled in.
+    let onTryDemo: () -> Void
 
     @Environment(CloudSync.self) private var sync: CloudSync?
     @FocusState private var focused: Action?
@@ -99,6 +99,7 @@ struct TVWelcome: View {
     private enum Action: Hashable {
         case add
         case iCloud
+        case demo
     }
 
     var body: some View {
@@ -157,22 +158,43 @@ struct TVWelcome: View {
                     }
                     .tvActionButton(prominent: !cloud.hasPlaylists)
                     .focused($focused, equals: .add)
+                    Button {
+                        onTryDemo()
+                    } label: {
+                        Label {
+                            Text("Try the Demo Playlist", comment: "First-run screen: opens Add Playlist with the demo playlist filled in (free test streams and Creative Commons films).")
+                        } icon: {
+                            Image(systemName: "sparkles.tv")
+                        }
+                        .font(.headline)
+                        .padding(.horizontal, 16)
+                    }
+                    .tvActionButton()
+                    .focused($focused, equals: .demo)
+                    .accessibilityHint(Text("Free test streams and open movies, to see how Fluxo works.", comment: "VoiceOver hint of the Try the Demo Playlist button."))
                 }
                 .padding(.top, 12)
                 .focusSection()
                 if cloud == .looking {
                     CloudSyncWelcomeNote()
                 }
+                Text(ContentNotice.text)
+                    .font(.callout)
+                    .foregroundStyle(Theme.tertiaryText)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 1_000)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(TVLayout.margin)
         }
         .defaultFocus($focused, cloud.hasPlaylists ? .iCloud : .add)
         #if DEBUG
-        // Debug harness (`cloud-focus:welcome-add|welcome-icloud`): the focused state of each button, for screenshots.
+        // Debug harness (`cloud-focus:welcome-add|welcome-icloud|welcome-demo`): the focused state of each button, for screenshots.
         .onReceive(NotificationCenter.default.publisher(for: .fluxoDebugCloudFocus)) { notification in
             switch notification.object as? String {
             case "welcome-add": focused = .add
             case "welcome-icloud": focused = .iCloud
+            case "welcome-demo": focused = .demo
             default: break
             }
         }

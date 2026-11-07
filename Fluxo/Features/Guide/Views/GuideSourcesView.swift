@@ -230,43 +230,15 @@ private struct GuideSourceRow: View {
     }
 }
 
-/// Adds an XMLTV guide by URL, or one of the free country guides of epgshare01.
+/// Adds an XMLTV guide by its address, such as the one a provider gives with its playlist. Fluxo has no built-in guide
+/// of its own: listings come only from the playlists (url-tvg) and from the addresses added here.
 struct AddGuideSourceView: View {
-
-    /// Free XMLTV guides by country published by epgshare01 (https://epgshare01.online), updated daily, gzip.
-    /// Region code → file code (some countries have a newer second edition).
-    struct FreeGuide: Hashable {
-        let region: String
-        let file: String
-
-        init(_ region: String, _ file: String) {
-            self.region = region
-            self.file = file
-        }
-    }
-
-    static let freeGuides: [FreeGuide] = [
-        FreeGuide("AE", "AE1"), FreeGuide("AL", "AL1"), FreeGuide("AR", "AR1"), FreeGuide("AT", "AT1"), FreeGuide("AU", "AU1"), FreeGuide("BA", "BA1"), FreeGuide("BB", "BB1"), FreeGuide("BE", "BE2"),
-        FreeGuide("BG", "BG1"), FreeGuide("BR", "BR1"), FreeGuide("CA", "CA2"), FreeGuide("CH", "CH1"), FreeGuide("CL", "CL1"), FreeGuide("CO", "CO1"), FreeGuide("CR", "CR1"), FreeGuide("CY", "CY1"),
-        FreeGuide("CZ", "CZ1"), FreeGuide("DE", "DE1"), FreeGuide("DK", "DK1"), FreeGuide("DO", "DO1"), FreeGuide("EC", "EC1"), FreeGuide("EG", "EG1"), FreeGuide("ES", "ES1"), FreeGuide("FI", "FI1"),
-        FreeGuide("FR", "FR1"), FreeGuide("GB", "UK1"), FreeGuide("GR", "GR1"), FreeGuide("HK", "HK1"), FreeGuide("HR", "HR1"), FreeGuide("HU", "HU1"), FreeGuide("ID", "ID1"), FreeGuide("IE", "IE1"),
-        FreeGuide("IL", "IL1"), FreeGuide("IN", "IN1"), FreeGuide("IT", "IT1"), FreeGuide("JM", "JM1"), FreeGuide("JP", "JP1"), FreeGuide("KE", "KE1"), FreeGuide("KR", "KR1"), FreeGuide("LT", "LT1"),
-        FreeGuide("LU", "LU1"), FreeGuide("LV", "LV1"), FreeGuide("MN", "MN1"), FreeGuide("MT", "MT1"), FreeGuide("MX", "MX1"), FreeGuide("MY", "MY1"), FreeGuide("NG", "NG1"), FreeGuide("NL", "NL1"),
-        FreeGuide("NO", "NO1"), FreeGuide("NZ", "NZ1"), FreeGuide("PA", "PA1"), FreeGuide("PE", "PE1"), FreeGuide("PL", "PL1"), FreeGuide("PT", "PT1"), FreeGuide("RO", "RO1"), FreeGuide("RS", "RS1"),
-        FreeGuide("SA", "SA2"), FreeGuide("SE", "SE1"), FreeGuide("SG", "SG1"), FreeGuide("SK", "SK1"), FreeGuide("SV", "SV1"), FreeGuide("TH", "TH1"), FreeGuide("TR", "TR1"), FreeGuide("UA", "UA1"),
-        FreeGuide("US", "US2"), FreeGuide("UY", "UY1"), FreeGuide("VN", "VN1"), FreeGuide("ZA", "ZA1"),
-    ]
-
-    static func freeGuideURL(file: String) -> URL? {
-        URL(string: "https://epgshare01.online/epgshare01/epg_ripper_\(file).xml.gz")
-    }
 
     @Environment(EPGStore.self) private var epg
     @Environment(\.dismiss) private var dismiss
 
     @State private var urlText = ""
     @State private var name = ""
-    @State private var region = Locale.current.region?.identifier ?? "US"
     @State private var isSaving = false
     @State private var errorMessage: String?
     @FocusState private var isURLFocused: Bool
@@ -303,25 +275,6 @@ struct AddGuideSourceView: View {
                     }
                 }
                 #endif
-
-                Section {
-                    Picker("Country", selection: $region) {
-                        ForEach(sortedGuides, id: \.region) { guide in
-                            Text(Self.countryName(guide.region))
-                                .tag(guide.region)
-                        }
-                    }
-                    Button("Use Free Guide for \(Self.countryName(region))", systemImage: "globe") {
-                        if let file = Self.freeGuides.first(where: { $0.region == region })?.file, let url = Self.freeGuideURL(file: file) {
-                            urlText = url.absoluteString
-                            name = TextParts.line(["epgshare01", Self.countryName(region)])
-                        }
-                    }
-                } header: {
-                    Text("Free Guides")
-                } footer: {
-                    Text("epgshare01 publishes free guides by country, updated every day. Use them for channels you are allowed to watch.")
-                }
             }
             .formStyle(.grouped)
             .glassSheetContentBackground()
@@ -345,9 +298,6 @@ struct AddGuideSourceView: View {
             }
             #endif
             .onAppear {
-                if !Self.freeGuides.contains(where: { $0.region == region }) {
-                    region = "US"
-                }
                 isURLFocused = true
             }
         }
@@ -355,14 +305,6 @@ struct AddGuideSourceView: View {
         #if os(macOS)
         .frame(minWidth: 460, minHeight: 380)
         #endif
-    }
-
-    private var sortedGuides: [FreeGuide] {
-        Self.freeGuides.sorted { Self.countryName($0.region).localizedStandardCompare(Self.countryName($1.region)) == .orderedAscending }
-    }
-
-    static func countryName(_ region: String) -> String {
-        Locale.current.localizedString(forRegionCode: region) ?? region
     }
 
     private var validatedURL: URL? {

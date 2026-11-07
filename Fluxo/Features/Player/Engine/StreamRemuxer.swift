@@ -74,9 +74,14 @@ final class StreamRemuxer {
         case invalidConfiguration
         case unableToStart(Int32)
         case notRunning
+        /// A multicast address (`udp://@239.…`): iPhone and iPad receive multicast only with Apple's multicast
+        /// networking entitlement, which Fluxo does not have, so the stream would wait for data that never comes.
+        case multicastUnavailable
 
         var errorDescription: String? {
             switch self {
+            case .multicastUnavailable:
+                return String(localized: "Multicast streams (udp://@239…) can't be played on iPhone and iPad. Ask your provider for an http:// address of this channel.", comment: "Player error for a multicast IPTV stream address, which iOS does not let the app receive.")
             case .invalidConfiguration:
                 return String(localized: "The stream configuration is invalid.", comment: "Player error from the streaming engine.")
             case .unableToStart(let code):
@@ -217,6 +222,12 @@ final class StreamRemuxer {
     /// Starts remuxing `configuration.inputURL`, stopping any running session first.
     func start(_ configuration: Configuration) throws {
         stop()
+
+        #if os(iOS)
+        guard !Self.isMulticast(configuration.inputURL) else {
+            throw RemuxError.multicastUnavailable
+        }
+        #endif
 
         try FileManager.default.createDirectory(at: configuration.outputDirectory, withIntermediateDirectories: true)
 
@@ -449,6 +460,22 @@ final class StreamRemuxer {
             }
             onEvent?(.recordingFailed(progress?.url, event.message ?? String(localized: "Recording failed", comment: "Recording error shown when the engine gives no reason.")))
         }
+    }
+
+    /// Whether `url` is a UDP or RTP multicast address: IPv4 224.0.0.0/4 (`udp://@239.1.1.1:1234`) or IPv6 ff00::/8.
+    nonisolated static func isMulticast(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased(), scheme == "udp" || scheme == "rtp",
+              let host = url.host(percentEncoded: false)?.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "[]")) else {
+            return false
+        }
+        if host.hasPrefix("ff") && host.contains(":") {
+            return true
+        }
+        let octets = host.split(separator: ".")
+        guard octets.count == 4, let first = Int(octets[0]) else {
+            return false
+        }
+        return (224...239).contains(first)
     }
 
     private static func makeSession(_ configuration: Configuration, context: UnsafeMutableRawPointer) -> OpaquePointer? {

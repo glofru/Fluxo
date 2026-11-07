@@ -84,8 +84,10 @@ struct AddPlaylistView: View {
     }
 
     var playlist: Playlist?
-    /// The address a new playlist starts with (a link dropped on the window).
+    /// The address a new playlist starts with (a link dropped on the window, the demo playlist).
     var initialURL: URL?
+    /// The name a new playlist starts with (the demo playlist).
+    var initialName: String?
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -189,6 +191,43 @@ struct AddPlaylistView: View {
             }
             .disabled(isImporting)
 
+            if showsUnencryptedLoginWarning {
+                Section {
+                    Label {
+                        Text("This address isn't encrypted: your provider's user name and password in it travel as plain text. Use https:// if your provider offers it.", comment: "Add Playlist: warning for an http:// playlist address that contains an account name or password.")
+                    } icon: {
+                        Image(systemName: "lock.open.trianglebadge.exclamationmark")
+                            .foregroundStyle(Theme.warning)
+                    }
+                    .font(.callout)
+                }
+            }
+
+            if !isEditing {
+                Section {
+                    Text(ContentNotice.text)
+                        .font(.callout)
+                        .foregroundStyle(Theme.secondaryText)
+                        .readableWithRemote()
+                    if validation.url != DemoPlaylist.url {
+                        Button {
+                            name = DemoPlaylist.name
+                            urlText = DemoPlaylist.url.absoluteString
+                            showsValidation = true
+                        } label: {
+                            Label {
+                                Text("Use the Demo Playlist", comment: "Add Playlist: fills in the demo playlist (free test streams and Creative Commons films).")
+                            } icon: {
+                                Image(systemName: "sparkles.tv")
+                            }
+                        }
+                        .disabled(isImporting)
+                    }
+                } footer: {
+                    Text("The demo playlist has a live test stream and open movies from the Blender Foundation, free to watch.", comment: "Add Playlist: what the demo playlist contains.")
+                }
+            }
+
             switch phase {
             case .editing:
                 EmptyView()
@@ -274,6 +313,15 @@ struct AddPlaylistView: View {
         .onAppear(perform: prefill)
     }
 
+    /// An http address with an account name or password in it (`StreamLink.hasCredentials`): they would travel
+    /// unencrypted.
+    private var showsUnencryptedLoginWarning: Bool {
+        guard let url = validation.url, url.scheme?.lowercased() == "http" else {
+            return false
+        }
+        return StreamLink.hasCredentials(url)
+    }
+
     private var namePlaceholder: String {
         validation.url.map(PlaylistURLValidation.suggestedName(for:)) ?? String(localized: "My playlist", comment: "Placeholder of the playlist name field.")
     }
@@ -282,17 +330,11 @@ struct AddPlaylistView: View {
         guard let playlist else {
             if let initialURL, urlText.isEmpty {
                 urlText = initialURL.absoluteString
+                name = initialName ?? ""
                 showsValidation = true
                 focusedField = .name
                 return
             }
-            #if DEBUG
-            // Debug builds start with a small public playlist to speed up testing.
-            if urlText.isEmpty {
-                name = "Test"
-                urlText = "https://raw.githubusercontent.com/joaoguidugli/FTA-IPTV-Brasil/master/playlist.m3u8"
-            }
-            #endif
             focusedField = .url
             return
         }

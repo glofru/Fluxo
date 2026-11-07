@@ -50,7 +50,7 @@ final class RecordingStore {
 
     private static let mediaExtensions: Set<String> = ["mp4", "ts"]
 
-    /// Name of the recordings folder in Documents (and in the Files app). Never localized: the folder would
+    /// Name of the recordings folder in Documents. Never localized: the folder would
     /// change, and the recordings be lost, with the language.
     nonisolated static let folderName = "Recordings"
 

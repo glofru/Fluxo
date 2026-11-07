@@ -24,6 +24,10 @@ struct SettingsView: View {
 
     @State private var viewModel = SettingsViewModel()
     @State private var confirmation: Confirmation?
+    /// Settings › About › Acknowledgements: a sheet on the Mac; pushed by the harness elsewhere.
+    @State private var showsAcknowledgements = false
+    /// The component page the harness opens with it (`acknowledgements:<id>`).
+    @State private var acknowledgementsComponentID: String?
 
     private enum Confirmation: Identifiable {
         case deleteRecordings
@@ -44,8 +48,25 @@ struct SettingsView: View {
                         proxy.scrollTo(section, anchor: .top)
                     }
                 }
+                // Debug harness (`acknowledgements[:<id>]`): Settings › About › Acknowledgements.
+                .onReceive(NotificationCenter.default.publisher(for: .fluxoDebugAcknowledgements)) { notification in
+                    acknowledgementsComponentID = notification.object as? String
+                    showsAcknowledgements = true
+                }
                 #endif
         }
+        #if os(macOS)
+        .sheet(isPresented: $showsAcknowledgements) {
+            NavigationStack {
+                AcknowledgementsView(isModal: true, initialComponentID: acknowledgementsComponentID)
+            }
+            .frame(minWidth: 520, minHeight: 560)
+        }
+        #else
+        .navigationDestination(isPresented: $showsAcknowledgements) {
+            AcknowledgementsView(initialComponentID: acknowledgementsComponentID)
+        }
+        #endif
     }
 
     private var form: some View {
@@ -172,21 +193,6 @@ struct SettingsView: View {
                 SettingsLabel("Recordings", systemImage: "record.circle", tint: Theme.recording)
             }
 
-            LabeledContent {
-                Text(recordingsLocation)
-                    .lineLimit(2)
-                    .truncationMode(.middle)
-                    .selectableText()
-            } label: {
-                SettingsLabel("Location", systemImage: "folder", tint: Theme.cyan)
-            }
-
-            #if os(macOS)
-            Button("Show in Finder", systemImage: "folder") {
-                NSWorkspace.shared.activateFileViewerSelecting([store.directory])
-            }
-            #endif
-
             Button("Delete All Recordings…", systemImage: "trash", role: .destructive) {
                 confirmation = .deleteRecordings
             }
@@ -196,6 +202,8 @@ struct SettingsView: View {
         } footer: {
             if player.isRecording {
                 Text("Stop the current recording to delete recordings.")
+            } else {
+                Text("Recordings and downloads play only in Fluxo, for your personal viewing.", comment: "Settings, Recordings footer: recordings and offline downloads stay inside the app (they can't be shared or opened in the Files app).")
             }
         }
     }
@@ -244,7 +252,7 @@ struct SettingsView: View {
     }
 
     private var aboutSection: some View {
-        Section("About") {
+        Section {
             LabeledContent {
                 Text(SettingsViewModel.appVersion)
             } label: {
@@ -255,24 +263,41 @@ struct SettingsView: View {
             } label: {
                 SettingsLabel("FFmpeg", systemImage: "film.stack", tint: .gray)
             }
+            acknowledgementsRow
+            SettingsWebLink(url: LegalLinks.privacyPolicy) {
+                SettingsLabel("Privacy Policy", systemImage: "hand.raised.fill", tint: Theme.cyan)
+            }
+            SettingsWebLink(url: LegalLinks.sourceCode) {
+                SettingsLabel("Source Code", systemImage: "chevron.left.forwardslash.chevron.right", tint: Theme.lilac)
+            }
+        } header: {
+            Text("About")
+        } footer: {
+            Text(ContentNotice.text)
         }
+        .id("about")
+    }
+
+    /// Pushed where Settings is a navigation stack (iPhone, iPad); a sheet in the Mac's Settings window.
+    @ViewBuilder
+    private var acknowledgementsRow: some View {
+        #if os(macOS)
+        Button {
+            showsAcknowledgements = true
+        } label: {
+            SettingsLabel("Acknowledgements", systemImage: "doc.text", tint: .gray)
+        }
+        .buttonStyle(.plain)
+        #else
+        NavigationLink {
+            AcknowledgementsView()
+        } label: {
+            SettingsLabel("Acknowledgements", systemImage: "doc.text", tint: .gray)
+        }
+        #endif
     }
 
     // MARK: - Helpers
-
-    private var recordingsLocation: String {
-        #if os(macOS)
-        return (player.recordings.directory.path as NSString).abbreviatingWithTildeInPath
-        #else
-        // One string per device, because several languages decline the device name ("Na moim iPhonie",
-        // "iPhone'umda"). The folder is passed in: its name on disk is the same in every language.
-        let folder = RecordingStore.folderName
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            return String(localized: "Files › On My iPad › Fluxo › \(folder)", comment: "Where recordings are on an iPad, as a path in the Files app. Use the names the Files app shows in this language ('Files', 'On My iPad'). Fluxo is the app's folder; the placeholder is the name of the recordings folder on disk ('Recordings'), which is never translated.")
-        }
-        return String(localized: "Files › On My iPhone › Fluxo › \(folder)", comment: "Where recordings are on an iPhone, as a path in the Files app. Use the names the Files app shows in this language ('Files', 'On My iPhone'). Fluxo is the app's folder; the placeholder is the name of the recordings folder on disk ('Recordings'), which is never translated.")
-        #endif
-    }
 
     private var confirmationTitle: String {
         switch confirmation {
@@ -328,6 +353,30 @@ struct SettingsLabel: View {
                 .frame(width: 28, height: 28)
                 .background(tint.gradient, in: .rect(cornerRadius: 7, style: .continuous))
         }
+    }
+}
+
+/// A row that opens a web page, as in the system's Settings: the title in the primary color (like the rows next to
+/// it, such as Acknowledgements) and an arrow pointing out of the app instead of a chevron.
+private struct SettingsWebLink<Label: View>: View {
+    let url: URL
+    @ViewBuilder let label: Label
+
+    var body: some View {
+        Link(destination: url) {
+            HStack {
+                label
+                Spacer(minLength: 8)
+                ExternalLinkArrow()
+            }
+            .contentShape(.rect)
+        }
+        // The list tints a link's label with the accent color, over its own foreground style.
+        .tint(.primary)
+        #if os(macOS)
+        .buttonStyle(.plain)
+        #endif
+        .help(url.absoluteString)
     }
 }
 
@@ -436,5 +485,7 @@ private struct SettingsHeader: View {
 extension Notification.Name {
     /// Debug harness: scrolls Settings to the section whose id is the object (`settings-section:downloads`).
     static let fluxoDebugSettingsSection = Notification.Name("FluxoDebugSettingsSection")
+    /// Debug harness (`acknowledgements[:<id>]`): opens Settings › About › Acknowledgements (and a component's page).
+    static let fluxoDebugAcknowledgements = Notification.Name("FluxoDebugAcknowledgements")
 }
 #endif

@@ -1,1 +1,10 @@
 **/.DS_Store
+
+# Xcode: per-user state (window layout, breakpoints, scheme order). The shared scheme is in xcshareddata.
+xcuserdata/
+*.xcuserstate
+
+# Build products and logs.
+build/
+DerivedData/
+*.xcresult

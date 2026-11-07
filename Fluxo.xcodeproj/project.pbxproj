@@ -78,20 +78,17 @@
 				"Info-tvOS.plist",
 				Info.plist,
 			);
+			platformFiltersByRelativePath = {
+				"App/Legal/Licenses/GoogleCast-OSS.json" = (
+					ios,
+				);
+				"App/Legal/Licenses/License-Apache-2.0.txt" = (
+					ios,
+				);
+			};
 			target = 99B5FAC32DEAF9DC0095A78E /* Fluxo */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
-/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
-		99CBEE972E1B36A400C9CEE6 /* Exceptions for "Fluxo" folder in "Copy Bundle Resources" phase from "Fluxo" target */ = {
-			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
-			buildPhase = 99B5FAC22DEAF9DC0095A78E /* Resources */;
-			membershipExceptions = (
-				Features/Player/Engine/FluxoRemuxEngine.h,
-				Features/Player/FFmpegBridgingHeader.h,
-			);
-		};
-/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		99E70F062F0C000000A1B2C3 /* FluxoTopShelf */ = {
@@ -106,7 +103,6 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				994B5B652DF6CD2300055EA8 /* Exceptions for "Fluxo" folder in "Fluxo" target */,
-				99CBEE972E1B36A400C9CEE6 /* Exceptions for "Fluxo" folder in "Copy Bundle Resources" phase from "Fluxo" target */,
 				99E70F082F0C000000A1B2C3 /* Exceptions for "Fluxo" folder in "FluxoTopShelf" target */,
 			);
 			path = Fluxo;
@@ -449,6 +445,7 @@
 				SWIFT_UPCOMING_FEATURE_NONISOLATED_NONSENDING_BY_DEFAULT = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Debug;
 		};
@@ -511,6 +508,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_UPCOMING_FEATURE_NONISOLATED_NONSENDING_BY_DEFAULT = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
+				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Release;
 		};
@@ -524,13 +522,12 @@
 				CODE_SIGN_ENTITLEMENTS = Fluxo/Fluxo.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=appletvos*]" = "Fluxo/Fluxo-tvOS.entitlements";
 				"CODE_SIGN_ENTITLEMENTS[sdk=appletvsimulator*]" = "Fluxo/Fluxo-tvOS.entitlements";
-				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "Fluxo/Fluxo-macOS.entitlements";
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "Fluxo/Fluxo-macOS-Debug.entitlements";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
 				"CODE_SIGN_STYLE[sdk=macosx*]" = Manual;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 4MJXMYZ3D9;
-				"DEVELOPMENT_TEAM[sdk=macosx*]" = 4MJXMYZ3D9;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -544,6 +541,8 @@
 				INFOPLIST_FILE = Fluxo/Info.plist;
 				"INFOPLIST_FILE[sdk=appletvos*]" = "Fluxo/Info-tvOS.plist";
 				"INFOPLIST_FILE[sdk=appletvsimulator*]" = "Fluxo/Info-tvOS.plist";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = NO;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = NO;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -585,12 +584,9 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=appletvos*]" = "Fluxo/Fluxo-tvOS.entitlements";
 				"CODE_SIGN_ENTITLEMENTS[sdk=appletvsimulator*]" = "Fluxo/Fluxo-tvOS.entitlements";
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "Fluxo/Fluxo-macOS.entitlements";
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
-				"CODE_SIGN_STYLE[sdk=macosx*]" = Manual;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 4MJXMYZ3D9;
-				"DEVELOPMENT_TEAM[sdk=macosx*]" = 4MJXMYZ3D9;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -604,6 +600,8 @@
 				INFOPLIST_FILE = Fluxo/Info.plist;
 				"INFOPLIST_FILE[sdk=appletvos*]" = "Fluxo/Info-tvOS.plist";
 				"INFOPLIST_FILE[sdk=appletvsimulator*]" = "Fluxo/Info-tvOS.plist";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = NO;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = NO;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -620,7 +618,6 @@
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.watermelon.Fluxo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "appletvos appletvsimulator iphoneos iphonesimulator macosx";

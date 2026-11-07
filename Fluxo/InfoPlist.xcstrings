@@ -224,103 +224,103 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "يستخدم Fluxo الشبكة المحلية للعثور على Chromecast وأجهزة Google Cast الأخرى، لتتمكن من مشاهدة القنوات على التلفزيون."
+            "value" : "يستخدم Fluxo الشبكة المحلية لتشغيل القنوات من الخوادم الموجودة في منزلك، مثل موالف التلفزيون أو خادم الوسائط، وللعثور، حيثما يتوفر ذلك، على Chromecast وأجهزة Google Cast الأخرى لتتمكن من المشاهدة على التلفزيون."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fluxo verwendet das lokale Netzwerk, um Chromecast und andere Google-Cast-Geräte zu finden, damit du Sender auf deinem Fernseher ansehen kannst."
+            "value" : "Fluxo verwendet das lokale Netzwerk, um Sender von Servern bei dir zu Hause abzuspielen, etwa einem TV-Tuner oder einem Medienserver, und, wo verfügbar, um Chromecast und andere Google-Cast-Geräte zu finden, damit du auf deinem Fernseher schauen kannst."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Fluxo uses the local network to find Chromecast and other Google Cast devices, so you can watch channels on your TV."
+            "value" : "Fluxo uses the local network to play channels from servers in your home, such as a TV tuner or a media server, and, where available, to find Chromecast and other Google Cast devices so you can watch on your TV."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fluxo usa la red local para encontrar dispositivos Chromecast y otros dispositivos Google Cast, para que puedas ver canales en tu TV."
+            "value" : "Fluxo usa la red local para reproducir canales de servidores de tu casa, como un sintonizador de TV o un servidor multimedia, y, cuando está disponible, para encontrar Chromecast y otros dispositivos Google Cast y ver en tu TV."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fluxo utilise le réseau local pour trouver les appareils Chromecast et autres appareils Google Cast, afin que vous puissiez regarder des chaînes sur votre téléviseur."
+            "value" : "Fluxo utilise le réseau local pour lire des chaînes depuis des serveurs de votre domicile, comme un tuner TV ou un serveur multimédia, et, lorsque c’est possible, pour trouver les appareils Chromecast et autres appareils Google Cast afin de regarder sur votre téléviseur."
           }
         },
         "hi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fluxo, Chromecast और अन्य Google Cast डिवाइस ढूँढने के लिए लोकल नेटवर्क का उपयोग करता है, ताकि आप अपने TV पर चैनल देख सकें।"
+            "value" : "Fluxo आपके घर के सर्वर, जैसे TV ट्यूनर या मीडिया सर्वर, से चैनल चलाने के लिए और जहाँ उपलब्ध हो, Chromecast और अन्य Google Cast डिवाइस ढूँढने के लिए लोकल नेटवर्क का उपयोग करता है, ताकि आप अपने TV पर देख सकें।"
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fluxo menggunakan jaringan lokal untuk menemukan Chromecast dan perangkat Google Cast lainnya, sehingga Anda dapat menonton saluran di TV."
+            "value" : "Fluxo menggunakan jaringan lokal untuk memutar saluran dari server di rumah Anda, seperti tuner TV atau server media, dan, jika tersedia, untuk menemukan Chromecast dan perangkat Google Cast lainnya agar Anda dapat menonton di TV."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fluxo usa la rete locale per trovare Chromecast e altri dispositivi Google Cast, così puoi guardare i canali sulla TV."
+            "value" : "Fluxo usa la rete locale per riprodurre i canali dai server di casa tua, come un sintonizzatore TV o un media server, e, dove disponibile, per trovare Chromecast e altri dispositivi Google Cast, così puoi guardare sulla TV."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fluxoはローカルネットワークを使用してChromecastやその他のGoogle Castデバイスを探し、テレビでチャンネルを視聴できるようにします。"
+            "value" : "Fluxoはローカルネットワークを使用して、TVチューナーやメディアサーバなど自宅のサーバからチャンネルを再生し、利用できる場合はChromecastやその他のGoogle Castデバイスを探してテレビで視聴できるようにします。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "TV에서 채널을 시청할 수 있도록 Fluxo가 로컬 네트워크를 사용하여 Chromecast 및 기타 Google Cast 기기를 찾습니다."
+            "value" : "Fluxo는 로컬 네트워크를 사용하여 TV 튜너나 미디어 서버 등 집에 있는 서버의 채널을 재생하고, 지원되는 경우 Chromecast 및 기타 Google Cast 기기를 찾아 TV에서 시청할 수 있도록 합니다."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fluxo gebruikt het lokale netwerk om Chromecast en andere Google Cast-apparaten te vinden, zodat je zenders op je tv kunt kijken."
+            "value" : "Fluxo gebruikt het lokale netwerk om zenders af te spelen van servers bij je thuis, zoals een tv-tuner of een mediaserver, en om, waar beschikbaar, Chromecast en andere Google Cast-apparaten te vinden zodat je op je tv kunt kijken."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fluxo używa sieci lokalnej do wyszukiwania Chromecasta i innych urządzeń Google Cast, aby umożliwić oglądanie kanałów na telewizorze."
+            "value" : "Fluxo używa sieci lokalnej do odtwarzania kanałów z serwerów w Twoim domu, takich jak tuner TV lub serwer multimediów, oraz, tam gdzie to możliwe, do wyszukiwania Chromecasta i innych urządzeń Google Cast, aby umożliwić oglądanie na telewizorze."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O Fluxo usa a rede local para encontrar o Chromecast e outros dispositivos Google Cast, para que você possa assistir aos canais na sua TV."
+            "value" : "O Fluxo usa a rede local para reproduzir canais de servidores da sua casa, como um sintonizador de TV ou um servidor de mídia, e, quando disponível, para encontrar o Chromecast e outros dispositivos Google Cast para você assistir na sua TV."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fluxo использует локальную сеть, чтобы находить Chromecast и другие устройства Google Cast, — так вы сможете смотреть каналы на телевизоре."
+            "value" : "Fluxo использует локальную сеть, чтобы воспроизводить каналы с серверов у вас дома, например ТВ-тюнера или медиасервера, а также, где это доступно, находить Chromecast и другие устройства Google Cast для просмотра на телевизоре."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fluxo, kanalları TV'nizde izleyebilmeniz için Chromecast'i ve diğer Google Cast aygıtlarını bulmak amacıyla yerel ağı kullanır."
+            "value" : "Fluxo; TV alıcısı veya medya sunucusu gibi evinizdeki sunuculardan kanal oynatmak ve kullanılabildiğinde TV’nizde izleyebilmeniz için Chromecast ve diğer Google Cast cihazlarını bulmak üzere yerel ağı kullanır."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fluxo 使用本地网络查找 Chromecast 及其他 Google Cast 设备，以便你在电视上观看频道。"
+            "value" : "Fluxo 使用本地网络播放家中服务器（如电视调谐器或媒体服务器）上的频道，并在可用时查找 Chromecast 和其他 Google Cast 设备，以便你在电视上观看。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fluxo 會使用區域網路尋找 Chromecast 及其他 Google Cast 裝置，讓你可以在電視上觀看頻道。"
+            "value" : "Fluxo 使用區域網路播放家中伺服器（例如電視調諧器或媒體伺服器）上的頻道，並在可用時尋找 Chromecast 和其他 Google Cast 裝置，讓你在電視上觀看。"
           }
         }
       }

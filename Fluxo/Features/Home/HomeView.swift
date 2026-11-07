@@ -66,9 +66,7 @@ struct HomeView: View {
         NavigationStack(path: path) {
             Group {
                 if playlists.isEmpty {
-                    HomeEmptyState {
-                        actions.add()
-                    }
+                    HomeEmptyState(onAddPlaylist: actions.add, onTryDemo: actions.addDemo)
                 } else {
                     content(scope: scope)
                 }
@@ -423,15 +421,40 @@ private struct PlaylistStatusBanner: View {
     }
 }
 
-/// First launch: no playlist yet.
+/// First launch: no playlist yet. Says that Fluxo provides no content, and offers the demo playlist.
 struct HomeEmptyState: View {
 
     let onAddPlaylist: () -> Void
+    let onTryDemo: () -> Void
 
     @State private var animates = false
+    /// The height of the screen: the content is centered in it, and scrolls when it is taller (large text sizes).
+    @State private var viewportHeight: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        ScrollView {
+            content
+                .padding(32)
+                .frame(maxWidth: .infinity, minHeight: viewportHeight)
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.height
+        } action: { height in
+            viewportHeight = height
+        }
+        .onAppear {
+            guard !reduceMotion else {
+                return
+            }
+            withAnimation(.linear(duration: 20).repeatForever(autoreverses: false)) {
+                animates = true
+            }
+        }
+    }
+
+    private var content: some View {
         VStack(spacing: 22) {
             ZStack {
                 Circle()
@@ -454,6 +477,7 @@ struct HomeEmptyState: View {
             VStack(spacing: 8) {
                 Text("Welcome to Fluxo")
                     .font(.largeTitle.bold())
+                    .multilineTextAlignment(.center)
                 Text("Add an M3U playlist to watch live TV, movies and series. You can add as many playlists as you like and switch between them here.")
                     .font(.body)
                     .foregroundStyle(Theme.secondaryText)
@@ -466,6 +490,7 @@ struct HomeEmptyState: View {
             } label: {
                 Label("Add Playlist", systemImage: "plus")
                     .font(.headline)
+                    .multilineTextAlignment(.center)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 4)
             }
@@ -473,18 +498,23 @@ struct HomeEmptyState: View {
             .tint(Theme.accentFill)
             .controlSize(.large)
 
+            Button {
+                onTryDemo()
+            } label: {
+                Text("Try the Demo Playlist", comment: "First-run screen: opens Add Playlist with the demo playlist filled in (free test streams and Creative Commons films).")
+                    .multilineTextAlignment(.center)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityHint(Text("Free test streams and open movies, to see how Fluxo works.", comment: "VoiceOver hint of the Try the Demo Playlist button."))
+
             // The playlists of the user's other devices (iCloud sync).
             CloudSyncWelcomeNote()
-        }
-        .padding(32)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear {
-            guard !reduceMotion else {
-                return
-            }
-            withAnimation(.linear(duration: 20).repeatForever(autoreverses: false)) {
-                animates = true
-            }
+
+            Text(ContentNotice.text)
+                .font(.footnote)
+                .foregroundStyle(Theme.secondaryText)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 420)
         }
     }
 }

@@ -8,7 +8,8 @@
 //                                          on-disk store in tmp (deleted at the next launch), or a separate store
 //                                          in Application Support/FluxoDebug that is kept between launches.
 //                                          Settings and recordings are isolated too.
-//  -FluxoDebugSeed sample|large            Seeds the isolated library (implies -FluxoDebugStore memory).
+//  -FluxoDebugSeed sample|large|store      Seeds the isolated library (implies -FluxoDebugStore memory). `store` has
+//                                          only fictional channels and titles, for App Store screenshots.
 //  -FluxoDebugImportPlaylist <url>         Imports a playlist at launch (implies -FluxoDebugStore memory).
 //  -FluxoDebugRoute "<route>[;<route>…]"   Opens screens once the library is ready, see `DebugRoutes`
 //                                          (implies -FluxoDebugStore memory).
@@ -47,6 +48,9 @@ struct DebugLaunchOptions {
     enum Seed: String, CaseIterable {
         case sample
         case large
+        /// Fictional, neutral channels and titles only (no real broadcaster or brand): App Store screenshots and
+        /// demos (`DebugSeedCatalog.store`).
+        case store
     }
 
     var store: StoreMode?
@@ -108,7 +112,7 @@ struct DebugLaunchOptions {
         if let value = string("FluxoDebugSeed") {
             seed = Seed(rawValue: value.lowercased())
             if seed == nil {
-                Self.logger.error("Unknown -FluxoDebugSeed \(value, privacy: .public) (sample, large)")
+                Self.logger.error("Unknown -FluxoDebugSeed \(value, privacy: .public) (sample, large, store)")
             }
         }
         if let value = string("FluxoDebugImportPlaylist") {

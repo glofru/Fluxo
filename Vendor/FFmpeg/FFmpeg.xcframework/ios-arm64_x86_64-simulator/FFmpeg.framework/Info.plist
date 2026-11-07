@@ -23,7 +23,7 @@
 		<string>iPhoneSimulator</string>
 	</array>
 	<key>MinimumOSVersion</key>
-	<string>26.0</string>
+	<string>27.0</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>FFmpeg 9.0.2, LGPL v2.1 or later. https://ffmpeg.org</string>
 </dict>

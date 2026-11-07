@@ -107,6 +107,15 @@ enum DebugLinkRoutes {
             throw DebugRouteError.unsupported("settings-siri")
             #endif
         },
+        DebugRoute("acknowledgements[:<fluxo|ffmpeg|flyingfox|googlecast|gtmsessionfetcher|googlecast/<part>|source-offer|source-offer-sha>]", "Settings › About › Acknowledgements, or the page of one component (its license texts), or of a part of the Google Cast SDK (googlecast/eigen-3), or scrolled to the FFmpeg source offer: pushed in Settings, a sheet in the Mac's Settings window. A later step goes back to the page and opens the next one.") { context, argument in
+            if let openSettings = context.openSettings {
+                openSettings()
+            } else {
+                context.navigation.tab = .settings
+            }
+            try await Task.sleep(for: .milliseconds(600))
+            NotificationCenter.default.post(name: .fluxoDebugAcknowledgements, object: argument.isEmpty ? nil : argument.lowercased())
+        },
     ]
 
     private static func report(_ line: String) {

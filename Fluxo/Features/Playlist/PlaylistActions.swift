@@ -33,6 +33,8 @@ final class PlaylistActions {
     var playlistToDelete: Playlist?
     /// The address the Add Playlist sheet starts with (a URL dropped on the window); nil for an empty form.
     var urlToAdd: URL?
+    /// The name the Add Playlist sheet starts with (the demo playlist).
+    var nameToAdd: String?
 
     /// True while the add / rename sheet or the delete confirmation is on screen.
     var isPresenting: Bool {
@@ -41,12 +43,21 @@ final class PlaylistActions {
 
     func add() {
         urlToAdd = nil
+        nameToAdd = nil
         sheet = .add
     }
 
     /// The Add Playlist sheet, filled in with `url` (e.g. a link dropped on the window).
     func add(url: URL) {
         urlToAdd = url
+        nameToAdd = nil
+        sheet = .add
+    }
+
+    /// The Add Playlist sheet, filled in with the demo playlist (free test streams and Creative Commons films).
+    func addDemo() {
+        urlToAdd = DemoPlaylist.url
+        nameToAdd = DemoPlaylist.name
         sheet = .add
     }
 
@@ -122,7 +133,7 @@ private struct PlaylistManagementPresenter: ViewModifier {
                 NavigationStack {
                     switch sheet {
                     case .add:
-                        AddPlaylistView(initialURL: actions.urlToAdd)
+                        AddPlaylistView(initialURL: actions.urlToAdd, initialName: actions.nameToAdd)
                     case .edit(let playlist):
                         AddPlaylistView(playlist: playlist)
                     }

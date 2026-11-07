@@ -23,30 +23,43 @@ Google's [Cast SDK](https://github.com/googlecast/google-cast-ios-sdk) (iOS only
 below), are resolved by Xcode on its own. The app builds for iOS devices, the iOS Simulator, macOS, Apple TV
 and the tvOS Simulator, from the one `Fluxo` target and scheme.
 
-The macOS build is signed ad hoc ("Sign to Run Locally") so that it builds without a Mac
-Development certificate. To distribute the app, set the macOS code signing style back to
-Automatic. `Fluxo/Fluxo-macOS.entitlements` grants the sandbox `network.client` (to read
-streams) and `network.server` (for the loopback HLS server). It also has
-`com.apple.security.cs.disable-library-validation`, which only the ad hoc signature needs: an ad
-hoc signature has no Team ID, so the hardened runtime's library validation would refuse to load
-the embedded `FFmpeg.framework`. Remove that entitlement when you sign with a development team.
+The scheme runs **Debug** (Run, Test, Analyze) and profiles and archives **Release** (Profile, Archive), so
+Instruments measures optimized code.
+
+**Signing.** iPhone, iPad and Apple TV are signed automatically by the team (`4MJXMYZ3D9`) in both configurations.
+On the Mac, **Release** is signed automatically by the team too, with the hardened runtime and library validation
+on: `Fluxo/Fluxo-macOS.entitlements` grants only the sandbox, `network.client` (to read streams) and
+`network.server` (for the loopback HLS server), and the team signature covers the embedded `FFmpeg.framework`.
+**Debug** on the Mac is signed ad hoc ("Sign to Run Locally"), so it builds and runs without a Mac Development
+certificate; it uses `Fluxo/Fluxo-macOS-Debug.entitlements`, which adds
+`com.apple.security.cs.disable-library-validation`: an ad hoc signature has no Team ID, so library validation
+would refuse to load the framework. Release never has that entitlement. Neither Mac build has iCloud yet (see
+"Capabilities and signing").
+
+**Build number.** `CURRENT_PROJECT_VERSION` (CFBundleVersion of the app and of the Top Shelf extension, which must
+match) is set per upload with `Tools/Release/set-build-number.sh [<n>]` (agvtool; the project uses the
+`apple-generic` versioning system) or `CURRENT_PROJECT_VERSION=<n>` on a CI `xcodebuild archive`. The App Store
+checklist is `docs/AppStore/README.md`.
 
 Command-line builds:
 
 ```sh
-# iOS device (unsigned)
-xcodebuild -project Fluxo.xcodeproj -scheme Fluxo -destination 'generic/platform=iOS' build CODE_SIGNING_ALLOWED=NO
+# iOS device, Release (unsigned)
+xcodebuild -project Fluxo.xcodeproj -scheme Fluxo -configuration Release -destination 'generic/platform=iOS' build CODE_SIGNING_ALLOWED=NO
 
 # iOS Simulator
-xcodebuild -project Fluxo.xcodeproj -scheme Fluxo -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO
+xcodebuild -project Fluxo.xcodeproj -scheme Fluxo -configuration Debug -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO
 
-# macOS
-xcodebuild -project Fluxo.xcodeproj -scheme Fluxo -destination 'platform=macOS' build
+# macOS: Debug signed ad hoc, or Release (team-signed; CODE_SIGNING_ALLOWED=NO for an unsigned check)
+xcodebuild -project Fluxo.xcodeproj -scheme Fluxo -configuration Debug -destination 'platform=macOS' build
+xcodebuild -project Fluxo.xcodeproj -scheme Fluxo -configuration Release -destination 'platform=macOS' build CODE_SIGNING_ALLOWED=NO
 
-# Apple TV (unsigned) and the tvOS Simulator
-xcodebuild -project Fluxo.xcodeproj -scheme Fluxo -destination 'generic/platform=tvOS' build CODE_SIGNING_ALLOWED=NO
+# Apple TV, Release (unsigned) and the tvOS Simulator
+xcodebuild -project Fluxo.xcodeproj -scheme Fluxo -configuration Release -destination 'generic/platform=tvOS' build CODE_SIGNING_ALLOWED=NO
 xcodebuild -project Fluxo.xcodeproj -scheme Fluxo -configuration Debug -destination 'generic/platform=tvOS Simulator' build CODE_SIGNING_ALLOWED=NO
 ```
+
+Without `-configuration`, `xcodebuild build` uses the scheme's Run configuration (Debug).
 
 The SwiftData schema is the list in `Fluxo/App/Database/ModelRegistry.swift`; add new `@Model`
 types there. `.swiftlint.yml` configures [SwiftLint](https://github.com/realm/SwiftLint) for
@@ -120,9 +133,10 @@ internal `avpriv_*` / `ff_*` symbols), for iOS (arm64), the iOS Simulator (arm64
 (arm64, x86_64: macOS 26 still runs on Intel Macs, and Xcode builds universal Release apps), tvOS (arm64) and the
 tvOS Simulator (arm64, x86_64), with the same components and configure flags on every platform.
 The public headers are in `Vendor/FFmpeg/include`, and `Vendor/FFmpeg/BUILD_INFO.txt` lists the
-exact configuration. The iOS slice is about 8 MB. The slices are built for iOS, macOS and tvOS 26.0 (`IOS_MIN`,
-`MACOS_MIN`, `TVOS_MIN` in the script); an iOS 27 app embeds the iOS 26.0 slices as they are, so the framework was not
-rebuilt when the app moved to iOS 27 (a later rebuild can raise `IOS_MIN` to 27.0).
+exact configuration. The iOS slice is about 8 MB. The slices are built for iOS 27.0, macOS 26.0 and tvOS 26.0
+(`IOS_MIN`, `MACOS_MIN`, `TVOS_MIN` in the script, the app's deployment targets). Every framework carries a privacy
+manifest (`PrivacyInfo.xcprivacy`: FFmpeg reads file metadata with `fstat` / `lstat`, declared as `C617.1`, files in
+the app's container), which the script writes, and the LGPL text (`LICENSE`).
 
 - **What is in it**: everything is disabled except what the engine reaches:
   - demuxers: MPEG-TS (and M2TS), HLS, MP4 / MOV / 3GP, FLV, Matroska / WebM, AVI, ASF (WMV), Ogg, MPEG-PS (VOB),
@@ -150,9 +164,11 @@ rebuilt when the app moved to iOS 27 (a later rebuild can raise `IOS_MIN` to 27.
   codec library: the AAC encoder is FFmpeg's own, H.264 is encoded by the operating system), so it is LGPL v2.1 or
   later. It is linked dynamically and embedded as `Fluxo.app/Frameworks/FFmpeg.framework`
   (`Contents/Frameworks` on macOS), so it can be replaced with another build of the same
-  library; the license text is in `Vendor/FFmpeg/LICENSE` and inside the framework. Anyone
-  distributing the app must also offer the FFmpeg source (the release tarball) and this build
-  script.
+  library; the license text is in `Vendor/FFmpeg/LICENSE` and inside the framework, FFmpeg's license overview in
+  `Vendor/FFmpeg/LICENSE.md`. **Source offer**: the exact release tarball the frameworks are built from is in the
+  repository (`Vendor/FFmpeg/source/ffmpeg-9.0.2.tar.xz`; the script uses it instead of downloading, and checks
+  its SHA-256), next to this build script; Settings › About › Acknowledgements shows the LGPL notice and text and
+  links to both (see "License" below). Keep each tarball that shipped available for at least three years.
 - **Rebuild** (about 10 minutes; Xcode only, no Homebrew packages): `Tools/FFmpeg/build-xcframework.sh`.
   `SLICES` builds a subset, e.g. `SLICES="tvos-arm64 tvossim-arm64 tvossim-x86_64"` (a platform is always built
   with all its architectures): the platforms left out are copied unchanged from the current xcframework, so their
@@ -230,7 +246,7 @@ Tools/PlaylistBenchmark/run.sh             # ENTRIES=20000 for a quicker run
   and 20 groups are fetched from the store.
 - **Library** (`Features/Library/LibraryView.swift`, iOS): the tab with what the user keeps. A first section links
   to Favorites (with their count) and Recently Watched (with the last thing watched), then the offline downloads
-  (see "Offline downloads"), then the recordings are listed in place (play, share, delete; Delete All in the More
+  (see "Offline downloads"), then the recordings are listed in place (play, delete; Delete All in the More
   menu). Library replaced the Favorites tab: Favorites already lead Home (a row with See All), so a tab repeated Home,
   while the recordings were only reachable from a Home toolbar button or the player's menu.
 - **macOS** uses a sidebar (Home, TV Guide, Search, a Library section with Favorites, Recently Watched, Downloads
@@ -457,10 +473,11 @@ Store build syncs (record types `Playlist`, `GuideSource`, `ChannelFavorite`, `C
 `CKContainer` stops the app when it is not signed with the entitlement, so the container comes from Info.plist
 (`FluxoCloudKitContainer` = `$(FLUXO_CLOUDKIT_CONTAINER)`), and the build setting is empty when
 `CODE_SIGNING_ALLOWED=NO` (`FLUXO_CLOUDKIT_CONTAINER_$(CODE_SIGNING_ALLOWED)`): unsigned command-line builds and the
-simulator harness run without sync and say "Not available in this build". The macOS build is signed ad hoc, which
-cannot carry iCloud entitlements, so `FLUXO_CLOUDKIT_CONTAINER[sdk=macosx*]` is empty too. To sync on the Mac, sign it
-with the team (see "Building"), add the same three keys to `Fluxo/Fluxo-macOS.entitlements`
-(`aps-environment` is `com.apple.developer.aps-environment` there) and remove the `[sdk=macosx*]` override. The
+simulator harness run without sync and say "Not available in this build". The Mac has no iCloud yet:
+`FLUXO_CLOUDKIT_CONTAINER[sdk=macosx*]` is empty, because its Debug build is signed ad hoc (which cannot carry iCloud
+entitlements) and its team-signed Release build does not list them yet. To sync on the Mac, add the same three keys
+to `Fluxo/Fluxo-macOS.entitlements` (`aps-environment` is `com.apple.developer.aps-environment` there), sign Debug
+with the team too (or keep the override for Debug only) and remove the `[sdk=macosx*]` override for Release. The
 Apple TV build reads `Fluxo/Info-tvOS.plist`, which has the `FluxoCloudKitContainer` key and the
 `remote-notification` background mode too, and uses `Fluxo/Fluxo-tvOS.entitlements` (the iCloud keys of
 `Fluxo/Fluxo.entitlements` plus the App Group): the same capabilities apply to the tvOS App ID (the iCloud container is shared by the four platforms).
@@ -1084,7 +1101,8 @@ family 3 for the tvOS SDKs) rather than to a target of its own:
 
 - **One app record**: the same bundle identifier (`dev.watermelon.Fluxo`) on every platform is what universal
   purchase needs: one App Store product, bought once for iPhone, iPad, Mac and Apple TV. A second target would have
-  to repeat it anyway.
+  to repeat it anyway. The Mac's Release build is team-signed for the Mac App Store (see "Building"); it has no
+  iCloud sync yet.
 - **The same pattern as macOS**: the target already builds two platforms, with the differences as SDK-conditional
   settings (`[sdk=macosx*]`); tvOS adds its own: its Info.plist (`Fluxo/Info-tvOS.plist`), app icon (below) and
   device family. Packages filter by platform (Google Cast stays iOS only; FFmpeg is linked on iOS, macOS and tvOS).
@@ -1480,11 +1498,9 @@ channels that have a guide, programme details, programme search and reminders.
 - **Sources** (`EPGSource`): the XMLTV URLs of a playlist header (`#EXTM3U url-tvg="…"`, `x-tvg-url` or
   `tvg-url`, which can list several comma-separated URLs) are stored at import (`Playlist.guideURLString`) and
   become guide sources. For playlists imported before this, the guide reads only the first line of the playlist
-  once. You can add XMLTV URLs in Settings › TV Guide, with a shortcut to the free country guides of
-  [epgshare01](https://epgshare01.online) (free, updated daily, gzip). Other free guides that work as a URL:
-  [open-epg.com](https://www.open-epg.com) (download at most once a day) and i.mjh.nz (Pluto TV, Samsung TV Plus,
-  Plex and others). iptv-org/epg is a set of grabber scripts to run on a computer: it has no hosted guides that a
-  phone can download. epg.pw did not respond during the research.
+  once. You can add XMLTV URLs in Settings › TV Guide (Add Guide Source). The app has no built-in guide: the
+  former "Use Free Guide" shortcut to epgshare01's scraped country guides was removed, because their terms do not
+  allow it (see `docs/AppStore/legal-review.md`); a user can still add any guide address, epgshare01's included.
 - **Download and parsing** (`EPGImporter`): the file is streamed to disk, then read by `XMLTVParser` (SAX
   `XMLParser`) through `InflatingInputStream`, which inflates `.xml.gz` with zlib as it is read. The XML is never
   held in memory. The parser runs on a utility queue and keeps only the programmes from 6 hours ago to 7 days
@@ -1773,11 +1789,13 @@ navigation, intelligence) with `AppDependencyManager`; intents run in the app's 
   with Cancel Import, and an error section with Try Again. Editing can change the URL, which
   re-imports the playlist.
 - **Settings** (a tab on iOS, the Settings window ⌘, on macOS): iCloud sync (see "iCloud sync"), time-shift length, skip
-  intervals, automatic PiP (iOS), TV guide sources and the reminder time, recordings count / size / location (Show in Finder on macOS,
-  the Files app on iOS through `UIFileSharingEnabled`), delete all recordings, temporary stream
-  files, logo cache, watch history, and the app and FFmpeg versions.
-- **Recordings** (in the Library tab on iOS, the sidebar on macOS, and the player's menu): play, share, Show in
-  Finder (macOS), delete, delete all.
+  intervals, automatic PiP (iOS), TV guide sources and the reminder time, recordings count and size, delete all
+  recordings, temporary stream files, logo cache, watch history, and About: the app and FFmpeg versions,
+  Acknowledgements, the privacy policy, the source code and the notice that Fluxo provides no content.
+- **Recordings** (in the Library tab on iOS, the sidebar on macOS, and the player's menu): play, delete, delete all.
+  Recordings and downloads play only in Fluxo: there is no Share or Show in Finder, and `UIFileSharingEnabled` is
+  off, so the Files app and the Finder do not list the app's Documents folder (App Review guideline 5.2.3; see
+  "License, privacy and the App Store").
 - **Menu bar** (macOS, and the iPad menu bar): File > New Window (⌥⌘N, iPad), Add Playlist… (⌘N), Refresh All
   Playlists (⌘R), Refresh TV Guide (⌥⌘R); Go > Home (⌘1), TV Guide (⌘2), Favorites (⌘3), Recently Watched (⌘4),
   Recordings (⌘5; on iPad these three open the Library tab), Settings (⌘6, iPad), Search (⌘F); Playback > Play/Pause (Space), Skip Back / Forward (⌘← / ⌘→),
@@ -2123,3 +2141,43 @@ Idle screens were already idle (no timers: `TimelineView(.everyMinute)` only, no
 launch are the launch work. The debug harness has `power:` / `-FluxoDebugPower` (pretend Low Power Mode or a thermal
 state), `power-log` (what the app does now) and `energy-check` (the rules of the profile); see
 Tools/Simulator/README.md.
+
+## License, privacy and the App Store
+
+**License.** Fluxo's own code is released under the [MIT License](LICENSE), copyright Gianluca Lofrumento. The
+software it includes keeps its own license:
+
+| Component | License | Where |
+|---|---|---|
+| [FFmpeg](https://ffmpeg.org) 9.0.2 (libavformat, libavcodec, libavutil, libswscale, libswresample) | LGPL v2.1 or later; its libjpeg DCT code is credited to the Independent JPEG Group as its license asks | `Vendor/FFmpeg` (source tarball in `Vendor/FFmpeg/source`, built by `Tools/FFmpeg/build-xcframework.sh`) |
+| [FlyingFox](https://github.com/swhitty/FlyingFox) 0.24.1 | MIT | Swift package |
+| [Google Cast SDK](https://developers.google.com/cast) 4.8.6 (iOS), including its Google Sans fonts | [Google Cast SDK terms](https://developers.google.com/cast/docs/terms) (the package manifest is Apache 2.0) | Swift package |
+| The open-source software inside the Cast SDK: Abseil, gRPC, TCMalloc, Material Components for iOS and MDF*, Google Toolbox for Mac, Protocol Buffers, Kiss FFT, Eigen 3, SimplePing, the tz database and others (20 in Google's list) | Apache 2.0, BSD 3-Clause, MPL 2.0 and 1.1, Apple sample code license, public domain (each in `Fluxo/App/Legal/Licenses/GoogleCast-OSS.json`) | inside the Cast SDK |
+| [GTMSessionFetcher](https://github.com/google/gtm-session-fetcher) 3.5.0 (iOS, used by the Cast SDK) | Apache 2.0 | Swift package |
+
+Settings › About › Acknowledgements (`Fluxo/App/Legal`, every platform; focusable lines and QR codes on Apple TV)
+lists them with their full license texts (bundled from `Fluxo/App/Legal/Licenses`, laid out to flow at any width by
+`LicenseText`), the FFmpeg source offer of the LGPL (the SHA-256 of the tarball, links to it and to the build script)
+and the note that FFmpeg is a replaceable library that the app's EULA does not cover. The Google Cast SDK's page
+(iPhone and iPad) lists the open-source software inside the SDK, each with the notice Google ships in the SDK's
+`OpenSourceLicenses` folder: `Tools/Legal/extract-googlecast-licenses.sh <derivedDataPath>/SourcePackages` copies
+them to `GoogleCast-OSS.json` (bundled on iOS only, like the Apache text). `Tools/Legal/check-acknowledgements.sh
+[<derivedDataPath>/SourcePackages]` checks that the versions there match `Package.resolved` and `BUILD_INFO.txt`, that
+the bundled texts match their sources, and that `GoogleCast-OSS.json` is what the resolved Cast SDK ships.
+
+**No content.** Fluxo provides no channels or content: the first-run screen, Add Playlist and Settings › About say
+so (`ContentNotice`), and the built-in guide shortcut was removed. "Try the Demo Playlist" fills in
+`docs/demo/fluxo-demo.m3u` (a live test stream, Apple's HLS example and three Creative Commons films of the
+Blender Foundation; licenses in `docs/demo/README.md`).
+
+**Privacy.** No account, server, analytics, ads or tracking. The privacy policy is `docs/privacy.md` (linked in
+Settings › About). The privacy manifests: `Fluxo/PrivacyInfo.xcprivacy` (UserDefaults `CA92.1`, file timestamps
+`C617.1`, disk space `E174.1` and `85F4.1`), `FluxoTopShelf/PrivacyInfo.xcprivacy` (nothing to declare) and one in
+each `FFmpeg.framework`; the Cast SDK and GTMSessionFetcher ship their own. Add Playlist warns when an `http://`
+address carries a user name or password. Multicast addresses (`udp://@239…`) fail at once on iPhone and iPad, which
+need a multicast entitlement the app does not have.
+
+**App Store.** `docs/AppStore/` has the App Review notes (content, ATS, how to test), the App Privacy answers, the
+custom EULA, the export-compliance reasoning (`ITSAppUsesNonExemptEncryption = NO`), the legal review (LGPL on the
+App Store, codec patents, trademarks) and the checklist before each upload. App Store screenshots use the Debug
+harness's `store` seed (`Tools/Simulator/run.sh --seed store`), which has only invented channel names and titles.

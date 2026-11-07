@@ -5,7 +5,8 @@
 //  The Settings tab of Apple TV, laid out like the system's Settings app: the app's mark and the library at a
 //  glance on the leading side, the settings as a list on the other: playlists (add, refresh, edit, delete, which
 //  ones Home shows), iCloud sync (`CloudSyncSettingsSection`), TV guide sources (add, turn on or off, refresh, delete; reminders), playback, audio and
-//  subtitles, the watch history, recordings, Siri and Voice Search (`TVSiriScreen`) and the version.
+//  subtitles, the watch history, recordings, Siri and Voice Search (`TVSiriScreen`), and About: the version, the
+//  acknowledgements (`AcknowledgementsView`), the privacy policy and the notice that Fluxo provides no content.
 //
 //  Addresses are typed in the shared Add Playlist and Add Guide Source sheets: their text fields bring up the tvOS
 //  keyboard, dictation, and the Continuity Keyboard on a nearby iPhone or iPad (a notification offers it), which is
@@ -66,6 +67,8 @@ struct TVSettingsScreen: View {
                     CloudSyncPrivacyView(isModal: false)
                 case .siri:
                     TVSiriScreen()
+                case .acknowledgements(let componentID):
+                    AcknowledgementsView(initialComponentID: componentID)
                 }
             }
         }
@@ -83,6 +86,10 @@ struct TVSettingsScreen: View {
         // Debug harness (`settings-siri`): Siri and Voice Search, as its row pushes it.
         .onReceive(NotificationCenter.default.publisher(for: .fluxoDebugSiriPage)) { _ in
             path = [.siri]
+        }
+        // Debug harness (`acknowledgements[:<id>]`): About › Acknowledgements, as its row pushes it.
+        .onReceive(NotificationCenter.default.publisher(for: .fluxoDebugAcknowledgements)) { notification in
+            path = [.acknowledgements(notification.object as? String)]
         }
         #endif
         .sheet(isPresented: $showsAddSource) {
@@ -178,8 +185,21 @@ struct TVSettingsScreen: View {
             } footer: {
                 Text(String(localized: "TV.settings.siri.footer", defaultValue: "What to say to Siri for Fluxo, and how to search by voice with the Siri Remote.", comment: "Apple TV Settings, footer of the Siri section."))
             }
-            Section("About") {
+            Section {
                 LabeledContent(String(localized: "TV.settings.version", defaultValue: "Version", comment: "Apple TV Settings: the app's version number."), value: SettingsViewModel.appVersion)
+                NavigationLink(value: TVSettingsRoute.acknowledgements()) {
+                    Label {
+                        Text("Acknowledgements", comment: "Settings › About: opens the licenses of the app and of the software it includes.")
+                    } icon: {
+                        Image(systemName: "doc.text")
+                    }
+                }
+                // No browser on Apple TV: the address, with a QR code to open it on a phone.
+                LegalLinkRow(title: Text("Privacy Policy"), url: LegalLinks.privacyPolicy, systemImage: "hand.raised.fill")
+            } header: {
+                Text("About")
+            } footer: {
+                Text(ContentNotice.text)
             }
         }
         // Every choice opens its own list, as in the system's Settings (the shared audio and subtitle section too).
@@ -288,6 +308,8 @@ enum TVSettingsRoute: Hashable {
     case cloudPrivacy
     /// Siri and Voice Search (`TVSiriScreen`).
     case siri
+    /// About › Acknowledgements (`AcknowledgementsView`), opened at a component's page when it has one (the harness).
+    case acknowledgements(String? = nil)
 }
 
 /// The app's mark, its version and the library at a glance (the leading side of Settings).

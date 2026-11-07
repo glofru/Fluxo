@@ -386,10 +386,11 @@ struct CloudSyncPrivacyView: View {
     }
 }
 
-private extension View {
+extension View {
     /// Apple TV: the focus engine scrolls only to what can be focused, so each line of a page to read is focusable
     /// (the remote then walks through it; VoiceOver reads it as it is focused), and the focused line is tinted, so
-    /// the reader sees where they are. Nothing elsewhere.
+    /// the reader sees where they are. Nothing elsewhere. Used by the iCloud privacy page, Acknowledgements and Add
+    /// Playlist.
     @ViewBuilder
     func readableWithRemote(debugName: String? = nil) -> some View {
         #if os(tvOS)

@@ -41,7 +41,7 @@
 		</dict>
 	</array>
 	<key>UIFileSharingEnabled</key>
-	<true/>
+	<false/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 	<key>UIBackgroundModes</key>
@@ -56,7 +56,7 @@
 		<string>_CC1AD845._googlecast._tcp</string>
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Fluxo uses the local network to find Chromecast and other Google Cast devices, so you can watch channels on your TV.</string>
+	<string>Fluxo uses the local network to play channels from servers in your home, such as a TV tuner or a media server, and, where available, to find Chromecast and other Google Cast devices so you can watch on your TV.</string>
 	<key>FluxoCloudKitContainer</key>
 	<string>$(FLUXO_CLOUDKIT_CONTAINER)</string>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>

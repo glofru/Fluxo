@@ -10,6 +10,10 @@
 //  (quality tags, "IT | " prefixes, CJK, Arabic and Greek names, a very long name), a movies and series
 //  catalogue with Xtream-style URLs, and a "Loopback Test" playlist whose channels play the streams of
 //  Tools/Simulator/test-stream.sh. Live channels have tvg-id attributes in the iptv-org style.
+//  `store` has only invented names and logos (no real broadcaster or brand), for App Store screenshots: "Fluxo Home"
+//  (live TV in 8 groups, four channels of it playing the loopback test streams) and "Fluxo Movies & Series", a
+//  catalogue of invented films and series with plain names and groups (none of the provider prefixes, quality tags and
+//  bilingual groups of `sample`'s Cinema Club, which look like resold IPTV lists).
 //  `large` adds two generated playlists with about 46,000 entries in 330 groups, whose logos and posters are http
 //  URLs of the test-stream server.
 //
@@ -54,11 +58,34 @@ enum DebugSeedCatalog {
     /// playing one fails fast with the player's error card.
     static let host = "http://seed.fluxo.invalid"
 
-    /// Favorites and watch history of the sample library: names, or name prefixes, of seeded entries.
-    static let favoriteNames = ["Sky Sport F1", "Rai 1 HD", "BBC One HD", "Test Pattern (HLS)", "Sky Cinema Uno", "NHK総合", "The Silent Harbor", "Orbit S01E01"]
-    static let historyNames = ["Test Pattern (MPEG-TS)", "Sky Sport F1", "Sky TG24", "Canale 5", "BBC News", "TF1", "Orbit S01E02", "Crimson Signal", "Rai Sport HD", "Eurosport 1"]
+    /// Favorites and watch history of a seeded library: names, or name prefixes, of seeded entries.
+    static func favoriteNames(_ seed: DebugLaunchOptions.Seed) -> [String] {
+        switch seed {
+        case .sample, .large:
+            return ["Sky Sport F1", "Rai 1 HD", "BBC One HD", "Test Pattern (HLS)", "Sky Cinema Uno", "NHK総合", "The Silent Harbor", "Orbit S01E01"]
+        case .store:
+            return ["Northwind Sports", "Aurora News", "Cinevista", "Wildframe", "Tempo Music", "The Silent Harbor", "Orbit S01E01"]
+        }
+    }
+
+    static func historyNames(_ seed: DebugLaunchOptions.Seed) -> [String] {
+        switch seed {
+        case .sample, .large:
+            return ["Test Pattern (MPEG-TS)", "Sky Sport F1", "Sky TG24", "Canale 5", "BBC News", "TF1", "Orbit S01E02", "Crimson Signal", "Rai Sport HD", "Eurosport 1"]
+        case .store:
+            return ["Northwind Sports", "Aurora News", "Meridian 24", "Orbit S01E02", "Crimson Signal", "Harbor Lights S01E03", "Atlas Docs", "Pulse Arena"]
+        }
+    }
+
     /// Titles of the fake recordings.
-    static let recordingTitles = ["Sky Sport F1", "BBC One HD", "Rai 1 HD"]
+    static func recordingTitles(_ seed: DebugLaunchOptions.Seed) -> [String] {
+        switch seed {
+        case .sample, .large:
+            return ["Sky Sport F1", "BBC One HD", "Rai 1 HD"]
+        case .store:
+            return ["Northwind Sports", "Aurora News", "Wildframe"]
+        }
+    }
 
     static func playlists(_ seed: DebugLaunchOptions.Seed, testStreamBaseURL: URL) -> [DebugSeedPlaylist] {
         let sample = [skyItalia(), worldTV(), cinemaClub(), loopbackTest(baseURL: testStreamBaseURL)]
@@ -67,7 +94,87 @@ enum DebugSeedCatalog {
             return sample
         case .large:
             return sample + [megaLive(artworkBase: base(of: testStreamBaseURL)), megaOnDemand(artworkBase: base(of: testStreamBaseURL))]
+        case .store:
+            return [store(baseURL: testStreamBaseURL), storeCatalogue()]
         }
+    }
+
+    // MARK: - Store
+
+    /// Live TV for App Store screenshots and demos: invented channel names and logos only, so no real broadcaster,
+    /// network or brand appears (App Review 5.2.1; `sample` keeps the real-world names its checks are about).
+    /// Every channel has a logo that loads, in the cleaner styles. Four of them play the loopback test streams of
+    /// Tools/Simulator/test-stream.sh (for screenshots of the player); the others use the `.invalid` host.
+    private static func store(baseURL: URL) -> DebugSeedPlaylist {
+        let base = base(of: baseURL)
+        let playable = [
+            "Northwind Sports": "\(base)/hls/live.m3u8",
+            "Aurora News": "\(base)/live/test-pattern",
+            "Wildframe": "\(base)/hls/live.m3u8",
+            "Tempo Music": "\(base)/live/two-audio",
+        ]
+        var playlist = DebugSeedPlaylist(name: "Fluxo Home")
+        let groups: [(String, [String])] = [
+            ("News", ["Aurora News", "Meridian 24", "Global Desk", "Harbor City News", "Bulletin One", "Weather Now"]),
+            ("Sports", ["Northwind Sports", "Pulse Arena", "Pulse Arena 2", "Summit Motor", "Courtside", "Tidewater Golf", "Fieldhouse"]),
+            ("Movies", ["Cinevista", "Cinevista Classics", "Reel One", "Nightjar Thrillers", "Marquee Comedy", "Silver Screen"]),
+            ("Entertainment", ["Coastline TV", "Riverlight", "Velvet Drama", "Lantern Channel", "Saturday Club", "Brightside"]),
+            ("Documentaries", ["Wildframe", "Atlas Docs", "Deep Blue", "Polaris Travel", "Ember History", "Orbit Science"]),
+            ("Kids", ["Starling Kids", "Paper Planes", "Little Comet", "Doodle Town"]),
+            ("Music", ["Tempo Music", "Nightjar Jazz", "Amplify", "Classica Nova"]),
+            ("Lifestyle", ["Harvest Kitchen", "Homestead", "Studio Style", "Trailhead"]),
+        ]
+        let styles: [DebugArtwork.LogoStyle] = [.filled, .wide, .square, .filled, .transparent]
+        var id = 5_000
+        for (group, channels) in groups {
+            for channel in channels {
+                id += 1
+                playlist.entries.append(.init(
+                    name: channel,
+                    group: group,
+                    url: playable[channel] ?? "\(host)/live/store/store/\(id)",
+                    tvgID: tvgID(for: channel, country: "fluxo"),
+                    logo: DebugArtwork.logo(for: channel, style: styles[id % styles.count])
+                ))
+            }
+        }
+        return playlist
+    }
+
+    /// Films and series for App Store screenshots: the invented titles of Cinema Club (the same films, so favorites
+    /// and history match), in plain groups, every episode named "Show S01E02", and every poster loading.
+    private static func storeCatalogue() -> DebugSeedPlaylist {
+        var playlist = DebugSeedPlaylist(name: "Fluxo Movies & Series")
+        let movieGroups = ["Action", "Comedy", "Drama", "Science Fiction", "Animation", "Documentaries", "Adventure", "Classics"]
+        var id = 1_000
+        for (groupIndex, group) in movieGroups.enumerated() {
+            for index in 0..<12 {
+                let title = movieTitle(groupIndex * 12 + index)
+                let year = 1_968 + (groupIndex * 31 + index * 7) % 57
+                let name = "\(title) (\(year))"
+                id += 1
+                playlist.entries.append(.init(name: name, group: group, url: "\(host)/movie/store/store/\(id).mp4", logo: DebugArtwork.poster(title: name, subtitle: "\(year) · \(group)")))
+            }
+        }
+        let seriesGroups: [(String, [String])] = [
+            ("Drama Series", ["Harbor Lights", "The Night Desk", "Paper Kings"]),
+            ("Comedy Series", ["Small Town Signals", "Office Plants", "Second Breakfast", "Evergreen Street"]),
+            ("Science Fiction Series", ["Orbit", "Deep Field", "The Lantern Protocol"]),
+            ("Animated Series", ["Sky Runners", "Moonlit Garden"]),
+        ]
+        for (group, shows) in seriesGroups {
+            for show in shows {
+                let seasonCount = show == "Evergreen Street" ? 12 : show == "Orbit" ? 3 : 2
+                for season in 1...seasonCount {
+                    for episode in 1...(show == "Evergreen Street" ? 3 : 5) {
+                        id += 1
+                        let name = String(format: "%@ S%02dE%02d", show, season, episode)
+                        playlist.entries.append(.init(name: name, group: group, url: "\(host)/series/store/store/\(id).mkv", logo: DebugArtwork.poster(title: show, subtitle: "Season \(season)")))
+                    }
+                }
+            }
+        }
+        return playlist
     }
 
     // MARK: - Sample

@@ -9,7 +9,7 @@
 # Options:
 #   --device NAME        simulator to clone (an existing one, e.g. "iPhone 17e"); not needed to reuse --clone
 #   --clone NAME         name of the clone, must start with "fluxo-" (default fluxo-sim-<device>); reused if it exists
-#   --seed sample|large|none   library to seed (default sample)
+#   --seed sample|large|store|none   library to seed (default sample; store: fictional names only, for App Store screenshots)
 #   --store memory|temp|scratch  isolated store (default memory)
 #   --route "a;b:arg"    -FluxoDebugRoute steps (see DebugRoutes.swift)
 #   --step-shots         screenshot after every route step, not only at the end

@@ -10,6 +10,11 @@
 #   include/             the public libavformat / libavcodec / libswscale / libswresample / libavutil
 #                        headers (identical for every slice; the script checks it).
 #   BUILD_INFO.txt       version, tarball checksum and the exact configure flags.
+#   LICENSE, LICENSE.md  FFmpeg's LGPL v2.1 text and its license overview (Settings › Acknowledgements shows both).
+#   source/              the exact release tarball the frameworks are built from: the source offer of the LGPL
+#                        (section 6), published with the app's repository.
+# Every framework carries the LGPL text (LICENSE) and a privacy manifest (PrivacyInfo.xcprivacy: FFmpeg reads file
+# metadata with fstat and lstat, an API that needs a declared reason; see write_privacy_manifest).
 #
 # Usage:
 #   Tools/FFmpeg/build-xcframework.sh
@@ -21,6 +26,9 @@
 #                                   current Vendor/FFmpeg/FFmpeg.xcframework, so adding a platform does
 #                                   not rebuild the others, e.g. SLICES="tvos-arm64 tvossim-arm64 tvossim-x86_64".
 #                                   A platform is always built whole (all of its architectures).
+#
+# The tarball is read from Vendor/FFmpeg/source when it is there (no download); otherwise it is downloaded from
+# ffmpeg.org and copied there. Either way its SHA-256 must be FFMPEG_SHA256.
 #
 # Requirements: Xcode command line tools (clang, lipo, xcodebuild) and curl. No Homebrew packages
 # are used: pkg-config lookups are disabled and every external library is off except the system
@@ -38,7 +46,7 @@ FFMPEG_SHA256=8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e
 # FFmpeg release signing key (https://ffmpeg.org/download.html#releases). Checked when gpg is available.
 FFMPEG_SIGNING_KEY=FCF986EA15E6E293A5644F10B4322F04D67658D8
 
-IOS_MIN=26.0
+IOS_MIN=27.0
 MACOS_MIN=26.0
 TVOS_MIN=26.0
 FRAMEWORK_VERSION=$FFMPEG_VERSION
@@ -46,6 +54,7 @@ BUNDLE_ID=dev.watermelon.FFmpeg
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 OUT=$ROOT/Vendor/FFmpeg
+SOURCE_TARBALL=$OUT/source/ffmpeg-$FFMPEG_VERSION.tar.xz
 WORK=${WORK:-/tmp/fluxo-ffmpeg-build}
 JOBS=${JOBS:-$(sysctl -n hw.ncpu)}
 ALL_SLICES="ios-arm64 iossim-arm64 iossim-x86_64 macos-arm64 macos-x86_64 tvos-arm64 tvossim-arm64 tvossim-x86_64"
@@ -118,6 +127,10 @@ $(join_enable hwaccel "$HWACCELS")$(join_enable bsf "$BSFS")"
 fetch_source() {
     mkdir -p "$WORK/download"
     tarball=$WORK/download/ffmpeg-$FFMPEG_VERSION.tar.xz
+    if [ ! -f "$tarball" ] && [ -f "$SOURCE_TARBALL" ]; then
+        log "Using $SOURCE_TARBALL"
+        cp "$SOURCE_TARBALL" "$tarball"
+    fi
     if [ ! -f "$tarball" ]; then
         log "Downloading FFmpeg $FFMPEG_VERSION"
         curl --fail --location --proto '=https' --tlsv1.2 -o "$tarball.part" "https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.xz"
@@ -129,6 +142,11 @@ fetch_source() {
         exit 1
     fi
     echo "SHA-256 verified: $actual"
+    # The source offer: the repository publishes the exact tarball the frameworks are built from.
+    if ! cmp -s "$tarball" "$SOURCE_TARBALL"; then
+        mkdir -p "$(dirname "$SOURCE_TARBALL")"
+        cp "$tarball" "$SOURCE_TARBALL"
+    fi
 
     if command -v gpg > /dev/null 2>&1; then
         curl --fail --location --proto '=https' --tlsv1.2 -s -o "$tarball.asc" "https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.xz.asc"
@@ -266,6 +284,42 @@ write_info_plist() { # path platform-name min-os-key min-os
 EOF
 }
 
+# The framework's privacy manifest. FFmpeg calls fstat and lstat (file timestamp APIs, which need a declared reason) on
+# the files the app gives it, all of them inside the app's container (segments, recordings, downloads): C617.1. It
+# collects no data and does no tracking. The privacy report of an archive merges it with the app's own manifest.
+write_privacy_manifest() { # path
+    cat > "$1" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>C617.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>
+EOF
+}
+
+# Where a framework keeps its resources (Info.plist, LICENSE, PrivacyInfo.xcprivacy).
+framework_resources() { # framework-dir platform
+    if [ "$2" = macos ]; then echo "$1/Versions/A/Resources"; else echo "$1"; fi
+}
+
 # Creates the framework of a platform from the dylibs of its slices.
 make_framework() { # platform
     dir=$WORK/frameworks/$1/FFmpeg.framework
@@ -284,6 +338,7 @@ make_framework() { # platform
             lipo -create $binaries -output "$dir/Versions/A/FFmpeg"
             write_info_plist "$dir/Versions/A/Resources/Info.plist" MacOSX LSMinimumSystemVersion "$MACOS_MIN"
             cp "$SRC/COPYING.LGPLv2.1" "$dir/Versions/A/Resources/LICENSE"
+            write_privacy_manifest "$dir/Versions/A/Resources/PrivacyInfo.xcprivacy"
             ln -s A "$dir/Versions/Current"
             ln -s Versions/Current/FFmpeg "$dir/FFmpeg"
             ln -s Versions/Current/Resources "$dir/Resources"
@@ -300,6 +355,7 @@ make_framework() { # platform
             esac
             write_info_plist "$dir/Info.plist" "$platform_name" MinimumOSVersion "$min_os"
             cp "$SRC/COPYING.LGPLv2.1" "$dir/LICENSE"
+            write_privacy_manifest "$dir/PrivacyInfo.xcprivacy"
             ;;
     esac
     # Ad-hoc signature so that the binaries load as they are (smoke tests, the simulator); Xcode
@@ -336,6 +392,15 @@ reuse_framework() { # platform
     rm -rf "$WORK/frameworks/$1"
     mkdir -p "$WORK/frameworks/$1"
     cp -Rp "$OUT/FFmpeg.xcframework/$library/FFmpeg.framework" "$WORK/frameworks/$1/"
+    # A framework from a build that predates the privacy manifests gets one. The new resource needs a new (ad hoc)
+    # signature; the code itself stays byte for byte the same.
+    resources=$(framework_resources "$WORK/frameworks/$1/FFmpeg.framework" "$1")
+    manifest=$WORK/PrivacyInfo.xcprivacy
+    write_privacy_manifest "$manifest"
+    if ! cmp -s "$manifest" "$resources/PrivacyInfo.xcprivacy"; then
+        cp "$manifest" "$resources/PrivacyInfo.xcprivacy"
+        codesign --force --sign - --timestamp=none "$WORK/frameworks/$1/FFmpeg.framework" > /dev/null
+    fi
     FRAMEWORK_ARGS="$FRAMEWORK_ARGS -framework $WORK/frameworks/$1/FFmpeg.framework"
     REUSED="$REUSED $library"
 }
@@ -423,10 +488,12 @@ mkdir -p "$OUT"
 xcodebuild -create-xcframework $FRAMEWORK_ARGS -output "$OUT/FFmpeg.xcframework" > /dev/null
 cp -R "$WORK/install/$first/include" "$OUT/include"
 cp "$SRC/COPYING.LGPLv2.1" "$OUT/LICENSE"
+cp "$SRC/LICENSE.md" "$OUT/LICENSE.md"
 
 {
     echo "FFmpeg $FFMPEG_VERSION (https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.xz)"
     echo "SHA-256: $FFMPEG_SHA256"
+    echo "Source: Vendor/FFmpeg/source/ffmpeg-$FFMPEG_VERSION.tar.xz (this tarball, published with the repository)"
     echo "License: LGPL v2.1 or later (no GPL, version3 or nonfree components)"
     echo "Built by: Tools/FFmpeg/build-xcframework.sh with $(xcodebuild -version | tr '\n' ' ')"
     echo "Slices: $(slices_in_xcframework) (iOS $IOS_MIN, macOS $MACOS_MIN, tvOS $TVOS_MIN)"

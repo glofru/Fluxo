@@ -2,7 +2,7 @@
 //  RecordingsView.swift
 //  Fluxo
 //
-//  Lists the stream recordings and lets the user play, share or delete them.
+//  Lists the stream recordings and lets the user play or delete them (they play only in Fluxo: no Share, no Files).
 //
 //  The pieces are shared by the two places that list recordings: `RecordingsView` (the sheet of the player and the
 //  Recordings screen of the iPad and Mac sidebars) and the Recordings section of the Library tab (`LibraryView`):
@@ -99,16 +99,6 @@ struct RecordingRows: View {
                 }
                 .disabled(recording.isFinalizing)
             }
-            .rowSwipeActions(edge: .leading) {
-                #if !os(tvOS)
-                if !recording.isFinalizing {
-                    ShareLink(item: recording.url) {
-                        Label("Share", systemImage: "square.and.arrow.up")
-                    }
-                    .tint(Theme.accentFill)
-                }
-                #endif
-            }
             .contextMenu {
                 RecordingMenuItems(recording: recording, play: { requestPlay(recording) }, delete: { prompts.recordingToDelete = recording })
             }
@@ -157,7 +147,7 @@ struct RecordingsEmptyState: View {
     }
 }
 
-/// The "More" menu of a list of recordings: Show in Finder (macOS) and Delete All Recordings.
+/// The "More" menu of a list of recordings: Delete All Recordings.
 struct RecordingsMoreMenu: View {
     let store: RecordingStore
     let isRecordingActive: Bool
@@ -165,11 +155,6 @@ struct RecordingsMoreMenu: View {
 
     var body: some View {
         Menu {
-            #if os(macOS)
-            Button("Show in Finder", systemImage: "folder") {
-                NSWorkspace.shared.activateFileViewerSelecting([store.directory])
-            }
-            #endif
             Button("Delete All Recordings…", systemImage: "trash", role: .destructive) {
                 prompts.isConfirmingDeleteAll = true
             }
@@ -241,7 +226,8 @@ private struct RecordingPromptsModifier: ViewModifier {
     }
 }
 
-/// Play, share, reveal and delete entries of a recording.
+/// Play and delete entries of a recording. Recordings play only in Fluxo: there is no Share or Show in Finder (they
+/// are copies of the user's provider's streams, for personal viewing; App Review guideline 5.2.3).
 private struct RecordingMenuItems: View {
     let recording: Recording
     let play: () -> Void
@@ -250,21 +236,6 @@ private struct RecordingMenuItems: View {
     var body: some View {
         Button("Play", systemImage: "play.fill", action: play)
             .disabled(recording.isFinalizing)
-
-        #if !os(tvOS)
-        // No share sheet on Apple TV.
-        if !recording.isFinalizing {
-            ShareLink(item: recording.url) {
-                Label("Share…", systemImage: "square.and.arrow.up")
-            }
-        }
-        #endif
-
-        #if os(macOS)
-        Button("Show in Finder", systemImage: "folder") {
-            NSWorkspace.shared.activateFileViewerSelecting([recording.url])
-        }
-        #endif
 
         Divider()
 

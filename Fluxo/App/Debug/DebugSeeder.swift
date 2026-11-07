@@ -61,20 +61,21 @@ enum DebugSeeder {
 
         status("Adding favorites, history and recordings…")
         // The first name of each list ends up the most recent.
-        for name in DebugSeedCatalog.favoriteNames.reversed() {
+        for name in DebugSeedCatalog.favoriteNames(seed).reversed() {
             if let item = channel(named: name, in: services.modelContext) {
                 services.library.setFavorite(true, for: item)
             }
         }
-        for name in DebugSeedCatalog.historyNames.reversed() {
+        for name in DebugSeedCatalog.historyNames(seed).reversed() {
             if let item = channel(named: name, in: services.modelContext) {
                 services.library.recordWatch(item)
             }
         }
-        let recordingLogos = DebugSeedCatalog.recordingTitles.reduce(into: [String: String]()) { logos, title in
+        let recordingTitles = DebugSeedCatalog.recordingTitles(seed)
+        let recordingLogos = recordingTitles.reduce(into: [String: String]()) { logos, title in
             logos[title] = channel(named: title, in: services.modelContext)?.logo
         }
-        await DebugRecordingFactory.addRecordings(titled: DebugSeedCatalog.recordingTitles, logos: recordingLogos, to: services.recordings)
+        await DebugRecordingFactory.addRecordings(titled: recordingTitles, logos: recordingLogos, to: services.recordings)
         logger.notice("Seeded the \(seed.rawValue, privacy: .public) library in \(String(describing: clock.now - startedAt), privacy: .public)")
     }
 
