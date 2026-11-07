@@ -22,6 +22,21 @@ import UserNotifications
 @Observable
 final class ReminderCenter {
 
+    /// An opened reminder that no longer exists (`missingReminder`).
+    struct MissingReminder: Identifiable, Equatable {
+        let id = UUID()
+        /// The programme's title from the notification, if it had one.
+        let title: String?
+
+        /// Why nothing plays, for the alert shown with the TV guide.
+        var message: String {
+            if let title {
+                return String(localized: "The reminder for “\(title)” no longer exists. Find the programme in the TV guide.", comment: "Message of the Reminder Not Found alert (the reminder, or the playlist of its channel, was deleted since its notification was delivered); the placeholder is the programme's title.")
+            }
+            return String(localized: "This reminder no longer exists. Find the programme in the TV guide.", comment: "Message of the Reminder Not Found alert, for a notification without the programme's title.")
+        }
+    }
+
     nonisolated static let leadMinutesKey = "guide.reminderLeadMinutes"
     nonisolated static let defaultLeadMinutes = 5
     nonisolated static let leadChoices = [0, 5, 10, 15, 30]
@@ -36,6 +51,10 @@ final class ReminderCenter {
     private(set) var keys: Set<String> = []
     /// Set when a reminder notification was opened; the root view plays it and clears it.
     var channelToOpen: ChannelItem?
+    /// Set when the viewer opened a reminder that no longer exists (deleted, or its playlist deleted, after its
+    /// notification was delivered, which Notification Center keeps): the root view shows the TV guide and says why
+    /// nothing plays, then clears it.
+    var missingReminder: MissingReminder?
     /// Last authorization state seen, for the reminders screen.
     private(set) var authorization: UNAuthorizationStatus = .notDetermined
     /// Set when scheduling failed because notifications are off, so the UI can explain it.
@@ -76,8 +95,8 @@ final class ReminderCenter {
             return
         }
         didStart = true
-        delivery.onOpen = { [weak self] key in
-            self?.open(reminderKey: key)
+        delivery.onOpen = { [weak self] opened in
+            self?.open(opened)
         }
         delivery.onDue = { [weak self] alert in
             self?.enqueueDueReminder(alert)
@@ -165,6 +184,15 @@ final class ReminderCenter {
         keys.remove(key)
     }
 
+    /// A playlist was deleted: its reminders go too (their channel is gone, and a notification must never play the
+    /// stream of a playlist the viewer removed).
+    func cancelReminders(ofPlaylist playlistID: UUID) {
+        let reminders = (try? container.mainContext.fetch(FetchDescriptor<ProgrammeReminder>(predicate: #Predicate { $0.playlistID == playlistID }))) ?? []
+        for key in reminders.map(\.key) {
+            cancel(key: key)
+        }
+    }
+
     func cancelAll() {
         let all = Array(keys)
         delivery.remove(keys: all)
@@ -193,7 +221,7 @@ final class ReminderCenter {
             return
         }
         closeDueReminder()
-        open(reminderKey: alert.key)
+        open(OpenedReminder(key: alert.key, title: alert.title))
     }
 
     /// Closes the reminder the app shows without playing it.
@@ -253,6 +281,40 @@ final class ReminderCenter {
         delivery.remove(keys: [key])
         enqueueDueReminder(ReminderAlert(reminder))
         return true
+    }
+
+    /// Debug harness (`reminder-soon:`): the scheduled reminder `key` fires in `seconds` instead of at its lead time,
+    /// through the platform's delivery (a system notification on iPhone, iPad and Mac, the app's timer on Apple TV).
+    func debugFire(key: String, after seconds: TimeInterval) async -> Bool {
+        guard let reminder = try? container.mainContext.fetch(EPGQueries.reminder(key: key)).first else {
+            return false
+        }
+        reminder.fireDate = Date.now.addingTimeInterval(seconds)
+        save()
+        do {
+            try await delivery.schedule(ReminderAlert(reminder))
+            return true
+        } catch {
+            Self.logger.error("Could not schedule a debug reminder: \(error.localizedDescription, privacy: .public)")
+            return false
+        }
+    }
+
+    /// Debug harness (`reminder-forget:`): deletes the stored reminder `key` but leaves its notification where it is
+    /// (Notification Center keeps a delivered one), as a reminder removed on another device or cleaned up would.
+    func debugForget(key: String) -> Bool {
+        guard let reminder = try? container.mainContext.fetch(EPGQueries.reminder(key: key)).first else {
+            return false
+        }
+        container.mainContext.delete(reminder)
+        save()
+        keys.remove(key)
+        return true
+    }
+
+    /// Debug harness (`reminder-open:`): opens reminder `key` as its notification (or Watch in its alert) does.
+    func debugOpen(key: String, title: String?) {
+        open(OpenedReminder(key: key, title: title))
     }
 
     /// Debug harness: the reminders waiting behind the one on screen.
@@ -322,13 +384,24 @@ final class ReminderCenter {
     }
 
     /// Plays the channel of an opened reminder notification. The notification only carries the reminder key;
-    /// the channel (whose stream URL may embed account credentials) stays in the app's store.
-    private func open(reminderKey key: String) {
-        guard let reminder = try? container.mainContext.fetch(EPGQueries.reminder(key: key)).first else {
+    /// the channel (whose stream URL may embed account credentials) stays in the app's store. Only records what to
+    /// play: the window plays it once it is on screen (on a cold launch from the notification, this runs before).
+    private func open(_ opened: OpenedReminder) {
+        guard let reminder = try? container.mainContext.fetch(EPGQueries.reminder(key: opened.key)).first, playlistExists(reminder.playlistID) else {
             Self.logger.notice("An opened reminder no longer exists")
+            missingReminder = MissingReminder(title: opened.title)
             return
         }
+        missingReminder = nil
         channelToOpen = reminder.channel
+    }
+
+    /// Whether the playlist of a reminder's channel is still in the library (its reminders are cancelled when it is
+    /// deleted, `cancelReminders(ofPlaylist:)`; this covers a deletion that could not finish that).
+    private func playlistExists(_ playlistID: UUID) -> Bool {
+        var descriptor = FetchDescriptor<Playlist>(predicate: #Predicate { $0.uuid == playlistID })
+        descriptor.fetchLimit = 1
+        return ((try? container.mainContext.fetchCount(descriptor)) ?? 0) > 0
     }
 
     /// Reminders of programmes that ended a while ago (their notification fired or was missed). Recently ended

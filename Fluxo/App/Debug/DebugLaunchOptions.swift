@@ -20,6 +20,9 @@
 //                                          the Google Cast SDK.
 //  -FluxoDebugCloud memory|<folder>        iCloud sync with a simulated cloud (`DebugCloud`), in memory or in a folder
 //                                          that several simulators share (implies -FluxoDebugStore memory).
+//  -FluxoDebugNextLaunch "<route>[;…]"     The next launch without harness arguments (one the system makes, e.g. from a
+//                                          tapped notification) opens the same scratch library and runs these routes,
+//                                          once (implies -FluxoDebugStore scratch).
 //
 //  Only the launch arguments are read (the argument domain), never values persisted in the user defaults, so a
 //  normal Debug launch without arguments behaves exactly like the app. -FluxoDebugAppearance and
@@ -57,8 +60,25 @@ struct DebugLaunchOptions {
     var testStreamBaseURL = URL(string: "http://127.0.0.1:18080") ?? URL(fileURLWithPath: "/")
     /// `-FluxoDebugCloud`: "memory" or the path of a folder.
     var cloud: String?
+    /// `-FluxoDebugNextLaunch`: the routes of the next launch without harness arguments (`NextLaunch`).
+    var nextLaunchRoutes: String?
 
-    static let current = DebugLaunchOptions(arguments: UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain))
+    /// The options of this launch: its arguments, or, for a launch without any harness argument that a run armed with
+    /// `-FluxoDebugNextLaunch` (the system launching the app from a notification), the scratch library and the routes
+    /// of that run.
+    static let current: DebugLaunchOptions = {
+        let arguments = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
+        let options = DebugLaunchOptions(arguments: arguments)
+        guard !arguments.keys.contains(where: { $0.hasPrefix("FluxoDebug") }) else {
+            NextLaunch.arm(options.store == .scratch ? options.nextLaunchRoutes : nil)
+            return options
+        }
+        guard let routes = NextLaunch.consume() else {
+            return options
+        }
+        DebugLaunchOptions.logger.notice("Launch armed by -FluxoDebugNextLaunch: scratch library, routes \(routes, privacy: .public)")
+        return DebugLaunchOptions(arguments: ["FluxoDebugStore": "scratch", "FluxoDebugRoute": routes])
+    }()
 
     static let logger = Logger(subsystem: "dev.watermelon.Fluxo", category: "DebugHarness")
 
@@ -101,6 +121,16 @@ struct DebugLaunchOptions {
             routes = value.split(separator: ";").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         }
         cloud = string("FluxoDebugCloud")
+        nextLaunchRoutes = string("FluxoDebugNextLaunch")
+        if nextLaunchRoutes != nil {
+            // The next launch reopens the library of this one: only the scratch library outlives a launch.
+            if store == nil {
+                store = .scratch
+            } else if store != .scratch {
+                Self.logger.error("-FluxoDebugNextLaunch needs -FluxoDebugStore scratch; ignored")
+                nextLaunchRoutes = nil
+            }
+        }
         if seed != nil || importURL != nil || !routes.isEmpty || cloud != nil, store == nil {
             // Seeding, importing and routes always run on an isolated library: some routes write watch history
             // or settings, which must never reach the real ones.
@@ -127,6 +157,33 @@ struct DebugLaunchOptions {
         }
         if let value = string("FluxoDebugTestStreamURL"), let url = URL(string: value) {
             testStreamBaseURL = url
+        }
+    }
+
+    /// The one-shot hand-over of `-FluxoDebugNextLaunch` to the next launch: a file in the app's tmp folder, read and
+    /// deleted by the first launch without harness arguments. Any launch with harness arguments replaces or removes it,
+    /// so a run never leaves a stale one behind for a later, unrelated launch.
+    enum NextLaunch {
+        private static let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FluxoDebug", isDirectory: true)
+            .appendingPathComponent("next-launch", isDirectory: false)
+
+        static func arm(_ routes: String?) {
+            let fileManager = FileManager.default
+            guard let routes else {
+                try? fileManager.removeItem(at: file)
+                return
+            }
+            try? fileManager.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? Data(routes.utf8).write(to: file, options: .atomic)
+        }
+
+        static func consume() -> String? {
+            guard let data = try? Data(contentsOf: file) else {
+                return nil
+            }
+            try? FileManager.default.removeItem(at: file)
+            return String(data: data, encoding: .utf8)
         }
     }
 

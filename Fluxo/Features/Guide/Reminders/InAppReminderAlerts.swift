@@ -17,7 +17,7 @@ typealias PlatformReminderDelivery = InAppReminderAlerts
 @MainActor
 final class InAppReminderAlerts: ReminderDelivery {
 
-    var onOpen: ((String) -> Void)?
+    var onOpen: ((OpenedReminder) -> Void)?
     var onDue: ((ReminderAlert) -> Void)?
 
     let persistsAcrossLaunches = false

@@ -96,6 +96,13 @@ Rules that keep it correct:
   actor, and when a framework that does not mark the closure `Sendable` calls it on another queue, Swift 6 stops the
   app at its actor check (`dispatch_assert_queue`). `.receive(on: DispatchQueue.main)` before `.sink` keeps a Combine
   subscriber on the main queue.
+- **`async` delegate methods that Objective-C calls with a completion handler** run where their isolation says, and
+  Swift calls the system's completion handler from there when the method returns. `@concurrent` or `nonisolated`
+  means a thread of the cooperative pool: wrong for a handler the SDK requires on the main thread. Opening a
+  notification (`userNotificationCenter(_:didReceive:)`) is one: UIKit updates the app's snapshot in its completion
+  handler and aborts the app off the main thread (it crashed Fluxo on every opened reminder, launched from it or not).
+  So `ReminderNotificationDelegate` is a main-actor class, and only its `willPresent` answer, which may run anywhere,
+  is `@concurrent`. `Tools/Simulator/notification-tests.sh` opens real notifications to check it.
 - **`@unchecked Sendable`** only with a comment that says what makes the type safe (a lock, a single owning queue, a
   thread-safe class the SDK does not mark `Sendable`); `nonisolated(unsafe)` and `@preconcurrency` likewise. The app
   has no `@preconcurrency` import.
@@ -1516,7 +1523,10 @@ channels that have a guide, programme details, programme search and reminders.
 - **Reminders** (`ReminderCenter`): a local notification 5 minutes before the start (0 to 30 minutes in
   Settings); tapping it, or its Watch action, plays the channel. The notification carries only the reminder
   key (stream URLs can embed account credentials); the channel is read from the store. The reminders list is in
-  the Guide toolbar.
+  the Guide toolbar. Opening a notification only records what to play (`channelToOpen`); the window plays it once
+  it is on screen, so a cold launch from the notification waits for the UI. A notification whose reminder no longer
+  exists (deleted since, or its programme ended more than 12 hours ago) opens the TV guide with "Reminder Not Found"
+  instead. Deleting a playlist cancels its reminders.
 
 To check the parser, gzip, matching, the SwiftData import and every guide query on real public guides and on a
 synthetic large guide, with timings and peak memory:

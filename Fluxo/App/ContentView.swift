@@ -88,6 +88,17 @@ struct ContentView: View {
                 epg.reminders.channelToOpen = nil
                 PlayChannelAction(library: library, player: viewModel, coordinator: coordinator, windowID: windowID)(channel)
             }
+            .task(id: epg.reminders.missingReminder?.id) {
+                // The opened reminder was deleted meanwhile: the TV guide, under the alert that says so (see
+                // `guideManagement`). A player on screen goes to the mini player and keeps playing.
+                guard epg.reminders.missingReminder != nil, coordinator.preferredMainWindowID ?? windowID == windowID else {
+                    return
+                }
+                if viewModel.isPresented {
+                    viewModel.closePlayer()
+                }
+                navigation.show(.guide)
+            }
             #if os(macOS)
             .onDisappear {
                 // The main window was closed: nothing shows the player any more, unless it is in PiP.

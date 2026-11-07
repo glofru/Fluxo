@@ -149,6 +149,14 @@ struct TVContentView: View {
             epg.reminders.channelToOpen = nil
             PlayChannelAction(library: library, player: viewModel, coordinator: coordinator, windowID: windowID)(channel)
         }
+        .task(id: epg.reminders.missingReminder?.id) {
+            // The opened reminder was deleted meanwhile: the TV guide, under the alert that says so (see
+            // `guideManagement`). Not while the player is up: leaving it would stop playback; the alert shows over it.
+            guard epg.reminders.missingReminder != nil, !viewModel.isPresented else {
+                return
+            }
+            navigation.show(.guide)
+        }
         #if DEBUG
         .debugAutoplay(viewModel)
         .debugSnapshots()

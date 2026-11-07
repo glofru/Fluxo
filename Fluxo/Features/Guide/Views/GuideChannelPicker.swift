@@ -133,7 +133,8 @@ struct GuideChannelPicker: View {
 }
 
 extension View {
-    /// The guide UI any screen can ask for: the matching picker (`EPGStore.matchingTarget`) and refresh errors.
+    /// The guide UI any screen can ask for: the matching picker (`EPGStore.matchingTarget`), refresh errors, and
+    /// "Reminder Not Found" (`ReminderCenter.missingReminder`).
     /// Applied once at the root of the window (on Apple TV, also to the player: see `AppModalsGate`).
     func guideManagement(_ epg: EPGStore) -> some View {
         modifier(GuideManagement(epg: epg))
@@ -153,6 +154,7 @@ private struct GuideManagement: ViewModifier {
         content
             .windowPresentation(.guideMatching, isActive: epg.matchingTarget != nil)
             .windowPresentation(.guideFailure, isActive: epg.failure != nil)
+            .windowPresentation(.missingReminder, isActive: epg.reminders.missingReminder != nil)
             .sheet(item: matchingBinding) { item in
                 GuideChannelPicker(item: item)
             }
@@ -164,6 +166,15 @@ private struct GuideManagement: ViewModifier {
                 Button("OK", role: .cancel) {}
             } message: { failure in
                 Text("\(failure.sourceName): \(failure.message)")
+            }
+            .alert(
+                Text("Reminder Not Found", comment: "Alert title: the viewer opened the notification of a programme reminder that was deleted since (or the playlist of its channel was)."),
+                isPresented: Binding(get: { shows(.missingReminder, isActive: epg.reminders.missingReminder != nil) }, set: { if !$0, gate.isOpen() { epg.reminders.missingReminder = nil } }),
+                presenting: epg.reminders.missingReminder
+            ) { _ in
+                Button("OK", role: .cancel) {}
+            } message: { missing in
+                Text(missing.message)
             }
     }
 

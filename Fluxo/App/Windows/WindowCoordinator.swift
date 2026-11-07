@@ -40,6 +40,8 @@ final class WindowCoordinator {
         case playlistFailure
         case guideMatching
         case guideFailure
+        /// "Reminder Not Found", after a notification of a deleted reminder was opened.
+        case missingReminder
         /// The Cast device picker, opened by the cast buttons of the player and the mini player.
         case castPicker
     }

@@ -1,0 +1,24 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+		C0000000000000000000001 /* NotificationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0000000000000000000002; };
+		C0000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationTests.swift; sourceTree = "<group>"; };
+		C0000000000000000000003 = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NotificationTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C0000000000000000000004 = {isa = PBXGroup; children = (C0000000000000000000002, C0000000000000000000005); sourceTree = "<group>"; };
+		C0000000000000000000005 = {isa = PBXGroup; children = (C0000000000000000000003); name = Products; sourceTree = "<group>"; };
+		C0000000000000000000006 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (C0000000000000000000001); runOnlyForDeploymentPostprocessing = 0; };
+		C0000000000000000000007 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		C0000000000000000000008 = {isa = PBXNativeTarget; buildConfigurationList = C0000000000000000000009; buildPhases = (C0000000000000000000006, C0000000000000000000007); buildRules = (); dependencies = (); name = NotificationTests; productName = NotificationTests; productReference = C0000000000000000000003; productType = "com.apple.product-type.bundle.ui-testing"; };
+		C0000000000000000000009 = {isa = XCConfigurationList; buildConfigurations = (C000000000000000000000A); defaultConfigurationIsVisible = 0; defaultConfigurationName = Debug; };
+		C000000000000000000000A = {isa = XCBuildConfiguration; buildSettings = {
+			CODE_SIGN_STYLE = Automatic; CODE_SIGNING_ALLOWED = NO; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 27.0; PRODUCT_BUNDLE_IDENTIFIER = dev.local.NotificationTests; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; ALWAYS_SEARCH_USER_PATHS = NO; SWIFT_UPCOMING_FEATURE_EXISTENTIAL_ANY = YES; SWIFT_UPCOMING_FEATURE_INFER_ISOLATED_CONFORMANCES = YES; SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES; SWIFT_UPCOMING_FEATURE_NONISOLATED_NONSENDING_BY_DEFAULT = YES; SWIFT_VERSION = 6.0; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Debug; };
+		C000000000000000000000B = {isa = XCConfigurationList; buildConfigurations = (C000000000000000000000C); defaultConfigurationIsVisible = 0; defaultConfigurationName = Debug; };
+		C000000000000000000000C = {isa = XCBuildConfiguration; buildSettings = { SDKROOT = iphoneos; }; name = Debug; };
+		C000000000000000000000D = {isa = PBXProject; buildConfigurationList = C000000000000000000000B; compatibilityVersion = "Xcode 14.0"; mainGroup = C0000000000000000000004; productRefGroup = C0000000000000000000005; projectDirPath = ""; projectRoot = ""; targets = (C0000000000000000000008); };
+	};
+	rootObject = C000000000000000000000D;
+}

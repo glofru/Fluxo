@@ -78559,6 +78559,9 @@
         }
       }
     },
+    "Reminder Not Found" : {
+      "comment" : "Alert title: the viewer opened the notification of a programme reminder that was deleted since (or the playlist of its channel was)."
+    },
     "Reminder Set" : {
       "comment" : "Label (text with an icon) — TV programme details.",
       "localizations" : {
@@ -99124,6 +99127,12 @@
           }
         }
       }
+    },
+    "The reminder for “%@” no longer exists. Find the programme in the TV guide." : {
+      "comment" : "Message of the Reminder Not Found alert (the reminder, or the playlist of its channel, was deleted since its notification was delivered); the placeholder is the programme's title."
+    },
+    "This reminder no longer exists. Find the programme in the TV guide." : {
+      "comment" : "Message of the Reminder Not Found alert, for a notification without the programme's title."
     },
     "TV" : {
       "comment" : "Shortcuts search keyword of Play Channel (television).",

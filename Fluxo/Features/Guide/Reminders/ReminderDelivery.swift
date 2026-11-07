@@ -58,11 +58,20 @@ extension ReminderAlert {
     }
 }
 
+/// A reminder the viewer opened: its notification or the notification's Watch action (iPhone, iPad, Mac), or
+/// Watch in the app's alert (Apple TV).
+struct OpenedReminder: Equatable, Sendable {
+    /// The reminder key (`GuideProgramme.reminderKey`).
+    let key: String
+    /// The programme's title as the notification showed it, to name it when the reminder no longer exists.
+    let title: String?
+}
+
 /// Shows reminders when they are due. Methods are called on the main actor by `ReminderCenter`.
 @MainActor
 protocol ReminderDelivery: AnyObject {
-    /// Called with the key of a reminder the viewer opened (to play its channel).
-    var onOpen: ((String) -> Void)? { get set }
+    /// Called on the main actor with a reminder the viewer opened (to play its channel).
+    var onOpen: ((OpenedReminder) -> Void)? { get set }
     /// Called when a reminder is due and the app shows it itself (in-app alerts only).
     var onDue: ((ReminderAlert) -> Void)? { get set }
     /// Whether scheduled reminders survive the app's process (system notifications do; in-app alerts must be armed

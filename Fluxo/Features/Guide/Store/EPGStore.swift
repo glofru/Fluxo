@@ -227,8 +227,9 @@ final class EPGStore {
         }
     }
 
-    /// A playlist was deleted: its guides go too.
+    /// A playlist was deleted: its guides and its reminders go too.
     func playlistWasDeleted(_ playlistID: UUID) {
+        reminders.cancelReminders(ofPlaylist: playlistID)
         Task { [weak self, importer] in
             _ = try? await importer.syncSources(ofPlaylist: playlistID)
             try? await importer.purgeOrphanedContent()
