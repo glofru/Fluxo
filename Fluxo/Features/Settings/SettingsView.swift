@@ -94,11 +94,14 @@ struct SettingsView: View {
             }
             CloudSyncSettingsSection()
             playbackSection
+                .id("playback")
             TrackSettingsSection()
+                .id("tracks")
             #if !os(macOS)
             pictureInPictureSection
             #endif
             GuideSettingsSection()
+                .id("guide")
             RecommendationSettingsSection()
                 .id("recommendations")
             IntelligenceSettingsSection()
@@ -112,6 +115,7 @@ struct SettingsView: View {
             aboutSection
         }
         .formStyle(.grouped)
+        .toggleStyle(.switchAdaptingToTextSize)
         #if os(macOS)
         .frame(width: 520)
         .frame(minHeight: 480)
@@ -150,7 +154,7 @@ struct SettingsView: View {
 
     private var playbackSection: some View {
         Section {
-            Picker(selection: $timeShiftMinutes) {
+            FormMenuPicker(selection: $timeShiftMinutes, value: Self.minutes(timeShiftMinutes)) {
                 ForEach(PlayerPreferences.timeShiftChoices, id: \.self) { minutes in
                     Text(Self.minutes(minutes)).tag(minutes)
                 }
@@ -158,7 +162,7 @@ struct SettingsView: View {
                 SettingsLabel("Time-shift buffer", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90", tint: Theme.timeShift)
             }
 
-            Picker(selection: $skipBackwardSeconds) {
+            FormMenuPicker(selection: $skipBackwardSeconds, value: String(localized: "\(skipBackwardSeconds) seconds")) {
                 ForEach(PlayerPreferences.skipChoices, id: \.self) { seconds in
                     Text("\(seconds) seconds").tag(seconds)
                 }
@@ -166,7 +170,7 @@ struct SettingsView: View {
                 SettingsLabel("Skip back", systemImage: "gobackward", tint: Theme.accent)
             }
 
-            Picker(selection: $skipForwardSeconds) {
+            FormMenuPicker(selection: $skipForwardSeconds, value: String(localized: "\(skipForwardSeconds) seconds")) {
                 ForEach(PlayerPreferences.skipChoices, id: \.self) { seconds in
                     Text("\(seconds) seconds").tag(seconds)
                 }
@@ -215,7 +219,7 @@ struct SettingsView: View {
                 SettingsLabel("Recordings", systemImage: "record.circle", tint: Theme.recording)
             }
 
-            Picker(selection: $maximumRecordingMinutes) {
+            FormMenuPicker(selection: $maximumRecordingMinutes, value: RecordingLimits.title(minutes: maximumRecordingMinutes)) {
                 ForEach(RecordingLimits.maximumMinutesChoices, id: \.self) { minutes in
                     Text(RecordingLimits.title(minutes: minutes)).tag(minutes)
                 }

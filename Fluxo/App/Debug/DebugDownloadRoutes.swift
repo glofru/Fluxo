@@ -113,7 +113,7 @@ enum DebugDownloadRoutes {
                 throw DebugRouteError.invalidArgument("offline", argument)
             }
         },
-        DebugRoute("settings-section:<icloud|recommendations|intelligence|siri|siri-whats-on|downloads|recordings|about>", "Settings, scrolled to a section (siri-whats-on: to the Siri phrases after the first, whose example names a real channel): the Settings tab on iOS, the Settings window on macOS.") { context, argument in
+        DebugRoute("settings-section:<icloud|playback|tracks|guide|recommendations|intelligence|siri|siri-whats-on|downloads|video-quality|recordings|about>", "Settings, scrolled to a section (siri-whats-on: to the Siri phrases after the first, whose example names a real channel): the Settings tab on iOS, the Settings window on macOS.") { context, argument in
             if let openSettings = context.openSettings {
                 openSettings()
             } else {

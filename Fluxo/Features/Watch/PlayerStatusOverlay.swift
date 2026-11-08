@@ -203,7 +203,8 @@ private struct PlayerMessageButton: View {
 /// A message in the middle of the video (an error, offline, the end) with its buttons, between the top bar and the
 /// controls as they are measured (`PlayerChromeClearance`), never under them. Its title and buttons always show: when
 /// the card does not fit (large text, a phone in landscape), only the message scrolls inside it; where the player is
-/// wide and low, the buttons go next to the text instead of under it.
+/// wide and low, the buttons go next to the text instead of under it. Its text grows up to `.accessibility3`, less
+/// where the free area is short, so that some lines of the message show with the title.
 private struct PlayerMessageCard<Actions: View>: View {
     let systemImage: String
     let tint: Color
@@ -230,6 +231,13 @@ private struct PlayerMessageCard<Actions: View>: View {
     /// growing at `.accessibility1` rather than `.accessibility3`, so its whole title and its buttons fit together.
     private static var lowHeight: CGFloat {
         240
+    }
+
+    /// Below this height of a narrow free area (an iPhone in portrait with the controls showing), the card's text
+    /// stops growing at `.accessibility2`: at `.accessibility3` the title took most of the card, and only a line of
+    /// the message (what went wrong) showed above the buttons.
+    private static var shortHeight: CGFloat {
+        480
     }
 
     @State private var availableSize: CGSize = .zero
@@ -268,6 +276,7 @@ private struct PlayerMessageCard<Actions: View>: View {
     var body: some View {
         let isWide = availableSize.width >= Self.sideBySideWidth
         let isLow = availableSize.height > 0 && availableSize.height < Self.lowHeight
+        let isShort = !isWide && availableSize.height > 0 && availableSize.height < Self.shortHeight
         ViewThatFits(in: .vertical) {
             stackedCard(scrollsText: false, isWide: isWide)
             if isWide {
@@ -289,7 +298,7 @@ private struct PlayerMessageCard<Actions: View>: View {
         .padding(.top, clearance.top + Self.margin)
         .padding(.bottom, clearance.bottom + Self.margin)
         .padding(.horizontal)
-        .dynamicTypeSize(...(isLow ? DynamicTypeSize.accessibility1 : .accessibility3))
+        .dynamicTypeSize(...(isLow ? DynamicTypeSize.accessibility1 : isShort ? .accessibility2 : .accessibility3))
     }
 
     private func stackedCard(scrollsText: Bool, isWide: Bool) -> some View {

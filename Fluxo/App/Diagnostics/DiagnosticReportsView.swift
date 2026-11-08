@@ -84,6 +84,7 @@ struct DiagnosticReportsView: View {
             }
         }
         .formStyle(.grouped)
+        .toggleStyle(.switchAdaptingToTextSize)
         .navigationTitle(Text("Diagnostic Reports", comment: "Title of Settings › About › Diagnostic Reports."))
         .largeTitleAdaptingToTextSize()
         .toolbar {

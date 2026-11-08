@@ -31,6 +31,26 @@ enum TextParts {
         return parts.map { isolated(keepingSeparatorsAttached($0)) }.joined(separator: attachedToPrevious(lineSeparator))
     }
 
+    /// The pieces of `line(_:)` shown one by one (`PartsLine` at the accessibility text sizes): each part with the
+    /// separator at its end ("2021 ·", "2 seasons ·", "10 episodes"), the last one without. Each part is isolated as in
+    /// `line(_:)`, and the space before the separator is a no-break space. The no-break spaces inside a part (from
+    /// `keepingWordsTogether(_:)`) become spaces: the piece moves to the next line whole, and one wider than the whole
+    /// line then wraps between its words rather than inside one. Nil and empty parts are left out.
+    static func flowPieces(_ parts: [String?]) -> [String] {
+        let parts = parts.compactMap { $0 }.filter { !$0.isEmpty }
+        guard parts.count > 1 else {
+            return parts.map(keepingSeparatorsAttached)
+        }
+        var separator = attachedToPrevious(lineSeparator)
+        while separator.last?.isWhitespace == true {
+            separator.removeLast()
+        }
+        return parts.enumerated().map { index, part in
+            let piece = isolated(keepingSeparatorsAttached(part.replacing("\u{00A0}", with: " ")))
+            return index < parts.count - 1 ? piece + separator : piece
+        }
+    }
+
     /// `text` with the space before each separator between words (" | ", " · ", " - ", " – ", " / "…) made a
     /// no-break space, so that text wrapping there leaves the separator at the end of a line ("Serie TV |" then
     /// "Drama") instead of starting the next one with it ("| Drama"). Cheap when there is nothing to change.

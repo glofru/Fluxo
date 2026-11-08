@@ -234,7 +234,7 @@ struct PlayerChannelSchedule: View {
         if let schedule {
             if schedule.programmes.isEmpty {
                 ContentUnavailableView(
-                    "No Programmes",
+                    wrapping: "No Programmes",
                     systemImage: "calendar.badge.exclamationmark",
                     description: Text("The TV guide has nothing scheduled for this channel.")
                 )

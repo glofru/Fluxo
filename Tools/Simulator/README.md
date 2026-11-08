@@ -243,12 +243,16 @@ first that contains the text.
 | `diagnostics[:sample\|clear]` | Settings › About › Diagnostic Reports (iPhone, iPad and Mac; pushed, a sheet in the Mac's Settings window): the MetricKit reports kept on the device (`DiagnosticReportsView`). `sample` first keeps one invented report of each kind (marked as invented, nothing from MetricKit, for screenshots of the list); `clear` deletes the kept reports. A harness run keeps its reports in its isolated folder (`Diagnostics` in the library folder). |
 | `settings-section:about` | Settings, scrolled to About (version, Acknowledgements, Privacy Policy, Source Code, the no-content notice). On iOS the Settings tab, on the Mac the Settings window, for every `settings-section`. |
 | `settings-section:downloads` | Settings, scrolled to its Downloads section. |
+| `settings-section:guide` | Settings, scrolled to TV Guide (its sources, Remind Me). |
 | `settings-section:icloud` | Settings, scrolled to iCloud. |
 | `settings-section:intelligence` | Settings, scrolled to Apple Intelligence (Personal Suggestions and Smart Search). |
+| `settings-section:playback` | Settings, scrolled to Playback (Time-shift buffer, Skip back, Skip forward). |
 | `settings-section:recordings` | Settings, scrolled to Recordings (Stop Recording After). |
 | `settings-section:recommendations` | Settings, scrolled to Recommendations (Hide adult content from recommendations). |
 | `settings-section:siri` | Settings, scrolled to Siri & Shortcuts. |
 | `settings-section:siri-whats-on` | Settings, scrolled to the Siri phrases after the first one, whose example names a real channel (for screenshots). |
+| `settings-section:tracks` | Settings, scrolled to Audio and Subtitles. |
+| `settings-section:video-quality` | Settings, scrolled to Downloads › Video Quality. |
 | `library-log` | Writes the rows of every model, the player's recording state and message, and where the stores are (library and cache, their schema versions, a pending maintenance, backups) to `Status/library.log`. |
 | `downloads-fake-failures` | Adds failed downloads of four movies, one per kind of reason (unexpected stop, expired link, offline, a format that cannot play), for the Couldn't Download section. |
 | `recording-limit:<seconds>` | Recordings stop after this many seconds instead of Settings › Recordings › Stop Recording After (0: the setting again). |

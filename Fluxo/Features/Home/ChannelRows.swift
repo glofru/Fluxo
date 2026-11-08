@@ -83,24 +83,17 @@ struct HomeSectionHeader<Accessory: View>: View {
         // Otherwise the title may still take two lines next to the link: translations of titles such as
         // "Because You Watched" are often longer than the English and would be cut off on small iPhones.
         AdaptiveStack(verticalAlignment: .firstTextBaseline, spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                if let systemImage {
-                    Image(systemName: systemImage)
-                        .foregroundStyle(.tint)
-                        .accessibilityHidden(true)
+            if dynamicTypeSize.prefersStackedLayout {
+                // The symbol above the title, as `DetailLabel`'s: next to them it narrowed their column by its own
+                // large width, so the subtitle was split into syllables ("Apple Intelli-" / "gence ausge-" / "wählt").
+                VStack(alignment: .leading, spacing: 4) {
+                    symbol
+                    texts
                 }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.title3.bold())
-                        .lineLimit(dynamicTypeSize.prefersStackedLayout ? 3 : 2)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityAddTraits(.isHeader)
-                    if let subtitle {
-                        Text(subtitle)
-                            .font(.caption)
-                            .foregroundStyle(Theme.secondaryText)
-                            .lineLimit(dynamicTypeSize.prefersStackedLayout ? 2 : 1)
-                    }
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    symbol
+                    texts
                 }
             }
             if !dynamicTypeSize.prefersStackedLayout {
@@ -110,6 +103,35 @@ struct HomeSectionHeader<Accessory: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, HomeLayout.horizontalMargin)
+    }
+}
+
+private extension HomeSectionHeader {
+    @ViewBuilder
+    var symbol: some View {
+        if let systemImage {
+            Image(systemName: systemImage)
+                .foregroundStyle(.tint)
+                .accessibilityHidden(true)
+        }
+    }
+
+    var texts: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.title3.bold())
+                .lineLimit(dynamicTypeSize.prefersStackedLayout ? 3 : 2)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+            if let subtitle {
+                // Whole at the accessibility sizes (it was cut at two lines there in German).
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(Theme.secondaryText)
+                    .lineLimit(dynamicTypeSize.prefersStackedLayout ? nil : 1)
+                    .fixedSize(horizontal: false, vertical: dynamicTypeSize.prefersStackedLayout)
+            }
+        }
     }
 }
 
@@ -135,15 +157,18 @@ struct SeeAllLink: View {
 
     var body: some View {
         NavigationLink(value: route) {
-            HStack(spacing: 4) {
-                if let count {
-                    Text(count.formatted())
-                        .foregroundStyle(Theme.secondaryText)
+            // The count only when it fits on the link's line: at the accessibility sizes it pushed "See All" onto two
+            // lines ("20 Alle" then "anzeigen"). VoiceOver reads it in any case.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 4) {
+                    if let count {
+                        Text(count.formatted())
+                            .foregroundStyle(Theme.secondaryText)
+                    }
+                    title
                 }
-                Text("See All")
-                Image(systemName: "chevron.forward")
-                    .font(.caption.bold())
-                    .accessibilityHidden(true)
+                .fixedSize()
+                title
             }
             .font(.subheadline)
             .accessibilityButtonShape()
@@ -155,6 +180,15 @@ struct SeeAllLink: View {
         .foregroundStyle(.tint)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityInputLabels([Text("See All")])
+    }
+
+    private var title: some View {
+        HStack(spacing: 4) {
+            Text("See All")
+            Image(systemName: "chevron.forward")
+                .font(.caption.bold())
+                .accessibilityHidden(true)
+        }
     }
 
     private var accessibilityLabel: Text {
@@ -180,15 +214,33 @@ enum HomeLayout {
 }
 
 /// Lazily scrolling horizontal row of cards.
+///
+/// At the accessibility text sizes the row is not lazy: a `LazyHStack` takes the height of its first card and gives
+/// that height to the others, so a longer name than the first card's stopped at one line ("Test Str…", "Sky Sport
+/// M…") whatever its line limit (`CardTextMetrics`). An `HStack` is as tall as its tallest card, and each card there
+/// takes the height its text needs (`fixedSize`): given only the row's height, a card that needed about as much as the
+/// row still cut its last text to one line ("Motor Racing Hi…"). The rows hold a few dozen cards at most (their
+/// `fetchLimit`), so building them all there is cheap.
 struct CardRow<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
         ScrollView(.horizontal) {
-            LazyHStack(alignment: .top, spacing: HomeLayout.rowSpacing) {
-                content()
+            if dynamicTypeSize.prefersStackedLayout {
+                HStack(alignment: .top, spacing: HomeLayout.rowSpacing) {
+                    // (On each card of the row: modifiers of a `ForEach` apply to every view it makes.)
+                    content()
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .scrollTargetLayout()
+            } else {
+                LazyHStack(alignment: .top, spacing: HomeLayout.rowSpacing) {
+                    content()
+                }
+                .scrollTargetLayout()
             }
-            .scrollTargetLayout()
         }
         .contentMargins(.horizontal, HomeLayout.horizontalMargin, for: .scrollContent)
         .scrollTargetBehavior(.viewAligned)
@@ -620,7 +672,7 @@ struct HistoryView: View {
     var body: some View {
         Group {
             if bookmarks.isEmpty {
-                ContentUnavailableView("Nothing Watched Yet", systemImage: "clock", description: Text("Channels, movies and series you play show up here."))
+                ContentUnavailableView(wrapping: "Nothing Watched Yet", systemImage: "clock", description: Text("Channels, movies and series you play show up here."))
             } else {
                 List {
                     ForEach(days, id: \.day) { day in

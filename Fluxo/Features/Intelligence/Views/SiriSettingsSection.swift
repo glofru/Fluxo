@@ -40,15 +40,10 @@ struct SiriSettingsSection: View {
     }
 
     private func phrase(_ text: Text, detail: LocalizedStringKey, systemImage: String) -> some View {
-        Label {
-            VStack(alignment: .leading, spacing: 2) {
-                text
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(Theme.secondaryText)
-            }
-        } icon: {
-            Image(systemName: systemImage)
+        DetailLabel(systemImage: systemImage) {
+            text
+        } detail: {
+            Text(detail)
         }
         .accessibilityElement(children: .combine)
     }

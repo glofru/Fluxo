@@ -140,7 +140,7 @@ struct RecordingsFooter: View {
 struct RecordingsEmptyState: View {
     var body: some View {
         ContentUnavailableView(
-            "No Recordings",
+            wrapping: "No Recordings",
             systemImage: "record.circle",
             description: Text("Use the record button while watching a live channel.")
         )

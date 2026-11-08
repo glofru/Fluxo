@@ -40,11 +40,15 @@ struct GuideSettingsSection: View {
             }
             .disabled(epg.visibleSources(sources).isEmpty || epg.isRefreshing)
 
-            Picker("Remind Me", selection: $leadMinutes) {
+            FormMenuPicker(selection: $leadMinutes, value: leadMinutes == 0
+                ? String(localized: "When It Starts")
+                : String(localized: "\(leadMinutes) Minutes Before")) {
                 ForEach(ReminderCenter.leadChoices, id: \.self) { minutes in
                     Text(minutes == 0 ? "When It Starts" : "\(minutes) Minutes Before")
                         .tag(minutes)
                 }
+            } label: {
+                Text("Remind Me")
             }
             .onChange(of: leadMinutes) {
                 Task {
@@ -232,6 +236,7 @@ struct AddGuideSourceView: View {
 
     @Environment(EPGStore.self) private var epg
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var urlText = ""
     @State private var name = ""
@@ -287,7 +292,7 @@ struct AddGuideSourceView: View {
                     if isSaving {
                         ProgressView()
                     } else {
-                        Button("Add", role: .confirm, action: save)
+                        ConfirmToolbarButton(title: String(localized: "Add"), textSize: dynamicTypeSize, action: save)
                             .disabled(validatedURL == nil)
                     }
                 }

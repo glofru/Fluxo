@@ -23,7 +23,7 @@ struct TrackSettingsSection: View {
 
     var body: some View {
         Section {
-            Picker(selection: audioSelection) {
+            FormMenuPicker(selection: audioSelection, value: audioValue) {
                 Text("Automatic").tag("")
                 ForEach(Self.languages(including: audioLanguage), id: \.self) { code in
                     Text(TrackPreferences.displayName(forLanguage: code)).tag(code)
@@ -32,7 +32,7 @@ struct TrackSettingsSection: View {
                 SettingsLabel("Audio language", systemImage: "waveform", tint: Theme.accent)
             }
 
-            Picker(selection: subtitleSelection) {
+            FormMenuPicker(selection: subtitleSelection, value: subtitleValue) {
                 Text("Automatic").tag(SubtitleSetting.automatic)
                 Text("Off").tag(SubtitleSetting.off)
                 ForEach(Self.languages(including: subtitleLanguage), id: \.self) { code in
@@ -54,6 +54,24 @@ struct TrackSettingsSection: View {
         #else
         String(localized: "Channels, movies and episodes start with these languages when they have them; a track you choose in the player is remembered. Automatic follows your preferred languages and Settings › Accessibility › Subtitles & Captioning, which also sets the subtitle style.", comment: "Footer of the Audio and Subtitles settings on iPhone and iPad. 'Settings', 'Accessibility' and 'Subtitles & Captioning' must be the names iOS shows in your language; › separates the steps of the path, as in the app's other paths.")
         #endif
+    }
+
+    /// The title of the chosen audio language, as the menu lists it.
+    private var audioValue: String {
+        let code = audioSelection.wrappedValue
+        return code.isEmpty ? String(localized: "Automatic") : TrackPreferences.displayName(forLanguage: code)
+    }
+
+    /// The title of the chosen subtitle setting, as the menu lists it.
+    private var subtitleValue: String {
+        switch subtitleSelection.wrappedValue {
+        case .automatic:
+            return String(localized: "Automatic")
+        case .off:
+            return String(localized: "Off")
+        case .language(let code):
+            return TrackPreferences.displayName(forLanguage: code)
+        }
     }
 
     private var audioSelection: Binding<String> {

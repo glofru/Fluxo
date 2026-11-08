@@ -33,6 +33,9 @@ struct ProgrammeDetailView: View {
     #if os(iOS)
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     #endif
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// The channel's logo grows with the name under it at the accessibility text sizes (up to twice its size).
+    @ScaledMetric(relativeTo: .subheadline) private var logoScale: CGFloat = 1
     @State private var upNext: [GuideProgramme] = []
     @State private var reminderToggles = 0
 
@@ -148,8 +151,9 @@ struct ProgrammeDetailView: View {
                     .font(.headline)
                     .foregroundStyle(Theme.secondaryText)
             }
-            HStack(spacing: 10) {
-                LogoImage(source: channel.logo, size: CGSize(width: 40, height: 26)) { _ in
+            // The logo above at the accessibility text sizes: next to it the channel's name started after a gap.
+            AdaptiveStack(spacing: 10) {
+                LogoImage(source: channel.logo, size: logoSize) { _ in
                     Image(systemName: "tv")
                         .foregroundStyle(Theme.secondaryText)
                 }
@@ -157,7 +161,11 @@ struct ProgrammeDetailView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(channel.displayName)
                         .font(.subheadline.weight(.semibold))
-                    Text(TextParts.line([GuideFormat.dayAndTime(programme), GuideFormat.duration(programme)]))
+                    // At the accessibility text sizes the day, the time range and the length are pieces that move to
+                    // the next line whole: one text broke inside the range there ("Heute, 6:45–" then "8:15").
+                    PartsLine(dynamicTypeSize.prefersStackedLayout
+                        ? [GuideFormat.day(programme.start), GuideFormat.timeRange(programme), GuideFormat.duration(programme)]
+                        : [GuideFormat.dayAndTime(programme), GuideFormat.duration(programme)])
                         .font(.subheadline)
                         .foregroundStyle(Theme.secondaryText)
                         .monospacedDigit()
@@ -181,35 +189,47 @@ struct ProgrammeDetailView: View {
         }
     }
 
+    /// 40 × 26 next to the channel's name; above it at the accessibility text sizes, larger, so it is not a speck
+    /// over a name in large type.
+    private var logoSize: CGSize {
+        let scale = dynamicTypeSize.prefersStackedLayout ? min(2, max(1, logoScale)) : 1
+        return CGSize(width: (40 * scale).rounded(), height: (26 * scale).rounded())
+    }
+
     private func actions(now: Date) -> some View {
         let isReminded = epg.reminders.isScheduled(programme)
         let isRecording = programme.isOnAir(at: now) && playChannel.isRecording(channel)
         let offersRecording = isRecording || (programme.isOnAir(at: now) && channel.isRecordable)
+        // Side by side while every title fits on one line; otherwise one under the other, each the whole width
+        // (long translations, the accessibility text sizes). A title is never wrapped (a word that does not fit
+        // would be hyphenated into a tall pill) nor cut: it grows up to AX3, then shrinks to fit the width if
+        // needed, and a long press shows it in the Large Content Viewer (as `HeroActions`).
         return ViewThatFits(in: .horizontal) {
             HStack(spacing: 12) {
-                watchButton(now: now)
+                watchButton(now: now, fillsWidth: false)
                 if offersRecording {
-                    recordButton(isRecording: isRecording)
+                    recordButton(isRecording: isRecording, fillsWidth: false)
                 }
                 if ReminderCenter.canRemind(programme, now: now) {
-                    reminderButton(isReminded: isReminded)
+                    reminderButton(isReminded: isReminded, fillsWidth: false)
                 }
             }
             VStack(alignment: .leading, spacing: 10) {
-                watchButton(now: now)
+                watchButton(now: now, fillsWidth: true)
                 if offersRecording {
-                    recordButton(isRecording: isRecording)
+                    recordButton(isRecording: isRecording, fillsWidth: true)
                 }
                 if ReminderCenter.canRemind(programme, now: now) {
-                    reminderButton(isReminded: isReminded)
+                    reminderButton(isReminded: isReminded, fillsWidth: true)
                 }
             }
         }
         .controlSize(.large)
+        .dynamicTypeSize(...DynamicTypeSize.accessibility3)
     }
 
     /// Record plays the channel and records it (the player shows REC); Stop Recording saves the recording.
-    private func recordButton(isRecording: Bool) -> some View {
+    private func recordButton(isRecording: Bool, fillsWidth: Bool) -> some View {
         Button {
             if isRecording {
                 playChannel.stopRecording()
@@ -220,31 +240,37 @@ struct ProgrammeDetailView: View {
         } label: {
             Label {
                 Text(isRecording ? "Stop Recording" : "Record")
-                    .lineLimit(1)
             } icon: {
                 Image(systemName: isRecording ? "stop.circle.fill" : "record.circle")
                     .foregroundStyle(Theme.recording)
                     .contentTransition(.symbolEffect(.replace))
             }
+            .modifier(ActionTitleFit(fillsWidth: fillsWidth))
         }
         .buttonStyle(.glass)
+        .largeContentControl(
+            isRecording ? String(localized: "Stop Recording") : String(localized: "Record"),
+            systemImage: isRecording ? "stop.circle.fill" : "record.circle"
+        )
         .accessibilityHint(isRecording ? "Stops recording and saves it in Recordings" : "Plays the channel and records it to Recordings")
     }
 
-    private func watchButton(now: Date) -> some View {
-        Button {
+    private func watchButton(now: Date, fillsWidth: Bool) -> some View {
+        let title = programme.isOnAir(at: now) ? String(localized: "Watch Now") : String(localized: "Watch \(channel.displayName)")
+        return Button {
             close()
             playChannel(channel)
         } label: {
-            Label(programme.isOnAir(at: now) ? "Watch Now" : "Watch \(channel.displayName)", systemImage: "play.fill")
-                .lineLimit(1)
+            Label(title, systemImage: "play.fill")
+                .modifier(ActionTitleFit(fillsWidth: fillsWidth))
         }
         .buttonStyle(.glassProminent)
+        .largeContentControl(title, systemImage: "play.fill")
         .tint(Theme.accentFill)
         .disabled(channel.url == nil)
     }
 
-    private func reminderButton(isReminded: Bool) -> some View {
+    private func reminderButton(isReminded: Bool, fillsWidth: Bool) -> some View {
         Button {
             Task {
                 await epg.reminders.toggle(programme, on: channel)
@@ -253,9 +279,13 @@ struct ProgrammeDetailView: View {
         } label: {
             Label(isReminded ? "Reminder Set" : "Remind Me", systemImage: isReminded ? "bell.fill" : "bell")
                 .contentTransition(.symbolEffect(.replace))
-                .lineLimit(1)
+                .modifier(ActionTitleFit(fillsWidth: fillsWidth))
         }
         .buttonStyle(.glass)
+        .largeContentControl(
+            isReminded ? String(localized: "Reminder Set") : String(localized: "Remind Me"),
+            systemImage: isReminded ? "bell.fill" : "bell"
+        )
         .accessibilityHint(isReminded ? "Cancels the reminder" : "Sends a notification \(ReminderCenter.leadMinutes) minutes before it starts")
     }
 
@@ -343,4 +373,18 @@ struct ProgrammeDetailView: View {
             ProgrammeDetailView(programme: programme, channel: channel, ref: nil)
         }
         .fluxoPreviewEnvironment()
+}
+
+/// The title of an action of the sheet: one line, at its full size on the shared row (used only when every title fits
+/// there); on a button the whole width, smaller rather than cut.
+private struct ActionTitleFit: ViewModifier {
+    let fillsWidth: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .lineLimit(1)
+            .minimumScaleFactor(fillsWidth ? 0.5 : 1)
+            .fixedSize(horizontal: !fillsWidth, vertical: false)
+            .frame(maxWidth: fillsWidth ? .infinity : nil)
+    }
 }

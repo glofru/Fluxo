@@ -180,10 +180,13 @@ private struct LibraryRowLabel: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                 if let subtitle {
+                    // Whole at the accessibility sizes: the hint of an empty list ("Mark a channel with the star…")
+                    // was cut after three lines in German.
                     Text(subtitle)
                         .font(.caption)
                         .foregroundStyle(Theme.secondaryText)
-                        .lineLimit(dynamicTypeSize.prefersStackedLayout ? 3 : 2)
+                        .lineLimit(dynamicTypeSize.prefersStackedLayout ? nil : 2)
+                        .fixedSize(horizontal: false, vertical: dynamicTypeSize.prefersStackedLayout)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

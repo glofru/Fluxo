@@ -52,7 +52,7 @@ struct RemindersView: View {
         // Reminders of programmes that ended stay in the store for a while (see `ReminderCenter`), not here.
         if !reminders.contains(where: { $0.stop > .now }) {
             ContentUnavailableView(
-                "No Reminders",
+                wrapping: "No Reminders",
                 systemImage: "bell",
                 description: Text("Open a programme in the guide and choose Remind Me to get a notification before it starts.")
             )

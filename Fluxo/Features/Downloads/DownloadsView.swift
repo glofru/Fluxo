@@ -237,7 +237,7 @@ struct DownloadedSeriesView: View {
 struct DownloadsEmptyState: View {
     var body: some View {
         ContentUnavailableView {
-            Label(String(localized: "No Downloads", comment: "Empty state of the downloads list."), systemImage: "arrow.down.circle")
+            EmptyStateLabel(verbatim: String(localized: "No Downloads", comment: "Empty state of the downloads list."), systemImage: "arrow.down.circle")
         } description: {
             Text("Movies and episodes you download play without an internet connection. Use Download in their menu, or on a series page.", comment: "Empty state of the downloads list: how to download.")
         }
@@ -704,16 +704,12 @@ struct OfflineHomeSection: View {
                 .padding(.horizontal, HomeLayout.horizontalMargin)
 
                 if let downloads, !groups.isEmpty {
-                    ScrollView(.horizontal) {
-                        LazyHStack(alignment: .top, spacing: 14) {
-                            ForEach(groups) { group in
-                                card(for: group, downloads: downloads)
-                            }
+                    // (A row of Home's: tall enough for the longest name at the accessibility text sizes.)
+                    CardRow {
+                        ForEach(groups) { group in
+                            card(for: group, downloads: downloads)
                         }
-                        .scrollTargetLayout()
                     }
-                    .contentMargins(.horizontal, HomeLayout.horizontalMargin, for: .scrollContent)
-                    .scrollIndicators(.hidden)
                     .accessibilityElement(children: .contain)
                     .accessibilityLabel(Text(DownloadText.downloads))
                 }

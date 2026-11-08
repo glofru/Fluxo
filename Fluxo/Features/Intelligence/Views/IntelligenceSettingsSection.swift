@@ -15,15 +15,10 @@ struct IntelligenceSettingsSection: View {
         if let intelligence {
             Section {
                 Toggle(isOn: binding(intelligence)) {
-                    Label {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Personal Suggestions and Smart Search")
-                            Text("For You, For You Tonight, natural-language search and programme summaries.")
-                                .font(.caption)
-                                .foregroundStyle(Theme.secondaryText)
-                        }
-                    } icon: {
-                        Image(systemName: "sparkles")
+                    DetailLabel(systemImage: "sparkles") {
+                        Text("Personal Suggestions and Smart Search")
+                    } detail: {
+                        Text("For You, For You Tonight, natural-language search and programme summaries.")
                     }
                 }
                 .disabled(!systemIsAvailable)

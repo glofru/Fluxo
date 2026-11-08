@@ -270,7 +270,7 @@ struct FavoritesView: View {
 
     private var emptyState: some View {
         ContentUnavailableView {
-            Label("No Favorites Yet", systemImage: "star")
+            EmptyStateLabel("No Favorites Yet", systemImage: "star")
                 .symbolRenderingMode(.multicolor)
         } description: {
             Text("Swipe a channel, or touch and hold it, and choose Favorite. Your favorites show up here with what they are showing now.")

@@ -68,7 +68,9 @@ struct PersonalizingIndicator: View {
 
 
     var body: some View {
-        HStack(spacing: 4) {
+        // The symbol above the text at the accessibility text sizes: next to it "Personalisieren…" did not fit and
+        // its "…" went onto a line of its own.
+        AdaptiveStack(spacing: 4) {
             Image(systemName: "sparkles")
                 .ambientSymbolEffect(.pulse)
             Text("Personalizing…")

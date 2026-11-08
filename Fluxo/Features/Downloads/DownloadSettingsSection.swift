@@ -23,11 +23,11 @@ struct DownloadSettingsSection: View {
         Section {
             if let downloads {
                 LabeledContent {
-                    Text(TextParts.line([
+                    PartsLine([
                         String(localized: "\(downloads.completedCount) downloads", comment: "How many movies and episodes are downloaded, followed by their size (the footer of the downloads list, also with the free space, and Settings)."),
                         DownloadText.bytes(downloads.totalBytes),
-                    ]))
-                        .monospacedDigit()
+                    ])
+                    .monospacedDigit()
                 } label: {
                     SettingsLabel(localized: DownloadText.downloads, systemImage: "arrow.down.circle", tint: Theme.accentFill)
                 }
@@ -42,7 +42,7 @@ struct DownloadSettingsSection: View {
             }
             #endif
 
-            Picker(selection: $qualityRawValue) {
+            FormMenuPicker(selection: $qualityRawValue, value: (DownloadQuality(rawValue: qualityRawValue) ?? DownloadPreferences.defaultQuality).title) {
                 ForEach(DownloadQuality.allCases) { quality in
                     Text(quality.title)
                         .tag(quality.rawValue)
@@ -50,6 +50,7 @@ struct DownloadSettingsSection: View {
             } label: {
                 SettingsLabel(localized: String(localized: "Video Quality", comment: "Settings picker: the quality of downloaded videos."), systemImage: "sparkles.tv", tint: Theme.cyan)
             }
+            .id("video-quality")
 
             Toggle(isOn: $deletesWatched) {
                 SettingsLabel(localized: String(localized: "Delete Watched Downloads", comment: "Settings toggle: downloads played to the end are deleted automatically."), systemImage: "eye.slash", tint: .gray)

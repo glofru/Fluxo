@@ -361,15 +361,18 @@ struct PlayerProgrammeInfo: View {
     private func content(_ nowNext: NowNext, now: Date) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             if let current = nowNext.current, current.isOnAir(at: now) {
-                HStack(spacing: 6) {
-                    Text(current.title)
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                    Text(GuideFormat.timeRange(current))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(Theme.secondaryText)
-                        .lineLimit(1)
-                        .layoutPriority(-1)
+                // The time range only when it fits whole next to the whole title: squeezed, it was cut to a
+                // fragment ("5" of "5:25–6:25") at large text sizes. VoiceOver reads the end time in any case.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 6) {
+                        currentTitle(current)
+                            .fixedSize()
+                        Text(GuideFormat.timeRange(current))
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(Theme.secondaryText)
+                            .fixedSize()
+                    }
+                    currentTitle(current)
                 }
                 ProgrammeProgressBar(progress: current.progress(at: now), tint: .white, height: 3)
                     .frame(maxWidth: 220)
@@ -383,6 +386,12 @@ struct PlayerProgrammeInfo: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel(nowNext, now: now))
+    }
+
+    private func currentTitle(_ current: GuideProgramme) -> some View {
+        Text(current.title)
+            .font(.subheadline.weight(.semibold))
+            .lineLimit(1)
     }
 
     private func accessibilityLabel(_ nowNext: NowNext, now: Date) -> String {

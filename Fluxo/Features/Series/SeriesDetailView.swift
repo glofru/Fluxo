@@ -79,7 +79,7 @@ struct SeriesDetailView: View {
                     }
                 } else if isLoaded {
                     ContentUnavailableView(
-                        "Series Not Found",
+                        wrapping: "Series Not Found",
                         systemImage: "square.stack",
                         description: Text("The playlist no longer lists this series. Refresh the playlist or search for it.")
                     )
@@ -165,11 +165,10 @@ private struct SeriesHero: View {
                         .lineLimit(dynamicTypeSize.prefersStackedLayout ? 5 : 3)
                         .minimumScaleFactor(0.85)
                         .accessibilityAddTraits(.isHeader)
-                    if let meta = metaLine {
-                        Text(meta)
+                    if !metaParts.isEmpty {
+                        PartsLine(metaParts, lineLimit: 2)
                             .font(.subheadline)
                             .foregroundStyle(Theme.secondaryText)
-                            .lineLimit(dynamicTypeSize.prefersStackedLayout ? 4 : 2)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -238,12 +237,13 @@ private struct SeriesHero: View {
     }
 
     /// "2008 · 5 seasons · 62 episodes · Drama" (the category without a "Serie TV |" in front: the page says Series
-    /// above).
-    private var metaLine: String? {
+    /// above). A line that wraps never separates a number from its noun; at the accessibility sizes each part is a
+    /// piece of its own (`PartsLine`).
+    private var metaParts: [String] {
         let year = series.year.map { $0.formatted(.number.grouping(.never)) }
         let category = ChannelContentKind.series.category(fromGroupName: series.groupName)
         let group = category.isEmpty ? nil : category
-        return TextParts.line([year, series.countsLine, group]).nilIfEmpty
+        return ([year] + series.countParts.map(TextParts.keepingWordsTogether) + [group]).compactMap { $0 }
     }
 
     /// Under the button: what it plays ("S1 E3 · Pilot · 20 min left"), when that says more than the button; and

@@ -123,7 +123,7 @@ struct CategoryDetailView: View {
             .overlay {
                 if let request, model.isLoaded, model.items.isEmpty {
                     if request.term.isEmpty {
-                        ContentUnavailableView("No Channels", systemImage: "tv.slash", description: Text("This category is empty."))
+                        ContentUnavailableView(wrapping: "No Channels", systemImage: "tv.slash", description: Text("This category is empty."))
                     } else {
                         ContentUnavailableView.search(text: request.term)
                     }

@@ -235,14 +235,14 @@ struct GuideView: View {
         let term = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         let sources = epg.visibleSources(sources)
         if playlists.isEmpty {
-            ContentUnavailableView("No Playlists", systemImage: "calendar.day.timeline.left", description: Text("Add a playlist on the Home screen. Its TV guide shows up here."))
+            ContentUnavailableView(wrapping: "No Playlists", systemImage: "calendar.day.timeline.left", description: Text("Add a playlist on the Home screen. Its TV guide shows up here."))
         } else if sources.isEmpty {
             GuideNoSourcesView {
                 showsAddSource = true
             }
         } else if !sources.contains(where: \.isEnabled) {
             ContentUnavailableView {
-                Label("TV Guide Is Off", systemImage: "calendar.badge.minus")
+                EmptyStateLabel("TV Guide Is Off", systemImage: "calendar.badge.minus")
             } description: {
                 Text("All guide sources are turned off. Turn one on to see what's on.")
             } actions: {
@@ -304,7 +304,7 @@ struct GuideView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ContentUnavailableView {
-                Label("No Guide for These Channels", systemImage: "calendar.badge.exclamationmark")
+                EmptyStateLabel("No Guide for These Channels", systemImage: "calendar.badge.exclamationmark")
             } description: {
                 Text(noChannelsDescription)
             } actions: {
@@ -549,7 +549,7 @@ private struct GuideNoSourcesView: View {
 
     var body: some View {
         ContentUnavailableView {
-            Label("No TV Guide Yet", systemImage: "calendar.day.timeline.left")
+            EmptyStateLabel("No TV Guide Yet", systemImage: "calendar.day.timeline.left")
         } description: {
             Text("Fluxo loads the guide your playlist provides (url-tvg). Your playlists don't list one. Add the address of an XMLTV guide, such as the one from your provider or a free guide for your country.")
         } actions: {

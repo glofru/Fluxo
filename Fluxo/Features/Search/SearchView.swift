@@ -129,10 +129,10 @@ struct SearchView: View {
     @ViewBuilder
     private func content(request: ChannelSearch.Request, libraryScope: LibraryScope) -> some View {
         if playlists.isEmpty {
-            ContentUnavailableView("No Playlists", systemImage: "magnifyingglass", description: Text("Add a playlist on the Home screen to search its channels."))
+            ContentUnavailableView(wrapping: "No Playlists", systemImage: "magnifyingglass", description: Text("Add a playlist on the Home screen to search its channels."))
         } else if request.term.isEmpty {
             ContentUnavailableView {
-                Label("Search Your Playlists", systemImage: "sparkle.magnifyingglass")
+                EmptyStateLabel("Search Your Playlists", systemImage: "sparkle.magnifyingglass")
             } description: {
                 Text(scopeDescription(libraryScope))
             }

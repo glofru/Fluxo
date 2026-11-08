@@ -148,6 +148,223 @@ private struct AdaptiveTitleDisplayMode: ViewModifier {
     }
 }
 
+extension ToggleStyle where Self == AdaptiveSwitchToggleStyle {
+    /// A switch next to its label, or under it at the accessibility text sizes (iOS), so the label keeps the whole
+    /// width of the row: next to the switch a long word gets a narrow column and is split ("Per-sönli-che") even
+    /// where it fits the row. Only for switches of forms and lists: a toggle in a menu keeps the menu's own style.
+    static var switchAdaptingToTextSize: AdaptiveSwitchToggleStyle { AdaptiveSwitchToggleStyle() }
+}
+
+struct AdaptiveSwitchToggleStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        AdaptiveSwitchToggle(configuration: configuration)
+    }
+}
+
+private struct AdaptiveSwitchToggle: View {
+    let configuration: ToggleStyleConfiguration
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        #if os(iOS)
+        if dynamicTypeSize.prefersStackedLayout {
+            VStack(alignment: .leading, spacing: 10) {
+                configuration.label
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    // VoiceOver reads it as the switch's label, once.
+                    .accessibilityHidden(true)
+                Toggle(isOn: configuration.$isOn) {
+                    configuration.label
+                }
+                .toggleStyle(.switch)
+                .labelsHidden()
+            }
+        } else {
+            // The style the toggle would have without this one (a switch in a form).
+            Toggle(configuration)
+        }
+        #else
+        Toggle(configuration)
+        #endif
+    }
+}
+
+/// A row's label of a title and a smaller detail under it, with an icon in front; at the accessibility text sizes
+/// (iOS) the icon goes above them, as `SettingsLabel`'s does: next to a label of two texts, the list indents the first
+/// line of each, so the detail started halfway across the row.
+struct DetailLabel<Title: View, Detail: View>: View {
+    let systemImage: String
+    @ViewBuilder var title: () -> Title
+    @ViewBuilder var detail: () -> Detail
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        #if os(iOS)
+        if dynamicTypeSize.prefersStackedLayout {
+            VStack(alignment: .leading, spacing: 8) {
+                Image(systemName: systemImage)
+                    .foregroundStyle(.tint)
+                    .accessibilityHidden(true)
+                texts
+            }
+        } else {
+            label
+        }
+        #else
+        label
+        #endif
+    }
+
+    private var label: some View {
+        Label {
+            texts
+        } icon: {
+            Image(systemName: systemImage)
+        }
+    }
+
+    private var texts: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            title()
+            detail()
+                .font(.caption)
+                .foregroundStyle(Theme.secondaryText)
+        }
+    }
+}
+
+/// The menu picker of a form row (Settings › Video Quality, Skip back…). At the accessibility text sizes (iOS) it is
+/// a menu with a label of its own, the row's label over the chosen value, which wraps: the system's menu picker puts
+/// the value on one line and cuts it in the middle ("Hoc…80p)" for "Hoch (1080p)", "15 Minu…orher"). The menu lists
+/// the same choices, with the chosen one checked. `value` is the title of the chosen choice, as the menu lists it.
+struct FormMenuPicker<SelectionValue: Hashable, Content: View, Label: View>: View {
+    @Binding var selection: SelectionValue
+    let value: String
+    @ViewBuilder var content: () -> Content
+    @ViewBuilder var label: () -> Label
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        #if os(iOS)
+        if dynamicTypeSize.prefersStackedLayout {
+            Menu {
+                picker
+            } label: {
+                VStack(alignment: .leading, spacing: 8) {
+                    // The row's label as in the other rows; a menu's label is drawn in the tint otherwise.
+                    label()
+                        .foregroundStyle(Color.primary)
+                    // The chevron next to the value where both fit on a line; else under it, so the value has the
+                    // whole width and wraps between its words ("Automa-tisch" next to the chevron).
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text(value)
+                                .fixedSize()
+                            chevron
+                        }
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(value)
+                                .fixedSize(horizontal: false, vertical: true)
+                            chevron
+                        }
+                    }
+                    .foregroundStyle(.tint)
+                    // Read as the menu's value.
+                    .accessibilityHidden(true)
+                }
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(.rect)
+            }
+            .accessibilityValue(Text(value))
+        } else {
+            picker
+        }
+        #else
+        picker
+        #endif
+    }
+
+    private var picker: some View {
+        Picker(selection: $selection, content: content, label: label)
+    }
+
+    private var chevron: some View {
+        Image(systemName: "chevron.up.chevron.down")
+            .font(.subheadline.weight(.semibold))
+    }
+}
+
+/// The confirm button of a sheet's bar ("Add", "Save"): its title, or the system's checkmark at the accessibility
+/// text sizes (iOS), where a title next to the close button leaves the sheet's title a few letters ("Playlist
+/// hinzu…"). The checkmark is read with the title by VoiceOver and shows it in the Large Content Viewer.
+///
+/// `textSize` is the text size of the sheet, read outside the toolbar: the bar caps the size of its own content,
+/// so inside it the environment never reaches the accessibility sizes.
+struct ConfirmToolbarButton: View {
+    let title: String
+    let textSize: DynamicTypeSize
+    let action: () -> Void
+
+    var body: some View {
+        #if os(iOS)
+        if textSize.prefersStackedLayout {
+            Button(role: .confirm, action: action)
+                .accessibilityLabel(Text(title))
+                .largeContentControl(title, systemImage: "checkmark")
+        } else {
+            Button(title, role: .confirm, action: action)
+        }
+        #else
+        Button(title, role: .confirm, action: action)
+        #endif
+    }
+}
+
+/// The title of an empty state (`ContentUnavailableView`'s label) that wraps onto as many lines as it needs. The
+/// view's own title can end in "…" at the accessibility text sizes in long languages ("Playlists dur…" in German)
+/// while there is room for another line.
+struct EmptyStateLabel: View {
+    let title: Text
+    let systemImage: String
+
+    init(_ title: LocalizedStringKey, systemImage: String) {
+        self.title = Text(title)
+        self.systemImage = systemImage
+    }
+
+    init(verbatim title: String, systemImage: String) {
+        self.title = Text(verbatim: title)
+        self.systemImage = systemImage
+    }
+
+    var body: some View {
+        Label {
+            title
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: systemImage)
+        }
+    }
+}
+
+extension ContentUnavailableView where Label == EmptyStateLabel, Description == Text, Actions == EmptyView {
+    /// An empty state whose title wraps onto as many lines as it needs (`EmptyStateLabel`), in place of
+    /// `ContentUnavailableView(_:systemImage:description:)`.
+    @MainActor
+    init(wrapping title: LocalizedStringKey, systemImage: String, description: Text) {
+        self.init {
+            EmptyStateLabel(title, systemImage: systemImage)
+        } description: {
+            description
+        }
+    }
+}
+
 // MARK: - Large Content Viewer, Smart Invert, Button Shapes
 
 extension View {

@@ -247,10 +247,11 @@ private struct NextEpisodeEndCard: View {
                 // translations, large text): the titles are never wrapped into syllables.
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 10) {
-                        buttons
+                        buttons(fillsWidth: false)
                     }
+                    // Each the card's width, so Play's title gets the whole line (it was cut at "Play in…").
                     VStack(spacing: 10) {
-                        buttons
+                        buttons(fillsWidth: true)
                     }
                 }
             }
@@ -266,7 +267,7 @@ private struct NextEpisodeEndCard: View {
     }
 
     @ViewBuilder
-    private var buttons: some View {
+    private func buttons(fillsWidth: Bool) -> some View {
         Button(action: play) {
             Label {
                 if autoplays {
@@ -275,26 +276,32 @@ private struct NextEpisodeEndCard: View {
                         .contentTransition(.numericText(countsDown: true))
                         // One line, a little smaller if needed, rather than broken over two inside the button.
                         .lineLimit(1)
-                        .minimumScaleFactor(0.75)
+                        .minimumScaleFactor(fillsWidth ? 0.5 : 0.75)
                 } else {
                     Text("Play Next Episode")
                         .lineLimit(1)
-                        .minimumScaleFactor(0.75)
+                        .minimumScaleFactor(fillsWidth ? 0.5 : 0.75)
                 }
             } icon: {
                 Image(systemName: "play.fill")
             }
             .font(.headline)
             .padding(.horizontal, 6)
+            .frame(maxWidth: fillsWidth ? .infinity : nil)
         }
         .buttonStyle(.glassProminent)
         .tint(Theme.accentFill)
 
         if autoplays {
-            Button("Cancel", action: cancel)
-                .buttonStyle(.glass)
-                // Glass buttons draw their label in the tint (the app's accent otherwise).
-                .tint(.white)
+            Button(action: cancel) {
+                Text("Cancel")
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+                    .frame(maxWidth: fillsWidth ? .infinity : nil)
+            }
+            .buttonStyle(.glass)
+            // Glass buttons draw their label in the tint (the app's accent otherwise).
+            .tint(.white)
         } else {
             Button("Play Again", systemImage: "arrow.counterclockwise", action: playAgain)
                 .labelStyle(.iconOnly)

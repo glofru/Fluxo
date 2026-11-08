@@ -191,7 +191,7 @@ private struct PlayerCompanionChannelList: View {
                         await load(item)
                     }
             } else {
-                ContentUnavailableView("Not in a Playlist", systemImage: "list.bullet", description: Text("Channels of the same category show here when you play one from a playlist."))
+                ContentUnavailableView(wrapping: "Not in a Playlist", systemImage: "list.bullet", description: Text("Channels of the same category show here when you play one from a playlist."))
             }
         }
     }

@@ -92,6 +92,7 @@ struct AddPlaylistView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Environment(PlaylistImportCenter.self) private var importCenter
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     #if os(tvOS)
     @Environment(CloudSync.self) private var cloudSync: CloudSync?
     #endif
@@ -134,7 +135,9 @@ struct AddPlaylistView: View {
                         focusedField = .url
                     }
 
-                HStack(spacing: 8) {
+                // The buttons under the field at the accessibility text sizes: next to them the field is a few
+                // characters wide.
+                AdaptiveStack(spacing: 8) {
                     TextField("URL", text: $urlText, prompt: Text(verbatim: "https://example.com/playlist.m3u"))
                         .focused($focusedField, equals: .url)
                         .textContentType(.URL)
@@ -142,32 +145,34 @@ struct AddPlaylistView: View {
                         .submitLabel(.go)
                         .onSubmit(submit)
 
-                    if !urlText.isEmpty && !isImporting {
-                        Button {
-                            urlText = ""
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(Theme.secondaryText)
-                                .frame(minWidth: 44, minHeight: 44)
-                                .contentShape(.rect)
+                    HStack(spacing: 8) {
+                        if !urlText.isEmpty && !isImporting {
+                            Button {
+                                urlText = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(Theme.secondaryText)
+                                    .frame(minWidth: 44, minHeight: 44)
+                                    .contentShape(.rect)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Clear URL")
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Clear URL")
-                    }
 
-                    #if !os(tvOS)
-                    // No clipboard on Apple TV (`PlatformFeatures.pasteboard`): the URL is typed, or dictated.
-                    PasteButton(payloadType: String.self) { strings in
-                        guard let text = strings.first?.trimmingCharacters(in: .whitespacesAndNewlines) else {
-                            return
+                        #if !os(tvOS)
+                        // No clipboard on Apple TV (`PlatformFeatures.pasteboard`): the URL is typed, or dictated.
+                        PasteButton(payloadType: String.self) { strings in
+                            guard let text = strings.first?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+                                return
+                            }
+                            urlText = text
+                            showsValidation = true
                         }
-                        urlText = text
-                        showsValidation = true
+                        .labelStyle(.iconOnly)
+                        .buttonBorderShape(.capsule)
+                        .disabled(isImporting)
+                        #endif
                     }
-                    .labelStyle(.iconOnly)
-                    .buttonBorderShape(.capsule)
-                    .disabled(isImporting)
-                    #endif
                 }
             } header: {
                 Text("Playlist")
@@ -290,7 +295,7 @@ struct AddPlaylistView: View {
                     ProgressView()
                         .controlSize(.small)
                 } else {
-                    Button(isEditing ? "Save" : "Add", role: .confirm, action: submit)
+                    ConfirmToolbarButton(title: isEditing ? String(localized: "Save") : String(localized: "Add"), textSize: dynamicTypeSize, action: submit)
                         .disabled(!canSubmit)
                 }
             }

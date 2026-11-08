@@ -165,7 +165,7 @@ struct HomeView: View {
                         GroupRows(scope: scope, kind: kind)
                             .id(GroupRowsIdentity(importIDs: scope.importIDs, kind: kind))
                     } else if groupCounts != nil && !scope.importIDs.isEmpty {
-                        ContentUnavailableView("No Channels", systemImage: "tv.slash", description: Text("This playlist has no channels."))
+                        ContentUnavailableView(wrapping: "No Channels", systemImage: "tv.slash", description: Text("This playlist has no channels."))
                     }
                 }
                 #if os(iOS)
@@ -532,20 +532,55 @@ private struct ContentKindHeader: View {
     let available: [ChannelContentKind]
     @Binding var kind: ChannelContentKind
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
         if available.count > 1 {
-            Picker("Content", selection: $kind) {
-                ForEach(available) { kind in
-                    Label(kind.segmentTitle, systemImage: kind.systemImage)
-                        .tag(kind)
+            #if os(iOS)
+            if dynamicTypeSize.prefersStackedLayout {
+                // A menu with a label of its own: the system's menu picker gave the symbol and the title a narrow
+                // box at the accessibility sizes, and split the title inside a word ("Live-T" then "V").
+                Menu {
+                    picker
+                } label: {
+                    HStack(spacing: 8) {
+                        Label(kind.segmentTitle, systemImage: kind.systemImage)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.subheadline.weight(.semibold))
+                            .accessibilityHidden(true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(.rect)
                 }
+                .accessibilityLabel(Text("Content"))
+                .accessibilityValue(Text(kind.segmentTitle))
+                .padding(.horizontal, HomeLayout.horizontalMargin)
+            } else {
+                segmentedPicker
             }
-            .segmentedPickerStyleAdaptingToTextSize()
-            .labelsHidden()
-            .padding(.horizontal, HomeLayout.horizontalMargin)
+            #else
+            segmentedPicker
+            #endif
         } else {
             HomeSectionHeader(title: kind.title, systemImage: kind.systemImage)
         }
+    }
+
+    private var picker: some View {
+        Picker("Content", selection: $kind) {
+            ForEach(available) { kind in
+                Label(kind.segmentTitle, systemImage: kind.systemImage)
+                    .tag(kind)
+            }
+        }
+    }
+
+    private var segmentedPicker: some View {
+        picker
+            .segmentedPickerStyleAdaptingToTextSize()
+            .labelsHidden()
+            .padding(.horizontal, HomeLayout.horizontalMargin)
     }
 }
 

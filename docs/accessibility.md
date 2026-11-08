@@ -22,7 +22,26 @@ and `Features/Player/MediaSelection.swift`, and the colors in `App/Design/Theme.
   the accessibility sizes, so a label has the whole width and a word that fits a line is not broken into syllables
   ("Favo-riten"); cards of the horizontal rows grow (`CardScale`) and their titles get more lines; segmented
   pickers become menus; the guide switches to a list of channels with now / next (Automatic layout; Grid and List
-  can be chosen in its menu). Large titles (Library, Settings, Search…) become inline titles there
+  can be chosen in its menu; Home's Live TV / Movies / Series menu has a label of its own, which the system's menu
+  picker split inside a word). Switches of Settings and Diagnostic Reports go under their labels
+  (`.switchAdaptingToTextSize`), and a row of a title and a detail puts its symbol above them (`DetailLabel`), so
+  the label has the row's width instead of a narrow column next to the switch ("Per-sönli-che"). A form's menu
+  pickers (Video Quality, Skip back, Remind Me…) are menus with the chosen value under the label, wrapping
+  (`FormMenuPicker`): the system's picker cut it in the middle ("Hoc…80p)"). Empty states
+  wrap their titles (`EmptyStateLabel`, `ContentUnavailableView(wrapping:…)`: the system's title was cut, "Playlists
+  dur…"). A sheet's confirm button is the system's checkmark (`ConfirmToolbarButton`), so the sheet's title keeps
+  the bar ("Playlist hinzu…"); the address field of Add Playlist has its buttons under it. The actions of a
+  programme's sheet and of the next-episode card take the whole width, one under the other, with one-line titles
+  (up to AX3, then the Large Content Viewer). The category browser shows as many columns of at least 380 pt as fit
+  (one on an iPhone); below the accessibility sizes its columns are as wide as its cards have grown (`CardScale`), so
+  a large standard size (xxxLarge on iPad) shows fewer of them. Home's horizontal rows (`CardRow`) are as tall as
+  their tallest card there, so every name gets its lines (a lazy row took the height of its first card and cut the
+  others: "Test Str…"), and a section header puts its symbol above its title and subtitle. The time line of a
+  programme's sheet moves the day, the range and the length to the next line whole (a range wider than the line
+  starts a line of its own and breaks after its dash), and its channel logo grows. See All drops its count when both
+  do not fit on its line, and the time range of what is on now in the player's top bar shows only whole (it was cut
+  to "5"); VoiceOver reads both in any case. Section and row subtitles (For You, Library) are never cut there. Large
+  titles (Library, Settings, Search…) become inline titles there
   (`largeTitleAdaptingToTextSize()`): a large title is one line that is cut ("Einstellung…"). The billboard grows
   to the height its tallest page needs, its pages' content then starts at the top (so a shorter page's Play is in
   view first), and it pages back into place when its width changes (a rotation). The Play button of the billboard
@@ -41,7 +60,14 @@ and `Features/Player/MediaSelection.swift`, and the colors in `App/Design/Theme.
   is a no-break space, so a wrapped line never starts with one ("| Drama"); the series page and the billboard
   leave out a category's kind prefix that repeats what the page says ("Serie TV | Drama" under Series is "Drama",
   `ChannelContentKind.category(fromGroupName:)`). A series' counts keep each number with its noun ("10 Folgen",
-  `TextParts.keepingWordsTogether`).
+  `TextParts.keepingWordsTogether`). At the accessibility sizes such a line (the series page's "2021 · 2 Staffeln ·
+  10 Folgen · Sci-Fi", the Downloads row of Settings) is `PartsLine`: a `Text` per part with the separator at its
+  end (`TextParts.flowPieces`), laid out as a flow (`FlowLayout`, mirrored right to left), so a part moves to the
+  next line whole instead of being hyphenated ("2 Staf-feln"); one wider than the line is a line of its own and
+  wraps between its words.
+  Below them it is one `Text`, as before. Running text (descriptions, footers) is still hyphenated by the system
+  where a word does not fit the rest of a line, as everywhere in iOS; a single word wider than the whole line
+  ("Synchronisieren" at AX5) can only be hyphenated.
 - **Contrast** (WCAG 2.2 AA, measured in `Theme.swift`): text and thin glyph colors pass 4.5:1 on the
   backgrounds of their mode, icons 3:1; white text sits on fill colors that pass in both modes
   (`accentFill`, `liveFill`, `cyanFill`, `favoriteFill`). Secondary and tertiary text use `Theme.secondaryText`
