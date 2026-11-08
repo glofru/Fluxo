@@ -215,5 +215,7 @@ The background is a linear gradient from the top left (Violet) to the bottom rig
   ```sh
   VECTORCRAFT_CLI=/path/to/vectorcraft-cli Design/Icon/generate_layers.py
   ```
+- `Design/AppStore/`: the App Store screenshots in this palette (FigCraft documents and their exports, made from
+  harness captures; see its README).
 - `Design/Icon/render_previews.sh [dir]`: renders the icon with Icon Composer's `ictool` in the
   Default, Dark, Clear (light / dark) and Tinted (light / dark) appearances for iOS and macOS.

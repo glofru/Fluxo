@@ -82,7 +82,25 @@ struct SmartSearchPlan: Hashable, Sendable {
         keywords.isEmpty && similarTo == nil && !genreTerms.isEmpty
     }
 
-    /// Readable chips of the interpretation ("Football", "Tonight", "Italy").
+    /// The chips of the interpretation of `query`, as Smart Results show it: the viewer's own words, with the
+    /// time, kind, country or "like …" as understood. Not the synonyms and translations searched as well ("Soccer",
+    /// "Calcio" for "football"): shown, an English query would read as Italian. When no keyword is one of the
+    /// viewer's words (a word said differently: "something to laugh at" is "comedy"), the first one stands for them.
+    func summaryChips(for query: String) -> [String] {
+        let said = Set(SmartSearchRules.words(query))
+        var shown = self
+        shown.keywords = keywords.filter { keyword in
+            let words = SmartSearchRules.words(keyword)
+            return !words.isEmpty && words.allSatisfy(said.contains)
+        }
+        if shown.keywords.isEmpty {
+            shown.keywords = Array(keywords.prefix(1))
+        }
+        return shown.summaryChips
+    }
+
+    /// Readable chips of the plan ("Football", "Tonight", "Italy"): every keyword, synonyms included
+    /// (`summaryChips(for:)` keeps the viewer's own words).
     var summaryChips: [String] {
         var chips = keywords.prefix(3).map { keyword in
             // "Serie A", not "Serie a".
@@ -143,6 +161,9 @@ struct SmartSearchPlan: Hashable, Sendable {
 
 /// The results of a natural-language query.
 struct SmartSearchResults: Sendable {
+    /// Every run makes new results, even for the same query (after the guide reloads, say): Search on the Mac
+    /// rebuilds its list for each (`SearchResultsList`).
+    let id = UUID()
     let query: String
     let plan: SmartSearchPlan
     let channels: [ChannelItem]

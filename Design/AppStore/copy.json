@@ -1,0 +1,550 @@
+{
+  "_comment": "The storyboard and the words of the App Store screenshots, per platform: one entry per screenshot, in App Store order. capture: the app screen (Scripts/capture.sh, or Scripts/capture-mac.sh for the Mac); layout (one for every language, or per language): portrait, landscape (the device turned, chips below), rise (the device larger, rising from the bottom edge, which cuts the screen where its content ends; see rise) or wide (Mac, Apple TV); chips: short glass labels over the picture (a null for a language leaves the label out in it); bubble (Siri) and bubble_at: its place, a fraction of the device's height; rise: cut (the fraction of the capture's height at the bottom edge), screen_width, chip_size, cover_from (black from there to the cut); inset (Mac): another capture, cropped (x, y, width, height in pixels) and enlarged on a card over the device, centered at `at` (fractions of the screen), with a label. compose.py reads it. A platform can derive its set from another: from (the platform), skip (ids), override (fields by id).",
+  "iphone": [
+    {
+      "id": "01-home",
+      "capture": "home",
+      "layout": "portrait",
+      "title": {
+        "en": "All your TV.\nOne beautiful app.",
+        "it": "Tutta la tua TV.\nIn un’app bellissima."
+      },
+      "subtitle": {
+        "en": "Your playlists, live channels, movies and series, on iPhone, iPad, Mac and Apple TV.",
+        "it": "Le tue playlist, i canali in diretta, i film e le serie, su iPhone, iPad, Mac e Apple TV."
+      }
+    },
+    {
+      "id": "02-guide",
+      "capture": "guide",
+      "layout": "portrait",
+      "kicker": {
+        "en": "LIVE TV",
+        "it": "TV IN DIRETTA"
+      },
+      "title": {
+        "en": "Live TV with a\nreal TV guide",
+        "it": "La diretta, con una\nvera guida TV"
+      },
+      "subtitle": {
+        "en": "What’s on now and next from your XMLTV guides, with reminders for the start.",
+        "it": "Cosa va in onda ora e dopo dalle tue guide XMLTV, con un promemoria per l’inizio."
+      }
+    },
+    {
+      "id": "03-series",
+      "capture": "series",
+      "layout": "portrait",
+      "kicker": {
+        "en": "MOVIES & SERIES",
+        "it": "FILM E SERIE"
+      },
+      "title": {
+        "en": "Pick up right where\nyou left off",
+        "it": "Riprendi da dove\navevi lasciato"
+      },
+      "subtitle": {
+        "en": "Seasons, episodes and Up Next. Every movie and episode resumes where you stopped.",
+        "it": "Stagioni, episodi e il prossimo da vedere. Film ed episodi ripartono da dove ti eri fermato."
+      }
+    },
+    {
+      "id": "04-library",
+      "capture": "library",
+      "layout": "portrait",
+      "kicker": {
+        "en": "RECORDINGS & DOWNLOADS",
+        "it": "REGISTRAZIONI E DOWNLOAD"
+      },
+      "title": {
+        "en": "Record live TV.\nWatch offline.",
+        "it": "Registra la diretta.\nGuarda offline."
+      },
+      "subtitle": {
+        "en": "Record any live channel. Download movies and episodes for the train, the plane, anywhere.",
+        "it": "Registra qualsiasi canale. Scarica film ed episodi per il treno, l’aereo, ovunque."
+      }
+    },
+    {
+      "id": "05-intelligence",
+      "capture": "search",
+      "layout": "portrait",
+      "kicker": {
+        "en": "FLUXO INTELLIGENCE",
+        "it": "FLUXO INTELLIGENCE"
+      },
+      "title": {
+        "en": "Just say what you\nfeel like watching",
+        "it": "Di’ cosa ti va\ndi guardare"
+      },
+      "subtitle": {
+        "en": "Apple Intelligence understands your search and picks what to watch, privately on your iPhone.",
+        "it": "Apple Intelligence capisce cosa cerchi e sceglie cosa guardare, in privato sul tuo iPhone."
+      },
+      "chips": [
+        {
+          "en": "On-device Apple Intelligence",
+          "it": "Apple Intelligence sul dispositivo"
+        }
+      ]
+    },
+    {
+      "id": "06-player",
+      "capture": "player",
+      "layout": "landscape",
+      "kicker": {
+        "en": "PLAYS ALMOST ANYTHING",
+        "it": "RIPRODUCE QUASI TUTTO"
+      },
+      "title": {
+        "en": "Every stream,\nbeautifully played",
+        "it": "Ogni stream,\nriprodotto al meglio"
+      },
+      "subtitle": {
+        "en": "Pause and rewind live TV. Its own FFmpeg-based engine plays what other players can’t.",
+        "it": "Metti in pausa e riavvolgi la diretta. Il suo motore basato su FFmpeg riproduce ciò che altri non riescono."
+      },
+      "chips": [
+        {
+          "en": "HLS"
+        },
+        {
+          "en": "MPEG-TS"
+        },
+        {
+          "en": "Matroska"
+        },
+        {
+          "en": "MP4"
+        },
+        {
+          "en": "AVI"
+        },
+        {
+          "en": "RTMP"
+        },
+        {
+          "en": "RTSP"
+        },
+        {
+          "en": "WMV"
+        },
+        {
+          "en": "Time-shift",
+          "it": "Pausa della diretta"
+        },
+        {
+          "en": "Subtitles",
+          "it": "Sottotitoli"
+        }
+      ]
+    },
+    {
+      "id": "07-siri",
+      "capture": "siri",
+      "layout": {
+        "en": "rise",
+        "it": "portrait"
+      },
+      "kicker": {
+        "en": "SIRI & SHORTCUTS",
+        "it": "SIRI E COMANDI RAPIDI"
+      },
+      "title": {
+        "en": "Just ask Siri",
+        "it": "Chiedi a Siri"
+      },
+      "subtitle": {
+        "en": "Play a channel, continue watching, record and set reminders, by voice or with Shortcuts.",
+        "it": "Riproduci un canale, riprendi la visione, registra e imposta promemoria, a voce o con Comandi Rapidi."
+      },
+      "bubble": {
+        "en": "“What’s on in Fluxo?”",
+        "it": "«Cosa c’è su Fluxo?»"
+      },
+      "rise": {
+        "cut": 0.59,
+        "screen_width": 1180,
+        "chip_size": 36
+      },
+      "chips": [
+        {
+          "en": "“Watch TV in Fluxo”",
+          "it": null
+        },
+        {
+          "en": "“Record this in Fluxo”",
+          "it": null
+        },
+        {
+          "en": "“Continue watching in Fluxo”",
+          "it": null
+        }
+      ],
+      "bubble_at": {
+        "it": -1
+      }
+    },
+    {
+      "id": "08-cast",
+      "capture": "cast",
+      "layout": "portrait",
+      "kicker": {
+        "en": "CHROMECAST · AIRPLAY",
+        "it": "CHROMECAST · AIRPLAY"
+      },
+      "title": {
+        "en": "From your hand to\nthe big screen",
+        "it": "Dalla tua mano\nal grande schermo"
+      },
+      "subtitle": {
+        "en": "Cast to Chromecast, stream with AirPlay, or keep watching in Picture in Picture.",
+        "it": "Trasmetti su Chromecast, usa AirPlay o continua a guardare in Picture in Picture."
+      }
+    },
+    {
+      "id": "09-privacy",
+      "capture": "privacy",
+      "layout": "portrait",
+      "kicker": {
+        "en": "PRIVACY FIRST",
+        "it": "PRIVACY PRIMA DI TUTTO"
+      },
+      "title": {
+        "en": "Everything stays\non your device",
+        "it": "Tutto resta sul\ntuo dispositivo"
+      },
+      "subtitle": {
+        "en": "Intelligence runs on the device. Sync uses your own private iCloud, and nobody else.",
+        "it": "L’intelligenza lavora sul dispositivo. La sincronizzazione usa solo il tuo iCloud privato."
+      },
+      "chips": [
+        {
+          "en": "No account",
+          "it": "Nessun account"
+        },
+        {
+          "en": "No tracking",
+          "it": "Nessun tracciamento"
+        },
+        {
+          "en": "No ads",
+          "it": "Nessuna pubblicità"
+        },
+        {
+          "en": "On-device AI",
+          "it": "IA sul dispositivo"
+        }
+      ]
+    },
+    {
+      "id": "10-open-source",
+      "capture": "credits",
+      "layout": "portrait",
+      "kicker": {
+        "en": "OPEN SOURCE",
+        "it": "OPEN SOURCE"
+      },
+      "title": {
+        "en": "Open source.\nMIT licensed.",
+        "it": "Open source.\nLicenza MIT."
+      },
+      "subtitle": {
+        "en": "Read every line, build it yourself, and help make it better on GitHub.",
+        "it": "Leggi ogni riga, compilalo da te e aiutaci a migliorarlo su GitHub."
+      },
+      "chips": [
+        {
+          "en": "github.com/glofru/Fluxo"
+        }
+      ]
+    }
+  ],
+  "ipad": {
+    "from": "iphone",
+    "skip": [
+      "07-siri"
+    ],
+    "override": {
+      "05-intelligence": {
+        "subtitle": {
+          "en": "Apple Intelligence understands your search and picks what to watch, privately on your iPad.",
+          "it": "Apple Intelligence capisce cosa cerchi e sceglie cosa guardare, in privato sul tuo iPad."
+        }
+      },
+      "06-player": {
+        "title": {
+          "en": "The big picture,\nwith the guide beside it",
+          "it": "Il grande schermo,\ncon la guida accanto"
+        },
+        "subtitle": {
+          "en": "Pause and rewind live TV, with what’s on next one tap away. Its FFmpeg-based engine plays what others can’t.",
+          "it": "Metti in pausa e riavvolgi la diretta, con i prossimi programmi a portata di tocco. Il suo motore basato su FFmpeg riproduce ciò che altri non riescono."
+        }
+      },
+      "08-cast": {
+        "id": "07-cast",
+        "layout": "rise",
+        "rise": {
+          "cut": 0.4855,
+          "screen_width": 1860,
+          "chip_size": 36
+        },
+        "chips": [
+          {
+            "en": "Chromecast"
+          },
+          {
+            "en": "AirPlay"
+          },
+          {
+            "en": "Picture in Picture"
+          }
+        ]
+      },
+      "09-privacy": {
+        "id": "08-privacy"
+      },
+      "10-open-source": {
+        "id": "09-open-source"
+      }
+    }
+  },
+  "mac": {
+    "from": "iphone",
+    "skip": [
+      "08-cast"
+    ],
+    "override": {
+      "01-home": {
+        "layout": "wide"
+      },
+      "02-guide": {
+        "layout": "wide"
+      },
+      "03-series": {
+        "layout": "wide"
+      },
+      "04-library": {
+        "layout": "wide",
+        "subtitle": {
+          "en": "Record any live channel. Download movies and episodes to watch anywhere, even offline.",
+          "it": "Registra qualsiasi canale. Scarica film ed episodi da guardare ovunque, anche offline."
+        },
+        "capture": "recordings",
+        "inset": {
+          "capture": "downloads",
+          "crop": [
+            650,
+            262,
+            2050,
+            538
+          ],
+          "width": 1300,
+          "label": {
+            "en": "Downloads",
+            "it": "Download"
+          },
+          "at": [
+            0.6,
+            0.68
+          ]
+        }
+      },
+      "05-intelligence": {
+        "layout": "wide",
+        "subtitle": {
+          "en": "Apple Intelligence understands your search and picks what to watch, privately on your Mac.",
+          "it": "Apple Intelligence capisce cosa cerchi e sceglie cosa guardare, in privato sul tuo Mac."
+        }
+      },
+      "06-player": {
+        "layout": "wide",
+        "chips": [],
+        "subtitle": {
+          "en": "Pause and rewind live TV. Its own FFmpeg-based engine plays what other players can’t.",
+          "it": "Metti in pausa e riavvolgi la diretta. Il suo motore basato su FFmpeg riproduce quasi tutto."
+        }
+      },
+      "07-siri": {
+        "layout": "wide",
+        "capture": "siri",
+        "bubble": null,
+        "chips": [],
+        "subtitle": {
+          "en": "Play a channel, continue watching, record and set reminders, by voice or with Shortcuts.",
+          "it": "Riproduci un canale, riprendi la visione o registra, a voce o con Comandi Rapidi."
+        }
+      },
+      "09-privacy": {
+        "id": "08-privacy",
+        "layout": "wide",
+        "capture": "about",
+        "title": {
+          "en": "Everything stays\non your Mac",
+          "it": "Tutto resta\nsul tuo Mac"
+        },
+        "subtitle": {
+          "en": "Intelligence runs on your Mac. No account, no tracking, no ads: what you watch stays with you.",
+          "it": "L’intelligenza lavora sul tuo Mac e ciò che guardi resta solo tuo."
+        }
+      },
+      "10-open-source": {
+        "id": "09-open-source",
+        "layout": "wide"
+      }
+    }
+  },
+  "tv": [
+    {
+      "id": "01-home",
+      "capture": "home",
+      "layout": "wide",
+      "title": {
+        "en": "All your TV.\nOne beautiful app.",
+        "it": "Tutta la tua TV.\nIn un’app bellissima."
+      },
+      "subtitle": {
+        "en": "Your playlists, live channels, movies and series, made for the Siri Remote.",
+        "it": "Le tue playlist, i canali in diretta, i film e le serie, pensati per il Siri Remote."
+      }
+    },
+    {
+      "id": "02-guide",
+      "capture": "guide",
+      "layout": "wide",
+      "kicker": {
+        "en": "LIVE TV",
+        "it": "TV IN DIRETTA"
+      },
+      "title": {
+        "en": "Live TV with a\nreal TV guide",
+        "it": "La diretta, con una\nvera guida TV"
+      },
+      "subtitle": {
+        "en": "What’s on now and next from your XMLTV guides, a click away.",
+        "it": "Cosa va in onda ora e dopo dalle tue guide XMLTV, a portata di clic."
+      }
+    },
+    {
+      "id": "03-series",
+      "capture": "series",
+      "layout": "wide",
+      "kicker": {
+        "en": "MOVIES & SERIES",
+        "it": "FILM E SERIE"
+      },
+      "title": {
+        "en": "Pick up right\nwhere you left off",
+        "it": "Riprendi da dove\navevi lasciato"
+      },
+      "subtitle": {
+        "en": "Seasons, episodes and Up Next, in sync with your iPhone and iPad through iCloud.",
+        "it": "Stagioni, episodi e il prossimo da vedere, sincronizzati con iPhone e iPad tramite iCloud."
+      }
+    },
+    {
+      "id": "04-home-rows",
+      "capture": "foryou",
+      "layout": "wide",
+      "kicker": {
+        "en": "YOUR CHANNELS",
+        "it": "I TUOI CANALI"
+      },
+      "title": {
+        "en": "Everything you\nwatch, front\nand center",
+        "it": "Tutto quello\nche guardi,\nin primo piano"
+      },
+      "subtitle": {
+        "en": "Continue Watching, your favorites and what’s on now, right on Home and in the Top Shelf.",
+        "it": "Continua a guardare, i tuoi preferiti e cosa va in onda ora, nella Home e nella Top Shelf."
+      }
+    },
+    {
+      "id": "05-search",
+      "capture": "search",
+      "layout": "wide",
+      "kicker": {
+        "en": "SMART SEARCH",
+        "it": "RICERCA INTELLIGENTE"
+      },
+      "title": {
+        "en": "Just say what you\nfeel like watching",
+        "it": "Di’ cosa ti va\ndi guardare"
+      },
+      "subtitle": {
+        "en": "Ask for “sports tonight” or “italian news channels”: Fluxo understands and finds it.",
+        "it": "Chiedi «sport stasera» o «canali di notizie italiani»: Fluxo capisce e lo trova."
+      }
+    },
+    {
+      "id": "06-player",
+      "capture": "player",
+      "layout": "wide",
+      "kicker": {
+        "en": "PLAYS ALMOST ANYTHING",
+        "it": "RIPRODUCE QUASI TUTTO"
+      },
+      "title": {
+        "en": "Every stream,\nbeautifully played",
+        "it": "Ogni stream,\nriprodotto\nal meglio"
+      },
+      "subtitle": {
+        "en": "The guide, channels and episodes one swipe away. Its FFmpeg-based engine plays what others can’t.",
+        "it": "Guida, canali ed episodi a portata di swipe. Il suo motore basato su FFmpeg riproduce ciò che altri non riescono."
+      }
+    },
+    {
+      "id": "07-siri",
+      "capture": "voice",
+      "layout": "wide",
+      "kicker": {
+        "en": "SIRI & VOICE SEARCH",
+        "it": "SIRI E RICERCA VOCALE"
+      },
+      "title": {
+        "en": "Just ask Siri",
+        "it": "Chiedi a Siri"
+      },
+      "subtitle": {
+        "en": "Hold the microphone button on the Siri Remote: play, record, set reminders or search.",
+        "it": "Tieni premuto il tasto del microfono sul Siri Remote: riproduci, registra, imposta promemoria o cerca."
+      }
+    },
+    {
+      "id": "08-private-open",
+      "capture": "credits",
+      "layout": "wide",
+      "kicker": {
+        "en": "PRIVACY FIRST · OPEN SOURCE",
+        "it": "PRIVACY PRIMA DI TUTTO · OPEN SOURCE"
+      },
+      "title": {
+        "en": "Private.\nOpen source.",
+        "it": "Privata.\nOpen source."
+      },
+      "subtitle": {
+        "en": "No account, no tracking, no ads. Released under the MIT License on GitHub.",
+        "it": "Nessun account, nessun tracciamento, nessuna pubblicità. Distribuita con licenza MIT su GitHub."
+      },
+      "chips": [
+        {
+          "en": "No account",
+          "it": "Nessun account"
+        },
+        {
+          "en": "No tracking",
+          "it": "Nessun tracciamento"
+        },
+        {
+          "en": "No ads",
+          "it": "Nessuna pubblicità"
+        },
+        {
+          "en": "MIT License",
+          "it": "Licenza MIT"
+        }
+      ]
+    }
+  ]
+}

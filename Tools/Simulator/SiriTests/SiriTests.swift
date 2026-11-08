@@ -25,8 +25,11 @@ final class SiriTests: XCTestCase {
     // The asynchronous setUp: unlike the synchronous one, it runs on the main actor like the tests.
     override func setUp() async throws {
         continueAfterFailure = true
-        // Favorites, history and a guide: what the phrases, Spotlight and "What's On" use.
-        fluxo.launchArguments = ["-FluxoDebugStore", "memory", "-FluxoDebugSeed", "sample", "-FluxoDebugRoute", "seed-guide;mini-player:Rai 1 HD;wait:2;stop;spotlight-reindex"]
+        // Favorites, history and a guide: what the phrases, Spotlight and "What's On" use. FLUXO_SEED=store
+        // (TEST_RUNNER_FLUXO_SEED) uses the invented channels of the App Store screenshots instead of `sample`.
+        let store = ProcessInfo.processInfo.environment["FLUXO_SEED"] == "store"
+        let route = store ? "seed-guide;mini-player:Northwind Sports;wait:2;stop;spotlight-reindex" : "seed-guide;mini-player:Rai 1 HD;wait:2;stop;spotlight-reindex"
+        fluxo.launchArguments = ["-FluxoDebugStore", "memory", "-FluxoDebugSeed", store ? "store" : "sample", "-FluxoDebugRoute", route]
         fluxo.launch()
         // The harness has seeded and indexed by then.
         sleep(14)
@@ -107,11 +110,40 @@ final class SiriTests: XCTestCase {
         }
     }
 
+    /// Screenshots Fluxo's App Shortcuts in the Shortcuts app (`02-fluxo-app-shortcuts`), then runs What's On and
+    /// screenshots its answer (`03-whats-on-result`), in the language of the simulator: `FLUXO_WHATS_ON` is the tile's
+    /// title in it (default "What's On"; Italian "Cosa c’è in onda"). For the App Store screenshots
+    /// (`Design/AppStore/Scripts/capture.sh`); it checks nothing else. On the iOS 27.2 Simulator the answer's sheet
+    /// stays in English (its system Done button too) when the simulator is in another language.
+    func testWhatsOnResultScreenshot() {
+        let title = ProcessInfo.processInfo.environment["FLUXO_WHATS_ON"] ?? "What's On"
+        shortcuts.launch()
+        sleep(3)
+        tap(shortcuts, containing: "Continue", timeout: 2)
+        goToLibrary()
+        let fluxoApp = shortcuts.buttons["Fluxo"]
+        XCTAssertTrue(fluxoApp.waitForExistence(timeout: 8), "Fluxo is among the apps of the Shortcuts library")
+        fluxoApp.tap()
+        sleep(3)
+        shot("02-fluxo-app-shortcuts")
+        let whatsOn = shortcuts.descendants(matching: .other).matching(NSPredicate(format: "label ==[c] %@", title)).firstMatch
+        for _ in 0..<30 where !(whatsOn.exists && whatsOn.isHittable) {
+            shortcuts.swipeDown()
+        }
+        XCTAssertTrue(whatsOn.isHittable, "the \(title) App Shortcut is listed")
+        whatsOn.tap()
+        sleep(7)
+        shot("03-whats-on-result")
+        dismissIntentResult()
+    }
+
     /// The Library of the Shortcuts app (it reopens where it was left, e.g. All Shortcuts).
     func goToLibrary() {
         for _ in 0..<3 {
             let back = shortcuts.navigationBars.buttons.firstMatch
-            guard shortcuts.staticTexts["All Shortcuts"].exists || shortcuts.buttons["Library"].exists, back.exists else {
+            // "BackButton" in any language (the Italian app's back button is "Libreria").
+            let elsewhere = shortcuts.staticTexts["All Shortcuts"].exists || shortcuts.buttons["Library"].exists || shortcuts.navigationBars.buttons["BackButton"].exists
+            guard elsewhere, back.exists else {
                 break
             }
             back.tap()

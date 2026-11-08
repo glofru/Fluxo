@@ -24,10 +24,11 @@ final class SimulatedCastBackend: CastBackend {
 
     weak var delegate: (any CastBackendDelegate)?
 
+    /// Generic models, not product names: the simulator's screens end up in screenshots (Design/AppStore).
     static let devices = [
-        CastDevice(id: "sim-living-room", name: "Living Room TV", model: "Chromecast with Google TV", kind: .tv),
-        CastDevice(id: "sim-bedroom", name: "Bedroom", model: "Chromecast", kind: .tv),
-        CastDevice(id: "sim-kitchen", name: "Kitchen Speaker", model: "Nest Audio", kind: .speaker),
+        CastDevice(id: "sim-living-room", name: "Living Room TV", model: "Smart TV", kind: .tv),
+        CastDevice(id: "sim-bedroom", name: "Bedroom", model: "Streaming Stick", kind: .tv),
+        CastDevice(id: "sim-kitchen", name: "Kitchen Speaker", model: "Smart Speaker", kind: .speaker),
     ]
 
     /// Delays of the pretend network, shorter in previews.

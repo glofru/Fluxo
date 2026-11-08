@@ -326,6 +326,14 @@ private struct SearchResultsList: View {
             #if os(iOS)
             .contentMargins(.top, horizontalSizeClass == .compact ? Self.scopeBarClearance : 0, for: .scrollContent)
             #endif
+            #if os(macOS)
+            // The macOS list (a table) did not measure the Smart Results rows that replaced the "Understanding your
+            // search…" row in place: they kept the table's default height, cutting their second lines and logos,
+            // until something else laid the table out. A new list for each set of smart results (each run, even of
+            // the same query: `SmartSearchResults.id`) measures them as it measures any first results. Rebuilding
+            // the list also scrolls it back to the top when smart results come in after the plain ones.
+            .id(smart?.id)
+            #endif
     }
 
     private var list: some View {

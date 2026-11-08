@@ -118,10 +118,12 @@ if [ "$WAS_BOOTED" -eq 0 ]; then
 fi
 [ -z "$APPEARANCE" ] || xcrun simctl ui "$UDID" appearance "$APPEARANCE"
 [ -z "$CONTENT_SIZE" ] || xcrun simctl ui "$UDID" content_size "$CONTENT_SIZE"
-# A clean, fixed status bar, so screenshots compare well (Apple TV has none).
+# A clean, fixed status bar, so screenshots compare well (Apple TV has none). FLUXO_SIM_BATTERY_STATE=discharging
+# shows a plain full battery, without the charging bolt (the App Store screenshots use it).
 if [ "$PLATFORM" != tvos ]; then
     xcrun simctl status_bar "$UDID" override --time 9:41 --dataNetwork wifi --wifiMode active --wifiBars 3 \
-        --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100 > /dev/null 2>&1 || true
+        --cellularMode active --cellularBars 4 --batteryState "${FLUXO_SIM_BATTERY_STATE:-charged}" --batteryLevel 100 \
+        > /dev/null 2>&1 || true
 fi
 
 # 3. Install and launch.

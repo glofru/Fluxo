@@ -21,8 +21,28 @@ enum DebugGuideSeed {
         ("kids", ["Cartoon Club", "Science Explorers", "Story Time", "Animal Friends", "Space Rangers"]),
         ("cinema", ["The Silent Harbor", "Crimson Signal", "Night Train to Lisbon", "Paper Hearts", "Iron Bay"]),
         ("musica", ["Top 40 Countdown", "Live in Concert", "Unplugged Sessions", "Classic Hits"]),
+        // The groups of the `store` seed (invented titles only, for App Store screenshots).
+        ("documentar", ["The Living Ocean", "Mountain Kingdoms", "Planet Under Ice", "Night Skies", "Rivers of Light", "Wild Coasts"]),
+        ("movies", ["The Silent Harbor", "Crimson Signal", "Golden Frontier", "The Velvet Station", "Midnight Tide"]),
+        ("music", ["Live in Concert", "Jazz After Dark", "Top 40 Countdown", "Unplugged Sessions", "Classic Hits"]),
+        ("entertainment", ["Prime Time Show", "Quiz Night", "The Comedy Hour", "Saturday Live", "Late Night Talk"]),
+        ("lifestyle", ["Cooking Together", "Travel Diaries", "Home Makeover", "Garden Life", "Weekend Kitchen"]),
     ]
     nonisolated private static let fallbackTitles = ["Prime Time Show", "Documentary: Oceans", "Quiz Night", "Cooking Together", "Travel Diaries", "Late Night Talk"]
+
+    /// The second sentence of a programme's description, by category keyword (the screens that show descriptions, and
+    /// the App Store screenshots, read like a real guide).
+    private static let descriptionsByKeyword: [(String, String)] = [
+        ("sport", "Live coverage, analysis and the best of the action."),
+        ("news", "The latest headlines, reports and analysis."),
+        ("kids", "Stories and adventures for young viewers."),
+        ("cinema", "A feature film."),
+        ("documentar", "A journey through the wonders of the natural world."),
+        ("movies", "A feature film."),
+        ("music", "Music, performances and the artists behind them."),
+        ("entertainment", "An evening of laughs, games and guests."),
+        ("lifestyle", "Ideas for the kitchen, the home and the road."),
+    ]
 
     /// Adds one guide source per playlist with programmes from 6 hours ago to 2 days ahead for its live
     /// channels (matched by tvg-id, or by name when a channel has none), then reloads the guide.
@@ -65,6 +85,7 @@ enum DebugGuideSeed {
                 context.insert(EPGChannel(sourceID: source.uuid, importID: guideImportID, channelID: channelID, displayName: name, otherNames: "", icon: channel.logo, hasProgrammes: true))
                 let group = channel.groupName.lowercased()
                 let pool = titlesByKeyword.first { group.contains($0.0) }?.1 ?? fallbackTitles
+                let about = descriptionsByKeyword.first { group.contains($0.0) }?.1 ?? "Tonight on \(name)."
                 var time = start.addingTimeInterval(TimeInterval(channelIndex % 4) * -600)
                 var slot = channelIndex
                 while time < end {
@@ -78,7 +99,7 @@ enum DebugGuideSeed {
                         stop: time.addingTimeInterval(duration),
                         title: title,
                         subtitle: slot % 3 == 0 ? "Part \(1 + slot % 3)" : "",
-                        summary: "\(title) on \(name). A sample programme of the debug guide.",
+                        summary: "\(title) on \(name). \(about)",
                         categories: channel.groupName,
                         icon: nil,
                         episode: slot % 4 == 0 ? "S\(1 + slot % 5) E\(1 + slot % 12)" : nil

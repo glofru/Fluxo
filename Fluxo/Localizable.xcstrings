@@ -15610,7 +15610,15 @@
       }
     },
     "A networking library the Google Cast SDK uses." : {
-      "comment" : "Settings › Acknowledgements: what GTMSessionFetcher does in Fluxo (a dependency of the Google Cast SDK)."
+      "comment" : "Settings › Acknowledgements: what GTMSessionFetcher does in Fluxo (a dependency of the Google Cast SDK).",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una libreria di rete usata da Google Cast SDK."
+          }
+        }
+      }
     },
     "A secure connection to the server could not be made." : {
       "comment" : "Download error (a TV guide or an offline download): the server's certificate is not valid, or the address needs https.",
@@ -15916,7 +15924,15 @@
       }
     },
     "Acknowledgements" : {
-      "comment" : "Settings › About: opens the licenses of the app and of the software it includes.\nTitle of Settings › About › Acknowledgements (licenses of the app and of the software it includes)."
+      "comment" : "Settings › About: opens the licenses of the app and of the software it includes.\nTitle of Settings › About › Acknowledgements (licenses of the app and of the software it includes).",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Riconoscimenti"
+          }
+        }
+      }
     },
     "Action" : {
       "comment" : "Shortcuts parameter title of Start or Stop Recording: whether to start or stop.",
@@ -31089,7 +31105,15 @@
       }
     },
     "Copy SHA-256" : {
-      "comment" : "Settings › Acknowledgements, FFmpeg source offer: context menu item that copies the checksum of the FFmpeg source tarball."
+      "comment" : "Settings › Acknowledgements, FFmpeg source offer: context menu item that copies the checksum of the FFmpeg source tarball.",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copia SHA-256"
+          }
+        }
+      }
     },
     "Could Not Delete the Guide Source" : {
       "comment" : "Title of the alert shown when deleting a TV guide source failed.",
@@ -35854,7 +35878,15 @@
       }
     },
     "Diagnostic Reports" : {
-      "comment" : "Title of Settings › About › Diagnostic Reports, and its row in Settings › About: the crash and performance reports the system gives Fluxo, kept on the device."
+      "comment" : "Title of Settings › About › Diagnostic Reports, and its row in Settings › About: the crash and performance reports the system gives Fluxo, kept on the device.",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Report diagnostici"
+          }
+        }
+      }
     },
     "Dismisses the message" : {
       "comment" : "VoiceOver hint — video player screen.",
@@ -40403,16 +40435,48 @@
       "shouldTranslate" : false
     },
     "FFmpeg %@ is licensed under the GNU Lesser General Public License, version 2.1 or later. Its complete source code, the exact release this build is made from, and the script that builds it are published with Fluxo's source code, and stay available for at least three years after the last release that includes them." : {
-      "comment" : "Settings › Acknowledgements: the FFmpeg source offer of the LGPL. The placeholder is the FFmpeg version (9.0.2)."
+      "comment" : "Settings › Acknowledgements: the FFmpeg source offer of the LGPL. The placeholder is the FFmpeg version (9.0.2).",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FFmpeg %@ è distribuito con licenza GNU Lesser General Public License, versione 2.1 o successiva. Il suo codice sorgente completo, la versione esatta da cui è compilata questa build e lo script che la compila sono pubblicati insieme al codice sorgente di Fluxo e restano disponibili per almeno tre anni dopo l’ultima versione che li include."
+          }
+        }
+      }
     },
     "FFmpeg Build Script" : {
-      "comment" : "Settings › Acknowledgements: link to the script that builds FFmpeg for the app."
+      "comment" : "Settings › Acknowledgements: link to the script that builds FFmpeg for the app.",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Script di compilazione di FFmpeg"
+          }
+        }
+      }
     },
     "FFmpeg Source Code" : {
-      "comment" : "Settings › Acknowledgements: header of the FFmpeg source offer.\nSettings › Acknowledgements: link to the FFmpeg source tarball in the app's repository."
+      "comment" : "Settings › Acknowledgements: header of the FFmpeg source offer.\nSettings › Acknowledgements: link to the FFmpeg source tarball in the app's repository.",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Codice sorgente di FFmpeg"
+          }
+        }
+      }
     },
     "FFmpeg is a separate library inside the app (FFmpeg.framework), which can be replaced with a modified build of it. Fluxo's terms of use don't apply to FFmpeg: it is licensed to you under the LGPL alone, which also allows changing it and reverse engineering for debugging such changes." : {
-      "comment" : "Settings › Acknowledgements: the LGPL notice that FFmpeg is a replaceable library and that the app's terms (EULA) don't restrict it."
+      "comment" : "Settings › Acknowledgements: the LGPL notice that FFmpeg is a replaceable library and that the app's terms (EULA) don't restrict it.",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FFmpeg è una libreria separata all’interno dell’app (FFmpeg.framework), che può essere sostituita con una sua versione modificata. Le condizioni d’uso di Fluxo non si applicano a FFmpeg: ti è concessa in licenza solo secondo la LGPL, che consente anche di modificarla e di effettuarne il reverse engineering per il debug di tali modifiche."
+          }
+        }
+      }
     },
     "Favorite" : {
       "comment" : "Button (verb) to add a channel to favorites, or the state of a channel that is a favorite.",
@@ -43519,7 +43583,15 @@
       "comment" : "Library recovery screen: explanation when the library file cannot be read right now."
     },
     "Fluxo doesn't provide any channels or content. Add only playlists from providers you subscribe to or have the right to use." : {
-      "comment" : "Notice on the first-run screen, in Add Playlist and in Settings › About: the app is only a player and comes with no channels, movies or series."
+      "comment" : "Notice on the first-run screen, in Add Playlist and in Settings › About: the app is only a player and comes with no channels, movies or series.",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fluxo non fornisce canali né contenuti. Aggiungi solo playlist di provider a cui sei abbonato o che hai il diritto di usare."
+          }
+        }
+      }
     },
     "Fluxo has no TV guide for this channel. Add a guide in Settings › TV Guide." : {
       "comment" : "Siri and Shortcuts text (dialog or error) — Siri and Shortcuts.",
@@ -43825,7 +43897,15 @@
       }
     },
     "Fluxo is free and open-source software, released under the MIT License. You can read, build and change its code." : {
-      "comment" : "Settings › Acknowledgements: the first line, about the app's own license."
+      "comment" : "Settings › Acknowledgements: the first line, about the app's own license.",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fluxo è software libero e open source, distribuito con licenza MIT. Puoi leggerne, compilarne e modificarne il codice."
+          }
+        }
+      }
     },
     "Fluxo is not recording." : {
       "comment" : "Siri and Shortcuts text (dialog or error) — Siri and Shortcuts.",
@@ -51650,7 +51730,15 @@
       "comment" : "Settings › Acknowledgements, a library's page: link to its license or terms on the web."
     },
     "License texts are shown in English, the language they are written in." : {
-      "comment" : "Settings › Acknowledgements: footer of the list of libraries; the license texts are not translated."
+      "comment" : "Settings › Acknowledgements: footer of the list of libraries; the license texts are not translated.",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I testi delle licenze sono mostrati in inglese, la lingua in cui sono scritti."
+          }
+        }
+      }
     },
     "Like %@" : {
       "comment" : "Text — Apple Intelligence suggestions, smart search. The placeholder is a name.",
@@ -73146,7 +73234,15 @@
       }
     },
     "Plays channels on Chromecast and other Google Cast devices. The SDK, including the Google Sans fonts it contains, is licensed under the Google Cast SDK Terms of Service. It also contains open-source software, listed below with the notices Google ships with the SDK." : {
-      "comment" : "Settings › Acknowledgements: what the Google Cast SDK does in Fluxo and how it is licensed. A list of the open-source software inside it follows. iPhone and iPad only."
+      "comment" : "Settings › Acknowledgements: what the Google Cast SDK does in Fluxo and how it is licensed. A list of the open-source software inside it follows. iPhone and iPad only.",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Riproduce i canali su Chromecast e su altri dispositivi Google Cast. L’SDK, compresi i font Google Sans che contiene, è concesso in licenza secondo i Termini di servizio di Google Cast SDK. Contiene anche software open source, elencato qui sotto con le note che Google distribuisce insieme all’SDK."
+          }
+        }
+      }
     },
     "Plays the channel" : {
       "comment" : "VoiceOver hint — TV guide, channel card, Home page.",
@@ -74664,7 +74760,15 @@
       }
     },
     "Privacy Policy" : {
-      "comment" : "Settings › About: link to the app's privacy policy (a web page)."
+      "comment" : "Settings › About: link to the app's privacy policy (a web page).",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Informativa sulla privacy"
+          }
+        }
+      }
     },
     "Program Guide" : {
       "comment" : "Synonym Siri accepts for the TV guide screen (American spelling).",
@@ -77450,7 +77554,15 @@
       }
     },
     "Recording stopped because this device is almost full. What was recorded is saved." : {
-      "comment" : "Player message: a recording was stopped because the device ran low on free space; the part already recorded is kept."
+      "comment" : "Player message: a recording was stopped because the device ran low on free space; the part already recorded is kept.",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La registrazione si è interrotta perché lo spazio sul dispositivo è quasi esaurito. Quanto registrato è stato salvato."
+          }
+        }
+      }
     },
     "Recording this channel." : {
       "comment" : "What Siri says or shows — Siri and Shortcuts.",
@@ -77655,10 +77767,26 @@
       }
     },
     "Recordings and downloads play only in Fluxo, for your personal viewing." : {
-      "comment" : "Settings, Recordings footer: recordings and offline downloads stay inside the app (they can't be shared or opened in the Files app)."
+      "comment" : "Settings, Recordings footer: recordings and offline downloads stay inside the app (they can't be shared or opened in the Files app).",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registrazioni e download si riproducono solo in Fluxo, per la tua visione personale."
+          }
+        }
+      }
     },
     "Recordings and downloads play only in Fluxo, for your personal viewing. They stay on this device and aren't included in backups. A recording also stops when the device is almost full." : {
-      "comment" : "Settings, Recordings footer: recordings and offline downloads stay inside the app (they can't be shared or opened in the Files app), are excluded from iCloud and computer backups, and a recording stops on its own when free space runs low."
+      "comment" : "Settings, Recordings footer: recordings and offline downloads stay inside the app (they can't be shared or opened in the Files app), are excluded from iCloud and computer backups, and a recording stops on its own when free space runs low.",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registrazioni e download si riproducono solo in Fluxo, per la tua visione personale. Restano su questo dispositivo e non sono inclusi nei backup. Una registrazione si interrompe anche quando lo spazio sul dispositivo è quasi esaurito."
+          }
+        }
+      }
     },
     "Recordings are stored on this device and can't be cast." : {
       "comment" : "Text — Chromecast (Google Cast).",
@@ -93752,7 +93880,15 @@
       }
     },
     "Source Code" : {
-      "comment" : "Settings › About and Acknowledgements: link to the app's source code on GitHub."
+      "comment" : "Settings › About and Acknowledgements: link to the app's source code on GitHub.",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Codice sorgente"
+          }
+        }
+      }
     },
     "Specials" : {
       "comment" : "Season 0 of a series: the specials.",
@@ -117350,7 +117486,15 @@
       }
     },
     "Third-Party Software" : {
-      "comment" : "Settings › Acknowledgements: header of the list of the libraries the app includes."
+      "comment" : "Settings › Acknowledgements: header of the list of the libraries the app includes.",
+      "localizations" : {
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Software di terze parti"
+          }
+        }
+      }
     },
     "This address isn't encrypted: your provider's user name and password in it travel as plain text. Use https:// if your provider offers it." : {
       "comment" : "Add Playlist: warning for an http:// playlist address that contains an account name or password."

@@ -75,7 +75,7 @@ enum DebugSeeder {
         let recordingLogos = recordingTitles.reduce(into: [String: String]()) { logos, title in
             logos[title] = channel(named: title, in: services.modelContext)?.logo
         }
-        await DebugRecordingFactory.addRecordings(titled: recordingTitles, logos: recordingLogos, to: services.recordings)
+        await DebugRecordingFactory.addRecordings(titled: recordingTitles, logos: recordingLogos, lengths: DebugSeedCatalog.recordingLengths(seed), to: services.recordings)
         logger.notice("Seeded the \(seed.rawValue, privacy: .public) library in \(String(describing: clock.now - startedAt), privacy: .public)")
     }
 
@@ -113,17 +113,28 @@ enum DebugSeeder {
 /// Short synthetic MP4 clips (a colored frame with a moving bar), listed as finished recordings.
 enum DebugRecordingFactory {
 
+    /// The size a recording of `lengths` looks: about 4.5 Mbit/s, a live HD channel.
+    static let presentedBytesPerSecond: Int64 = 562_500
+
     @MainActor
-    /// - Parameter logos: the logo of each title's channel (the artwork of its card).
-    static func addRecordings(titled titles: [String], logos: [String: String] = [:], to store: RecordingStore) async {
+    /// - Parameters:
+    ///   - logos: the logo of each title's channel (the artwork of its card).
+    ///   - lengths: the length each recording shows instead of its clip's 4 seconds; its file then gets the size of a
+    ///     recording that long (a sparse `free` box after the clip, which players skip, so it still plays).
+    static func addRecordings(titled titles: [String], logos: [String: String] = [:], lengths: [TimeInterval]? = nil, to store: RecordingStore) async {
         for (index, title) in titles.enumerated() {
             let createdOn = Date.now.addingTimeInterval(TimeInterval(-86_400 * index - 3_600))
             let url = store.makeRecordingURL(channelName: title, date: createdOn).deletingPathExtension().appendingPathExtension("mp4")
             let hue = Double(DebugArtwork.stableHash(title) % 360) / 360
             do {
                 let startedAt = ContinuousClock.now
+                let length = lengths.flatMap { index < $0.count ? $0[index] : nil }
                 let duration = try await Task.detached(priority: .userInitiated) {
-                    try await writeClip(to: url, hue: hue, seconds: 4)
+                    let clipLength = try await writeClip(to: url, hue: hue, seconds: 4)
+                    if let length {
+                        try pad(url, toBytes: Int64(length) * presentedBytesPerSecond)
+                    }
+                    return length ?? clipLength
                 }.value
                 store.debugAddRecording(at: url, title: title, logo: logos[title], createdOn: createdOn, duration: duration)
                 DebugLaunchOptions.logger.notice("Wrote the recording \(title, privacy: .public) in \(String(describing: ContinuousClock.now - startedAt), privacy: .public)")
@@ -131,6 +142,23 @@ enum DebugRecordingFactory {
                 DebugLaunchOptions.logger.error("Could not write the recording \(title, privacy: .public): \(error.localizedDescription, privacy: .public)")
             }
         }
+    }
+
+    /// Grows the MP4 at `url` to `bytes` with a `free` box (ISO/IEC 14496-12 §8.1.2: its content is ignored) whose
+    /// body is a hole in the file, so it takes no disk space.
+    private static func pad(_ url: URL, toBytes bytes: Int64) throws {
+        let handle = try FileHandle(forUpdating: url)
+        defer { try? handle.close() }
+        let clipSize = Int64(try handle.seekToEnd())
+        let boxSize = bytes - clipSize
+        guard boxSize > 8, boxSize <= Int64(UInt32.max) else {
+            return
+        }
+        var header = Data()
+        withUnsafeBytes(of: UInt32(boxSize).bigEndian) { header.append(contentsOf: $0) }
+        header.append(contentsOf: Array("free".utf8))
+        try handle.write(contentsOf: header)
+        try handle.truncate(atOffset: UInt64(bytes))
     }
 
     @concurrent private static func writeClip(to url: URL, hue: Double, seconds: Int) async throws -> TimeInterval {

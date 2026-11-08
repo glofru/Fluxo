@@ -103,6 +103,7 @@ struct SettingsView: View {
                 .id("recommendations")
             IntelligenceSettingsSection()
             SiriSettingsSection()
+                .id("siri")
             DownloadSettingsSection()
                 .id("downloads")
             recordingsSection

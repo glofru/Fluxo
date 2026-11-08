@@ -33,7 +33,7 @@ struct SmartSearchSections: View {
             }
         } else if let results, !results.isEmpty {
             Section {
-                interpretation(results.plan)
+                interpretation(results.plan, query: results.query)
                     .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
                     .listRowBackground(Color.clear)
 
@@ -77,10 +77,10 @@ struct SmartSearchSections: View {
         }
     }
 
-    /// The understood query, as chips ("Football", "Tonight").
+    /// The understood query, as chips ("Football", "Tonight"): the viewer's words, not the synonyms searched too.
     @ViewBuilder
-    private func interpretation(_ plan: SmartSearchPlan) -> some View {
-        let chips = plan.summaryChips
+    private func interpretation(_ plan: SmartSearchPlan, query: String) -> some View {
+        let chips = plan.summaryChips(for: query)
         if !chips.isEmpty {
             ScrollView(.horizontal) {
                 HStack(spacing: 6) {
@@ -96,6 +96,9 @@ struct SmartSearchSections: View {
                 .padding(.horizontal, HomeLayout.horizontalMargin)
             }
             .scrollIndicators(.hidden)
+            // A horizontal scroll view takes any height it is offered; the macOS list (a table) then measures the
+            // row, and with it every row of the section, at its default height. Its chips' height instead.
+            .fixedSize(horizontal: false, vertical: true)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Searching for \(TextParts.spoken(chips))")
         }
@@ -124,6 +127,7 @@ struct SmartSearchSections: View {
             }
         }
         .scrollIndicators(.hidden)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 

@@ -16,6 +16,9 @@ import AVFoundation
 import os
 import SwiftData
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 struct DebugRoute {
     typealias Handler = @MainActor (DebugRouteContext, String) async throws -> Void
@@ -827,6 +830,24 @@ enum DebugRoutes {
                 }
             }
             try? await Task.sleep(for: .seconds(1))
+            #endif
+        },
+        DebugRoute("window-size:<width>x<height>", "Resizes the app's main window to that content size in points and centers it (macOS; for screenshots). Its frame is no longer saved, so the user's own window size stays as it was.") { _, argument in
+            #if os(macOS)
+            let parts = argument.lowercased().split(separator: "x").compactMap { Double($0) }
+            guard parts.count == 2, parts.allSatisfy({ $0 >= 200 }) else {
+                throw DebugRouteError.invalidArgument("window-size", argument)
+            }
+            guard let window = NSApplication.shared.windows.first(where: { $0.isVisible && $0.canBecomeMain }) else {
+                throw DebugRouteError.notFound("window", "main")
+            }
+            // A debug run shares the container, and so the saved window frames, with the user's copy of the app.
+            window.setFrameAutosaveName("")
+            window.setContentSize(NSSize(width: parts[0], height: parts[1]))
+            window.center()
+            try? await Task.sleep(for: .seconds(1))
+            #else
+            throw DebugRouteError.unsupported("window-size")
             #endif
         },
         DebugRoute("side-panel:<channels|guide|off>", "Shows the player's side panel (wide players) on a tab, or hides it.") { _, argument in

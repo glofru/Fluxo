@@ -92,6 +92,7 @@ Creative Commons and public test streams only, and recordings and downloads that
   appear in marketing material.
 - The Siri phrase examples in Settings name real channels ("Play Rai 1 in Fluxo", localized per language) as an
   example of what to say. This is a descriptive (nominative) use; replace them with a generic example if a lawyer
-  prefers.
+  prefers. The App Store screenshots leave them out (the Apple TV Siri screen is captured scrolled past them,
+  `Design/AppStore/README.md`).
 - "Chromecast" and "Google Cast" are Google trademarks, used to describe compatibility, as Google's Cast branding
   guidelines allow.

@@ -7,6 +7,8 @@
 #   Tools/Simulator/siri-tests.sh fluxo-mykey-1 [-only-testing:SiriTests/SiriTests/testSpotlightFindsIndexedChannel]
 #
 # Screenshots: /tmp/fluxo-shots/<clone>/siri-tests (FLUXO_SHOTS overrides it). Log: /tmp/fluxo-logs/<clone>-siri-tests.log.
+# FLUXO_SEED=store seeds the invented channels of the App Store screenshots instead of `sample`; FLUXO_WHATS_ON is the
+# title of the What's On tile in the simulator's language (testWhatsOnResultScreenshot).
 set -eu
 . "$(dirname "$0")/common.sh"
 
@@ -29,9 +31,12 @@ mkdir -p "$SHOTS" "$LOG_DIR"
 # A fresh install registers the App Shortcuts, as an install from TestFlight or the App Store does.
 xcrun simctl install "$UDID" "$APP_PATH"
 
+WHATS_ON="What's On"
+[ -z "${FLUXO_WHATS_ON:-}" ] || WHATS_ON=$FLUXO_WHATS_ON
+
 echo "Running the Siri tests on $CLONE (log: $LOG)..." >&2
 STATUS=0
-TEST_RUNNER_FLUXO_SHOTS="$SHOTS" xcodebuild test -project "$SIM_ROOT/Tools/Simulator/SiriTests/SiriTests.xcodeproj" \
+TEST_RUNNER_FLUXO_SHOTS="$SHOTS" TEST_RUNNER_FLUXO_SEED="${FLUXO_SEED:-sample}" TEST_RUNNER_FLUXO_WHATS_ON="$WHATS_ON" xcodebuild test -project "$SIM_ROOT/Tools/Simulator/SiriTests/SiriTests.xcodeproj" \
     -scheme SiriTests -destination "id=$UDID" -derivedDataPath "$DERIVED_DATA-siri-tests" \
     CODE_SIGNING_ALLOWED=NO "$@" > "$LOG" 2>&1 || STATUS=$?
 # xcodebuild leaves a workspace folder next to the project; it is not part of the repository.

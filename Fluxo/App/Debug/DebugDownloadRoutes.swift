@@ -113,8 +113,12 @@ enum DebugDownloadRoutes {
                 throw DebugRouteError.invalidArgument("offline", argument)
             }
         },
-        DebugRoute("settings-section:<downloads|recordings|recommendations>", "Settings, scrolled to a section (iOS).") { context, argument in
-            context.navigation.tab = .settings
+        DebugRoute("settings-section:<icloud|recommendations|intelligence|siri|siri-whats-on|downloads|recordings|about>", "Settings, scrolled to a section (siri-whats-on: to the Siri phrases after the first, whose example names a real channel): the Settings tab on iOS, the Settings window on macOS.") { context, argument in
+            if let openSettings = context.openSettings {
+                openSettings()
+            } else {
+                context.navigation.tab = .settings
+            }
             try await Task.sleep(for: .milliseconds(600))
             NotificationCenter.default.post(name: .fluxoDebugSettingsSection, object: argument.lowercased())
         },

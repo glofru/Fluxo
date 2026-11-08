@@ -87,6 +87,17 @@ enum DebugSeedCatalog {
         }
     }
 
+    /// How long the fake recordings look in the Library (`store`: the lengths of real programmes, so App Store
+    /// screenshots do not show 4-second clips), or nil for the length of their clip.
+    static func recordingLengths(_ seed: DebugLaunchOptions.Seed) -> [TimeInterval]? {
+        switch seed {
+        case .sample, .large:
+            return nil
+        case .store:
+            return [6_420, 1_790, 3_260]
+        }
+    }
+
     static func playlists(_ seed: DebugLaunchOptions.Seed, testStreamBaseURL: URL) -> [DebugSeedPlaylist] {
         let sample = [skyItalia(), worldTV(), cinemaClub(), loopbackTest(baseURL: testStreamBaseURL)]
         switch seed {
@@ -95,7 +106,7 @@ enum DebugSeedCatalog {
         case .large:
             return sample + [megaLive(artworkBase: base(of: testStreamBaseURL)), megaOnDemand(artworkBase: base(of: testStreamBaseURL))]
         case .store:
-            return [store(baseURL: testStreamBaseURL), storeCatalogue()]
+            return [store(baseURL: testStreamBaseURL), storeCatalogue(baseURL: testStreamBaseURL)]
         }
     }
 
@@ -142,8 +153,13 @@ enum DebugSeedCatalog {
     }
 
     /// Films and series for App Store screenshots: the invented titles of Cinema Club (the same films, so favorites
-    /// and history match), in plain groups, every episode named "Show S01E02", and every poster loading.
-    private static func storeCatalogue() -> DebugSeedPlaylist {
+    /// and history match), in plain groups, every episode named "Show S01E02", and every poster an original scene of
+    /// its genre (`DebugArtwork.scenePoster`). Two films play and download the 60 s clip of the test-stream server (or
+    /// the App Store demo footage, `Design/AppStore/Scripts/demo-footage.sh`): "The Silent Harbor" (a favorite) and
+    /// "Crimson Signal" (in Continue Watching).
+    private static func storeCatalogue(baseURL: URL) -> DebugSeedPlaylist {
+        let base = base(of: baseURL)
+        let playable: Set<String> = ["The Silent Harbor", "Crimson Signal"]
         var playlist = DebugSeedPlaylist(name: "Fluxo Movies & Series")
         let movieGroups = ["Action", "Comedy", "Drama", "Science Fiction", "Animation", "Documentaries", "Adventure", "Classics"]
         var id = 1_000
@@ -153,7 +169,9 @@ enum DebugSeedCatalog {
                 let year = 1_968 + (groupIndex * 31 + index * 7) % 57
                 let name = "\(title) (\(year))"
                 id += 1
-                playlist.entries.append(.init(name: name, group: group, url: "\(host)/movie/store/store/\(id).mp4", logo: DebugArtwork.poster(title: name, subtitle: "\(year) · \(group)")))
+                let url = playable.contains(title) ? "\(base)/movie/clip.mp4?title=\(id)" : "\(host)/movie/store/store/\(id).mp4"
+                let poster = DebugArtwork.scenePoster(title: title, subtitle: "\(year) · \(group)", scene: posterScene(for: group))
+                playlist.entries.append(.init(name: name, group: group, url: url, logo: poster))
             }
         }
         let seriesGroups: [(String, [String])] = [
@@ -169,12 +187,25 @@ enum DebugSeedCatalog {
                     for episode in 1...(show == "Evergreen Street" ? 3 : 5) {
                         id += 1
                         let name = String(format: "%@ S%02dE%02d", show, season, episode)
-                        playlist.entries.append(.init(name: name, group: group, url: "\(host)/series/store/store/\(id).mkv", logo: DebugArtwork.poster(title: show, subtitle: "Season \(season)")))
+                        playlist.entries.append(.init(name: name, group: group, url: "\(host)/series/store/store/\(id).mkv", logo: DebugArtwork.scenePoster(title: show, subtitle: "Season \(season)", scene: posterScene(for: group))))
                     }
                 }
             }
         }
         return playlist
+    }
+
+    /// The kind of key art of a `store` group.
+    private static func posterScene(for group: String) -> DebugArtwork.PosterScene {
+        switch group {
+        case "Action", "Adventure": .mountains
+        case "Comedy", "Comedy Series": .sunburst
+        case "Drama", "Drama Series": .city
+        case "Science Fiction", "Science Fiction Series": .space
+        case "Animation", "Animated Series": .bubbles
+        case "Documentaries": .ocean
+        default: .spotlight
+        }
     }
 
     // MARK: - Sample

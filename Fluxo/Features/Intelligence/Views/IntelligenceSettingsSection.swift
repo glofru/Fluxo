@@ -38,6 +38,7 @@ struct IntelligenceSettingsSection: View {
             } footer: {
                 Text("Everything runs on this device. What you watch and search is never sent anywhere.")
             }
+            .id("intelligence")
             .onAppear {
                 intelligence.refreshAvailability()
             }

@@ -12,6 +12,8 @@ iPhone, iPad, Mac and Apple TV (bundle ID `dev.watermelon.Fluxo`, universal purc
 | [`legal-review.md`](legal-review.md) | LGPL on the App Store, codec patents, the removed built-in guide, trademarks |
 | [`../privacy.md`](../privacy.md) | The privacy policy (GitHub Pages) |
 | [`../demo/`](../demo/) | The demo playlist and the licenses of its content |
+| [`listing.md`](listing.md) | Name, subtitle, promotional text, description and keywords, in English and Italian |
+| [`../../Design/AppStore/`](../../Design/AppStore/) | The screenshots (iPhone, iPad, Mac, Apple TV; English and Italian), their FigCraft sources and how to make them again |
 
 ## Before each upload
 
@@ -44,4 +46,7 @@ iPhone, iPad, Mac and Apple TV (bundle ID `dev.watermelon.Fluxo`, universal purc
 - **Privacy Policy URL**, **App Privacy**: `app-privacy.md`.
 - **License Agreement**: Custom, `eula.md`.
 - **Support URL**: `https://github.com/glofru/Fluxo/issues`.
-- **Screenshots**: Debug harness with `--seed store` only (invented channels and titles; `legal-review.md` §5).
+- **Screenshots**: `Design/AppStore/<platform>/<locale>/`, in their numeric order (iPhone 6.9", iPad 13", Mac, Apple
+  TV; see its README). Made from the Debug harness with `--seed store` only (invented channels, titles and artwork;
+  `legal-review.md` §5).
+- **Description, keywords, promotional text**: [`listing.md`](listing.md).

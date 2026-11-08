@@ -174,7 +174,9 @@ struct TVSearchScreen: View {
         guard !smart.isEmpty else {
             return
         }
-        found.smartChips = Self.chips(of: plan, query: found.term)
+        // The viewer's own words, not the synonyms and translations searched as well: on a shelf title read from
+        // the sofa they are noise.
+        found.smartChips = plan.summaryChips(for: found.term)
         found.smartProgrammes = Array(smart.programmes.prefix(Self.smartProgrammeLimit))
         found.smartChannels = Array(smart.channels.prefix(Self.smartChannelLimit))
         found.smartGroups = smart.groups
@@ -187,23 +189,6 @@ struct TVSearchScreen: View {
         found.channels.removeAll { channelIDs.contains($0.id) }
         found.movies.removeAll { channelIDs.contains($0.id) }
         found.series.removeAll { seriesIDs.contains($0.id) }
-    }
-
-    /// The chips of the Smart Results title: the viewer's own words, with the time, kind, country or "like …" as
-    /// understood. Not the synonyms and translations the rules search as well ("Soccer", "Calcio" for "football"):
-    /// on a shelf title read from the sofa they are noise. When every keyword is one the rules made (a word said
-    /// differently), the first one stands for them.
-    private static func chips(of plan: SmartSearchPlan, query: String) -> [String] {
-        let said = Set(SmartSearchRules.words(query))
-        var shown = plan
-        shown.keywords = plan.keywords.filter { keyword in
-            let words = SmartSearchRules.words(keyword)
-            return !words.isEmpty && words.allSatisfy(said.contains)
-        }
-        if shown.keywords.isEmpty {
-            shown.keywords = Array(plan.keywords.prefix(1))
-        }
-        return shown.summaryChips
     }
 
     private static let smartProgrammeLimit = 20
