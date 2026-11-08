@@ -32,6 +32,11 @@
 #                                   current Vendor/FFmpeg/FFmpeg.xcframework, so adding a platform does
 #                                   not rebuild the others, e.g. SLICES="tvos-arm64 tvossim-arm64 tvossim-x86_64".
 #                                   A platform is always built whole (all of its architectures).
+#   RESUME=1                        keeps the slices an earlier run left in WORK when it built them with this same
+#                                   script, toolchain, SDK and tarball (slice.stamp in the slice's build folder), so an
+#                                   interrupted build carries on where it stopped and a build split into several runs
+#                                   (SLICES="ios-arm64", then ...) ends with one run of every slice that only assembles
+#                                   the xcframework. Off by default: every listed slice is rebuilt from scratch.
 #
 # The tarball is read from Vendor/FFmpeg/source when it is there (no download); otherwise it is downloaded from
 # ffmpeg.org and copied there. Either way its SHA-256 must be FFMPEG_SHA256.
@@ -41,9 +46,11 @@
 # zlib, Secure Transport (the TLS backend for https on Apple platforms) and VideoToolbox (the
 # system's video decoders and encoders).
 #
-# Debug information: --enable-debug compiles with -g, which leaves the generated code as it is. The debug
-# information goes into the dSYMs (dsymutil, before the binaries are stripped), with the build paths mapped to
-# fixed ones (-fdebug-prefix-map), so the same sources give the same dSYMs on every Mac.
+# Debug information: --enable-debug compiles with -g, as Xcode compiles the app's own Release code (clang lays out
+# the code of a few functions slightly differently with -g; the components and exported symbols are the same). The
+# debug information goes into the dSYMs (dsymutil, before the binaries are stripped), with the build paths mapped to
+# fixed ones (-fdebug-prefix-map), so its source paths do not depend on WORK. Every function that calls another keeps
+# its frame record (MAKE_CFLAGS), so crash reports show every FFmpeg frame and the engine function under them.
 #
 # License: the configuration below never passes --enable-gpl, --enable-version3 or
 # --enable-nonfree, so the result is LGPL v2.1 or later. It is linked dynamically, so the framework
@@ -132,6 +139,13 @@ $(join_enable demuxer "$DEMUXERS")$(join_enable muxer "$MUXERS")$(join_enable pr
 $(join_enable parser "$PARSERS")$(join_enable decoder "$DECODERS")$(join_enable encoder "$ENCODERS")\
 $(join_enable hwaccel "$HWACCELS")$(join_enable bsf "$BSFS")"
 
+# Frame records in every function that calls another, as the arm64 ABI of Apple platforms requires and as Xcode
+# compiles the app (clang's default on Apple platforms). FFmpeg's configure adds -fomit-frame-pointer, and then the
+# frame-pointer walk of crash reports, MetricKit call stacks and Instruments skips every FFmpeg function between the
+# crashing one and the next function with a frame record, and the engine function that called FFmpeg with them. make
+# appends ECFLAGS after configure's flags, so this one wins. It changes no component and no exported symbol.
+MAKE_CFLAGS="-fno-omit-frame-pointer"
+
 # MARK: - Source
 
 fetch_source() {
@@ -191,12 +205,25 @@ slice_info() {
     esac
 }
 
+# What a slice's build depends on: the slice, this script without its comment lines (components, flags, link and
+# export rules), the toolchain, the SDK and the tarball. RESUME reuses a slice only when its stamp is the same.
+slice_stamp() { # slice sysroot cc
+    printf '%s\n' "$1" "script $(sed '/^[[:space:]]*#/d' "$0" | shasum -a 256 | cut -d' ' -f1)" "tarball $FFMPEG_SHA256" \
+        "sdk $(xcrun --sdk "$SDK" --show-sdk-build-version) $2" "cc $("$3" --version | head -n 1)"
+}
+
 build_slice() {
     slice_info "$1"
     sysroot=$(xcrun --sdk "$SDK" --show-sdk-path)
     cc=$(xcrun --sdk "$SDK" -f clang)
     build=$WORK/build/$1
     prefix=$WORK/install/$1
+    stamp=$(slice_stamp "$1" "$sysroot" "$cc")
+    if [ "${RESUME:-0}" = 1 ] && [ -f "$build/FFmpeg" ] && [ -d "$prefix/include" ] && [ -f "$build/slice.stamp" ] \
+        && [ "$(cat "$build/slice.stamp")" = "$stamp" ]; then
+        log "Keeping $1 from an earlier run (RESUME=1, same stamp)"
+        return 0
+    fi
     rm -rf "$build" "$prefix"
     mkdir -p "$build"
 
@@ -230,8 +257,8 @@ build_slice() {
     done
 
     log "Building $1"
-    make -C "$build" -j"$JOBS" > "$build/make.out" 2>&1 || { tail -n 40 "$build/make.out" >&2; exit 1; }
-    make -C "$build" install > "$build/install.out" 2>&1
+    make -C "$build" -j"$JOBS" ECFLAGS="$MAKE_CFLAGS" > "$build/make.out" 2>&1 || { tail -n 40 "$build/make.out" >&2; exit 1; }
+    make -C "$build" ECFLAGS="$MAKE_CFLAGS" install > "$build/install.out" 2>&1
 
     # One dylib for the five libraries. Only the public API is exported (the av_, avio_, avcodec_,
     # avformat_, avutil_, avsubtitle_, swr_ and sws_ prefixes; not the internal avpriv_ and ff_
@@ -262,6 +289,8 @@ build_slice() {
         -Wl,-filelist,"$build/objects.txt" \
         -Wl,-exported_symbols_list,"$build/exports.txt" -Wl,-dead_strip -Wl,-dead_strip_dylibs -Wl,-x \
         $extra_libs -o "$build/FFmpeg"
+    # Written last: a slice whose build stopped half way has no stamp, so RESUME builds it again.
+    echo "$stamp" > "$build/slice.stamp"
 }
 
 # Writes every object member of the archives to <folder>/<archive>/<position>-<name> and prints their paths, in order.
@@ -582,6 +611,8 @@ cp "$SRC/LICENSE.md" "$OUT/LICENSE.md"
     else
         echo "Debug symbols: <library>/dSYMs/FFmpeg.framework.dSYM, except:$WITHOUT_DSYMS (built before the dSYMs)"
     fi
+    echo
+    echo "C flags added after configure's: $MAKE_CFLAGS"
     echo
     echo "Configure flags (plus per-slice toolchain flags):"
     echo "$CONFIGURE_FLAGS" | tr ' ' '\n' | grep -v '^$' | sed 's/^/  /'

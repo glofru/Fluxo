@@ -4,6 +4,9 @@ Source: Vendor/FFmpeg/source/ffmpeg-9.0.2.tar.xz (this tarball, published with t
 License: LGPL v2.1 or later (no GPL, version3 or nonfree components)
 Built by: Tools/FFmpeg/build-xcframework.sh with Xcode 27.2 Build version 27B52 
 Slices: ios-arm64 iossim-arm64 iossim-x86_64 macos-arm64 macos-x86_64 tvos-arm64 tvossim-arm64 tvossim-x86_64 (iOS 27.0, macOS 26.0, tvOS 26.0)
+Debug symbols: <library>/dSYMs/FFmpeg.framework.dSYM in every library of the xcframework
+
+C flags added after configure's: -fno-omit-frame-pointer
 
 Configure flags (plus per-slice toolchain flags):
   --disable-everything
@@ -17,7 +20,7 @@ Configure flags (plus per-slice toolchain flags):
   --enable-static
   --disable-shared
   --enable-pic
-  --disable-debug
+  --enable-debug
   --enable-pthreads
   --enable-zlib
   --enable-securetransport

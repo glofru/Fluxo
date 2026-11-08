@@ -139,17 +139,29 @@ exact configuration. The iOS slice is about 8 MB. The slices are built for iOS 2
 manifest (`PrivacyInfo.xcprivacy`: FFmpeg reads file metadata with `fstat` / `lstat`, declared as `C617.1`, files in
 the app's container), which the script writes, and the LGPL text (`LICENSE`).
 
-**Debug symbols.** The libraries are compiled with `-g` (`--enable-debug`, which leaves the generated code unchanged),
-and the script makes the dSYM of each platform's framework (`dsymutil`, every architecture, the UUIDs checked against
-the binary), then strips the debug information from the binary. `xcodebuild -create-xcframework -debug-symbols` puts
-each dSYM next to its library (`FFmpeg.xcframework/<library>/dSYMs/FFmpeg.framework.dSYM`, 30 to 40 MB per
-platform), so an archive of the app includes it and the FFmpeg frames of crash reports (Xcode's Organizer, the
-diagnostic reports of [Diagnostics](diagnostics.md)) are symbolicated. The objects are linked from uniquely named
-copies of the static libraries' members (several share a base name, such as `parser.o`, which leaves dsymutil
-unable to tell them apart), and the build paths in the debug information are mapped to fixed ones
-(`/ffmpeg-<version>`, `/ffmpeg-build`). A platform kept from an earlier build keeps the dSYM it had; one built before
-the dSYMs has none, and `BUILD_INFO.txt` says so: rebuild every slice once (`Tools/FFmpeg/build-xcframework.sh`) to
-get them all.
+**Debug symbols.** The libraries are compiled with `-g` (`--enable-debug`), as Xcode compiles the app's own Release
+code, and the script makes the dSYM of each platform's framework (`dsymutil`, every architecture, the UUIDs checked
+against the binary), then strips the debug information from the binary (`strip -S -x`). `xcodebuild -create-xcframework
+-debug-symbols` puts each dSYM next to its library (`FFmpeg.xcframework/<library>/dSYMs/FFmpeg.framework.dSYM`, listed
+as `DebugSymbolsPath` in the xcframework's `Info.plist`; 18 MB for iOS and tvOS, 37 MB for macOS and each simulator,
+about 60 MB compressed in Git, no file above 40 MB), so an archive of the app includes it and the FFmpeg frames of
+crash reports (Xcode's Organizer, the diagnostic reports of [Diagnostics](diagnostics.md)) are symbolicated, inlined
+functions and source lines included. The objects are linked from uniquely named copies of the static libraries'
+members (several share a base name, such as `parser.o`, which leaves dsymutil unable to tell them apart), and the
+build paths in the debug information are mapped to fixed ones (`/ffmpeg-<version>`, `/ffmpeg-build`).
+
+**Frame records.** FFmpeg's configure compiles with `-fomit-frame-pointer`; the script adds `-fno-omit-frame-pointer`
+after it (`MAKE_CFLAGS`, given to `make` as `ECFLAGS`), so every FFmpeg function that calls another keeps its frame
+record, as the arm64 ABI of Apple platforms requires and as Xcode compiles the app. Crash reports, MetricKit call
+stacks and Instruments walk the stack through these records: without them, the call stack of a crash in FFmpeg
+went from the crashing function straight to the first frame record below it, so the FFmpeg functions in between and
+the engine function that called FFmpeg were missing. It costs nothing measurable (software decoding of MPEG-2 and 1080p H.264 on a Mac took the same
+time within 1%), and the binaries are about 280 KB smaller, because compact unwind information replaces most of the
+`__eh_frame` section. The components, the exported symbols, the linked system libraries, the deployment targets, the
+license files and the privacy manifests are the same as without it.
+
+A platform kept from an earlier build (`SLICES=…`) keeps the dSYM it had; one built before the dSYMs has none, and
+`BUILD_INFO.txt` says so.
 
 - **What is in it**: everything is disabled except what the engine reaches:
   - demuxers: MPEG-TS (and M2TS), HLS, MP4 / MOV / 3GP, FLV, Matroska / WebM, AVI, ASF (WMV), Ogg, MPEG-PS (VOB),
@@ -201,6 +213,12 @@ get them all.
   with all its architectures): the platforms left out are copied unchanged from the current xcframework, so their
   binaries stay byte for byte the same (`BUILD_INFO.txt` lists them). The tvOS slices were added that way.
   `OUT=<a copy of Vendor/FFmpeg>` writes the result there instead, to try a build without touching the repository.
+  `RESUME=1` keeps the slices an earlier run left in `WORK` when it built them with the same script, toolchain, SDK and
+  tarball (`slice.stamp`), so an interrupted build carries on where it stopped. On a busy Mac, build one platform per
+  run and then assemble everything with one last run that compiles nothing:
+  `RESUME=1 SLICES="ios-arm64" Tools/FFmpeg/build-xcframework.sh`, the same for `"iossim-arm64 iossim-x86_64"`,
+  `"macos-arm64 macos-x86_64"`, `"tvos-arm64"` and `"tvossim-arm64 tvossim-x86_64"`, then
+  `RESUME=1 Tools/FFmpeg/build-xcframework.sh` (`JOBS=<n>` limits the parallel compilers).
   To add a component, add it to the lists at the top of the script, rebuild and run
   `Tools/FFmpeg/check.sh`, which checks the version, the license and the components, and opens
   any URLs passed to it (`Tools/FFmpeg/check.sh https://…` checks HTTPS).

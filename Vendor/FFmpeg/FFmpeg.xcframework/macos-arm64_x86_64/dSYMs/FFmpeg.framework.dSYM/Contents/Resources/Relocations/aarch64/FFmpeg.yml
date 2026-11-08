@@ -1,0 +1,5 @@
+---
+triple:          'arm64-apple-darwin'
+binary-path:     '/tmp/fluxo-ffmpeg-build-v4b-dsym/frameworks/macos/FFmpeg.framework/Versions/A/FFmpeg'
+relocations:     []
+...

@@ -46,13 +46,21 @@ Debug › Simulate MetricKit Payloads on a device delivers sample reports to a r
 
 - **The app and the Top Shelf extension**: Release builds `dwarf-with-dsym`; the archive keeps the dSYMs.
 - **FFmpeg**: `Tools/FFmpeg/build-xcframework.sh` makes a dSYM for each platform's framework and puts it in the
-  xcframework (`FFmpeg.xcframework/<library>/dSYMs/FFmpeg.framework.dSYM`), so Xcode copies it into each archive
-  (see "Debug symbols" under [FFmpeg](building.md#ffmpeg) for how). The binaries are stripped of their debug
-  information, so the app is no larger.
+  xcframework (`FFmpeg.xcframework/<library>/dSYMs/FFmpeg.framework.dSYM`, every slice), so Xcode copies it into each
+  archive (see "Debug symbols" under [FFmpeg](building.md#ffmpeg) for how). The binaries are stripped of their debug
+  information, so the app is no larger. The dSYMs are committed with the xcframework (no Git LFS), so an archive made
+  from any clone is symbolicated. FFmpeg keeps its frame records (`-fno-omit-frame-pointer`, see "Frame records"
+  there), so the call stack of a crash in FFmpeg goes on through the engine function that called it.
 
-The xcframework in the repository was built before the script made dSYMs: its `BUILD_INFO.txt` lists no debug
-symbols. The next full rebuild (`Tools/FFmpeg/build-xcframework.sh`, about 10 minutes, every slice) adds them, about
-30 to 40 MB per platform (150 to 200 MB for the five). Before committing that, decide where they live: in the
-repository as they are (simplest; every archive is then symbolicated wherever it is made), or with Git LFS for
-`Vendor/FFmpeg/FFmpeg.xcframework/*/dSYMs/**` (keeps clones small). A platform left out of a partial rebuild
-(`SLICES=…`) keeps the dSYM it had.
+To symbolicate an FFmpeg frame by hand, use the dSYM of the slice the app ran (`ios-arm64` on an iPhone or iPad,
+`tvos-arm64` on an Apple TV, `macos-arm64_x86_64` on a Mac) and check its UUID first:
+
+```sh
+dwarfdump --uuid Vendor/FFmpeg/FFmpeg.xcframework/ios-arm64/dSYMs/FFmpeg.framework.dSYM
+atos -arch arm64 -i -o Vendor/FFmpeg/FFmpeg.xcframework/ios-arm64/dSYMs/FFmpeg.framework.dSYM/Contents/Resources/DWARF/FFmpeg \
+    -l <FFmpeg load address> <frame address>
+```
+
+`-i` also prints the inlined functions of the frame (for example `read_packet_wrapper` inlined into `fill_buffer`,
+`aviobuf.c:551`). Without the dSYM, a frame in one of FFmpeg's internal functions shows the nearest exported function
+instead (the same frame reads `avio_seek + 1240`).
