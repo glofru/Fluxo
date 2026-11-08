@@ -178,7 +178,7 @@
 
 AVPlayer plays HLS and MP4 / M4V / MOV / 3GP itself; everything else goes through the remux engine (see "Routing"
 above). The engine copies every stream AVPlayer decodes from HLS and converts the others while it reads the input
-(`Engine/FluxoTranscoder.c`), so live channels, movies, episodes, recordings and downloads all get the same formats:
+(`Engine/FluxoTranscoder*.c`), so live channels, movies, episodes, recordings and downloads all get the same formats:
 
 | Containers | How they play |
 |---|---|
@@ -391,3 +391,21 @@ Debug builds (`Fluxo/App/Debug/DebugAutoplay.swift`) also accept `-FluxoDebugAut
 launch, `-FluxoDebugRecordSeconds <n>`, which records it for n seconds, and `-FluxoDebugPictureInPicture YES`, which
 starts Picture in Picture once it is possible and stops it 6 seconds later. The shared scheme builds Release, so build
 these with `-configuration Debug`.
+
+## Source files
+
+- **`AVPlayerViewModel`** (`Features/Player`): `AVPlayerViewModel.swift` has its state, channel selection, zapping and
+  the lifecycle hooks; extensions hold the rest by concern: `+Transport` (play / pause, skips, seeks, the seeker),
+  `+Recording`, `+Playback` (starting and tearing down playback, item failures, the fallback to the engine, stalls,
+  disk space), `+State` (engine events, the playback state, Now Playing, the energy profile, the timeline),
+  `+PictureInPicture`, `+Cast` and `+AudioSession`. `PlaybackTimeline.swift` is the fast-changing position.
+- **The remux engine** (`Features/Player/Engine`, C): `FluxoRemuxEngine.h` is its interface (the only header Swift sees).
+  `FluxoRemuxEngine.c` has the session, its thread, events and file conversion; `FluxoEngineInput.c` the input,
+  `FluxoEngineOutput.c` the muxers, `FluxoEngineHLS.c` the segmenter and its playlists, `FluxoEngineRenditions.c`,
+  `FluxoEngineText.c` (WebVTT, language tags) and `FluxoEngineMasterPlaylist.c` the master playlist and its renditions,
+  `FluxoEngineRecording.c` recordings and requests from other threads, `FluxoEngineLive.c` the live packet loop and
+  reconnection, and `FluxoEngineVODPlan.c`, `FluxoEngineVODPackets.c` and `FluxoEngineVOD.c` on-demand inputs. They share
+  `FluxoEngineInternal.h` (limits, types, the functions one file calls in another; hidden from the binary's exports).
+  The converter is `FluxoTranscoder.h` / `.c` (decisions, the stream reader) with `FluxoTranscoderVideo.c` and
+  `FluxoTranscoderAudio.c`, sharing `FluxoTranscoderInternal.h`. The tools that build the engine take every `.c` file
+  of the folder (`FLUXO_ENGINE_SOURCES` in `Tools/FFmpeg/env.sh`).

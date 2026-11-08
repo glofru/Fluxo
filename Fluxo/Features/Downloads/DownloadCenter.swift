@@ -33,7 +33,8 @@ import UIKit
 final class DownloadProgress {
     fileprivate(set) var fraction: Double = 0
     fileprivate(set) var bytesWritten: Int64 = 0
-    fileprivate(set) var bytesExpected: Int64?
+    /// The size of the download, once known (the transfer sets it when its plan gives it).
+    var bytesExpected: Int64?
     /// Smoothed transfer speed; nil until measured.
     fileprivate(set) var bytesPerSecond: Double?
 
@@ -45,6 +46,29 @@ final class DownloadProgress {
             return nil
         }
         return Double(bytesExpected - bytesWritten) / bytesPerSecond
+    }
+
+    /// A progress event of the transfer: `written` of `expected` bytes, `fraction` done. Asset tasks of HLS
+    /// (`countsUnits`) count units, not bytes: their bytes are estimated from `estimatedSize`, the expected size of
+    /// the download.
+    func update(written: Int64, expected: Int64?, fraction: Double, countsUnits: Bool, estimatedSize: Int64?) {
+        let now = CFAbsoluteTimeGetCurrent()
+        if let last = lastSample, now > last.time, written >= last.bytes, written > 0 {
+            let speed = Double(written - last.bytes) / (now - last.time)
+            bytesPerSecond = bytesPerSecond.map { $0 * 0.7 + speed * 0.3 } ?? speed
+        }
+        lastSample = (now, written)
+        self.fraction = fraction
+        if countsUnits {
+            if let estimatedSize {
+                bytesWritten = Int64(Double(estimatedSize) * fraction)
+            }
+        } else {
+            bytesWritten = written
+            if let expected {
+                bytesExpected = expected
+            }
+        }
     }
 }
 
@@ -72,10 +96,12 @@ enum DownloadGroup: Identifiable {
     }
 }
 
+/// The offline downloads. This file has their state, the queries and the actions; the queue and the transfers are in
+/// `DownloadCenter+Transfers`, the conversion to MP4 in `DownloadCenter+Conversion`, launch and the files on disk in
+/// `DownloadCenter+Files`. The extensions use the state declared here, so it is internal; `records` changes here only.
 @MainActor
 @Observable
 final class DownloadCenter {
-
     nonisolated static let resumeDataFileName = "resume.data"
     /// The automatic retries of a transfer after network failures.
     static let maximumAutomaticRetries = 3
@@ -106,32 +132,32 @@ final class DownloadCenter {
 
     let directory: URL
 
-    @ObservationIgnored private let transport: DownloadTransport
-    @ObservationIgnored private let container: ModelContainer?
+    @ObservationIgnored let transport: DownloadTransport
+    @ObservationIgnored let container: ModelContainer?
     @ObservationIgnored private var indexByKey: [String: Int] = [:]
     /// The same entries by what stays when a provider renews its links (`identityKey`).
     @ObservationIgnored private var indexByIdentity: [String: Int] = [:]
     @ObservationIgnored private var indexByID: [UUID: Int] = [:]
-    @ObservationIgnored private var progressObjects: [UUID: DownloadProgress] = [:]
+    @ObservationIgnored var progressObjects: [UUID: DownloadProgress] = [:]
     /// Downloads whose transfer is being started (probe, HLS loading), so the queue does not start them twice.
-    @ObservationIgnored private var starting: Set<UUID> = []
+    @ObservationIgnored var starting: Set<UUID> = []
     /// File transfers being stopped (their resume data is on its way): they start again only once it is kept.
-    @ObservationIgnored private var stopping: Set<UUID> = []
-    @ObservationIgnored private var convertingID: UUID?
+    @ObservationIgnored var stopping: Set<UUID> = []
+    @ObservationIgnored var convertingID: UUID?
     /// A conversion found the video encoder unavailable (the app in the background): conversions start again once
     /// the app is active.
-    @ObservationIgnored private var conversionsWaitForActiveApp = false
+    @ObservationIgnored var conversionsWaitForActiveApp = false
     @ObservationIgnored private var activeObserver: (any NSObjectProtocol)?
     @ObservationIgnored private var isStarted = false
     /// The transfers that survived a relaunch were matched with their records: the queue may start transfers.
-    @ObservationIgnored private var isReady = false
+    @ObservationIgnored var isReady = false
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     /// How the manifest read at launch went: the records this build cannot read (written back by each save) and the
     /// folders kept for them (the orphan sweep).
-    @ObservationIgnored private var manifestRead = DownloadManifest.ReadResult()
-    @ObservationIgnored private var retryTask: Task<Void, Never>?
+    @ObservationIgnored var manifestRead = DownloadManifest.ReadResult()
+    @ObservationIgnored var retryTask: Task<Void, Never>?
     /// Downloads queued again after a network error: the queue starts them no earlier than this (5, 20, 80 s).
-    @ObservationIgnored private var retryNotBefore: [UUID: Date] = [:]
+    @ObservationIgnored var retryNotBefore: [UUID: Date] = [:]
     /// Downloads played to the end, deleted once they no longer play ("Delete Watched Downloads").
     @ObservationIgnored private var pendingWatchedDeletions: Set<UUID> = []
     /// Played to the end, to download the next episode (once per episode).
@@ -398,7 +424,7 @@ final class DownloadCenter {
 
     /// Free space on the device for downloads.
     var availableBytes: Int64? {
-        Self.availableCapacity(at: directory)
+        PlatformStorage.availableCapacity(at: directory)
     }
 
     // MARK: - Actions
@@ -657,718 +683,9 @@ final class DownloadCenter {
         pump()
     }
 
-    /// Starts queued downloads while transfer slots are free, and the next conversion.
-    private func pump() {
-        // Not before the restored transfers are matched: a record could be started twice.
-        guard isReady else {
-            return
-        }
-        if convertingID == nil, !conversionsWaitForActiveApp, let next = records.first(where: { $0.status == .converting }) {
-            convert(next.id)
-        }
-        guard NetworkMonitor.shared.isOnline else {
-            // Transfers wait; they start when the network returns.
-            return
-        }
-        var running = records.count(where: { ($0.status == .downloading || $0.status == .preparing) })
-        let now = Date.now
-        for record in records where record.status == .queued && !stopping.contains(record.id) {
-            if let notBefore = retryNotBefore[record.id], notBefore > now {
-                // Waiting for its automatic retry: the queue goes on with the next ones meanwhile.
-                continue
-            }
-            guard running < DownloadPreferences.maximumConcurrentTransfers else {
-                break
-            }
-            running += 1
-            begin(record.id)
-        }
-    }
-
-    /// Probes the link if needed, checks the space and starts the transfer.
-    private func begin(_ id: UUID) {
-        guard !starting.contains(id) else {
-            return
-        }
-        starting.insert(id)
-        retryNotBefore[id] = nil
-        update(id) { $0.status = .preparing }
-        Task {
-            defer {
-                starting.remove(id)
-            }
-            do {
-                try await startTransfer(id)
-            } catch {
-                guard record(id: id)?.status == .preparing else {
-                    return
-                }
-                // The probe and the HLS loading wrap their errors: a timeout or a dropped connection there is
-                // retried like one during the transfer.
-                let failure = DownloadTransport.failure(from: error)
-                fail(id, failure, isNetworkError: failure.isNetworkError || DownloadTransport.isNetworkError(error))
-            }
-        }
-    }
-
-    private func startTransfer(_ id: UUID) async throws {
-        guard var record = record(id: id) else {
-            return
-        }
-        let allowsCellular = DownloadPreferences.allowsCellular
-
-        // A suspended HLS task (paused in this run, or restored after a relaunch) continues as it is, unless it
-        // runs in the session of the other Cellular Data setting: then it starts again from its partial package.
-        if record.method == .hls, transport.hasTask(id: id) {
-            if transport.sessionKind(of: id)?.allowsCellular == allowsCellular, transport.resume(id: id) {
-                update(id) { $0.status = .downloading }
-                return
-            }
-            transport.cancel(id: id)
-        }
-
-        if record.method == nil || (record.method != .hls && record.transferFileName == nil) {
-            let probe: DownloadProbe
-            do {
-                probe = try await DownloadProbe.probe(record.item.url)
-            } catch let failure as DownloadFailure where failure.isExpiredLink {
-                if let renewed = await renewedItem(for: record), renewed.url != record.item.url {
-                    update(id) { $0.item = renewed }
-                    record.item = renewed
-                    probe = try await DownloadProbe.probe(renewed.url)
-                } else {
-                    throw failure
-                }
-            }
-            if probe.kind == .remux("bin") {
-                Self.logger.info("Unrecognized content; it will be converted")
-            }
-            if let expected = probe.expectedBytes, let available = Self.availableCapacity(at: directory) {
-                // A converted file needs room for the original and the MP4 until the original is deleted.
-                let needed = expected * (probe.method == .remux ? 2 : 1) + DownloadPreferences.freeSpaceMargin
-                if needed > available {
-                    throw DownloadFailure.insufficientSpace
-                }
-            }
-            update(id) {
-                $0.method = probe.method
-                $0.transferFileName = probe.transferFileName
-                $0.bytesExpected = probe.expectedBytes
-            }
-            record = self.record(id: id) ?? record
-        }
-        guard self.record(id: id)?.status == .preparing else {
-            return
-        }
-
-        if record.artworkFileName == nil, let name = await saveArtwork(for: record) {
-            update(id) { $0.artworkFileName = name }
-        }
-        guard self.record(id: id)?.status == .preparing, let method = record.method else {
-            return
-        }
-
-        switch method {
-        case .hls:
-            let partial = record.location.map(Self.homeURL(forRelativePath:))
-            let plan = try await transport.startHLS(
-                id: id,
-                url: record.item.url,
-                partialLocation: partial,
-                title: TextParts.line([record.title, record.episodeLine]),
-                artwork: artworkData(for: record),
-                quality: DownloadPreferences.quality,
-                allowsCellular: allowsCellular,
-                availableBytes: Self.availableCapacity(at: directory)
-            )
-            guard self.record(id: id)?.status == .preparing else {
-                // Paused or deleted while the stream was loading.
-                if self.record(id: id)?.status == .paused {
-                    transport.suspend(id: id)
-                } else {
-                    transport.cancel(id: id)
-                }
-                return
-            }
-            update(id) {
-                $0.status = .downloading
-                $0.allowsCellular = allowsCellular
-                $0.qualityHeight = plan.qualityHeight ?? $0.qualityHeight
-                $0.bytesExpected = plan.expectedBytes ?? $0.bytesExpected
-                $0.duration = plan.duration ?? $0.duration
-                $0.audioLanguages = plan.audioLanguages
-                $0.subtitleLanguages = plan.subtitleLanguages
-            }
-            progress(for: self.record(id: id) ?? record).bytesExpected = plan.expectedBytes
-        case .file, .remux:
-            guard let fileName = record.transferFileName else {
-                throw DownloadFailure.notVideo
-            }
-            let resumeURL = folder(of: id).appendingPathComponent(Self.resumeDataFileName)
-            let resumeData = try? Data(contentsOf: resumeURL)
-            try? FileManager.default.removeItem(at: resumeURL)
-            transport.startFile(id: id, url: record.item.url, fileName: fileName, allowsCellular: allowsCellular, resumeData: resumeData)
-            update(id) {
-                $0.status = .downloading
-                $0.allowsCellular = allowsCellular
-            }
-        }
-    }
-
-    // MARK: - Transfer events
-
-    private func handle(_ event: DownloadTransferEvent) {
-        switch event {
-        case let .progress(id, written, expected, fraction):
-            guard let record = record(id: id) else {
-                return
-            }
-            let progress = progress(for: record)
-            let now = CFAbsoluteTimeGetCurrent()
-            if let last = progress.lastSample, now > last.time, written >= last.bytes, written > 0 {
-                let speed = Double(written - last.bytes) / (now - last.time)
-                progress.bytesPerSecond = progress.bytesPerSecond.map { $0 * 0.7 + speed * 0.3 } ?? speed
-            }
-            progress.lastSample = (now, written)
-            progress.fraction = fraction
-            if record.method == .hls {
-                // Asset tasks count units, not bytes: estimate from the expected size.
-                if let expected = record.bytesExpected {
-                    progress.bytesWritten = Int64(Double(expected) * fraction)
-                }
-            } else {
-                progress.bytesWritten = written
-                if let expected {
-                    progress.bytesExpected = expected
-                }
-            }
-        case let .hlsLocation(id, url):
-            // The first location reported wins (`willDownloadTo`; the asset's URL at completion is a fallback).
-            update(id) {
-                if $0.location == nil || $0.status != .downloading {
-                    $0.location = Self.relativePathFromHome(url)
-                }
-            }
-        case let .fileReceived(id, fileName):
-            update(id) { $0.transferFileName = fileName }
-        case let .finished(id, failure):
-            transferDidFinish(id, failure: failure)
-        }
-    }
-
-    private func transferDidFinish(_ id: UUID, failure: DownloadTransferFailure?) {
-        guard let record = record(id: id) else {
-            return
-        }
-        Self.logger.info("Transfer finished (\(record.status.rawValue, privacy: .public)): \(failure.map { String(describing: $0) } ?? "success", privacy: .public)")
-        switch failure {
-        case .cancelled:
-            // Pause, Delete, or a move to the other session: whoever cancelled already updated the record.
-            return
-        case .failed(let failure, let isNetworkError):
-            guard record.status == .downloading else {
-                return
-            }
-            fail(id, failure, isNetworkError: isNetworkError)
-        case nil:
-            guard record.status == .downloading || record.status == .paused else {
-                return
-            }
-            switch record.method {
-            case .hls:
-                completeHLS(id)
-            case .file:
-                completeFile(id)
-            case .remux:
-                update(id) {
-                    $0.status = .converting
-                    $0.fraction = 1
-                }
-                pump()
-            case nil:
-                fail(id, .incomplete, isNetworkError: false)
-            }
-        }
-        pump()
-    }
-
-    private func completeHLS(_ id: UUID) {
-        guard let record = record(id: id), let relative = record.location else {
-            Self.logger.error("HLS download finished without a location")
-            fail(id, .incomplete, isNetworkError: false)
-            return
-        }
-        let url = Self.homeURL(forRelativePath: relative)
-        let asset = AVURLAsset(url: url)
-        guard asset.assetCache?.isPlayableOffline ?? FileManager.default.fileExists(atPath: url.path) else {
-            Self.logger.error("HLS download not playable offline at \(url.path, privacy: .public)")
-            fail(id, .incomplete, isNetworkError: false)
-            return
-        }
-        #if !os(tvOS)
-        // Kept before downloads the system may purge first under storage pressure.
-        let policy = AVMutableAssetDownloadStorageManagementPolicy()
-        policy.priority = .important
-        policy.expirationDate = .distantFuture
-        AVAssetDownloadStorageManager.shared().setStorageManagementPolicy(policy, for: url)
-        #endif
-        let size = Self.allocatedSize(of: url)
-        update(id) {
-            $0.status = .completed
-            $0.completedOn = .now
-            $0.fraction = 1
-            $0.bytesOnDisk = size
-            $0.isMissing = false
-            $0.failureReason = nil
-        }
-        didComplete(id)
-    }
-
-    private func completeFile(_ id: UUID) {
-        guard let record = record(id: id), let name = record.transferFileName else {
-            fail(id, .incomplete, isNetworkError: false)
-            return
-        }
-        let url = folder(of: id).appendingPathComponent(name)
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            fail(id, .incomplete, isNetworkError: false)
-            return
-        }
-        try? FileManager.default.removeItem(at: folder(of: id).appendingPathComponent(Self.resumeDataFileName))
-        let status = record.status
-        // An MP4 / MOV whose tracks AVPlayer cannot all play (DTS or TrueHD audio, which AVFoundation leaves out,
-        // `hev1` HEVC, MPEG-4 Part 2 on iPhone) would play silently or without a picture offline: it is converted
-        // like a Matroska download. Streaming it does the same through the engine.
-        Task {
-            let reason = await PlaybackRoute.engineReason(for: AVURLAsset(url: url))
-            guard let current = self.record(id: id), current.status == status, current.transferFileName == name else {
-                return
-            }
-            guard let reason else {
-                self.finishFile(id, url: url, name: name)
-                return
-            }
-            Self.logger.info("The downloaded file is converted: \(reason, privacy: .public)")
-            let source = url.deletingLastPathComponent().appendingPathComponent("source.\(url.pathExtension)")
-            do {
-                try? FileManager.default.removeItem(at: source)
-                try FileManager.default.moveItem(at: url, to: source)
-            } catch {
-                self.finishFile(id, url: url, name: name)
-                return
-            }
-            self.update(id) {
-                $0.status = .converting
-                $0.fraction = 1
-                $0.transferFileName = source.lastPathComponent
-            }
-            self.pump()
-        }
-    }
-
-    private func finishFile(_ id: UUID, url: URL, name: String) {
-        let size = Self.allocatedSize(of: url)
-        update(id) {
-            $0.status = .completed
-            $0.completedOn = .now
-            $0.fraction = 1
-            $0.location = name
-            $0.bytesOnDisk = size
-            $0.isMissing = false
-            $0.failureReason = nil
-        }
-        loadDuration(of: id, url: url)
-        didComplete(id)
-    }
-
-    private func didComplete(_ id: UUID) {
-        progressObjects[id] = nil
-        if let record = record(id: id) {
-            AccessibilityAnnouncer.announce(String(localized: "\(record.spokenName) downloaded", comment: "VoiceOver announcement: a download finished; the placeholder is the movie, or the series and the episode, as in 'Breaking Bad, Season 1, episode 3, Pilot'."))
-        }
-    }
-
-    private func fail(_ id: UUID, _ failure: DownloadFailure, isNetworkError: Bool) {
-        guard let record = record(id: id) else {
-            return
-        }
-        if isNetworkError, record.automaticRetries < Self.maximumAutomaticRetries {
-            update(id) {
-                $0.status = .queued
-                $0.automaticRetries += 1
-            }
-            retryNotBefore[id] = .now.addingTimeInterval(Double(5 << min(4, record.automaticRetries * 2)))
-            scheduleRetry()
-            return
-        }
-        Self.logger.error("Download failed: \(failure.message, privacy: .public)")
-        if record.status == .preparing, !isNetworkError {
-            // It could not even start (no space, not a video, refused): said at once, not only in the list.
-            let name = TextParts.line([record.title, record.episodeLine])
-            notice = DownloadNotice(
-                title: String(localized: "Can't Download “\(name)”", comment: "Title of the alert when a download cannot start; the placeholder is the movie or episode."),
-                message: failure.message
-            )
-        }
-        update(id) {
-            $0.status = .failed
-            $0.failureReason = failure.reason
-            $0.failureIsPermanent = failure.isPermanent
-        }
-        if failure.isPermanent || record.method == nil {
-            // Nothing worth keeping (the probe failed, or the format cannot be played).
-            removeFolderContents(of: id, keepingArtwork: true)
-        }
-        pump()
-    }
-
-    /// Runs the queue again when the earliest waiting retry is due.
-    private func scheduleRetry() {
-        retryTask?.cancel()
-        retryTask = nil
-        let now = Date.now
-        retryNotBefore = retryNotBefore.filter { $0.value > now && record(id: $0.key)?.status == .queued }
-        guard let due = retryNotBefore.values.min() else {
-            return
-        }
-        retryTask = Task {
-            try? await Task.sleep(for: .seconds(max(0, due.timeIntervalSinceNow)))
-            guard !Task.isCancelled else {
-                return
-            }
-            pump()
-            scheduleRetry()
-        }
-    }
-
-    private func networkDidReturn() {
-        // Network failures count again from zero once the network is back, and wait no longer.
-        retryNotBefore.removeAll()
-        retryTask?.cancel()
-        retryTask = nil
-        for record in records where record.status == .failed && !record.failureIsPermanent && record.automaticRetries > 0 && record.automaticRetries <= Self.maximumAutomaticRetries {
-            update(record.id) {
-                $0.status = .queued
-                $0.failureReason = nil
-                $0.automaticRetries = 0
-            }
-        }
-        pump()
-    }
-
-    // MARK: - Conversion
-
-    /// Copies a downloaded original into MP4 (stream copy), then deletes the original.
-    private func convert(_ id: UUID) {
-        guard convertingID == nil, let record = record(id: id), let sourceName = record.transferFileName else {
-            if let record = record(id: id), record.transferFileName == nil {
-                fail(id, .incomplete, isNetworkError: false)
-            }
-            return
-        }
-        let folder = folder(of: id)
-        let source = folder.appendingPathComponent(sourceName)
-        let destination = folder.appendingPathComponent("media.mp4")
-        guard FileManager.default.fileExists(atPath: source.path) else {
-            fail(id, .incomplete, isNetworkError: false)
-            return
-        }
-        convertingID = id
-        #if canImport(UIKit)
-        // A few more seconds to finish if the app goes to the background meanwhile. When they run out, the
-        // background task ends at once (the system terminates an app that keeps it past its time): the conversion
-        // is then suspended with the app and continues when it comes back. If the app is terminated meanwhile,
-        // the record is still Converting and the conversion starts again at the next launch.
-        let backgroundTask = BackgroundActivity(name: "Convert download")
-        #endif
-        Task {
-            let result = await Task.detached(priority: .utility) {
-                DownloadConversion.convert(source, to: destination)
-            }.value
-            #if canImport(UIKit)
-            backgroundTask.end()
-            #endif
-            convertingID = nil
-            guard self.record(id: id)?.status == .converting else {
-                // Deleted meanwhile: the result goes, and the next conversion may start.
-                try? FileManager.default.removeItem(at: destination)
-                pump()
-                return
-            }
-            switch result {
-            case .converted(let duration):
-                try? FileManager.default.removeItem(at: source)
-                let size = Self.allocatedSize(of: destination)
-                update(id) {
-                    $0.status = .completed
-                    $0.completedOn = .now
-                    $0.location = destination.lastPathComponent
-                    $0.transferFileName = destination.lastPathComponent
-                    $0.bytesOnDisk = size
-                    $0.duration = duration > 0 ? duration : $0.duration
-                    $0.failureReason = nil
-                    $0.isMissing = false
-                }
-                didComplete(id)
-            case .failed(let failure):
-                try? FileManager.default.removeItem(at: source)
-                fail(id, failure, isNetworkError: false)
-            case .later:
-                // Still Converting, with its original: converted again once the app is active.
-                Self.logger.info("The video encoder is unavailable: the conversion waits for the app to be active")
-                conversionsWaitForActiveApp = true
-                resumeConversionsLaterIfActive()
-            }
-            pump()
-        }
-    }
-
-    /// The encoder was refused although the app is active (it became active during the conversion, or a passing
-    /// failure): conversions start again after a while rather than at the next activation.
-    private func resumeConversionsLaterIfActive() {
-        #if canImport(UIKit)
-        guard UIApplication.shared.applicationState == .active else {
-            return
-        }
-        #endif
-        Task { [weak self] in
-            try? await Task.sleep(for: .seconds(30))
-            guard let self, self.conversionsWaitForActiveApp else {
-                return
-            }
-            self.conversionsWaitForActiveApp = false
-            self.pump()
-        }
-    }
-
-    // MARK: - Launch
-
-    /// Matches the records with the transfers that survived the relaunch.
-    private func reconcile(restored: [UUID: DownloadTransport.SessionKind]) {
-        var received: [UUID] = []
-        for record in records where !starting.contains(record.id) {
-            let id = record.id
-            switch record.status {
-            case .preparing:
-                update(id) { $0.status = .queued }
-            case .downloading:
-                if restored[id] == nil, hasReceivedFile(record) {
-                    // The transfer ended while no one listened (the app was not running, or the library was not
-                    // open yet): its file is already in the download's folder, so it is kept, not downloaded again.
-                    received.append(id)
-                } else if restored[id] == nil {
-                    // The transfer was lost (the app was force-quit): it starts again, from its resume data or
-                    // its partial HLS package.
-                    update(id) { $0.status = .queued }
-                }
-            case .paused:
-                if restored[id] != nil, record.method != .hls {
-                    transport.cancel(id: id)
-                }
-            case .queued:
-                if restored[id] != nil {
-                    // Its transfer survived (the app quit before the record said so): adopted as it is.
-                    update(id) { $0.status = .downloading }
-                }
-            case .converting, .completed, .failed:
-                if restored[id] != nil {
-                    transport.cancel(id: id)
-                }
-            }
-        }
-        // Transfers of downloads that no longer exist. Not those of records this build cannot read (a newer build's,
-        // written back by every save): that build still owns them.
-        for id in restored.keys where record(id: id) == nil && !manifestRead.unreadableIDs.contains(id) {
-            transport.cancel(id: id)
-        }
-        for id in received {
-            Self.logger.info("Keeping a download whose transfer finished while the app was not listening")
-            transferDidFinish(id, failure: nil)
-        }
-    }
-
-    /// The file of a file transfer is in the download's folder. The transport moves it there only once the whole
-    /// response arrived with a success status (a partial transfer leaves resume data, never the file).
-    private func hasReceivedFile(_ record: DownloadRecord) -> Bool {
-        guard record.method == .file || record.method == .remux, let name = record.transferFileName else {
-            return false
-        }
-        return FileManager.default.fileExists(atPath: folder(of: record.id).appendingPathComponent(name).path)
-    }
-
-    /// Completed downloads whose media is gone (the system purged an HLS package, a file was removed) are marked
-    /// missing; their sizes are refreshed.
-    private func verifyCompletedFiles() {
-        for record in records where record.status == .completed {
-            guard let url = mediaURL(of: record), FileManager.default.fileExists(atPath: url.path) else {
-                if !record.isMissing {
-                    markMissing(record.id)
-                }
-                continue
-            }
-            if record.isMissing {
-                update(record.id) { $0.isMissing = false }
-            }
-        }
-    }
-
-    private func markMissing(_ id: UUID) {
-        update(id) { $0.isMissing = true }
-    }
-
-    /// Downloads a missing download again.
-    private func redownload(_ id: UUID) {
-        guard let record = record(id: id) else {
-            return
-        }
-        removeMedia(of: record, keepingArtwork: true)
-        update(id) {
-            $0.status = .queued
-            $0.isMissing = false
-            $0.location = nil
-            $0.method = nil
-            $0.transferFileName = nil
-            $0.fraction = 0
-            $0.bytesWritten = 0
-            $0.bytesOnDisk = 0
-            $0.completedOn = nil
-            $0.watchedOn = nil
-            $0.failureReason = nil
-            $0.automaticRetries = 0
-        }
-        pump()
-    }
-
-    // MARK: - Files
-
-    private func folder(of id: UUID) -> URL {
-        directory.appendingPathComponent(id.uuidString, isDirectory: true)
-    }
-
-    private func mediaURL(of record: DownloadRecord) -> URL? {
-        guard let location = record.location else {
-            return nil
-        }
-        switch record.method {
-        case .hls:
-            return Self.homeURL(forRelativePath: location)
-        case .file, .remux:
-            return folder(of: record.id).appendingPathComponent(location)
-        case nil:
-            return nil
-        }
-    }
-
-    private func removeMedia(of record: DownloadRecord, keepingArtwork: Bool = false) {
-        if record.method == .hls, let location = record.location {
-            try? FileManager.default.removeItem(at: Self.homeURL(forRelativePath: location))
-        }
-        if keepingArtwork {
-            removeFolderContents(of: record.id, keepingArtwork: true)
-        } else {
-            try? FileManager.default.removeItem(at: folder(of: record.id))
-        }
-    }
-
-    private func removeFolderContents(of id: UUID, keepingArtwork: Bool) {
-        let artwork = record(id: id)?.artworkFileName
-        let contents = (try? FileManager.default.contentsOfDirectory(at: folder(of: id), includingPropertiesForKeys: nil)) ?? []
-        for url in contents where !(keepingArtwork && url.lastPathComponent == artwork) {
-            try? FileManager.default.removeItem(at: url)
-        }
-    }
-
-    /// Keeps a copy of the entry's artwork with the download, so it shows offline.
-    private func saveArtwork(for record: DownloadRecord) async -> String? {
-        guard let data = await artworkData(for: record) else {
-            return nil
-        }
-        let folder = folder(of: record.id)
-        do {
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            try data.write(to: folder.appendingPathComponent("artwork"), options: .atomic)
-            return "artwork"
-        } catch {
-            return nil
-        }
-    }
-
-    private func artworkData(for record: DownloadRecord) async -> Data? {
-        if let name = record.artworkFileName, let data = try? Data(contentsOf: folder(of: record.id).appendingPathComponent(name)) {
-            return data
-        }
-        guard let logo = record.item.logo ?? originalLogo(of: record) else {
-            return nil
-        }
-        if logo.hasPrefix("data:") {
-            return LogoImageLoader.decodeDataURI(logo)
-        }
-        guard let url = URL(string: logo), ["http", "https"].contains(url.scheme?.lowercased() ?? "") else {
-            return nil
-        }
-        // The logo cache usually has it already.
-        var request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 15)
-        request.setValue("image/*", forHTTPHeaderField: "Accept")
-        if let cached = LogoImageLoader.shared.urlCache.cachedResponse(for: request)?.data {
-            return cached
-        }
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
-              (response as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true,
-              data.count < 8 << 20 else {
-            return nil
-        }
-        return data
-    }
-
-    /// The artwork of a playlist entry stored as a `data:` URI (not kept in the manifest): looked up in the store.
-    private func originalLogo(of record: DownloadRecord) -> String? {
-        guard let container else {
-            return nil
-        }
-        let context = ModelContext(container)
-        let playlistID = record.item.playlistID
-        let url: URL? = record.item.url
-        var descriptor = FetchDescriptor<PlaylistChannel>(predicate: #Predicate { $0.playlistID == playlistID && $0.url == url })
-        descriptor.fetchLimit = 1
-        return (try? context.fetch(descriptor).first)?.logo
-    }
-
-    /// The same entry in the current copy of its playlist, when its link changed (providers renew links that
-    /// carry a token or credentials).
-    private func renewedItem(for record: DownloadRecord) async -> DownloadedItem? {
-        guard let container else {
-            return nil
-        }
-        let item = record.item
-        return await Task.detached(priority: .utility) { () -> DownloadedItem? in
-            let context = ModelContext(container)
-            guard let importID = SeriesLookup.currentImportID(playlistID: item.playlistID, in: context) else {
-                return nil
-            }
-            let name = item.name
-            let kind = item.kindRawValue
-            var descriptor = FetchDescriptor<PlaylistChannel>(predicate: #Predicate { $0.importID == importID && $0.name == name && $0.kindRawValue == kind })
-            descriptor.fetchLimit = 8
-            let candidates = (try? context.fetch(descriptor)) ?? []
-            let match = candidates.first { channel in
-                ChannelItem(channel).series?.code == item.series?.code
-            }
-            return match.flatMap { DownloadedItem(ChannelItem($0)) }
-        }.value
-    }
-
-    private func loadDuration(of id: UUID, url: URL) {
-        Task {
-            guard let duration = try? await AVURLAsset(url: url).load(.duration).seconds, duration.isFinite, duration > 0 else {
-                return
-            }
-            update(id) { $0.duration = duration }
-        }
-    }
-
     // MARK: - Records
 
-    private func update(_ id: UUID, _ change: (inout DownloadRecord) -> Void) {
+    func update(_ id: UUID, _ change: (inout DownloadRecord) -> Void) {
         guard let index = indexByID[id] else {
             return
         }
@@ -1446,127 +763,5 @@ final class DownloadCenter {
         values.isExcludedFromBackup = true
         var url = directory
         try? url.setResourceValues(values)
-    }
-
-    // MARK: - Paths and sizes
-
-    /// HLS packages are stored relative to the home directory, whose path changes with app updates.
-    nonisolated static func relativePathFromHome(_ url: URL) -> String {
-        func normalized(_ path: String) -> String {
-            // AVFoundation reports "/.nofollow/…" paths, and "/private/var" and "/var" are the same folder.
-            var path = path
-            if path.hasPrefix("/.nofollow/") {
-                path = String(path.dropFirst("/.nofollow".count))
-            }
-            return URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path
-        }
-        let home = normalized(NSHomeDirectory())
-        let path = normalized(url.path)
-        if path.hasPrefix(home + "/") {
-            return String(path.dropFirst(home.count + 1))
-        }
-        // Another spelling of the container: keep what follows its Library folder (AVFoundation's packages are
-        // in Library/com.apple.UserManagedAssets.*).
-        if let range = path.range(of: "/Library/", options: .backwards) {
-            return "Library/" + path[range.upperBound...]
-        }
-        return path
-    }
-
-    nonisolated static func homeURL(forRelativePath path: String) -> URL {
-        if path.hasPrefix("/") {
-            return URL(fileURLWithPath: path)
-        }
-        return URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(path)
-    }
-
-    nonisolated static func allocatedSize(of url: URL) -> Int64 {
-        let keys: Set<URLResourceKey> = [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey, .isDirectoryKey]
-        guard let values = try? url.resourceValues(forKeys: keys) else {
-            return 0
-        }
-        guard values.isDirectory == true else {
-            return Int64(values.totalFileAllocatedSize ?? values.fileAllocatedSize ?? 0)
-        }
-        var total: Int64 = 0
-        if let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: Array(keys)) {
-            for case let file as URL in enumerator {
-                let fileValues = try? file.resourceValues(forKeys: keys)
-                total += Int64(fileValues?.totalFileAllocatedSize ?? fileValues?.fileAllocatedSize ?? 0)
-            }
-        }
-        return total
-    }
-
-    nonisolated static func availableCapacity(at url: URL) -> Int64? {
-        PlatformStorage.availableCapacity(at: url)
-    }
-}
-
-#if canImport(UIKit)
-/// A UIKit background task that ends exactly once: when the work is done, or when its time runs out.
-@MainActor
-final class BackgroundActivity {
-    private var identifier: UIBackgroundTaskIdentifier = .invalid
-
-    init(name: String) {
-        // The expiration handler runs on the main thread; it keeps the activity alive until it has ended.
-        identifier = UIApplication.shared.beginBackgroundTask(withName: name) { [self] in
-            DownloadCenter.logger.info("Background time ran out: \(name, privacy: .public) continues in the foreground")
-            end()
-        }
-    }
-
-    func end() {
-        guard identifier != .invalid else {
-            return
-        }
-        let ending = identifier
-        identifier = .invalid
-        UIApplication.shared.endBackgroundTask(ending)
-    }
-}
-#endif
-
-/// Copies a downloaded file into MP4 with the remux engine: streams AVPlayer plays are copied, the others converted
-/// (audio to AAC, video to H.264, every picture kept).
-enum DownloadConversion {
-    enum Outcome: Sendable {
-        case converted(TimeInterval)
-        case failed(DownloadFailure)
-        /// The video must be converted and the system refuses to encode it now (the app is in the background): the
-        /// original is kept, to be converted again once the app is active.
-        case later
-    }
-
-    nonisolated static func convert(_ source: URL, to destination: URL) -> Outcome {
-        // Written under a hidden name and renamed when complete, so a partial MP4 is never taken for a finished one.
-        let temporary = destination.deletingLastPathComponent().appendingPathComponent(".converting.mp4")
-        try? FileManager.default.removeItem(at: temporary)
-        var duration: Double = 0
-        var buffer = [CChar](repeating: 0, count: 512)
-        let result = source.path.withCString { sourcePointer in
-            temporary.path.withCString { destinationPointer in
-                buffer.withUnsafeMutableBufferPointer { pointer in
-                    fluxo_remux_convert_file(sourcePointer, destinationPointer, &duration, pointer.baseAddress, Int32(pointer.count))
-                }
-            }
-        }
-        guard result == 0 else {
-            try? FileManager.default.removeItem(at: temporary)
-            if result == Int32(FLUXO_REMUX_ERROR_ENCODER_UNAVAILABLE) {
-                return .later
-            }
-            // The engine's message stays in English in the record; it is localized when shown.
-            let message = buffer.withUnsafeBufferPointer { String(cString: $0.baseAddress!) }
-            return .failed(.unsupportedFormat(engineMessage: message))
-        }
-        do {
-            _ = try FileManager.default.replaceItemAt(destination, withItemAt: temporary)
-        } catch {
-            try? FileManager.default.removeItem(at: temporary)
-            return .failed(.other(error))
-        }
-        return .converted(duration)
     }
 }

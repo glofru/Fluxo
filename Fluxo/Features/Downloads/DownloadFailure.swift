@@ -21,7 +21,7 @@ struct DownloadFailure: Error, Sendable {
         /// The server returned a web page or something else that is not a video.
         case notVideo
         /// The remux engine can neither copy nor convert the file; its message (in English, from
-        /// FluxoRemuxEngine.c), when it gave one.
+        /// fluxo_remux_convert_file), when it gave one.
         case unsupportedFormat(engineMessage: String?)
         case insufficientSpace
         /// The downloaded HLS stream cannot be played offline.

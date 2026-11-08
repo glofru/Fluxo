@@ -596,7 +596,7 @@ private struct EngineEvent {
     }
 }
 
-/// Translates the messages of the C engine (FluxoRemuxEngine.c), which are English: "<what failed>: <FFmpeg reason>",
+/// Translates the messages of the C engine (FluxoRemuxEngine.c and the FluxoEngine*.c files), which are English: "<what failed>: <FFmpeg reason>",
 /// or the unsupported-protocol message. The part that says what failed is localized; FFmpeg's technical reason
 /// ("Connection refused", "Server returned 404 Not Found") is kept as it is.
 enum EngineMessage {
@@ -640,7 +640,7 @@ enum EngineMessage {
         return nil
     }
 
-    /// The `what` / `stage` strings of FluxoRemuxEngine.c.
+    /// The `what` / `stage` strings of the C engine.
     private static var stages: [String: String] {
         [
             "Unable to open the stream": String(localized: "Unable to open the stream", comment: "Player error."),

@@ -22,5 +22,8 @@ xcrun swiftc -O "${FLUXO_SWIFT_LANGUAGE[@]}" -D DEBUG -o "$OUT/bin/sync-check" \
     "$SRC/SerialTaskQueue.swift" \
     "$SRC/SyncDeletionJournal.swift" \
     "$HERE/FakeLibrary.swift" \
+    "$HERE/ConvergenceScenarios.swift" \
+    "$HERE/DataSafetyScenarios.swift" \
+    "$HERE/HistoryRemovalScenarios.swift" \
     "$HERE/main.swift" 2> "$OUT/build.log" || { cat "$OUT/build.log"; exit 1; }
 "$OUT/bin/sync-check"

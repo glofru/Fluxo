@@ -83,7 +83,7 @@ log() { printf '\n==> %s\n' "$*"; }
 # Only what the engine reaches: it opens arbitrary IPTV inputs (MPEG-TS over HTTP(S) above all,
 # plus HLS, FLV/RTMP, RTSP/RTP and UDP, and plain files), copies their audio / video packets into
 # MPEG-TS / fragmented MP4 segments and recordings, and converts recordings to MP4. Streams AVPlayer
-# cannot decode are converted (Fluxo/Features/Player/Engine/FluxoTranscoder.c): audio to AAC with
+# cannot decode are converted (Fluxo/Features/Player/Engine/FluxoTranscoder*.c): audio to AAC with
 # FFmpeg's own decoders and AAC encoder, video to H.264 with VideoToolbox's hardware encoder.
 # webvtt: the HLS demuxer probes every rendition of a master playlist while it opens it, subtitle
 # playlists included, and fails the whole open when no demuxer recognises their WebVTT segments.

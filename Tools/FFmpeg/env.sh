@@ -16,10 +16,10 @@ if [ -z "$FFMPEG_MACOS_SLICE" ]; then
     exit 1
 fi
 FFMPEG_CFLAGS="-I $ROOT/Vendor/FFmpeg/include"
-# The engine's converter (FluxoTranscoder.c) asks VideoToolbox what the device decodes.
+# The engine's converter (FluxoTranscoder*.c) asks VideoToolbox what the device decodes.
 FFMPEG_LDFLAGS="-F $FFMPEG_MACOS_SLICE -framework FFmpeg -Wl,-rpath,$FFMPEG_MACOS_SLICE -framework VideoToolbox -framework CoreMedia -framework CoreFoundation"
-# The C sources of the remux engine, for the tools that build it.
-FLUXO_ENGINE_SOURCES="$ROOT/Fluxo/Features/Player/Engine/FluxoRemuxEngine.c $ROOT/Fluxo/Features/Player/Engine/FluxoTranscoder.c"
+# The C sources of the remux engine (every .c file of its folder, which has no other), for the tools that build it.
+FLUXO_ENGINE_SOURCES=$(echo "$ROOT"/Fluxo/Features/Player/Engine/*.c)
 
 FFMPEG=${FFMPEG:-$(command -v ffmpeg || echo /opt/homebrew/bin/ffmpeg)}
 FFPROBE=${FFPROBE:-$(command -v ffprobe || echo /opt/homebrew/bin/ffprobe)}

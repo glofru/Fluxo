@@ -2,7 +2,8 @@
 //  FluxoTranscoder.h
 //  Fluxo
 //
-//  Internal to the remux engine (FluxoRemuxEngine.c); not exposed to Swift.
+//  Internal to the remux engine (FluxoRemuxEngine.c and the FluxoEngine*.c files); not exposed to Swift. Implemented by
+//  FluxoTranscoder.c, FluxoTranscoderVideo.c and FluxoTranscoderAudio.c.
 //
 //  The engine copies the packets of the input when AVPlayer decodes their codec from HLS: H.264, HEVC and
 //  (on devices with an AV1 decoder) AV1 video; AAC, AC-3, E-AC-3 and MP3 audio. Every other stream it can

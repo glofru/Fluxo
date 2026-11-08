@@ -2,7 +2,8 @@
 
 ## User interface
 
-- **Player screen** (`Features/Watch/WatchChannelView.swift`): the video fills the screen
+- **Player screen** (`Features/Watch/WatchChannelView.swift`, with its top bar in `PlayerChrome.swift`, its controls in
+  `PlayerBottomBar.swift` and its messages in `PlayerStatusOverlay.swift`): the video fills the screen
   (iOS full-screen cover; on macOS it covers the main window, whose toolbar is hidden
   meanwhile). The top bar shows close, the channel logo and name, the status (connecting,
   buffering, reconnecting, `LIVE`, time-shifted `-m:ss`, paused, ended, error) and the

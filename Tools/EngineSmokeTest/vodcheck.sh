@@ -6,8 +6,12 @@ build_check() {
     pkg=$WORK/package
     rm -rf "$pkg"
     mkdir -p "$pkg/Sources/FluxoEngine/include" "$pkg/Sources/VODCheck"
-    cp "$ROOT/Fluxo/Features/Player/Engine/FluxoRemuxEngine.c" "$ROOT/Fluxo/Features/Player/Engine/FluxoTranscoder.c" \
-        "$ROOT/Fluxo/Features/Player/Engine/FluxoTranscoder.h" "$pkg/Sources/FluxoEngine/"
+    # The engine's C files and its internal headers; its interface (FluxoRemuxEngine.h) is the module's public header.
+    # shellcheck disable=SC2086 # FLUXO_ENGINE_SOURCES is a list of words.
+    cp $FLUXO_ENGINE_SOURCES "$pkg/Sources/FluxoEngine/"
+    for header in "$ROOT"/Fluxo/Features/Player/Engine/*.h; do
+        [ "$(basename "$header")" = FluxoRemuxEngine.h ] || cp "$header" "$pkg/Sources/FluxoEngine/"
+    done
     cp "$ROOT/Fluxo/Features/Player/Engine/FluxoRemuxEngine.h" "$pkg/Sources/FluxoEngine/include/"
     cp "$ROOT/Tools/EngineSmokeTest/VODCheck/main.swift" "$ROOT/Tools/EngineSmokeTest/VODCheck/Stress.swift" \
         "$ROOT/Fluxo/Features/Player/PlaybackRoute.swift" "$ROOT/Fluxo/Features/Player/PlayerSeeker.swift" \
