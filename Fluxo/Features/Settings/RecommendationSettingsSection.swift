@@ -17,9 +17,9 @@ struct RecommendationSettingsSection: View {
         Section {
             Toggle(isOn: $hidesAdultContent) {
                 #if os(tvOS)
-                Label(String(localized: "Hide adult content from recommendations"), systemImage: "eye.slash")
+                Label(String(localized: "Hide adult content from recommendations", comment: "Settings › Recommendations: a switch. When on, the featured items, For You, Because You Watched, On Now, For You Tonight and the Apple TV Top Shelf leave out content for adults (XXX, 18+)."), systemImage: "eye.slash")
                 #else
-                SettingsLabel("Hide adult content from recommendations", systemImage: "eye.slash", tint: Theme.pink)
+                SettingsLabel(localized: String(localized: "Hide adult content from recommendations", comment: "Settings › Recommendations: a switch. When on, the featured items, For You, Because You Watched, On Now, For You Tonight and the Apple TV Top Shelf leave out content for adults (XXX, 18+)."), systemImage: "eye.slash", tint: Theme.pink)
                 #endif
             }
             .onChange(of: hidesAdultContent) {

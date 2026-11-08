@@ -523,7 +523,11 @@ enum LibraryStore {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd HH-mm"
-        let name = "Fluxo Library \(formatter.string(from: now))"
+        let stamp = formatter.string(from: now)
+        let name = TextParts.fileName(
+            String(localized: "LibraryExport.fileName", defaultValue: "Fluxo Library \(stamp)", comment: "File name of an exported copy of the library (a ZIP file), shown when the user saves it (Export a Copy…). The placeholder is a date and time such as 2026-11-08 10-30. Keep Fluxo as it is. Don't use / or : characters."),
+            fallback: "Fluxo \(stamp)"
+        )
         let staging = fileManager.temporaryDirectory.appendingPathComponent("LibraryExport-\(UUID().uuidString)", isDirectory: true)
         let folder = staging.appendingPathComponent(name, isDirectory: true)
         try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)

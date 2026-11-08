@@ -33,13 +33,22 @@ Rules the code follows:
   Chinese).
 - Nothing localized is stored: the guide keeps "S1 E5" and empty titles (`GuideFormat.episode`, "Untitled"
   when shown), a failed guide refresh keeps a `GuideRefreshFailure` code, a failed download keeps a
-  `DownloadFailure.Reason` (with the engine's English message) and a download its picture height and the codes of
-  its languages, a recording without a channel
+  `DownloadFailure.Reason` (with the engine's English message; a system error of no known kind keeps its domain and
+  code, and its own description only with the language it is in, shown in that language alone) and a download its
+  picture height and the codes of its languages, a recording without a channel
   name keeps no title ("Recording from <date>" when shown), and the recordings folder is always
   `Recordings`. Pending reminder notifications are rewritten when the language or the time format changes.
 - The iCloud status row never shows CloudKit's descriptions, which are often English developer text
   ("Server Rejected Request"): `CloudSyncErrorText` says what happened (offline, iCloud busy, storage full, signed
-  out, or "Couldn't sync"), and the raw error goes to the log.
+  out, or "Couldn't sync"), and the raw error goes to the log. A failed Delete iCloud Data only says that iCloud did
+  not confirm it.
+- File names the user sees are translated keys (`LibraryExport.fileName`, `DiagnosticsExport.fileName`), made safe
+  for a path by `TextParts.fileName` (no "/" or ":"). Names the user never sees (`Library-<date>` backups,
+  `Recordings`) stay as they are.
+- Values from the provider inside a translated sentence (a programme title in Reminder Not Found, a title in Can't
+  Download) go in a bidi isolate (`TextParts.isolated`), so "The 100" or "Hello!" keep their order in Arabic.
+- License texts stay in English and are laid out left to right, flush left, in every language
+  (`AcknowledgementsView`); the localized lines around them follow the language.
 - The messages of the C remux engine are English; `EngineMessage.localized` (`StreamRemuxer.swift`)
   translates the part that says what failed and keeps FFmpeg's technical reason.
 - The suggestions of Apple Intelligence are written in the language of the interface

@@ -18,12 +18,13 @@ FFmpeg included.
   most 40 reports and 8 MB, none older than 90 days, the oldest dropped first. It reads no file timestamps (the
   order is in the names), so it needs no privacy-manifest reason.
 - **Settings › About › Diagnostic Reports** (`DiagnosticReportsView`) lists them (kind and date), with **Share
-  Reports…** (one JSON file, `Fluxo Diagnostics <date>.json`: the app version and every report unchanged, through
+  Reports…** (one JSON file, `Fluxo Diagnostics <date>.json`, its name translated: the app version and every report unchanged, through
   the share sheet to wherever the user picks), **Delete All Reports**, and the **Keep Diagnostic Reports** switch
   (on by default; turned off, collecting stops and the kept reports are deleted).
 
 Privacy: the system creates these reports only for people who share analytics with app developers (Settings ›
-Privacy & Security › Analytics & Improvements), and delivers them on its own schedule (diagnostics at the next
+Privacy & Security › Analytics & Improvements; on the Mac, System Settings, which the footer of the switch names
+there), and delivers them on its own schedule (diagnostics at the next
 launch, metrics about once a day). They hold the app and system versions, the device model, the region format and
 call stacks (code addresses and binary names); Fluxo adds nothing to them, and the app has no signposts that could
 carry a channel or playlist name. The app never sends them anywhere: no network code touches them, there is no crash

@@ -418,10 +418,13 @@ enum LibraryCheck {
         expect(DownloadFailure.Reason(classifying: NSError(domain: NSCocoaErrorDomain, code: NSFileWriteOutOfSpaceError)) == .insufficientSpace, "a full disk")
         expect(DownloadFailure.Reason(classifying: NSError(domain: NSCocoaErrorDomain, code: NSFileWriteNoPermissionError)) == .storage, "a file that cannot be written")
         let described = NSError(domain: "Test", code: 3, userInfo: [NSLocalizedDescriptionKey: "The provider closed the account."])
-        expect(DownloadFailure.Reason(classifying: described) == .other("The provider closed the account."), "a useful description is kept")
+        let language = DownloadFailure.Reason.appLanguage
+        expect(DownloadFailure.Reason(classifying: described) == .system(domain: "Test", code: 3, text: "The provider closed the account.", language: language), "a useful description is kept, with its domain, code and language")
+        let otherLanguage = DownloadFailure.Reason.system(domain: "Test", code: 3, text: "Il provider ha chiuso l’account.", language: "xx").message
+        expect(otherLanguage.hasPrefix(DownloadFailure.Reason.unexpectedMessage) && otherLanguage.contains("Test 3") && !otherLanguage.contains("provider"), "in another language, a sentence of this one with the domain and code: \(otherLanguage)")
         expect(DownloadFailure.Reason(classifying: NSError(domain: "CoreMediaErrorDomain", code: -12_938)) == .unexpected, "an error without a description is an unexpected stop")
         let withNumber = NSError(domain: "Test", code: 404, userInfo: [NSLocalizedDescriptionKey: "The server example.com answered (error 404)"])
-        expect(DownloadFailure.Reason(classifying: withNumber) == .other("The server example.com answered (error 404)"), "a useful description with a host and a number is kept")
+        expect(DownloadFailure.Reason(classifying: withNumber) == .system(domain: "Test", code: 404, text: "The server example.com answered (error 404)", language: language), "a useful description with a host and a number is kept")
         for stored in ["Impossibile completare l’operazione. (Errore NSURLErrorDomain -1.)", "操作を完了できませんでした。（AVFoundationErrorDomainエラー-11800）", "Der Vorgang konnte nicht abgeschlossen werden. (Fluxo.DownloadError Fehler 2.)"] {
             expect(DownloadFailure.Reason.isUninformative(stored), "Foundation's text for an error without a description, in another language: \(stored)")
         }

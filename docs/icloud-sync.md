@@ -169,7 +169,8 @@ user's other devices as soon as it finds them ("Your Playlists from iCloud").
   (per device; shown off, and disabled, in a build that cannot sync), the status (synced when, Syncing…, Sign in to iCloud, not available in this build), Sync
   Now, Playlists in iCloud, Restore from iCloud, and What's Synced and Privacy, which has Delete iCloud Data (deletes the zone; every device's
   library stays). Delete iCloud Data reports success only when CloudKit confirms the zone deletion
-  (`sentDatabaseChanges.deletedZoneIDs`); otherwise it says so, leaves sync as it was and withdraws the pending
+  (`sentDatabaseChanges.deletedZoneIDs`); otherwise it says so (in the user's language: CloudKit's own description goes to
+  the log), leaves sync as it was and withdraws the pending
   deletion, so it cannot run later over data uploaded again. With sync off it uses an engine that only sends (it never
   fetches, so nothing of iCloud is applied on the way). Release builds without the iCloud capability (the ad hoc signed
   Mac build) do not show the iCloud section.

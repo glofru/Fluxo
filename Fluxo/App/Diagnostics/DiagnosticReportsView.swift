@@ -31,7 +31,12 @@ struct DiagnosticReportsView: View {
                     Text("Keep Diagnostic Reports", comment: "Settings › About › Diagnostic Reports: the switch that lets Fluxo keep the crash and performance reports the system gives it.")
                 }
             } footer: {
-                Text("If you share analytics with app developers (Settings › Privacy & Security › Analytics & Improvements), the system gives Fluxo reports about its crashes, hangs and performance. Fluxo keeps the latest ones on this device only and never sends them anywhere: they leave it only if you share them yourself.", comment: "Settings › About › Diagnostic Reports: footer of the switch. Name the system settings as the system does in the user's language.")
+                // The Mac names its settings app and the path to the switch differently.
+                #if os(macOS)
+                Text("If you share analytics with app developers (System Settings › Privacy & Security › Analytics & Improvements), the system gives Fluxo reports about its crashes, hangs and performance. Fluxo keeps the latest ones on this Mac only and never sends them anywhere: they leave it only if you share them yourself.", comment: "macOS only. Settings › About › Diagnostic Reports: footer of the switch. Name the system settings as macOS does in the user's language (System Settings, not the iPhone's Settings).")
+                #else
+                Text("If you share analytics with app developers (Settings › Privacy & Security › Analytics & Improvements), the system gives Fluxo reports about its crashes, hangs and performance. Fluxo keeps the latest ones on this device only and never sends them anywhere: they leave it only if you share them yourself.", comment: "iPhone and iPad. Settings › About › Diagnostic Reports: footer of the switch. Name the system settings as the system does in the user's language.")
+                #endif
             }
 
             Section {

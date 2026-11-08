@@ -125,8 +125,9 @@ struct OpenSourceComponent: Identifiable, Hashable {
         licenseURL: URL.legal("https://ffmpeg.org/legal.html"),
         texts: [
             BundledText(title: "GNU Lesser General Public License v2.1", resource: "License-LGPL-2.1"),
-            // FFmpeg's own overview (LICENSE.md of the tarball): which parts are under which license.
-            BundledText(title: "FFmpeg License Overview (LICENSE.md)", resource: "License-FFmpeg-Overview"),
+            // FFmpeg's own overview (LICENSE.md of the tarball): which parts are under which license. Its title is the
+            // app's description of it, so it is translated.
+            BundledText(title: String(localized: "FFmpeg License Overview (LICENSE.md)", comment: "Settings › Acknowledgements, FFmpeg page: header of FFmpeg's own summary of which parts of it are under which license (its file LICENSE.md, shown in English below). Keep FFmpeg and LICENSE.md as they are."), resource: "License-FFmpeg-Overview"),
             // The DCT code from libjpeg (jrevdct.c, jfdctfst.c, jfdctint_template.c), which the MPEG-4, MPEG-2,
             // WMV and MJPEG decoders of this build use: its license asks binaries to credit the IJG.
             BundledText(title: "Independent JPEG Group", resource: "License-IJG"),
@@ -182,8 +183,8 @@ struct OpenSourceComponent: Identifiable, Hashable {
     }
 }
 
-/// A text file of Licenses in the app bundle (`<resource>.txt`), shown in full under `title` (a legal title, never
-/// translated).
+/// A text file of Licenses in the app bundle (`<resource>.txt`), shown in full under `title`: a legal title, never
+/// translated ("GNU Lesser General Public License v2.1"), or the app's own description of the text, translated.
 struct BundledText: Hashable {
     let title: String
     let resource: String

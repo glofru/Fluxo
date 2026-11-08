@@ -43,13 +43,14 @@ final class CloudKitSyncTransport: CloudSyncTransport, nonisolated CKSyncEngineD
         var userRecordName: String?
     }
 
-    /// Delete iCloud Data did not complete.
+    /// Delete iCloud Data did not complete. Settings shows its description, which never repeats the underlying
+    /// error's: CloudKit's descriptions are often English developer text ("Server Rejected Request"), so that one
+    /// goes to the log.
     struct ZoneDeletionError: LocalizedError {
         var underlying: (any Error)?
 
         var errorDescription: String? {
-            underlying?.localizedDescription
-                ?? String(localized: "iCloud did not confirm the deletion. Check your connection and try again.", comment: "Delete iCloud Data failed: the server did not confirm that the data was deleted.")
+            String(localized: "iCloud did not confirm the deletion. Check your connection and try again.", comment: "Delete iCloud Data failed: the device is offline, iCloud is not available, or the server did not confirm that the data was deleted.")
         }
     }
 
@@ -230,7 +231,8 @@ final class CloudKitSyncTransport: CloudSyncTransport, nonisolated CKSyncEngineD
             try await engine.sendChanges()
         } catch {
             engine.state.remove(pendingDatabaseChanges: [.deleteZone(zoneID)])
-            throw error
+            Self.logger.error("Could not send the deletion of the sync zone: \(error.localizedDescription, privacy: .public)")
+            throw ZoneDeletionError(underlying: error)
         }
         let outcome = zoneDeletion
         zoneDeletion = nil

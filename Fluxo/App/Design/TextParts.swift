@@ -101,6 +101,18 @@ enum TextParts {
         parts.compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: sentenceSeparator)
     }
 
+    /// A translated text made a file name the user sees (in the Files save panel, the share sheet): without the "/"
+    /// and ":" a path component cannot hold (a "/" makes a folder; Finder shows a ":" as "/"), the characters that
+    /// aren't printed, and the spaces and dots at its ends (a leading dot hides the file). `fallback` when nothing is
+    /// left.
+    static func fileName(_ text: String, fallback: String) -> String {
+        let cleaned = String(String.UnicodeScalarView(text.unicodeScalars.map { scalar in
+            scalar == "/" || scalar == ":" || scalar.properties.generalCategory == .control ? "-" : scalar
+        }))
+        let trimmed = cleaned.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ".")))
+        return trimmed.isEmpty ? fallback : trimmed
+    }
+
     /// The text in a first-strong isolate: it keeps its own direction inside a line of the other direction.
     static func isolated(_ text: String) -> String {
         "\u{2068}\(text)\u{2069}"

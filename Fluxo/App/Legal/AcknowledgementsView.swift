@@ -10,7 +10,8 @@
 //  Settings window. On Apple TV every line takes the focus (the remote walks through the page, VoiceOver reads each
 //  line), and addresses come with a QR code to open them on a phone, since Apple TV has no browser.
 //
-//  License texts stay in English, the language they are written in; everything else is in the String Catalog.
+//  License texts stay in English, the language they are written in, and flush left in every language; everything else
+//  is in the String Catalog.
 //
 
 import SwiftUI
@@ -357,6 +358,7 @@ struct LicenseTextSection: View {
             ForEach(Array(LicenseText.paragraphs(text).enumerated()), id: \.offset) { _, paragraph in
                 Text(verbatim: paragraph)
                     .font(.caption)
+                    .englishParagraph()
                     .readableWithRemote()
             }
             #else
@@ -365,6 +367,7 @@ struct LicenseTextSection: View {
             ForEach(Array(Self.blocks(LicenseText.paragraphs(text)).enumerated()), id: \.offset) { _, block in
                 Text(verbatim: block)
                     .font(.footnote)
+                    .englishParagraph()
                     .textSelection(.enabled)
                     .listRowSeparator(.hidden)
             }
@@ -389,6 +392,18 @@ struct LicenseTextSection: View {
             blocks.append(current)
         }
         return blocks
+    }
+}
+
+private extension View {
+    /// An English paragraph of a license laid out left to right, also in a right-to-left language: flush left, as
+    /// English is read, instead of flush right with a ragged left edge. (Its punctuation is already in place: a text
+    /// takes its direction from its first letter.) Not for the localized lines around it, nor for the short names
+    /// (copyright, license, address), which line up with the localized label next to them.
+    func englishParagraph() -> some View {
+        multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .environment(\.layoutDirection, .leftToRight)
     }
 }
 

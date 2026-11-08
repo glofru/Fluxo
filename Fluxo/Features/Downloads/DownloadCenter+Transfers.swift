@@ -345,7 +345,8 @@ extension DownloadCenter {
         Self.logger.error("Download failed: \(failure.message, privacy: .public)")
         if record.status == .preparing, !isNetworkError {
             // It could not even start (no space, not a video, refused): said at once, not only in the list.
-            let name = TextParts.line([record.title, record.episodeLine])
+            // Isolated as a whole (a single part isn't): in a right-to-left sentence, "The 100" keeps its order.
+            let name = TextParts.isolated(TextParts.line([record.title, record.episodeLine]))
             notice = DownloadNotice(
                 title: String(localized: "Can't Download “\(name)”", comment: "Title of the alert when a download cannot start; the placeholder is the movie or episode."),
                 message: failure.message

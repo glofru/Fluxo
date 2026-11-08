@@ -157,7 +157,11 @@ struct DiagnosticReportStore: Sendable {
         try? FileManager.default.removeItem(at: folder)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let day = now.formatted(.iso8601.year().month().day())
-        let url = folder.appendingPathComponent("Fluxo Diagnostics \(day).json")
+        let name = TextParts.fileName(
+            String(localized: "DiagnosticsExport.fileName", defaultValue: "Fluxo Diagnostics \(day)", comment: "Settings › About › Diagnostic Reports: file name of the shared reports (a JSON file), shown in the share sheet. The placeholder is a date such as 2026-11-08. Keep Fluxo as it is. Don't use / or : characters."),
+            fallback: "Fluxo \(day)"
+        )
+        let url = folder.appendingPathComponent(name).appendingPathExtension("json")
         try json.write(to: url, options: .atomic)
         return url
     }

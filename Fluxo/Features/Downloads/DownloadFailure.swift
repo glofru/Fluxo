@@ -11,8 +11,8 @@ import Foundation
 /// Why a download failed or could not start.
 ///
 /// A failed download keeps its `reason` (in the manifest), not a message: the message is built when it is shown,
-/// in the current language, so it follows a language change. Only errors without a known kind keep the text of
-/// their own description, as `GuideRefreshFailure` does.
+/// in the current language, so it follows a language change. An error without a known kind keeps its domain and
+/// code, and its own description only with the language it is in: the description is shown in that language alone.
 struct DownloadFailure: Error, Sendable {
 
     enum Reason: Codable, Hashable, Sendable {
@@ -37,7 +37,11 @@ struct DownloadFailure: Error, Sendable {
         /// An error that says nothing useful (`NSURLErrorUnknown`, "unknown error"): the Library says the download
         /// stopped unexpectedly.
         case unexpected
-        /// Any other error: its description at the time it failed.
+        /// Any other error: its domain and code, and its description (`text`) in the app's language at the time it
+        /// failed (`language`, a localization of the app). The Library shows the description in that language only:
+        /// after a language change it says the download stopped unexpectedly, with the domain and code.
+        case system(domain: String, code: Int, text: String, language: String?)
+        /// Any other error, as earlier builds stored it: its description, in a language not known.
         case other(String)
     }
 
@@ -157,7 +161,14 @@ extension DownloadFailure.Reason {
         // Foundation's own description of an error that has none ("The operation couldn’t be completed. (Domain
         // error 3.)", in the current language): it names the error's domain and code, which no real message does.
         let isGeneric = Self.lastParenthesized(text).map { $0.contains(nsError.domain) && $0.contains(String(nsError.code)) } ?? false
-        self = isGeneric || Self.isUninformative(text) ? .unexpected : .other(text)
+        self = isGeneric || Self.isUninformative(text)
+            ? .unexpected
+            : .system(domain: nsError.domain, code: nsError.code, text: text, language: Self.appLanguage)
+    }
+
+    /// The localization the app shows (and the system describes errors in), such as "it" or "pt-BR".
+    static var appLanguage: String? {
+        Bundle.main.preferredLocalizations.first
     }
 
     /// A description that tells the viewer nothing: "unknown error", "The operation couldn’t be completed. (… error
@@ -240,12 +251,7 @@ extension DownloadFailure.Reason {
             if let sentence = EngineMessage.formatSentence(engineMessage) {
                 return sentence
             }
-            let detail = TextParts.isolated(EngineMessage.localized(engineMessage))
-            return String(
-                localized: "DownloadFailure.withDetail",
-                defaultValue: "\(message) (\(detail))",
-                comment: "Download error: the reason a video can't be downloaded, then in parentheses the technical detail from the converter (often in English, such as 'Unable to open the stream: Invalid data found when processing input'). Use the parentheses and spacing of your language."
-            )
+            return Self.withDetail(message, detail: EngineMessage.localized(engineMessage))
         case .insufficientSpace:
             return String(localized: "There isn't enough free space on this device for this download.", comment: "Download error: the device does not have enough free storage.")
         case .incomplete:
@@ -267,6 +273,13 @@ extension DownloadFailure.Reason {
             return String(localized: "The download couldn't be saved on this device. Try again.", comment: "Download error: the file could not be written on the device (not because the disk is full).")
         case .unexpected:
             return Self.unexpectedMessage
+        case .system(let domain, let code, let text, let language):
+            // The system's description in the language it was written in; in another language, a sentence of this
+            // one, with the domain and code (which read the same in every language) to tell what failed.
+            if let language, language == Self.appLanguage, !Self.isUninformative(text) {
+                return text
+            }
+            return Self.withDetail(Self.unexpectedMessage, detail: "\(domain) \(code)")
         case .other(let text):
             // Downloads that failed in earlier builds kept "unknown error" and the like.
             return Self.isUninformative(text) ? Self.unexpectedMessage : text
@@ -277,5 +290,16 @@ extension DownloadFailure.Reason {
 extension DownloadFailure.Reason {
     static var unexpectedMessage: String {
         String(localized: "The download stopped unexpectedly. Try again.", comment: "Download error: the system reported an error without a useful description.")
+    }
+
+    /// The reason, then a technical detail in parentheses. The detail is isolated, so that its Latin text and colons
+    /// keep their order in a right-to-left sentence.
+    static func withDetail(_ message: String, detail: String) -> String {
+        let detail = TextParts.isolated(detail)
+        return String(
+            localized: "DownloadFailure.withDetail",
+            defaultValue: "\(message) (\(detail))",
+            comment: "Download error: the reason a video can't be downloaded, then in parentheses a technical detail: the converter's message (often in English, such as 'Unable to open the stream: Invalid data found when processing input') or a system error's domain and code (such as 'AVFoundationErrorDomain -11800'). Use the parentheses and spacing of your language."
+        )
     }
 }

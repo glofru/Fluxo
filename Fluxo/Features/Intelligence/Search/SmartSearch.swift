@@ -86,17 +86,37 @@ struct SmartSearchPlan: Hashable, Sendable {
     /// time, kind, country or "like …" as understood. Not the synonyms and translations searched as well ("Soccer",
     /// "Calcio" for "football"): shown, an English query would read as Italian. When no keyword is one of the
     /// viewer's words (a word said differently: "something to laugh at" is "comedy"), the first one stands for them.
+    /// Japanese and Chinese put no spaces between words ("今夜のサッカー" is one run of letters), so there a keyword
+    /// written in those scripts is the viewer's when it is part of what they typed ("サッカー").
     func summaryChips(for query: String) -> [String] {
         let said = Set(SmartSearchRules.words(query))
         var shown = self
         shown.keywords = keywords.filter { keyword in
             let words = SmartSearchRules.words(keyword)
-            return !words.isEmpty && words.allSatisfy(said.contains)
+            return !words.isEmpty && words.allSatisfy { word in
+                said.contains(word) || (Self.isWrittenWithoutSpaces(word) && said.contains { $0.contains(word) })
+            }
         }
         if shown.keywords.isEmpty {
             shown.keywords = Array(keywords.prefix(1))
         }
         return shown.summaryChips
+    }
+
+    /// A word of a script written without spaces between words: Chinese characters, kana, Thai, Lao, Khmer, Myanmar.
+    /// Only there is a part of a typed run of letters a word of its own; in other scripts it is not ("sport" in
+    /// "sports").
+    static func isWrittenWithoutSpaces(_ word: String) -> Bool {
+        word.unicodeScalars.contains { scalar in
+            switch scalar.value {
+            case 0x3040 ... 0x30FF, 0x31F0 ... 0x31FF, // Hiragana, Katakana and its extensions
+                 0x3400 ... 0x4DBF, 0x4E00 ... 0x9FFF, 0xF900 ... 0xFAFF, 0x20000 ... 0x3134F, // Chinese characters
+                 0x0E00 ... 0x0EFF, 0x1000 ... 0x109F, 0x1780 ... 0x17FF: // Thai and Lao, Myanmar, Khmer
+                true
+            default:
+                false
+            }
+        }
     }
 
     /// Readable chips of the plan ("Football", "Tonight", "Italy"): every keyword, synonyms included

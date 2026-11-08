@@ -31,6 +31,8 @@ final class ReminderCenter {
         /// Why nothing plays, for the alert shown with the TV guide.
         var message: String {
             if let title {
+                // The provider's title, isolated: in a right-to-left sentence, "The 100" or "Hello!" keep their order.
+                let title = TextParts.isolated(title)
                 return String(localized: "The reminder for “\(title)” no longer exists. Find the programme in the TV guide.", comment: "Message of the Reminder Not Found alert (the reminder, or the playlist of its channel, was deleted since its notification was delivered); the placeholder is the programme's title.")
             }
             return String(localized: "This reminder no longer exists. Find the programme in the TV guide.", comment: "Message of the Reminder Not Found alert, for a notification without the programme's title.")

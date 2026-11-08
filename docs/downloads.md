@@ -69,7 +69,9 @@ Movies and episodes (never live channels) download to watch without a network (`
   stopped unexpectedly", a broken response, a file that cannot be written and a full disk have their own, and the
   "unknown error" texts earlier builds stored read as the same sentence, as does Foundation's text for an error without
   a description ("The operation couldn’t be completed. (… error -1.)"), recognized in any language by its domain and
-  code.
+  code. Any other system error keeps its domain and code, and its description with the app's language at the time:
+  the Library shows the description in that language only, and after a language change says the download stopped
+  unexpectedly, with the domain and code ("AVFoundationErrorDomain -11800") in parentheses.
 - **Simulator**: background HLS downloads need a signed app (an unsigned build fails with "does not have write access
   to destination directory"); `Tools/Simulator/build.sh` builds unsigned, so build the simulator app with
   `CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual` to try them. See the download routes in `Tools/Simulator/README.md`.
