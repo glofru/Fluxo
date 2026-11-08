@@ -110,6 +110,12 @@
 #define FLUXO_VOD_BYTE_SEEK_LATE (AV_TIME_BASE / 2)
 #define FLUXO_VOD_BYTE_SEEK_EARLY (12 * AV_TIME_BASE)
 #define FLUXO_VOD_BYTE_SEEK_CORRECTIONS 3
+// An FLV byte seek looks this far after the position for the first tag (see fluxo_flv_tag_at_or_after).
+#define FLUXO_FLV_SYNC_WINDOW (256 * 1024)
+// An end of input right after a seek that aimed at least this long before the end of the input is a failed seek, not
+// the end (see fluxo_vod_retry_seek): the seek is made again another way, at most FLUXO_VOD_SEEK_FALLBACKS times.
+#define FLUXO_VOD_SEEK_END_MARGIN (30 * AV_TIME_BASE)
+#define FLUXO_VOD_SEEK_FALLBACKS 2
 
 // Engine trace for the smoke tests (built with -DFLUXO_ENGINE_TRACE, printed when the FLUXO_ENGINE_TRACE
 // environment variable is set). Compiled out of the app.
@@ -122,6 +128,8 @@
 // one opens a connection at the new position).
 #define FLUXO_INPUT_IO_BUFFER (64 * 1024)
 #define FLUXO_INPUT_IO_READ_ON (512 * 1024)
+// fluxo_run_loop: a live input stops for fluxo_remux_set_input_suspended.
+#define FLUXO_INPUT_SUSPENDED FFERRTAG('S', 'U', 'S', 'P')
 
 
 // Longest sleep of a paused on-demand reader. Every request wakes it at once (fluxo_vod_signal): this only bounds
@@ -212,7 +220,8 @@ typedef struct FluxoSegment {
     int64_t sequence;
     double duration;
     int64_t bytes;
-    int64_t wallclock_ms;
+    // EXT-X-PROGRAM-DATE-TIME (live playlists): see FluxoHLS.date_origin_ms.
+    int64_t date_ms;
     int discontinuity;
 } FluxoSegment;
 
@@ -236,8 +245,19 @@ typedef struct FluxoHLS {
     double max_window_duration;
     int64_t max_window_bytes;
     int min_window_segments;
-    // Live playlists carry EXT-X-PROGRAM-DATE-TIME (wall clock of each segment); on-demand ones do not.
+    // Live playlists carry EXT-X-PROGRAM-DATE-TIME; on-demand ones do not. The dates follow the media timeline, not
+    // the wall clock of each segment: the wall clock of the session's first segment (date_origin_ms) plus the durations
+    // of the segments before, as their EXTINF says them (date_media_ms, milliseconds), across discontinuities too (a
+    // reconnection, an input suspended while paused: the timeline goes on without a gap, so do the dates). So a date
+    // names the same media in every player item of the session, whichever segment's date the player extrapolates
+    // from: AVPlayerItem.currentDate() minus currentTime() is the same everywhere in an item (PausedTimeShiftPolicy).
+    // (Wall-clock dates of each segment would not: segments written in a burst, as a server sends what it buffered,
+    // get dates closer together than their durations.) The dates fall behind the wall clock by the time an input was
+    // closed or reconnecting.
     int program_date_time;
+    int dated;
+    int64_t date_origin_ms;
+    int64_t date_media_ms;
 
     FluxoSegment *segments;
     int count;
@@ -256,7 +276,7 @@ typedef struct FluxoHLS {
     // Current segment.
     int segment_open;
     int64_t segment_start_time;  // AV_TIME_BASE units, AV_NOPTS_VALUE until the first packet
-    int64_t segment_wallclock_ms;
+    int64_t segment_wallclock_ms;  // when it was opened: the origin of the dates for the session's first segment
     int64_t last_reference_time;
     int segment_discontinuity;
     // The current segment was cut on the audio (converted video gave nothing): the next video key frame starts a
@@ -340,6 +360,8 @@ struct FluxoRemuxSession {
     void *context;
 
     atomic_bool cancel_requested;
+    // Live inputs: fluxo_remux_set_input_suspended (the player is paused); the engine thread closes the input.
+    atomic_bool suspend_requested;
     atomic_bool started;
     pthread_t thread;
     int thread_created;
@@ -415,6 +437,17 @@ struct FluxoRemuxSession {
     int64_t vod_seek_time;
     int64_t vod_seek_position;
     int vod_seek_corrections;
+    // Engine thread only. The input was seeked and no segment was completed since (an end of input then means the
+    // seek failed, see fluxo_vod_retry_seek), the fallbacks made for that seek, and how it is made again (a failed
+    // byte seek: by time, and so is every later seek of this input; a failed seek by time: that seek by reading the
+    // input again from its start).
+    int vod_seek_fresh;
+    // The latest time of the reference stream read since that seek (AV_NOPTS_VALUE before any): an end of input after
+    // media that all came before the target is the real end (fluxo_vod_retry_seek).
+    int64_t vod_seek_read_time;
+    int vod_seek_fallbacks;
+    int vod_no_byte_seek;
+    int vod_force_reopen;
     int vod_writing;
     int vod_need_key;
     // Video packets written to the current segment.
@@ -460,6 +493,9 @@ struct FluxoRemuxSession {
     int64_t vod_seek_hint;
     // The VOD playlists are on disk (fluxo_remux_set_start_time may write them again). Guarded by vod_lock.
     int vod_playlist_written;
+    // The engine thread stopped producing (the session finished, failed or was cancelled): a segment that is not on
+    // disk never will be (fluxo_remux_request_segment returns -2 for it). Guarded by vod_lock.
+    int vod_terminal;
 };
 
 
@@ -482,6 +518,7 @@ void fluxo_format_error(char *buffer, size_t size, int error_code, const char *w
 // FluxoEngineInput.c
 int fluxo_open_input(FluxoRemuxSession *session);
 int fluxo_is_busy_server_error(int error);
+int fluxo_first_open_retries(int error);
 int fluxo_input_reached_end_of_file(FluxoRemuxSession *session);
 void fluxo_close_input(FluxoRemuxSession *session);
 
@@ -504,6 +541,7 @@ void fluxo_hls_align_muxer(FluxoHLS *hls, AVFormatContext *context);
 int fluxo_hls_prepare_output(FluxoRemuxSession *session);
 int fluxo_hls_write_header(FluxoHLS *hls);
 int fluxo_hls_flush(FluxoHLS *hls);
+int fluxo_hls_write_playlist(FluxoHLS *hls, int ended);
 void fluxo_hls_delete_segment(const FluxoHLS *hls, int64_t sequence);
 int fluxo_hls_open(FluxoRemuxSession *session);
 int fluxo_hls_write(FluxoRemuxSession *session, const AVPacket *packet, const AVStream *in_stream, AVPacket *scratch);
@@ -545,7 +583,8 @@ void fluxo_drain_requests(FluxoRemuxSession *session);
 // FluxoEngineLive.c
 int fluxo_run_loop(FluxoRemuxSession *session);
 void fluxo_wait(FluxoRemuxSession *session, int64_t duration_us);
-int fluxo_reconnect(FluxoRemuxSession *session, int last_error);
+int fluxo_reconnect(FluxoRemuxSession *session, int last_error, int resuming);
+int fluxo_resume_input(FluxoRemuxSession *session);
 
 // FluxoEngineVODPlan.c
 void fluxo_vod_signal_locked(FluxoRemuxSession *session);

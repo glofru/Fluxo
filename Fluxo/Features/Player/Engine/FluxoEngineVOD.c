@@ -219,6 +219,9 @@ static int fluxo_vod_finish_segment(FluxoRemuxSession *session) {
 
     hls->segments_written++;
     session->vod_recoveries = 0;
+    // A segment after the seek: the seek worked.
+    session->vod_seek_fresh = 0;
+    session->vod_seek_fallbacks = 0;
     session->vod_preroll_backoffs = 0;
     session->reconnect_attempt = 0;
     session->event_segment_index = index;
@@ -320,6 +323,101 @@ static int fluxo_vod_write(FluxoRemuxSession *session, AVPacket *packet, AVPacke
     return ret < 0 ? ret : 0;
 }
 
+// The FLV demuxers (FLV, live FLV and its KUX variant).
+static int fluxo_is_flv(const AVFormatContext *input) {
+    const char *name = input->iformat != NULL ? input->iformat->name : NULL;
+    return name != NULL && (strcmp(name, "flv") == 0 || strcmp(name, "live_flv") == 0 || strcmp(name, "kux") == 0);
+}
+
+static uint32_t fluxo_read_be24(const uint8_t *data) {
+    return ((uint32_t)data[0] << 16) | ((uint32_t)data[1] << 8) | data[2];
+}
+
+static uint32_t fluxo_read_be32(const uint8_t *data) {
+    return ((uint32_t)data[0] << 24) | ((uint32_t)data[1] << 16) | ((uint32_t)data[2] << 8) | data[3];
+}
+
+static int fluxo_flv_is_tag_header(const uint8_t *header) {
+    // Audio (8), video (9) or script data (18), not encrypted and no reserved bits, and stream ID 0.
+    int type = header[0] & 0x1f;
+    return (header[0] & 0xc0) == 0 && (type == 8 || type == 9 || type == 18) && fluxo_read_be24(header + 8) == 0;
+}
+
+// The position of the first FLV tag at or after `position`, or -1. FFmpeg's FLV demuxer reads whatever is at a byte
+// position as a tag header: a position inside a tag gives it a size that runs past the end of the file, and it ends
+// the input there (a forward seek in an FLV movie ended the movie). A tag is recognized by its header, the size after
+// it (PreviousTagSize = data size + 11) and the header of the next tag. Leaves the input somewhere after `position`.
+static int64_t fluxo_flv_tag_at_or_after(AVFormatContext *input, int64_t position) {
+    // Where the demuxer reads: it goes on from there when no tag is found (a search from past the end of the file
+    // would otherwise leave it at the end, which looks like the end of the input right after a seek).
+    int64_t origin = input->pb != NULL ? avio_tell(input->pb) : -1;
+    if (input->pb == NULL || origin < 0 || avio_seek(input->pb, position, SEEK_SET) < 0) {
+        return -1;
+    }
+    uint8_t *buffer = av_malloc(FLUXO_FLV_SYNC_WINDOW);
+    if (buffer == NULL) {
+        avio_seek(input->pb, origin, SEEK_SET);
+        return -1;
+    }
+    int length = 0;
+    while (length < FLUXO_FLV_SYNC_WINDOW) {
+        int ret = avio_read(input->pb, buffer + length, FLUXO_FLV_SYNC_WINDOW - length);
+        if (ret <= 0) {
+            break;
+        }
+        length += ret;
+    }
+    int64_t found = -1;
+    for (int i = 0; i + 11 <= length; i++) {
+        if (!fluxo_flv_is_tag_header(buffer + i)) {
+            continue;
+        }
+        int64_t end = (int64_t)i + 11 + fluxo_read_be24(buffer + i + 1);
+        if (end + 4 + 11 > length) {
+            continue;
+        }
+        if (fluxo_read_be32(buffer + end) == fluxo_read_be24(buffer + i + 1) + 11 && fluxo_flv_is_tag_header(buffer + end + 4)) {
+            found = position + i;
+            break;
+        }
+    }
+    av_free(buffer);
+    if (found < 0) {
+        avio_seek(input->pb, origin, SEEK_SET);
+    }
+    return found;
+}
+
+// The input was just seeked: until a segment is completed, an end of input means the seek failed (fluxo_vod_retry_seek).
+static void fluxo_vod_mark_seeked(FluxoRemuxSession *session) {
+    session->vod_seek_fresh = 1;
+    session->vod_seek_read_time = AV_NOPTS_VALUE;
+}
+
+// Seeks a planned on-demand input to a byte position (aligned to a tag for FLV). Returns 0 or a negative error, when
+// the caller seeks by time instead (also once a byte seek of this input failed, see fluxo_vod_retry_seek).
+static int fluxo_vod_byte_seek(FluxoRemuxSession *session, int64_t position) {
+    if (session->vod_no_byte_seek) {
+        return AVERROR(ENOSYS);
+    }
+    if (position < 0) {
+        position = 0;
+    }
+    if (fluxo_is_flv(session->input)) {
+        int64_t tag = fluxo_flv_tag_at_or_after(session->input, position);
+        FLUXO_TRACE("FLV byte seek to %lld: tag at %lld", (long long)position, (long long)tag);
+        if (tag < 0) {
+            return AVERROR(ENOSYS);
+        }
+        position = tag;
+    }
+    int ret = av_seek_frame(session->input, -1, position, AVSEEK_FLAG_BYTE);
+    if (ret >= 0) {
+        fluxo_vod_mark_seeked(session);
+    }
+    return ret;
+}
+
 // Places one input packet in the plan. A segment ends at the first key frame of the reference video at or
 // after the start of the next segment. Packets at or after that start are held until that key frame
 // arrives (they belong to the current segment if they come before it). When no key frame comes before the
@@ -333,11 +431,18 @@ static int fluxo_vod_route(FluxoRemuxSession *session, AVPacket *packet, AVPacke
     int64_t key_time = key ? fluxo_vod_packet_time(plan, packet, in_stream, 1) : AV_NOPTS_VALUE;
     int ret;
     if (key && time != AV_NOPTS_VALUE) {
-        int64_t interval = time - session->vod_last_key;
-        if (session->vod_last_key != AV_NOPTS_VALUE && interval > 0 && interval <= FLUXO_VOD_INDEX_MAX_KEY_GAP && interval > session->vod_gop) {
-            session->vod_gop = interval;
+        // (The difference only with a previous key frame: AV_NOPTS_VALUE is INT64_MIN, so the subtraction would overflow.)
+        if (session->vod_last_key != AV_NOPTS_VALUE) {
+            int64_t interval = time - session->vod_last_key;
+            if (interval > 0 && interval <= FLUXO_VOD_INDEX_MAX_KEY_GAP && interval > session->vod_gop) {
+                session->vod_gop = interval;
+            }
         }
         session->vod_last_key = time;
+    }
+    if (session->vod_seek_fresh && reference && time != AV_NOPTS_VALUE &&
+        (session->vod_seek_read_time == AV_NOPTS_VALUE || time > session->vod_seek_read_time)) {
+        session->vod_seek_read_time = time;
     }
 
     if (session->vod_check_seek && reference && time != AV_NOPTS_VALUE && session->vod_seek_position >= 0) {
@@ -354,7 +459,7 @@ static int fluxo_vod_route(FluxoRemuxSession *session, AVPacket *packet, AVPacke
             if (position < 0) {
                 position = 0;
             }
-            if (position != session->vod_seek_position && av_seek_frame(session->input, -1, position, AVSEEK_FLAG_BYTE) >= 0) {
+            if (position != session->vod_seek_position && fluxo_vod_byte_seek(session, position) >= 0) {
                 FLUXO_TRACE("byte seek for %.2f s landed at %.2f s: again at byte %lld", session->vod_seek_time / 1e6, time / 1e6, (long long)position);
                 fluxo_streams_reset(&session->streams);
                 fluxo_vod_drop_gop(session);
@@ -378,6 +483,7 @@ static int fluxo_vod_route(FluxoRemuxSession *session, AVPacket *packet, AVPacke
                 earlier = plan->starts[0];
             }
             if (av_seek_frame(session->input, -1, earlier, AVSEEK_FLAG_BACKWARD) >= 0) {
+                fluxo_vod_mark_seeked(session);
                 fluxo_streams_reset(&session->streams);
                 fluxo_vod_drop_gop(session);
                 FLUXO_TRACE("seek to segment %lld landed at %.2f s, after its start %.2f s: again from %.2f s", (long long)session->vod_target,
@@ -419,13 +525,17 @@ static int fluxo_vod_route(FluxoRemuxSession *session, AVPacket *packet, AVPacke
                 FLUXO_TRACE("segment %lld starts inside a GOP at %.2f s, no key frame read: back to %.2f s", (long long)upcoming,
                             boundary / 1e6, earlier / 1e6);
                 int64_t size = session->input->pb != NULL ? avio_size(session->input->pb) : -1;
-                int seeked;
+                int seeked = 0;
                 if (size > 0 && session->input->duration > 0 && (session->input->iformat->flags & AVFMT_NO_BYTE_SEEK) == 0) {
                     // By byte position, like the seek itself (fluxo_vod_seek).
                     int64_t position = (int64_t)((double)(earlier - plan->starts[0]) / (double)session->input->duration * (double)size);
-                    seeked = av_seek_frame(session->input, -1, position > 0 ? position : 0, AVSEEK_FLAG_BYTE) >= 0;
-                } else {
+                    seeked = fluxo_vod_byte_seek(session, position) >= 0;
+                }
+                if (!seeked) {
                     seeked = av_seek_frame(session->input, -1, earlier, AVSEEK_FLAG_BACKWARD) >= 0;
+                    if (seeked) {
+                        fluxo_vod_mark_seeked(session);
+                    }
                 }
                 if (seeked) {
                     fluxo_streams_reset(&session->streams);
@@ -663,7 +773,10 @@ static int fluxo_vod_seek(FluxoRemuxSession *session, int64_t index) {
     // (The size only of an input that can seek: asking an HTTP input without byte ranges for it costs a request.)
     int seekable = fluxo_vod_input_is_seekable(session->input);
     int64_t size = seekable && !plan->exact && session->input->pb != NULL ? avio_size(session->input->pb) : -1;
-    if (!seekable) {
+    // A seek of this input that ended it at once (fluxo_vod_retry_seek): read it again from its start.
+    int reopen = session->vod_force_reopen;
+    session->vod_force_reopen = 0;
+    if (!seekable || reopen) {
         ret = AVERROR(ENOSYS);
     } else if (!plan->exact && size > 0 && session->input->duration > 0 && (session->input->iformat->flags & AVFMT_NO_BYTE_SEEK) == 0) {
         // No index: one request at the estimated byte position (corrected in fluxo_vod_route).
@@ -672,7 +785,7 @@ static int fluxo_vod_seek(FluxoRemuxSession *session, int64_t index) {
         if (position < 0) {
             position = 0;
         }
-        ret = av_seek_frame(session->input, -1, position, AVSEEK_FLAG_BYTE);
+        ret = fluxo_vod_byte_seek(session, position);
         if (ret >= 0) {
             session->vod_seek_time = seek_time;
             session->vod_seek_position = position;
@@ -687,10 +800,11 @@ static int fluxo_vod_seek(FluxoRemuxSession *session, int64_t index) {
     if (ret >= 0) {
         position = index - 1;
         session->vod_check_seek = 1;
+        fluxo_vod_mark_seeked(session);
         // What the converters hold belongs to the old position.
         fluxo_streams_reset(&session->streams);
-    } else if (index > current) {
-        // Reading on reaches it; nothing is written until then.
+    } else if (index > current && !reopen && session->vod_seek_fallbacks == 0) {
+        // Reading on reaches it; nothing is written until then. (Not after a failed seek: the reader lost its place.)
         position = current;
     } else {
         fluxo_close_input(session);
@@ -761,6 +875,47 @@ static int fluxo_vod_recover(FluxoRemuxSession *session, int error) {
         return 0;
     }
     return AVERROR_EXIT;
+}
+
+// The input ended before a segment was completed after a seek: the seek failed (the demuxer lost its place in the file),
+// the input did not end. Unless the seek aimed near the end of the input (planned durations can be estimates), it is
+// made again: by time when it was a byte seek (and every later seek of this input is made by time), then by reading
+// the input again from its start (that seek only). Not when media were read after the seek up to the end of the file,
+// all before the target segment: the input really ends before it (a duration estimated too long, e.g. from the bit
+// rate of an MPEG-TS file), and reading it again from its start would only read all of it to find that out. (A server
+// that closes a connection early is not an end of input: FFmpeg's http protocol and fluxo_input_io_read answer
+// AVERROR(EIO) before the known size, which fluxo_vod_recover handles.) Returns 1 when the seek is made again (at the
+// next turn of fluxo_vod_run), 0 when the input ended.
+static int fluxo_vod_retry_seek(FluxoRemuxSession *session) {
+    const FluxoPlan *plan = &session->plan;
+    int64_t target = session->vod_target;
+    if (!session->vod_seek_fresh || session->vod_seek_fallbacks >= FLUXO_VOD_SEEK_FALLBACKS || target < 0 || target >= plan->count ||
+        session->input == NULL || session->input->duration <= 0 ||
+        plan->starts[target] > plan->starts[0] + session->input->duration - FLUXO_VOD_SEEK_END_MARGIN) {
+        return 0;
+    }
+    if (session->vod_seek_read_time != AV_NOPTS_VALUE && session->vod_seek_read_time < plan->starts[target] &&
+        fluxo_input_reached_end_of_file(session)) {
+        FLUXO_TRACE("end of input at %.2f s, before segment %lld (%.2f s): the input ends there", session->vod_seek_read_time / 1e6,
+                    (long long)target, plan->starts[target] / 1e6);
+        return 0;
+    }
+    session->vod_seek_fallbacks++;
+    if (!session->vod_no_byte_seek && session->vod_seek_position >= 0) {
+        session->vod_no_byte_seek = 1;
+    } else {
+        session->vod_no_byte_seek = 1;
+        session->vod_force_reopen = 1;
+    }
+    session->vod_seek_fresh = 0;
+    FLUXO_TRACE("end of input right after the seek to segment %lld: the seek failed, made again %s", (long long)target,
+                session->vod_force_reopen ? "from the start of the input" : "by time");
+    pthread_mutex_lock(&session->vod_lock);
+    if (session->vod_reposition < 0) {
+        session->vod_reposition = target;
+    }
+    pthread_mutex_unlock(&session->vod_lock);
+    return 1;
 }
 
 // The input was read to its end: the last segment is published and the reader waits for requests (the
@@ -876,6 +1031,10 @@ int fluxo_vod_run(FluxoRemuxSession *session) {
             ret = 0;
             continue;
         }
+        if (ret == AVERROR_EOF && fluxo_vod_retry_seek(session)) {
+            ret = 0;
+            continue;
+        }
         if (ret == AVERROR_EOF) {
             // The real end, or a connection the server closed early (then the reader resumes where it was).
             const FluxoPlan *plan = &session->plan;
@@ -958,7 +1117,9 @@ int fluxo_vod_open(FluxoRemuxSession *session) {
         (session->input->iformat->flags & AVFMT_NO_BYTE_SEEK) == 0) {
         // From the very start of the file (probing and the index check leave the reader somewhere after it): its first
         // video frame, a key frame, is where AVPlayer places the first segment.
-        av_seek_frame(session->input, -1, 0, AVSEEK_FLAG_BYTE);
+        if (fluxo_vod_byte_seek(session, 0) < 0) {
+            av_seek_frame(session->input, -1, session->plan.starts[0], AVSEEK_FLAG_BACKWARD);
+        }
         fluxo_streams_reset(&session->streams);
     }
     pthread_mutex_lock(&session->vod_lock);

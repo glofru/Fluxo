@@ -134,16 +134,8 @@ static void *fluxo_thread_main(void *arg) {
     int reconnect_failed = 0;
     session->is_first_open = 1;
     int ret = fluxo_open_input(session);
-    // A missing protocol (e.g. srt://, which needs libsrt) is not a transient error: no retry. One quick retry
-    // otherwise: IPTV servers often refuse the very first connection of a burst. Accounts limited to one
-    // connection refuse new ones (403, 429, 5xx) until they notice the previous one closed (the channel played
-    // before, or AVPlayer's own connections to a movie the engine takes over): two more, 1 s and 2 s later.
-    // Nor a format that cannot be played.
-    for (int attempt = 1; ret < 0 && ret != AVERROR_PROTOCOL_NOT_FOUND && ret != FLUXO_ERROR_UNSUPPORTED_VIDEO &&
-                          ret != FLUXO_ERROR_UNSUPPORTED_AUDIO && !fluxo_is_cancelled(session) && attempt <= 3; attempt++) {
-        if (attempt > 1 && !fluxo_is_busy_server_error(ret)) {
-            break;
-        }
+    // A dead channel fails within seconds (fluxo_first_open_retries), 0.5 s, 1 s and 2 s apart.
+    for (int attempt = 1; ret < 0 && !fluxo_is_cancelled(session) && attempt <= fluxo_first_open_retries(ret); attempt++) {
         fluxo_wait(session, (AV_TIME_BASE / 2) << (attempt - 1));
         if (!fluxo_is_cancelled(session)) {
             ret = fluxo_open_input(session);
@@ -193,13 +185,22 @@ static void *fluxo_thread_main(void *arg) {
             if (fluxo_is_cancelled(session) || session->output_failed || !session->is_live) {
                 break;
             }
+            if (ret == FLUXO_INPUT_SUSPENDED) {
+                ret = fluxo_resume_input(session);
+                if (ret < 0) {
+                    stage = "Connection lost";
+                    reconnect_failed = !fluxo_is_cancelled(session);
+                    break;
+                }
+                continue;
+            }
             if (ret == AVERROR_EOF && fluxo_input_reached_end_of_file(session)) {
                 // A finite file served over HTTP (e.g. an on-demand .ts): it really ended.
                 break;
             }
             // Live inputs never end on their own: a drop or an EOF means the connection was lost.
             stage = "Connection lost";
-            ret = fluxo_reconnect(session, ret);
+            ret = fluxo_reconnect(session, ret, 0);
             if (ret < 0) {
                 reconnect_failed = !fluxo_is_cancelled(session);
                 break;
@@ -222,6 +223,10 @@ static void *fluxo_thread_main(void *arg) {
         fluxo_hls_close(session, !cancelled);
     }
     fluxo_close_input(session);
+    // Before the final state: a request that sees the state wait for nothing more.
+    pthread_mutex_lock(&session->vod_lock);
+    session->vod_terminal = 1;
+    pthread_mutex_unlock(&session->vod_lock);
 
     if (cancelled) {
         fluxo_set_state(session, FluxoRemuxStateCancelled, 0, NULL);
@@ -268,6 +273,7 @@ FluxoRemuxSession *fluxo_remux_create(const FluxoRemuxConfig *config, FluxoRemux
     session->read_ahead = config->read_ahead_duration > 0 ? config->read_ahead_duration : FLUXO_DEFAULT_READ_AHEAD;
     session->start_time = config->start_time > 0 ? (int64_t)(config->start_time * AV_TIME_BASE) : 0;
     atomic_init(&session->cancel_requested, false);
+    atomic_init(&session->suspend_requested, false);
     atomic_init(&session->started, false);
     atomic_init(&session->request_pending, false);
 
@@ -424,9 +430,21 @@ int32_t fluxo_remux_request_segment(FluxoRemuxSession *session, int64_t index, i
             }
         }
     }
+    if (result == 0 && (session->vod_terminal || atomic_load(&session->cancel_requested))) {
+        // Nothing will produce it any more: the session finished, failed or was cancelled.
+        result = -2;
+    }
     fluxo_vod_signal_locked(session);
     pthread_mutex_unlock(&session->vod_lock);
     return result;
+}
+
+void fluxo_remux_set_input_suspended(FluxoRemuxSession *session, int32_t suspended) {
+    if (session == NULL || !session->is_live) {
+        return;
+    }
+    atomic_store(&session->suspend_requested, suspended != 0);
+    fluxo_vod_signal(session);
 }
 
 void fluxo_remux_note_seek(FluxoRemuxSession *session, double seconds) {

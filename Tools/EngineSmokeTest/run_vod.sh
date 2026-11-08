@@ -10,7 +10,13 @@
 # (a file served at about its bit rate, H.264 and HEVC) check that live channels still play from the live
 # edge and within the time-shift window. The dropped-* cases (SCENARIO=dropped, Stress.swift) make AVPlayer drop
 # seeks as it does while it starts an item: the seek must play at the target after a few drops, end with Try Again
-# when every seek is dropped, and never stay loading.
+# when every seek is dropped, and never stay loading. mkv-slow-segment (SCENARIO=slowsegment) seeks on a server that
+# answers a seek after 12 s, then slowly: the segment takes about 20 s, and must play from that one request (the
+# loopback server allows a request longer than the engine's 45 s wait, LoopbackTimeouts).
+# live-pause (SCENARIO=livepause) pauses a live channel, closes its input for 70 s (longer than AVPlayer reloads an
+# unchanged live playlist) and plays on as the app does: a new item at the paused media must play and follow the
+# playlist past the resume, with the paused media and the old item's frame where it continues (live-pause-sliding: in
+# a window of 30 s that fills and slides meanwhile).
 #
 #   Tools/EngineSmokeTest/run_vod.sh                 every case
 #   Tools/EngineSmokeTest/run_vod.sh mkv-h264 ts     cases whose name contains one of the words
@@ -23,9 +29,6 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 # VODCheck checks the sound of the engine's segments with it.
 export FFMPEG
 PORT=${PORT:-18930}
-# The app's loopback server uses 19123; the check uses another port so that it never talks to (or blocks)
-# a Fluxo running in a simulator.
-CHECK_PORT=${CHECK_PORT:-19323}
 MEDIA=${MEDIA:-/tmp/fluxo-vod-media}
 WORK=${WORK:-/tmp/fluxo-vod-check}
 DURATION=${DURATION:-600}
@@ -140,6 +143,9 @@ hls-vod|$B/hls/index.m3u8|movie
 live-ts|$B/slow/100/live/user/pass/1002.ts|live
 live-hevc|$B/slow/110/user/pass/hevc.ts|live
 live-hevc-tracks|$B/slow/130/live/user/pass/tracks-hevc.ts|live
+live-pause|$B/slow/100/live/user/pass/1002.ts|live
+live-pause-sliding|$B/slow/100/live/user/pass/1002.ts|live
+mkv-slow-segment|$B/seekdelay/12000/slow/60/movie/user/pass/1001.mkv|movie
 dropped-mp4|$B/movie/user/pass/h264.mp4|movie
 dropped-ts|$B/slow/400/movie/user/pass/1002.ts|movie
 "
@@ -161,8 +167,12 @@ for line in $CASES; do
     echo "=== $name ($kind) $url"
     # dropped-*: AVPlayer dropping seeks (VODCheck SCENARIO=dropped, Stress.swift).
     scenario=
-    case $name in dropped-*) scenario=dropped ;; esac
-    if SCENARIO=$scenario "$CHECK" "$url" "$kind" > "$WORK/$name.log" 2>&1; then
+    case $name in dropped-*) scenario=dropped ;; *-slow-segment) scenario=slowsegment ;; live-pause*) scenario=livepause ;; esac
+    # live-pause-sliding: a time-shift window of 30 s, which fills during the pause and lets go of its oldest segments
+    # (the policy then closes the input), the paused media still in it.
+    window=
+    case $name in *-sliding) window=30 ;; esac
+    if WINDOW_SECONDS=$window SCENARIO=$scenario "$CHECK" "$url" "$kind" > "$WORK/$name.log" 2>&1; then
         passed=$((passed + 1))
         result=PASS
     else

@@ -261,12 +261,12 @@ static int fluxo_hls_write_media_playlist(FluxoHLS *hls, const char *path, const
             fprintf(file, "#EXT-X-DISCONTINUITY\n");
         }
         if (hls->program_date_time) {
-            time_t seconds = (time_t)(segment->wallclock_ms / 1000);
+            time_t seconds = (time_t)(segment->date_ms / 1000);
             struct tm utc;
             gmtime_r(&seconds, &utc);
             char date[32];
             strftime(date, sizeof(date), "%Y-%m-%dT%H:%M:%S", &utc);
-            fprintf(file, "#EXT-X-PROGRAM-DATE-TIME:%s.%03dZ\n", date, (int)(segment->wallclock_ms % 1000));
+            fprintf(file, "#EXT-X-PROGRAM-DATE-TIME:%s.%03dZ\n", date, (int)(segment->date_ms % 1000));
         }
         fprintf(file, "#EXTINF:%.3f,\n%s-%06lld.%s\n", segment->duration, base_name, (long long)segment->sequence, extension);
     }
@@ -277,7 +277,7 @@ static int fluxo_hls_write_media_playlist(FluxoHLS *hls, const char *path, const
 }
 
 // Rewrites the playlists of the renditions, then the main one, so that no rendition is ever behind it.
-static int fluxo_hls_write_playlist(FluxoHLS *hls, int ended) {
+int fluxo_hls_write_playlist(FluxoHLS *hls, int ended) {
     for (int i = 0; i < hls->rendition_count; i++) {
         FluxoRendition *rendition = &hls->renditions[i];
         if (rendition->muxed) {
@@ -380,7 +380,14 @@ static int fluxo_hls_finish_segment(FluxoRemuxSession *session, int64_t end_time
     segment->sequence = hls->next_sequence++;
     segment->duration = duration;
     segment->bytes = bytes;
-    segment->wallclock_ms = hls->segment_wallclock_ms;
+    if (!hls->dated) {
+        hls->dated = 1;
+        hls->date_origin_ms = hls->segment_wallclock_ms;
+        hls->date_media_ms = 0;
+    }
+    segment->date_ms = hls->date_origin_ms + hls->date_media_ms;
+    // (The EXTINF of the playlist, rounded the same way: "%.3f".)
+    hls->date_media_ms += llround(duration * 1000);
     segment->discontinuity = hls->segment_discontinuity;
     hls->segment_discontinuity = 0;
     hls->window_duration += duration;

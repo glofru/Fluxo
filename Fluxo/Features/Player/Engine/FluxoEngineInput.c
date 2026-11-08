@@ -272,13 +272,38 @@ int fluxo_open_input(FluxoRemuxSession *session) {
     return 0;
 }
 
-// Errors of a server that may accept the connection a moment later: refused for the number of connections of the
-// account (403, 429 and other 4xx IPTV panels use, 5xx), reset or timed out. Not a missing stream (404) or bad
-// credentials (401).
+// Errors of a server that may accept the connection a moment later, when an on-demand input connects again for a
+// seek (fluxo_input_io_seek; the first open has fluxo_first_open_retries): refused for the number of connections of
+// the account (403, 429 and other 4xx IPTV panels use, 5xx), or a connection refused, reset or closed (EIO) while the
+// server still holds the previous one. Each costs little to try again. Not a missing stream (404) or bad credentials
+// (401), and not a connection that timed out: it has already waited FFmpeg's 5 s to connect, so four more attempts
+// would keep a seek of a server that went away waiting for half a minute.
 int fluxo_is_busy_server_error(int error) {
     return error == AVERROR_HTTP_FORBIDDEN || error == AVERROR_HTTP_TOO_MANY_REQUESTS || error == AVERROR_HTTP_OTHER_4XX ||
            error == AVERROR_HTTP_SERVER_ERROR || error == AVERROR(ECONNRESET) || error == AVERROR(ECONNREFUSED) ||
-           error == AVERROR(ETIMEDOUT) || error == AVERROR(EIO);
+           error == AVERROR(EIO);
+}
+
+// How often the engine opens the input again after the first open failed with `error` (FFmpeg's own retries are off
+// then with FluxoRemuxConfig.quick_open, so these are the only ones; a dead channel fails in about 0.5 s, a refusing
+// account in about 4 s):
+// - a server refusing the connection for the number of connections of the account (403, 429, other 4xx IPTV panels
+//   use, 5xx), until it notices the previous one closed (the channel played before, or AVPlayer's own connections to
+//   a movie the engine takes over): 3 times, over 3.5 s;
+// - a refused or reset TCP connection, or a failed name lookup (EIO): once, 0.5 s later (IPTV servers often refuse
+//   the very first connection of a burst);
+// - nothing else: a connection that timed out has already waited (5 s to connect, FFmpeg's TCP default), a missing
+//   stream (404), bad credentials (401), a missing protocol (srt://, which needs libsrt) or a format that cannot be
+//   played do not change a moment later.
+int fluxo_first_open_retries(int error) {
+    if (error == AVERROR_HTTP_FORBIDDEN || error == AVERROR_HTTP_TOO_MANY_REQUESTS || error == AVERROR_HTTP_OTHER_4XX ||
+        error == AVERROR_HTTP_SERVER_ERROR) {
+        return 3;
+    }
+    if (error == AVERROR(ECONNREFUSED) || error == AVERROR(ECONNRESET) || error == AVERROR(EIO)) {
+        return 1;
+    }
+    return 0;
 }
 
 // True when the input has a known size and everything up to it was read. Live inputs have no

@@ -50,7 +50,8 @@ extension AVPlayerViewModel {
         if didReachEnd {
             didReachEnd = false
             seeker.seek(to: 0)
-        } else if isTimeShiftAvailable, let range = seekableRange(of: item), item.currentTime().seconds < range.start + 1 {
+        } else if isTimeShiftAvailable, let range = seekableRange(of: item),
+                  PausedTimeShiftPolicy.continuesFromOldestMedia(position: item.currentTime().seconds, windowStart: range.start, isSuspended: suspension != nil) {
             // Paused for longer than the time-shift window: continue from the oldest buffered media.
             seek(to: range.start + 2)
         }
@@ -155,17 +156,35 @@ extension AVPlayerViewModel {
 
     /// Jumps back to the live edge of a time-shifted live stream.
     func goLive() {
-        guard !isCasting, isTimeShiftAvailable, let item = player.currentItem, let range = seekableRange(of: item) else {
+        guard !isCasting, isTimeShiftAvailable, let item = player.currentItem else {
             return
         }
-        seek(to: max(range.start, range.end - liveOffset(of: item)))
+        if suspension != nil {
+            // The item ends with what the engine wrote before its input closed: the new item starts with what the
+            // channel shows now (`continueAfterSuspension`).
+            suspensionResume = .liveEdge
+        } else if var pending = pendingSuspensionResume {
+            // The new item is on its way: it starts there.
+            pending.date = pending.liveEdge ?? pending.date
+            pendingSuspensionResume = pending
+        } else if let range = seekableRange(of: item) {
+            seek(to: max(range.start, range.end - liveOffset(of: item)))
+        } else {
+            return
+        }
         player.play()
     }
 
     // MARK: - Seeking
 
     func seekableRange(of item: AVPlayerItem) -> (start: TimeInterval, end: TimeInterval)? {
-        guard let range = item.seekableTimeRanges.last?.timeRangeValue, range.start.isNumeric, range.duration.isNumeric else {
+        if let suspension, suspension.item == ObjectIdentifier(item), let range = suspension.itemRange {
+            // The live playlist is marked as ended while its input is suspended: the item's own range tells nothing.
+            return range
+        }
+        // (A range of no length has nothing to seek to.)
+        guard let range = item.seekableTimeRanges.last?.timeRangeValue, range.start.isNumeric, range.duration.isNumeric,
+              range.duration.seconds > 0 else {
             return nil
         }
         let start = range.start.seconds

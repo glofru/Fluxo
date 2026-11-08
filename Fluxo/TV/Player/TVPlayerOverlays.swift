@@ -280,7 +280,8 @@ struct TVPlayerFailureView: View {
     }
 
     /// What the reason means, in plain words, for the failures a server commonly causes; nil for any other. The reason
-    /// stays under it as a detail: FFmpeg's (the engine), in English, or AVFoundation's, in the device's language.
+    /// stays under it as a detail: the engine's (the common ones translated, others FFmpeg's in English), or
+    /// AVFoundation's, in the device's language.
     private var explanation: String? {
         guard !viewModel.isWaitingForNetwork else {
             // Already in plain words (offline).
@@ -333,11 +334,14 @@ enum TVPlayerFailureText {
         cause(of: reason, error: error)?.explanation
     }
 
-    /// What caused the failure: by the error's domain and code (its description is localized), or, for the engine's
-    /// reasons (`error` is nil), by the English words of FFmpeg.
+    /// What caused the failure: by the error's domain and code (its description is localized; the engine's errors
+    /// carry FFmpeg's code), or by the English words of FFmpeg in the engine's reasons it does not translate.
     static func cause(of reason: String, error: NSError?) -> Cause? {
-        if let error {
-            return cause(of: error)
+        if let error, let cause = cause(of: error) {
+            return cause
+        }
+        guard error == nil || error?.domain == EngineMessage.errorDomain else {
+            return nil
         }
         return cause(ofEngineReason: reason)
     }
@@ -348,6 +352,9 @@ enum TVPlayerFailureText {
         var next: NSError? = error
         var depth = 0
         while let current = next, depth < 8 {
+            if current.domain == EngineMessage.errorDomain, let cause = cause(ofEngineError: current) {
+                return cause
+            }
             if let cause = cause(domain: current.domain, code: current.code) {
                 return cause
             }
@@ -355,6 +362,26 @@ enum TVPlayerFailureText {
             depth += 1
         }
         return nil
+    }
+
+    /// The engine's failures carry FFmpeg's error code (and what failed, `EngineMessage.reason(of:)`).
+    private static func cause(ofEngineError error: NSError) -> Cause? {
+        switch EngineMessage.reason(of: error) {
+        case .connectionRefused:
+            return .refused
+        case .timedOut:
+            return .timedOut
+        case .serverNotFound:
+            return .hostNotFound
+        case .unauthorized, .forbidden:
+            return .forbidden
+        case .notFound:
+            return .notFound
+        case .serverError:
+            return .serverError
+        default:
+            return nil
+        }
     }
 
     /// CoreMedia's codes for HTTP answers of an HLS server (they are not in the SDK's headers; AVFoundation reports

@@ -17,7 +17,8 @@ and libavutil. The engine copies the stream into HLS segments on disk (convertin
 AVPlayer cannot decode, see [Formats](player.md#formats)), and a local HTTP server bound to `127.0.0.1` gives them to AVPlayer.
 
 There is nothing to install: FFmpeg ships with the repository (see [FFmpeg](#ffmpeg)), and the
-Swift packages, [FlyingFox](https://github.com/swhitty/FlyingFox) (the loopback HTTP server) and
+Swift packages, [FlyingFox](https://github.com/swhitty/FlyingFox) (the loopback HTTP server, pinned to exactly 0.24.1: it
+is pre-1.0, so a minor release may change its API or its defaults, such as the request timeout the player depends on) and
 Google's [Cast SDK](https://developers.google.com/cast/docs/ios_sender) (iOS only, `Vendor/GoogleCast`, see
 [Chromecast](chromecast.md)), are resolved by Xcode on its own. The app builds for iOS devices, the iOS Simulator, macOS, Apple TV
 and the tvOS Simulator, from the one `Fluxo` target and scheme.
@@ -169,9 +170,23 @@ get them all.
   No filters, devices or programs. `srt://` needs libsrt (and a crypto library), which is not included: such channels
   fail at once with "Unsupported stream type".
 - **HTTPS** uses Secure Transport, the TLS backend FFmpeg has for Apple platforms without an
-  extra library, with the system trust store and certificate verification on (TLS 1.2). The only
-  external libraries are the system's (Secure Transport, zlib, VideoToolbox, CoreMedia, CoreVideo), so nothing is
-  taken from Homebrew.
+  extra library, with the system trust store and certificate verification on (`tls_verify`, on by default in FFmpeg 9).
+  Secure Transport is deprecated and stops at TLS 1.2, and it does not follow the system's proxy settings or App
+  Transport Security as the URL loading system does. The only external libraries are the system's (Secure Transport,
+  zlib, VideoToolbox, CoreMedia, CoreVideo), so nothing is taken from Homebrew.
+  - **Replacing it was evaluated, and deferred.** The candidate is an input of the engine's own (an `AVIOContext` like
+    the one on-demand HTTP inputs already use, `FluxoInputIO`) that reads through a `URLSession` data task: TLS 1.3,
+    the system proxy, ATS and HTTP/2 for free, and no deprecated API. It is not a drop-in change: the engine depends on
+    how FFmpeg's HTTP layer behaves, and each behaviour has to be rebuilt on `URLSession` and checked against real IPTV
+    servers: the error codes the retries are decided by (403, 429 and 5xx of accounts limited to one connection, the
+    refused and timed-out connections of a dead channel), byte ranges and the size (seeking, `Accept-Ranges` / 206),
+    the reconnection of a live input that drops (`reconnect_streamed`), cancellation and timeouts on the engine
+    thread (`interrupt_callback`, `rw_timeout`), flow control while the reader pauses (a suspended task, or the
+    buffered data grows), and the HLS demuxer's own requests (`AVFormatContext.io_open`). The design: one blocking
+    reader per connection, fed by a `URLSessionDataDelegate` into a bounded buffer (the task suspended above a high
+    mark), Range requests for seeks, the HTTP status and `NSURLError` codes mapped to FFmpeg's (`AVERROR_HTTP_*`,
+    `ECONNREFUSED`, `ETIMEDOUT`), behind `FluxoRemuxConfig` so both inputs can run side by side in
+    `Tools/EngineSmokeTest` before the switch. Until then a server that accepts only TLS 1.3 cannot be played.
 - **License**: the build enables no GPL, version 3 or non-free component (no libx264, libfdk-aac or other external
   codec library: the AAC encoder is FFmpeg's own, H.264 is encoded by the operating system), so it is LGPL v2.1 or
   later. It is linked dynamically and embedded as `Fluxo.app/Frameworks/FFmpeg.framework`

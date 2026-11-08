@@ -3195,7 +3195,7 @@
       }
     },
     "%@: %@" : {
-      "comment" : "Player or recording error: what failed, then the technical reason (in English).",
+      "comment" : "Player or recording error: what failed, then the reason (localized for the common ones, otherwise FFmpeg's technical reason in English).",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -120759,6 +120759,9 @@
         }
       }
     },
+    "The player couldn't start its local stream server. Try again." : {
+      "comment" : "Player error: the app's internal streaming server (on this device only) could not start."
+    },
     "The player is in another window." : {
       "comment" : "Text — separate player window (iPad, Mac).",
       "localizations" : {
@@ -121769,6 +121772,12 @@
         }
       }
     },
+    "The server can't be reached from this network" : {
+      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:' and similar: no route to the server (the network is down or blocks it)."
+    },
+    "The server closed the connection" : {
+      "comment" : "Player or recording error, the technical reason after 'Stream interrupted:' and similar: the connection was reset by the server."
+    },
     "The server could not be found. Check the address of the guide." : {
       "comment" : "TV guide download error: the server name of the guide's address does not exist.",
       "localizations" : {
@@ -121869,6 +121878,9 @@
           }
         }
       }
+    },
+    "The server couldn't be found or reached" : {
+      "comment" : "Player error, the technical reason after 'Unable to open the stream:': the server's name did not resolve, or it could not be reached (an input/output error while connecting)."
     },
     "The server couldn’t be found. Check the playlist’s address and your network." : {
       "comment" : "Apple TV player, failure screen: the host name of the stream's server does not resolve. The technical reason shows under it.",
@@ -121971,6 +121983,15 @@
         }
       }
     },
+    "The server didn't accept the account (401)" : {
+      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:': the server answered HTTP 401 (wrong user name or password). Keep the number."
+    },
+    "The server didn't respond in time" : {
+      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:' and similar: the connection timed out."
+    },
+    "The server didn't understand the request (400)" : {
+      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:': the server answered HTTP 400. Keep the number."
+    },
     "The server didn’t respond in time. Try again in a moment." : {
       "comment" : "Apple TV player, failure screen: the stream's server did not answer. The technical reason shows under it.",
       "localizations" : {
@@ -122071,6 +122092,9 @@
           }
         }
       }
+    },
+    "The server doesn't have this stream (404)" : {
+      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:': the server answered HTTP 404. Keep the number."
     },
     "The server doesn’t have this stream. The playlist may be out of date." : {
       "comment" : "Apple TV player, failure screen: the stream's server answered 404. The technical reason shows under it.",
@@ -122173,6 +122197,9 @@
         }
       }
     },
+    "The server has a problem (5xx)" : {
+      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:': the server answered with an HTTP 5xx error. Keep '5xx'."
+    },
     "The server has a problem right now. Try again later." : {
       "comment" : "Apple TV player, failure screen: the stream's server answered with a 5xx error. The technical reason shows under it.",
       "localizations" : {
@@ -122273,6 +122300,9 @@
           }
         }
       }
+    },
+    "The server is limiting connections (429)" : {
+      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:': the server answered HTTP 429 (too many requests). Keep the number."
     },
     "The server isn’t accepting connections. Check that it’s running, then try again." : {
       "comment" : "Apple TV player, failure screen: the stream's server refused the connection (it is down or the address is wrong). The technical reason shows under it.",
@@ -122375,6 +122405,9 @@
         }
       }
     },
+    "The server refused access (403)" : {
+      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:': the server answered HTTP 403 (an expired subscription, or the account's connections are in use). Keep the number."
+    },
     "The server refused access to this stream. Check your playlist’s account." : {
       "comment" : "Apple TV player, failure screen: the stream's server answered 401 or 403 (the subscription or credentials). The technical reason shows under it.",
       "localizations" : {
@@ -122475,6 +122508,12 @@
           }
         }
       }
+    },
+    "The server refused the connection" : {
+      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:' and similar: the server did not accept the connection (it is down, or the address or port is wrong)."
+    },
+    "The server refused the request" : {
+      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:': the server answered with another HTTP 4xx error."
     },
     "The server responded with HTTP %@ (%@)." : {
       "comment" : "Download error; the placeholders are the HTTP status code, such as 404, and its system description, such as 'not found'.",
@@ -123088,6 +123127,9 @@
         }
       }
     },
+    "The stream ended unexpectedly" : {
+      "comment" : "Player or recording error, the technical reason after 'Stream interrupted:' and similar: the input ended (end of file)."
+    },
     "The stream is not running." : {
       "comment" : "Player error from the streaming engine.",
       "localizations" : {
@@ -123188,6 +123230,9 @@
           }
         }
       }
+    },
+    "The stream's data is damaged or isn't video" : {
+      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:' and similar: FFmpeg found invalid data (a web page instead of a stream, or a damaged file)."
     },
     "The video can't be converted while the app is in the background. Try again with the app open." : {
       "comment" : "Error while saving a recording or a download whose video must be converted: the system does not allow it while the app is in the background.",
@@ -123693,6 +123738,9 @@
           }
         }
       }
+    },
+    "There isn't enough storage space" : {
+      "comment" : "Player or recording error, the technical reason after 'Unable to write the stream:' and similar: the device's storage is full."
     },
     "These playlists are on your other devices. Add them to this Apple TV to watch them here, without typing a single address." : {
       "comment" : "Description of the iCloud playlists sheet on Apple TV.",
@@ -129461,107 +129509,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法轉換錄影"
-          }
-        }
-      }
-    },
-    "Unable to create the local stream address." : {
-      "comment" : "Player error: the in-app streaming server could not provide an address.",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "تعذر إنشاء عنوان البث المحلي."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die lokale Stream-Adresse konnte nicht erstellt werden."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No se ha podido crear la dirección de transmisión local."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Impossible de créer l’adresse de flux locale."
-          }
-        },
-        "hi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "लोकल स्ट्रीम पता नहीं बनाया जा सका।"
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tidak dapat membuat alamat stream lokal."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Impossibile creare l’indirizzo di streaming locale."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ローカルストリームのアドレスを作成できません。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "로컬 스트림 주소를 생성할 수 없습니다."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kan het lokale streamadres niet aanmaken."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nie można utworzyć lokalnego adresu strumienia."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Não foi possível criar o endereço local da transmissão."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Не удалось создать локальный адрес потока."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Yerel yayın adresi oluşturulamadı."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法创建本地流地址。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "無法建立本機串流位址。"
           }
         }
       }

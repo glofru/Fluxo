@@ -55,7 +55,8 @@ extension AVPlayerViewModel {
         logger.info("Route: \(String(describing: self.route), privacy: .public) for a \(url.pathExtension.isEmpty ? "extensionless" : url.pathExtension, privacy: .public) URL")
         // Through the engine, a seek far into a movie waits for the engine to seek the input and read a GOP: on a slow
         // network that takes about as long as AVPlayer's own stall detection, which would only start it over (the
-        // engine still works on that segment, and fails it itself after `StreamRemuxer.segmentRequestTimeout`).
+        // engine still works on that segment, and fails it itself after `StreamRemuxer.segmentRequestTimeout`, which the
+        // loopback server allows, `LoopbackTimeouts`).
         seeker.stallLimit = route.isOnDemandRemux ? Self.engineSeekStallLimit : Self.seekStallLimit
         surface.startsPictureInPictureAutomatically = PlayerPreferences.autoPictureInPicture
         activateAudioSession()
@@ -66,6 +67,8 @@ extension AVPlayerViewModel {
             player.play()
 
         case .remux(let isLive):
+            // A new session: the addresses of the previous one (its token) stop working.
+            server.beginSession()
             server.start(root: outputDirectory)
 
             var configuration = StreamRemuxer.Configuration(
@@ -74,11 +77,6 @@ extension AVPlayerViewModel {
                 name: "\(channel.id.uuidString.prefix(8))-\(UUID().uuidString.prefix(8))",
                 isLive: isLive
             )
-            #if os(tvOS)
-            // The TV player covers the screen until the first frame: a server that refuses the connection says so in
-            // seconds there, with Try Again, instead of after FFmpeg's own retries.
-            configuration.quickOpen = true
-            #endif
             if isLive {
                 configuration.maxWindowDuration = PlayerPreferences.timeShiftDuration
                 configuration.maxWindowBytes = Self.diskBudget(for: outputDirectory, maximum: PlayerPreferences.timeShiftBytes)
@@ -101,11 +99,6 @@ extension AVPlayerViewModel {
                 watchDiskSpace()
             }
 
-            guard let streamURL = SimpleHTTPServer.url(forFileNamed: configuration.playlistFileName) else {
-                streamError = String(localized: "Unable to create the local stream address.", comment: "Player error: the in-app streaming server could not provide an address.")
-                refreshPlaybackState()
-                return
-            }
             // Segments of on-demand playlists are produced when AVPlayer requests them.
             if isLive {
                 server.setFileProvider(nil)
@@ -125,7 +118,7 @@ extension AVPlayerViewModel {
                 refreshPlaybackState()
                 return
             }
-            self.streamURL = streamURL
+            streamFileName = configuration.playlistFileName
             // The AVPlayerItem is created once the engine reports the first complete segment.
             waitingForFirstSegment = true
             isTimeShiftAvailable = isLive
@@ -144,16 +137,26 @@ extension AVPlayerViewModel {
     func tearDownPlayback() {
         attachTask?.cancel()
         attachTask = nil
+        pausedTimeShiftTask?.cancel()
+        pausedTimeShiftTask = nil
+        suspension = nil
+        suspensionResume = nil
+        awaitsInputSuspension = false
+        pendingSuspensionResume = nil
+        suspensionResumeTask?.cancel()
+        suspensionResumeTask = nil
+        itemClock = nil
         diskSpaceTask?.cancel()
         diskSpaceTask = nil
         stallTask?.cancel()
         stallTask = nil
         server.setFileProvider(nil)
         waitingForFirstSegment = false
-        streamURL = nil
+        streamFileName = nil
         itemCancellables.removeAll()
         itemFailure = nil
         itemFailureNSError = nil
+        engineFailure = nil
         didReachEnd = false
         itemRecoveryAttempts = 0
         pendingResumePosition = nil
@@ -178,15 +181,22 @@ extension AVPlayerViewModel {
     }
 
     func attachRemuxedStream() {
-        guard let streamURL else {
+        guard let streamFileName else {
             return
         }
         let isLive = route.isLiveRemux
         attachTask?.cancel()
         attachTask = Task { [weak self, server] in
             // Deterministic start: the playlist has a complete segment and the server accepts connections.
-            await server.waitUntilListening()
-            guard let self, !Task.isCancelled, self.streamURL == streamURL else {
+            let listening = await server.waitUntilListening()
+            guard let self, !Task.isCancelled, self.streamFileName == streamFileName else {
+                return
+            }
+            guard listening, let streamURL = server.url(forFileNamed: streamFileName) else {
+                // The loopback server could not bind or listen: say so (Try Again starts it again).
+                logger.error("Loopback server not listening: the stream cannot be attached")
+                self.streamError = (server.startError ?? .timedOut).localizedDescription
+                self.refreshPlaybackState()
                 return
             }
             let item = Self.makeItem(url: streamURL, isLocal: true)
@@ -199,6 +209,7 @@ extension AVPlayerViewModel {
 
     func attach(_ item: AVPlayerItem) {
         itemCancellables.removeAll()
+        itemClock = nil
         sampledBufferedEnd = nil
         didReachEnd = false
         itemFailure = nil
@@ -211,12 +222,19 @@ extension AVPlayerViewModel {
                     return
                 }
                 if status == .readyToPlay {
+                    // (Before it plays: see `PausedTimeShiftPolicy.MediaClock`.)
+                    self.itemClock = PausedTimeShiftPolicy.MediaClock(itemTime: item.currentTime().seconds, date: item.currentDate())
+                        .map { (ObjectIdentifier(item), $0) }
                     // HLS renditions are known once the playlist is read.
                     self.mediaSelection.reload()
                     self.checkTracksAreDecodable(item)
                 }
                 if status == .failed {
                     self.handleItemFailure(item.error)
+                } else if status == .readyToPlay, let pending = self.pendingSuspensionResume {
+                    // A live channel after a suspension.
+                    self.pendingSuspensionResume = nil
+                    self.resumeAfterSuspension(at: pending.date, in: item)
                 } else if status == .readyToPlay, let position = self.pendingResumePosition {
                     // Back from casting (continue where the Chromecast was), or the engine took a movie over.
                     let continuesRecovery = self.pendingResumeContinuesRecovery
@@ -231,8 +249,16 @@ extension AVPlayerViewModel {
         NotificationCenter.default.publisher(for: AVPlayerItem.didPlayToEndTimeNotification, object: item)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                self?.didReachEnd = true
-                self?.refreshPlaybackState()
+                guard let self else {
+                    return
+                }
+                // The end of the live playlist while its input was suspended (marked as ended meanwhile): the channel
+                // goes on in the new item (`continueAfterSuspension`).
+                guard self.suspension == nil, self.pendingSuspensionResume == nil else {
+                    return
+                }
+                self.didReachEnd = true
+                self.refreshPlaybackState()
             }
             .store(in: &itemCancellables)
 

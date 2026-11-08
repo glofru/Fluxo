@@ -3,7 +3,7 @@
 - **Routing** (`PlaybackRoute`, from the URL and the kind of the entry): HLS playlists and MP4/MOV
   files play directly in AVPlayer. Raw MPEG-TS channels (no extension or `.ts`, or `udp://`, `rtp://`,
   `rtmp://`, `rtsp://`) go through the remux engine, which writes local HLS that
-  AVPlayer reads from the loopback server (`127.0.0.1:19123` only).
+  AVPlayer reads from the loopback server (see "Loopback server" below; 127.0.0.1 only).
   Live channels with `.m3u8` URLs play directly in AVPlayer, so they use the
   DVR window of the source playlist (if it has one) and cannot be recorded.
   Movies and episodes AVPlayer cannot open go through the engine's on-demand mode: Matroska, WebM, AVI,
@@ -32,7 +32,18 @@
   `EXT-X-MAP` initialization segment, `hvc1`): AVPlayer decodes HEVC from HLS only in fMP4. This also
   applies to live HEVC channels. Audio tracks and subtitles (see "Audio tracks and subtitles") are complete VOD
   playlists of the same segments, written with the main segment of the same number; only the requests of the
-  main playlist move the reader, a rendition's request waits for its segment.
+  main playlist move the reader, a rendition's request waits for its segment. A request for a segment that will
+  not come answers at once (`fluxo_remux_request_segment` returns -2: no such segment, or the session finished,
+  failed or was cancelled), so the player is never left waiting on a dead session.
+- **Seeks that end the input** are failed seeks, not the end of the movie: FFmpeg's FLV demuxer reads whatever is at
+  a byte position as a tag, so a byte seek that landed inside a tag ran its parser past the end of the file, and the
+  engine marked the movie as ended there (every later segment answered -2 until it was opened again). FLV byte
+  seeks now go to the first tag at or after the estimated position (`fluxo_flv_tag_at_or_after`: a tag header, its
+  `PreviousTagSize` and the next header must agree, within 256 KB). And whatever the format, an end of input before
+  the first segment after a seek is complete, more than 30 s before the end of the input, makes the seek again: by
+  time when it was a byte seek, then by reading the input again from its start, for that input from then on
+  (`fluxo_vod_retry_seek`). `run_probe.sh` seeks forward and back in every container of the format matrix, FLV
+  included, also from a server without byte ranges.
 - **Seeking** (`PlayerSeeker`, `ScrubPreviewProvider`): every seek (scrubber, skip buttons, keyboard, remote
   commands, resume) goes through one coordinator. The scrubber's knob and times follow the finger and never the
   player's clock while it is dragged (a drag the system cancels ends like a release); after the release they stay at
@@ -46,7 +57,8 @@
   show frame previews over the knob (`AVAssetImageGenerator` on the item's asset, key frames, one in flight, cached;
   turned off for a file whose server refuses them); media through the engine shows the time only (its server often
   allows a single connection, which the engine holds). A seek that does not play without media arriving for 8 s (20 s
-  through the engine, which still works on the segment and fails it itself after 45 s) is made again from the key
+  through the engine, which still works on the segment and fails it itself after 45 s, within the loopback server's
+  limit) is made again from the key
   frame before the target; then the item is recreated at the target (a movie AVPlayer plays itself moves to the
   engine; a new item from the engine starts at the target, `fluxo_remux_set_start_time`), and a stall on that item
   fails: "Couldn't play from this point." with Try Again over the timeline, reachable with VoiceOver and Full Keyboard
@@ -85,15 +97,90 @@
 - **Deterministic start**: the engine has its own HLS segmenter and reports each
   completed segment. The player item is created once, after the first segment
   exists and the server is listening. There is no polling.
+- **Loopback server** (`SimpleHTTPServer`, FlyingFox): it gives the engine's files to AVPlayer and listens on
+  127.0.0.1 only, never on the network. Within the device it answers only the player:
+  - the port is one the system picks when the server starts (port 0), so no other app can count on it (a server started
+    again, after iOS reclaimed its socket in the background, asks for the same port first, so the items of the session
+    keep their addresses; debug builds can fix it with `-FluxoDebugLoopbackPort`);
+  - every address has the random token of its playback session as its first path component (`/<128-bit hex>/<file>`,
+    a new one per channel or movie, compared in constant time): anything else is 404, including the files of an
+    earlier session;
+  - the `Host` header must be `127.0.0.1:<port>`: a web page that a DNS rebinding attack points at 127.0.0.1 sends its
+    own host name and gets 421;
+  - flat file names of the HLS types only, from the one directory;
+  - a server that cannot bind or listen is a player error with Try Again ("The player couldn't start its local stream
+    server."), not a channel that stays on "Connecting…".
+  Its time limit for a request (60 s, `LoopbackTimeouts.request`) is longer than the engine's wait for an on-demand
+  segment (45 s, `LoopbackTimeouts.segmentWait`), from the same constant: FlyingFox's default of 15 s answered 500
+  for any segment that took 15 to 45 s (a slow server, a far seek), and the player went through its rebuilds to an
+  error. A request the server ends (its limit, or it stops) is cancelled in the engine too
+  (`StreamRemuxer.requestFile` resolves the wait). `run_vod.sh slow-segment` plays a seek whose segment takes about
+  25 s: one request, no error (with the old 15 s limit: an HTTP 500 in AVPlayer's error log).
 - **Time shift (DVR)**: live channels keep a sliding window of 30 minutes by
   default (5 to 120 minutes in Settings, `PlayerPreferences`), with a disk budget of
   512 MB per 30 minutes, or a tenth of the free disk space if that is smaller.
   Segments that leave the window are deleted. You can pause, resume, scrub, skip
   back or forward (10 s / 30 s by default, configurable), and go back to live
   (`AVPlayerViewModel`).
+- **Paused live channels** keep reading, so the window covers what is missed, until it would buy nothing more
+  (`PausedTimeShiftPolicy`): the engine closes the input (`fluxo_remux_set_input_suspended`; the window and the
+  playlist stay) once the full window starts letting go of media within 20 s of the paused position (the position
+  stays playable), or after 2 minutes of pause on an expensive or constrained network (cellular, a personal hotspot,
+  Low Data Mode) or in Low Power Mode. Never while recording. Playing again, going live or recording opens the input
+  at once, without "Reconnecting…": the playlist continues after an `EXT-X-DISCONTINUITY`, the timeline without a
+  gap (the part of the broadcast that aired meanwhile is not in the window). The player's item does not survive the
+  pause: AVPlayer gives up on a live playlist that stays unchanged (CoreMedia -12888, seven times in about 40 s), and
+  then waits forever at the end of what it had after the resume (macOS), or fails the item with -11866 "Playback
+  Stopped" (iOS, which the item recovery then played again, unasked, from the end of the window). So the engine marks
+  the playlist as ended while the input is closed (`EXT-X-ENDLIST`: not reloaded, the paused item stays playable within
+  the window), reports the suspension (`FluxoRemuxEventInputSuspended`, with the last segment before it), and
+  playing on attaches a new item once the engine wrote the first segment after the resume, at the same media. The
+  media are named by their date: the engine's `EXT-X-PROGRAM-DATE-TIME` follows its media timeline (the wall clock of
+  the session's first segment plus the durations, as `EXTINF` says them, of the segments before, across discontinuities
+  too), not the wall clock of each segment, so `currentDate()` minus `currentTime()` is the same everywhere in an item,
+  whichever segment's date AVPlayer extrapolates from, and every item of the session shows the same media at the same
+  date (`PausedTimeShiftPolicy.MediaClock`, read when an item becomes ready, before it plays: once it plays, AVPlayer's
+  dates are those of its media, a few frames off the playlist's, 0.08 to 0.12 s with the test channel, while its
+  time stays the playlist's). The old item's position (or where a seek under way within its media goes)
+  becomes a date, and the new item continues at that date once it is ready and has one (`resumeDate`,
+  `resumeItemTime`, `AVPlayerViewModel.continueAfterSuspension` and `resumeAfterSuspension`); Go Live continues at the
+  end of the frozen media, where the media after the resume follow. No playlist read at the wrong moment can shift it.
+  (So the dates fall behind the wall clock by the time an input was closed or reconnecting: nothing in the app reads
+  them as the time of day.) While the input is closed the old item's seekable range is that of the frozen media, by the
+  same clock (on macOS AVPlayer reports a range of no length past the media for an item whose playlist is marked as
+  ended), and Play does not seek to the oldest media then (`continuesFromOldestMedia`). A Play that comes after the
+  engine was asked to close the input still gets its new item; the engine does not mark the playlist as ended at all
+  when the Play comes before it does. `run_probe.sh suspend`
+  checks the engine side: no segment while suspended, the playlist marked as ended only then, segments again within
+  4 s of the resume, the suspension reported once, every segment's date its predecessor's plus its `EXTINF`, across
+  the discontinuity; `run_vod.sh live-pause` the player side with AVPlayer: 70 s
+  suspended without a playlist error, the frozen media holding the paused position, then a new item that shows the
+  paused frame (compared with the frame 2 s later) and plays on past the resume with the same clock, also in a window
+  that slides meanwhile and closes the input when the policy says so (`live-pause-sliding`); the app in the iOS
+  Simulator with `-FluxoDebugPower low-power` and the route `player:Test Pattern (MPEG-TS);wait:8;pause;wait:195;
+  resume;wait:5;probe-playback` the whole path (suspended after 2 minutes, still paused 70 s later, plays on).
 - **Reconnection**: when a live input drops or ends, the engine reconnects with
   backoff (0.5 s to 8 s, 10 attempts). Buffered media keeps playing in the
   meantime, and the playlist continues with `EXT-X-DISCONTINUITY`.
+- **Dead channels fail fast** (every platform): the first open makes one connection per attempt
+  (`FluxoRemuxConfig.quick_open`; FFmpeg's own reconnection on network errors, 0 + 1 + 3 s per attempt, comes back
+  once the input is open), and the engine tries again only when it can help (`fluxo_first_open_retries`): a refused or
+  reset connection or a failed name lookup once, 0.5 s later (IPTV servers often refuse the first connection of a
+  burst); a server refusing the account (403, 429, other 4xx, 5xx: one connection per account, the previous channel's
+  still open) three times, 0.5, 1 and 2 s apart; a timed-out connection (FFmpeg's 5 s to connect), 404, 401, a missing
+  protocol or a format that cannot play not at all. Measured with `run_probe.sh` (macOS, before → after): refused
+  19.7 s → 0.54 s, unknown host 20.1 s → 0.57 s, 404 and 401 at once, 403 and 503 3.7 s (unchanged), an unreachable
+  address 5.1 s. That last one is FFmpeg's TCP connect timeout (`tcp.c`: 5 s, not `rw_timeout`): only the tcp
+  protocol's own `timeout` option shortens it, and that option is also the read timeout of the connection and stays
+  in the http protocol's options for its reconnections, so a shorter one for the first open would cut the live read
+  timeout (15 s) of that connection too. Left at 5 s.
+- **Error messages** name what failed and why in the user's language: the engine's English message
+  ("Unable to open the stream: Connection refused") is translated in both parts (`EngineMessage`; the reason from
+  FFmpeg's error code, `FluxoRemuxEvent.error_code`: refused, timed out, reset, unreachable, 400, 401, 403, 404, 429,
+  other 4xx, 5xx, damaged data, end of stream, disk full, and an input/output error while the input opens, which is
+  how FFmpeg reports a failed name lookup: "the server couldn't be found or reached"; other reasons stay in English).
+  The engine's own words go to the log. Screens that explain failures in plain words read the code and what failed
+  (`EngineMessage.error(code:message:)`, `reason(of:)`, `AVPlayerViewModel.itemFailureError`), not the text.
 - **Recording**: the record button writes the live stream to
   `Documents/Recordings/<channel>-<date>.ts`, which is a second output of the
   engine. When the recording stops, it is converted to `.mp4` (stream copy) so
@@ -230,6 +317,24 @@ bitmap subtitles (PGS, DVB, VobSub) are not shown.
   a second). On demand, the segments read ahead meanwhile stay without a picture until the movie is opened again.
   Copied video is not affected. Not yet checked on a device (the Simulator and the Mac never refuse the encoder;
   `FLUXO_TEST_REFUSE_ENCODER` simulates it in `run_converted.sh`).
+- **Encoder back-pressure**: FFmpeg's VideoToolbox encoder gives back at most one packet per picture it is sent and
+  keeps the rest until it is flushed, and nothing else stops the reader from running ahead of the encoder (a movie is
+  converted at full speed: the 60 s read-ahead of playback, or a whole download conversion). The converter counts the
+  pictures in flight (sent minus packets received) and flushes the encoder, which waits until VideoToolbox has
+  finished all of them, then opens a new one: at a segment start (a key frame it places anyway) above 24, or at once,
+  with a key frame of its own, at 48 (`FLUXO_ENCODER_DRAIN_AT_KEY`, `FLUXO_ENCODER_MAX_IN_FLIGHT`,
+  FluxoTranscoder.c). Both are above an encoder's own pipeline, so they cost nothing while it keeps up: a safety net,
+  which none of the measured runs reached (at most 17 in flight, below). Measured with
+  90 s of 1080p MPEG-2 converted as on an iPhone (`probe.c convert` / `vod`, `FLUXO_ENCODER_TRACE` prints the most in
+  flight and the flushes), with and without the bound: M4 Mac, hardware encoder: at most 12 in flight, about 10 s
+  and 75 MB peak for the file conversion, 8 s and 70 MB for 64 s of on-demand playback, the same both ways; the
+  software encoder on the Mac (in its own process): at most 17; the iOS Simulator (software encoder, in the app's
+  process, `xcrun simctl spawn`): at most 17 in flight, 420–440 MB peak and about 50 s both ways (the
+  production-readiness report measured 280–360 MB there). The Simulator's peak is the same with and without the bound,
+  so it is not a backlog of pictures: 17 pictures of 1080p NV12 are about 50 MB, and the rest is the working memory of
+  the software encoder and the decoders, which was not broken down further. The growth the report measured (871
+  sample buffers) did not happen at this version, and the bound keeps it from happening. Devices use the hardware
+  encoder; their memory and CPU during a long 1080p MPEG-2 / VC-1 conversion still need measuring on a device.
 - **Downloads** (`DownloadConversion`): files that are not MP4 / MOV (Matroska, AVI, WMV, Ogg, MPEG-TS, ...), and
   MP4 / MOV files with a track AVPlayer does not play (DTS or TrueHD audio, `hev1` HEVC; on iPhone and iPad
   MPEG-4 Part 2 beyond the Simple Profile), are converted into MP4 after the download with the same rules; MP3 and
@@ -325,13 +430,26 @@ Tools/EngineSmokeTest/run_tracks.sh    # audio tracks and subtitles: master play
 Tools/EngineSmokeTest/run_vod.sh       # movies: skip, scrub, resume on MP4 / MKV / TS / HLS, H.264 and HEVC
 Tools/EngineSmokeTest/run_formats.sh   # the format matrix: every container / video / audio codec (see "Formats")
 Tools/EngineSmokeTest/run_converted.sh # converted video: live timestamp restarts, a refused encoder, file conversion
+Tools/EngineSmokeTest/run_probe.sh     # the engine without AVPlayer: seeks in every container, dead channels, pauses
+SANITIZE=1 Tools/EngineSmokeTest/run_probe.sh   # the same with AddressSanitizer + UndefinedBehaviorSanitizer
+SANITIZE=1 Tools/EngineSmokeTest/leaks.sh       # the leak check's sessions under the sanitizers instead of `leaks`
 ```
+
+`run_probe.sh` (`probe.c`) drives the engine directly and is quick enough for the sanitizers: segment requests in the
+order of a player that seeks forward and back in 12 containers over HTTP (FLV with and without byte ranges, Matroska
+with tracks, MP4 `hev1`, MPEG-TS, AVI, WMV, MPEG-PS, WebM); dead channels with a time limit each (refused, unknown
+host, 404, 401: 1.5 s; 403, 503: 4.5 s); a session that ended answers -2 for a segment not on disk; seeks in an FLV
+whose metadata say 120 s more than it has (`flv-overlong.flv`): within its media they play, past its real end the
+engine answers -2 within seconds (it used to read the whole input again from its start first); a live input
+suspended and resumed. Every check passes, also with `SANITIZE=1` (any AddressSanitizer or UndefinedBehaviorSanitizer
+report fails it; built with `-fno-sanitize-recover=all`), and `leaks.sh` reports no leak; UBSan found the signed
+overflow `fluxo_vod_route` had (a key frame interval computed from `AV_NOPTS_VALUE` before its check).
 
 `run_vod.sh` generates 10-minute test movies and serves them on 127.0.0.1 the way IPTV panels do (Xtream
 Codes paths, extensionless and `.php` URLs, a server without byte ranges, a throttled one, one connection per
 account that refuses a second one or drops the older one; Matroska with two audio tracks and subtitles in H.264
 and HEVC, whose audio switch and subtitle timing are checked too). Each case is
-played by `VODCheck` (the app's `PlaybackRoute`, `StreamRemuxer` and loopback server, on another port, with
+played by `VODCheck` (the app's `PlaybackRoute`, `StreamRemuxer` and loopback server, on a port of its own, with
 AVPlayer): skip +30 s twice, scrub to 25 / 50 / 90 %, skip back, then close and resume at the saved
 position; after each step playback must continue there with video frames that are not black.
 
@@ -398,7 +516,9 @@ these with `-configuration Debug`.
   the lifecycle hooks; extensions hold the rest by concern: `+Transport` (play / pause, skips, seeks, the seeker),
   `+Recording`, `+Playback` (starting and tearing down playback, item failures, the fallback to the engine, stalls,
   disk space), `+State` (engine events, the playback state, Now Playing, the energy profile, the timeline),
-  `+PictureInPicture`, `+Cast` and `+AudioSession`. `PlaybackTimeline.swift` is the fast-changing position.
+  `+PausedTimeShift` (a paused live channel: closing the engine's input, the new item after it, with the rules in
+  `PausedTimeShiftPolicy.swift`), `+PictureInPicture`, `+Cast` and `+AudioSession`. `PlaybackTimeline.swift` is the
+  fast-changing position. `SimpleHTTPServer.swift` is the loopback server (and `LoopbackTimeouts`).
 - **The remux engine** (`Features/Player/Engine`, C): `FluxoRemuxEngine.h` is its interface (the only header Swift sees).
   `FluxoRemuxEngine.c` has the session, its thread, events and file conversion; `FluxoEngineInput.c` the input,
   `FluxoEngineOutput.c` the muxers, `FluxoEngineHLS.c` the segmenter and its playlists, `FluxoEngineRenditions.c`,

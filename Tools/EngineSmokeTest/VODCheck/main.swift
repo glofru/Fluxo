@@ -3,8 +3,8 @@
 //  VODCheck
 //
 //  Plays an on-demand URL the way AVPlayerViewModel does: PlaybackRoute picks AVPlayer or the remux engine;
-//  the engine route uses the app's StreamRemuxer and SimpleHTTPServer (on another loopback port, see
-//  run_vod.sh). Then it seeks like the player controls (skip +30 s, scrub to 25 / 50 / 90 %, skip back),
+//  the engine route uses the app's StreamRemuxer and SimpleHTTPServer (on a free loopback port, with its session
+//  token, like the app). Then it seeks like the player controls (skip +30 s, scrub to 25 / 50 / 90 %, skip back),
 //  closes the item and reopens it at the saved position (resume), and checks after every step that
 //  playback continues with real (non-black) video frames. Inputs with several audio tracks or text subtitles
 //  play the engine's master playlist, like the app: the check then switches the audio track and turns subtitles
@@ -49,6 +49,14 @@ final class Check {
     var sampledBufferedEnd: Double?
     /// AVPlayerViewModel.isPictureInPictureActive, for itemTimeJumped.
     var simulatesPictureInPicture = false
+    /// SCENARIO=livepause: the last segment the engine wrote, and the one before its input closed (InputSuspended).
+    var lastSegmentIndex = -1
+    var suspendedAfterSegment: Int?
+    /// The dates of the media playlist when the input closed, and the item's clock then (AVPlayerViewModel.Suspension).
+    var frozenDates: Range<Date>?
+    var suspendedClock: PausedTimeShiftPolicy.MediaClock?
+    /// The clock of the item open() started, read before it played (AVPlayerViewModel.itemClock).
+    var itemClock: PausedTimeShiftPolicy.MediaClock?
 
     init(url: URL, kind: ChannelContentKind?) {
         self.url = url
@@ -79,8 +87,20 @@ final class Check {
             if statistics.segmentsWritten == 1 || statistics.segmentsWritten % 25 == 0 {
                 print("[engine] segments written=\(statistics.segmentsWritten) on disk=\(statistics.segmentCount) bytes=\(statistics.bytes)")
             }
+            lastSegmentIndex = statistics.segmentIndex
             firstSegment?.resume()
             firstSegment = nil
+        case .inputSuspended(let lastSegmentIndex):
+            print("[engine] input suspended after segment \(lastSegmentIndex)")
+            suspendedAfterSegment = lastSegmentIndex
+            let frozenPlaylist = remuxer.configuration.flatMap { try? String(contentsOf: $0.playlistURL, encoding: .utf8) }
+            frozenDates = frozenPlaylist.flatMap(PausedTimeShiftPolicy.dateRange(ofPlaylist:))
+            if ProcessInfo.processInfo.environment["LIVEPAUSE_SCAN"] == "1" {
+                print("[scan] frozen playlist:\n\(frozenPlaylist ?? "-")")
+            }
+            if let item {
+                suspendedClock = itemClock ?? PausedTimeShiftPolicy.MediaClock(itemTime: item.currentTime().seconds, date: item.currentDate())
+            }
         default:
             break
         }
@@ -101,10 +121,12 @@ final class Check {
             seeker.onWillSeek = nil
             seeker.stallLimit = .seconds(8)
         case .remux(let isLive):
+            server.beginSession()
             server.start(root: directory)
             var configuration = StreamRemuxer.Configuration(inputURL: url, outputDirectory: directory, name: "check-\(UUID().uuidString.prefix(8))", isLive: isLive)
             if isLive {
-                configuration.maxWindowDuration = 30 * 60
+                // WINDOW_SECONDS: a short time-shift window, which lets go of its oldest segments (SCENARIO=livepause).
+                configuration.maxWindowDuration = Double(ProcessInfo.processInfo.environment["WINDOW_SECONDS"] ?? "") ?? 30 * 60
                 configuration.maxWindowBytes = 512 * 1024 * 1024
             } else {
                 configuration.segmentDuration = 4
@@ -149,13 +171,16 @@ final class Check {
                 failures.append("engine: \(engineFailure)")
                 return false
             }
-            await server.waitUntilListening()
+            guard await server.waitUntilListening() else {
+                failures.append("loopback server: not listening")
+                return false
+            }
             if !isLive {
                 checkPlaylist(at: directory.appendingPathComponent(configuration.playlistFileName), segmentDuration: configuration.segmentDuration)
             }
             // AVPlayerViewModel: extra audio tracks or text subtitles are renditions of the master playlist.
             let playlist = hasMasterPlaylist ? configuration.masterPlaylistFileName : configuration.playlistFileName
-            item = AVPlayerItem(url: SimpleHTTPServer.url(forFileNamed: playlist)!)
+            item = AVPlayerItem(url: server.url(forFileNamed: playlist)!)
             item.preferredForwardBufferDuration = 8
             if hasMasterPlaylist {
                 // An output belongs to one item.
@@ -196,8 +221,14 @@ final class Check {
         player.replaceCurrentItem(with: item)
         player.play()
         let begin = Date()
+        // AVPlayerViewModel.itemClock: a live item's clock, read before it plays (PausedTimeShiftPolicy.MediaClock).
+        let isLiveRemux = route == .remux(isLive: true)
+        itemClock = nil
         while player.timeControlStatus != .playing && Date().timeIntervalSince(begin) < 40 && item.status != .failed {
-            await run(for: 0.1)
+            if isLiveRemux, itemClock == nil {
+                itemClock = PausedTimeShiftPolicy.MediaClock(itemTime: item.currentTime().seconds, date: item.currentDate())
+            }
+            await run(for: isLiveRemux ? 0.01 : 0.1)
         }
         print(String(format: "[check] playing after %.1fs", Date().timeIntervalSince(begin)))
         if item.status == .failed {
@@ -614,6 +645,300 @@ final class Check {
         close()
     }
 
+    /// A coarse picture of the frame at `time` of the current item (32 x 18 blocks of mean brightness), after an exact
+    /// seek there with the player paused; nil when no frame comes.
+    func frameSignature(at time: Double) async -> [Double]? {
+        guard let item, let output else {
+            return nil
+        }
+        _ = await player.seek(to: CMTime(seconds: time, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+        for _ in 0..<50 {
+            if let buffer = output.copyPixelBuffer(forItemTime: item.currentTime(), itemTimeForDisplay: nil) {
+                CVPixelBufferLockBaseAddress(buffer, .readOnly)
+                defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+                let width = CVPixelBufferGetWidth(buffer)
+                let height = CVPixelBufferGetHeight(buffer)
+                let row = CVPixelBufferGetBytesPerRow(buffer)
+                guard let base = CVPixelBufferGetBaseAddress(buffer)?.assumingMemoryBound(to: UInt8.self), width >= 32, height >= 18 else {
+                    return nil
+                }
+                var blocks = [Double](repeating: 0, count: 32 * 18)
+                var counts = [Double](repeating: 0, count: 32 * 18)
+                for y in stride(from: 0, to: height, by: 2) {
+                    for x in stride(from: 0, to: width, by: 2) {
+                        let pixel = base + y * row + x * 4
+                        let block = (y * 18 / height) * 32 + x * 32 / width
+                        blocks[block] += (Double(pixel[0]) + Double(pixel[1]) + Double(pixel[2])) / 3
+                        counts[block] += 1
+                    }
+                }
+                return zip(blocks, counts).map { $1 > 0 ? $0 / $1 : 0 }
+            }
+            await run(for: 0.1)
+        }
+        return nil
+    }
+
+    static func difference(_ a: [Double], _ b: [Double]) -> Double {
+        zip(a, b).map { abs($0 - $1) }.reduce(0, +) / Double(max(1, a.count))
+    }
+
+    /// A paused live channel whose input the engine closes (AVPlayerViewModel.updatePausedTimeShift and
+    /// PausedTimeShiftPolicy), for longer than AVPlayer would keep reloading a live playlist that does not change
+    /// (about 40 s, CoreMedia -12888; the engine marks it as ended meanwhile, so it must not), then played on as the app
+    /// does (AVPlayerViewModel.play, continueAfterSuspension and resumeAfterSuspension): the input opens again, and once
+    /// the engine wrote a segment after the resume a new item continues at the media where the old one was, by their
+    /// dates (PausedTimeShiftPolicy.MediaClock). Its frame at the paused media must be the paused one (closer to it than
+    /// the frame 2 s later), and it must play on past the media of the pause into what the engine writes now, its clock
+    /// the same across the discontinuity. LIVEPAUSE_SECONDS: how long the input stays closed (default 70);
+    /// WINDOW_SECONDS makes the window slide (30: it fills during the pause), and the input closes when
+    /// PausedTimeShiftPolicy.decide says so (the window full behind the paused position);  The new item
+    /// must also show the old item's frame where it continues. LIVEPAUSE_SCAN=1 logs the playlists and where
+    /// around the computed position the paused frame is. LIVEPAUSE_KEEP_ITEM=1 plays the old item on instead, as the app did
+    /// before: it never gets the media written after the resume (the check fails).
+    func livePauseScenario() async {
+        guard await open(resumeAt: nil) else {
+            return
+        }
+        await step("live edge") { currentTime }
+        await run(for: 6)
+        player.pause()
+        await run(for: 1)
+        frames.stop()
+        let pausedPosition = currentTime
+        if ProcessInfo.processInfo.environment["LIVEPAUSE_SCAN"] == "1", let clock = PausedTimeShiftPolicy.MediaClock(itemTime: currentTime, date: item?.currentDate()) {
+            print(String(format: "[scan] old item paused at %.3f: clock %.3f; seekable from %.3f", currentTime, clock.origin, range()?.0 ?? -1))
+        }
+        let pausedFrame = await frameSignature(at: pausedPosition)
+        let windowAtPause = range()?.0
+        if ProcessInfo.processInfo.environment["WINDOW_SECONDS"].flatMap(Double.init) != nil {
+            // AVPlayerViewModel.updatePausedTimeShift: the policy closes the input once the full window lets go of media.
+            let begin = Date()
+            var decided = false
+            while !decided && Date().timeIntervalSince(begin) < 40 {
+                await run(for: 0.5)
+                let decision = PausedTimeShiftPolicy.decide(PausedTimeShiftPolicy.Conditions(
+                    pausedFor: Date().timeIntervalSince(begin), position: currentTime, windowStartAtPause: windowAtPause, windowStart: range()?.0))
+                if case .suspend(let reason) = decision {
+                    print(String(format: "[check] the policy suspends after %.1f s: %@ (window from %.1f, at the pause %.1f)", Date().timeIntervalSince(begin),
+                                 reason, range()?.0 ?? -1, windowAtPause ?? -1))
+                    decided = true
+                }
+            }
+            if !decided {
+                failures.append("live pause: the policy did not suspend a full window")
+            }
+        }
+        remuxer.setInputSuspended(true)
+        let suspendBegin = Date()
+        while suspendedAfterSegment == nil && Date().timeIntervalSince(suspendBegin) < 10 {
+            await run(for: 0.1)
+        }
+        guard let last = suspendedAfterSegment, let frozenDates, let oldItem = item else {
+            failures.append("live pause: the engine did not report the suspension (or its playlist has no dates)")
+            close()
+            return
+        }
+        let seconds = Double(ProcessInfo.processInfo.environment["LIVEPAUSE_SECONDS"] ?? "") ?? 70
+        let writtenAtSuspension = lastSegmentIndex
+        print(String(format: "[check] paused at %.1f (window from %.1f), input suspended after segment %d; paused for %.0f s", pausedPosition,
+                     range()?.0 ?? -1, last, seconds))
+        await run(for: seconds)
+        report("suspended")
+        if lastSegmentIndex != writtenAtSuspension {
+            failures.append("live pause: segments written while the input was suspended")
+        }
+        // The engine marks the playlist as ended while suspended: AVPlayer does not reload it, so it does not give up
+        // on it (-12888 seven times, then a frozen item on macOS, a failed one on iOS).
+        let reloadErrors = oldItem.errorLog()?.events.filter { $0.errorStatusCode == -12888 }.count ?? 0
+        let oldItemOK = reloadErrors == 0 && oldItem.status == .readyToPlay
+        print("[check] the old item logged \(reloadErrors) unchanged-playlist errors (-12888) during the pause, status \(oldItem.status.rawValue) => \(oldItemOK ? "OK" : "FAIL")")
+        if !oldItemOK {
+            failures.append("live pause: the old item gave up on the playlist during the pause")
+        }
+        // AVPlayerViewModel.seekableRange while suspended: the frozen media, by the item's clock (AVPlayer's own range
+        // has no length past the media on macOS).
+        guard let oldClock = suspendedClock else {
+            failures.append("live pause: the old item has no date")
+            close()
+            return
+        }
+        let frozenRange = PausedTimeShiftPolicy.itemRange(of: frozenDates, clock: oldClock)
+        // (AVPlayer's dates while it plays are a few frames off the playlist's: PausedTimeShiftPolicy.MediaClock.)
+        let playingClock = PausedTimeShiftPolicy.MediaClock(itemTime: currentTime, date: oldItem.currentDate())
+        let rangeOK = frozenRange.start <= pausedPosition && pausedPosition < frozenRange.end && abs((playingClock?.origin ?? .infinity) - oldClock.origin) < 0.25
+        print(String(format: "[check] the frozen media in the old item: %.2f...%.2f, the paused position in it, its dates now %+.3f s off => %@", frozenRange.start,
+                     frozenRange.end, (playingClock?.origin ?? .nan) - oldClock.origin, rangeOK ? "OK" : "FAIL"))
+        if !rangeOK {
+            failures.append("live pause: the old item's frozen media do not hold the paused position")
+        }
+
+        // Play on (AVPlayerViewModel.play): no seek to the oldest media while suspended; the input opens again at once.
+        if PausedTimeShiftPolicy.continuesFromOldestMedia(position: currentTime, windowStart: frozenRange.start, isSuspended: true) {
+            failures.append("live pause: play seeks to the oldest media while suspended")
+        }
+        remuxer.setInputSuspended(false)
+        player.play()
+        let resumed = Date()
+        if ProcessInfo.processInfo.environment["LIVEPAUSE_KEEP_ITEM"] == "1" {
+            await run(for: 25)
+            let advanced = currentTime - pausedPosition
+            report("old item")
+            let ok = player.timeControlStatus == .playing && advanced > 20
+            print(String(format: "[check] old item after the suspension advanced=%.1f => %@", advanced, ok ? "OK" : "FAIL"))
+            if !ok {
+                failures.append("live pause: the old item did not play on")
+            }
+            close()
+            return
+        }
+        while lastSegmentIndex <= last && Date().timeIntervalSince(resumed) < 20 {
+            await run(for: 0.1)
+        }
+        guard lastSegmentIndex > last else {
+            failures.append("live pause: no segment after the resume")
+            close()
+            return
+        }
+        // AVPlayerViewModel.continueAfterSuspension (the old item plays the frozen media meanwhile).
+        let oldPosition = currentTime
+        let resumeDate = PausedTimeShiftPolicy.resumeDate(position: oldPosition, seekTarget: nil, clock: oldClock, frozen: frozenDates)
+        let pausedDate = oldClock.date(atItemTime: pausedPosition)
+        // The frame where the old item was, which the new item must show where it continues.
+        player.pause()
+        let resumeFrame = await frameSignature(at: oldPosition)
+        print(String(format: "[check] segment %d written %.1f s after the resume; old item at %.1f (%.1f s into the frozen media)", lastSegmentIndex,
+                     Date().timeIntervalSince(resumed), oldPosition, resumeDate.timeIntervalSince(frozenDates.lowerBound)))
+        guard let configuration = remuxer.configuration else {
+            close()
+            return
+        }
+        let fileName = hasMasterPlaylist ? configuration.masterPlaylistFileName : configuration.playlistFileName
+        let newItem = AVPlayerItem(url: server.url(forFileNamed: fileName)!)
+        newItem.preferredForwardBufferDuration = 8
+        newItem.canUseNetworkResourcesForLiveStreamingWhilePaused = true
+        let output = AVPlayerItemVideoOutput(pixelBufferAttributes: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
+        newItem.add(output)
+        item = newItem
+        self.output = output
+        // AVPlayerViewModel.attachRemuxedStream: the new item plays at once.
+        player.replaceCurrentItem(with: newItem)
+        player.play()
+        while newItem.status == .unknown && Date().timeIntervalSince(resumed) < 30 {
+            await run(for: 0.01)
+        }
+        // AVPlayerViewModel.itemClock and resumeAfterSuspension: the new item's clock once it is ready (its date may come
+        // a moment later).
+        var newClock: PausedTimeShiftPolicy.MediaClock?
+        for attempt in 0..<30 {
+            if attempt > 0 {
+                await run(for: 0.1)
+            }
+            newClock = PausedTimeShiftPolicy.MediaClock(itemTime: newItem.currentTime().seconds, date: newItem.currentDate())
+            if newClock != nil {
+                print("[check] the new item has its date after \(attempt) polls")
+                break
+            }
+        }
+        // (Paused for the frame comparison.)
+        player.pause()
+        guard let newClock else {
+            failures.append("live pause: the new item has no date")
+            close()
+            return
+        }
+        let target = PausedTimeShiftPolicy.resumeItemTime(at: resumeDate, clock: newClock, window: range())
+        let pausedInNewItem = newClock.itemTime(at: pausedDate)
+        let resumeStart = newClock.itemTime(at: frozenDates.upperBound)
+        print(String(format: "[check] new item (window %.1f...%.1f) at %.2f; the paused media at %.2f, the media of the resume at %.2f", range()?.0 ?? -1,
+                     range()?.1 ?? -1, target, pausedInNewItem, resumeStart))
+        if ProcessInfo.processInfo.environment["LIVEPAUSE_SCAN"] == "1", let pausedFrame {
+            // Diagnostics: where around the computed position the paused frame really is.
+            print("[scan] playlist now:\n\((try? String(contentsOf: configuration.playlistURL, encoding: .utf8)) ?? "-")")
+            print(String(format: "[scan] old clock %.3f (at the event %.3f), new clock %.3f; new item at ready time=%.3f", oldClock.origin,
+                         suspendedClock?.origin ?? -1, newClock.origin, newItem.currentTime().seconds))
+            for step in -10...10 {
+                let time = pausedInNewItem + Double(step) * 0.2
+                if let frame = await frameSignature(at: time) {
+                    print(String(format: "[scan] %+.1f s: difference %.2f", Double(step) * 0.2, Self.difference(pausedFrame, frame)))
+                }
+            }
+        }
+        // Where the new item continues: where the old item was, or the oldest media + 2 s when the window let go of it.
+        let newWindow = range()
+        let resumeInNewItem = newClock.itemTime(at: resumeDate)
+        let expected = newWindow.map { resumeInNewItem < $0.0 ? min($0.0 + 2, $0.1) : min(resumeInNewItem, $0.1) } ?? resumeInNewItem
+        if abs(target - expected) > 0.01 {
+            failures.append("live pause: the new item does not continue where the old item was")
+        }
+        let resumeFrameNow = await frameSignature(at: target)
+        if resumeInNewItem >= (newWindow?.0 ?? 0), let resumeFrame, let resumeFrameNow, let laterFrame = await frameSignature(at: target + 2) {
+            let same = Self.difference(resumeFrame, resumeFrameNow)
+            let later = Self.difference(resumeFrame, laterFrame)
+            let ok = same < 4 && same * 3 < later
+            print(String(format: "[check] the old item's frame where it was in the new item at %.2f: difference %.2f (the frame 2 s later: %.2f) => %@", target, same,
+                         later, ok ? "OK" : "FAIL"))
+            if !ok {
+                failures.append("live pause: the new item does not continue with the media where the old item was")
+            }
+        } else if resumeInNewItem >= (newWindow?.0 ?? 0) {
+            failures.append("live pause: no frame to compare where the new item continues")
+        }
+        // The paused frame, against the frame 2 s later: the new item must show the paused media.
+        if let newWindow, pausedInNewItem < newWindow.0 {
+            print(String(format: "[check] the paused media (%.2f) left the new item's window (from %.2f) => FAIL", pausedInNewItem, newWindow.0))
+            failures.append("live pause: the window let go of the paused media")
+        } else if let pausedFrame, let sameFrame = await frameSignature(at: pausedInNewItem), let laterFrame = await frameSignature(at: pausedInNewItem + 2) {
+            let same = Self.difference(pausedFrame, sameFrame)
+            let later = Self.difference(pausedFrame, laterFrame)
+            let ok = same < 4 && same * 3 < later
+            print(String(format: "[check] paused frame in the new item at %.2f: difference %.2f (the frame 2 s later: %.2f) => %@", pausedInNewItem, same, later,
+                         ok ? "OK" : "FAIL"))
+            if !ok {
+                failures.append("live pause: the new item does not show the paused media")
+            }
+        } else {
+            failures.append("live pause: no frame to compare")
+        }
+        frames.start(output: output) { [weak self] _ in self?.frameBrightness() }
+        player.play()
+        await step("after the suspension") { target }
+        if ProcessInfo.processInfo.environment["LIVEPAUSE_SCAN"] == "1" {
+            for _ in 0..<6 {
+                if let clock = PausedTimeShiftPolicy.MediaClock(itemTime: currentTime, date: newItem.currentDate()) {
+                    print(String(format: "[scan] new item playing at %.2f: clock %+.3f from the one at ready; seekable from %.3f", currentTime, clock.origin - newClock.origin, range()?.0 ?? -1))
+                }
+                await run(for: 1)
+            }
+        }
+        // Past the media of the pause, into what the engine writes now: the new item follows the playlist.
+        let goal = resumeStart + 8
+        let begin = Date()
+        while currentTime < goal && Date().timeIntervalSince(begin) < max(0, resumeStart - target) + 30 && newItem.status != .failed {
+            await run(for: 0.5)
+        }
+        report("after the resume")
+        let ok = currentTime >= goal && player.timeControlStatus == .playing
+        print(String(format: "[check] played on to %.1f (past the resume at %.1f) %.1f s after play => %@", currentTime, resumeStart,
+                     Date().timeIntervalSince(resumed), ok ? "OK" : "FAIL"))
+        if !ok {
+            failures.append("live pause: did not play on past the resume")
+        }
+        // The dates follow the media timeline across the discontinuity: the item's clock is the same after the resume (up
+        // to the few frames AVPlayer's dates while it plays are off the playlist's, PausedTimeShiftPolicy.MediaClock).
+        if let lateClock = PausedTimeShiftPolicy.MediaClock(itemTime: currentTime, date: newItem.currentDate()) {
+            let drift = lateClock.origin - newClock.origin
+            let clockOK = abs(drift) < 0.25
+            print(String(format: "[check] the new item's clock after the resume differs by %.3f s => %@", drift, clockOK ? "OK" : "FAIL"))
+            if !clockOK {
+                failures.append("live pause: the item's dates do not follow its time across the resume")
+            }
+        } else {
+            failures.append("live pause: the new item has no date after the resume")
+        }
+        close()
+    }
+
     /// The format matrix (run_formats.sh): fewer steps, for short movies.
     func quickScenario() async {
         guard await open(resumeAt: nil) else {
@@ -649,13 +974,59 @@ final class Check {
         close()
     }
 
+    /// A server slow to seek (run_vod.sh mkv-slow-segment): the segment after a far seek takes about 20 s, longer than
+    /// the 15 s FlyingFox gives a request by default, shorter than the engine's wait (`LoopbackTimeouts`). The seek
+    /// must play there, from that one request (no 500 from the loopback server, no new item).
+    func slowSegmentScenario() async {
+        guard await open(resumeAt: nil) else {
+            return
+        }
+        await run(for: 3)
+        guard let duration else {
+            failures.append("slow segment: no duration")
+            return
+        }
+        let target = duration * 0.5
+        let begin = Date()
+        _ = await player.seek(to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: CMTime(value: 1, timescale: 4))
+        while (player.timeControlStatus != .playing || abs(currentTime - target) > 5) && Date().timeIntervalSince(begin) < 70 && item?.status != .failed {
+            await run(for: 0.2)
+        }
+        let latency = Date().timeIntervalSince(begin)
+        let landed = currentTime
+        await run(for: 3)
+        let advanced = currentTime - landed
+        let errors = item?.errorLog()?.events ?? []
+        let ok = player.timeControlStatus == .playing && abs(landed - target) < 6 && advanced > 1.5 && item?.status != .failed && errors.isEmpty
+        print(String(format: "[check] slow segment target=%.1f landed=%.1f advanced=%.1f latency=%.1fs errors=%d => %@", target, landed, advanced, latency,
+                     errors.count, ok ? "OK" : "FAIL"))
+        for event in errors {
+            print("[check]   error log: \(event.errorStatusCode) \(event.errorDomain) \(event.errorComment ?? "-") \(event.uri ?? "-")")
+        }
+        if !ok {
+            failures.append("slow segment")
+        } else if latency < 15 {
+            // The case proves nothing unless the segment took longer than FlyingFox's default.
+            failures.append(String(format: "slow segment: only %.1f s (the server should delay it about 20 s)", latency))
+        }
+        close()
+    }
+
     func scenario() async {
+        if ProcessInfo.processInfo.environment["SCENARIO"] == "slowsegment" {
+            await slowSegmentScenario()
+            return
+        }
         if ProcessInfo.processInfo.environment["SCENARIO"] == "short" {
             await shortScenario()
             return
         }
         if ProcessInfo.processInfo.environment["SCENARIO"] == "stress" {
             await stressScenario()
+            return
+        }
+        if ProcessInfo.processInfo.environment["SCENARIO"] == "livepause" {
+            await livePauseScenario()
             return
         }
         if ProcessInfo.processInfo.environment["SCENARIO"] == "dropped" {

@@ -22,6 +22,7 @@ extension AVPlayerViewModel {
             switch state {
             case .failed(let message):
                 streamError = message
+                engineFailure = remuxer.failureError.map { (message, $0) }
             case .running:
                 if case .reconnecting = playbackState {
                     streamError = nil
@@ -42,13 +43,33 @@ extension AVPlayerViewModel {
             }
             if waitingForFirstSegment {
                 waitingForFirstSegment = false
-                if statistics.hasMasterPlaylist, let configuration = remuxer.configuration,
-                   let masterURL = SimpleHTTPServer.url(forFileNamed: configuration.masterPlaylistFileName) {
+                if statistics.hasMasterPlaylist, let configuration = remuxer.configuration {
                     // Extra audio tracks or text subtitles: the master playlist lists them as renditions.
                     logger.info("Master playlist: \(statistics.audioTrackCount) audio, \(statistics.subtitleTrackCount) subtitle tracks")
-                    streamURL = masterURL
+                    streamFileName = configuration.masterPlaylistFileName
                 }
                 attachRemuxedStream()
+            }
+            if let resume = suspensionResume, let suspension, statistics.segmentIndex > suspension.lastSegment {
+                continueAfterSuspension(suspension, at: resume)
+            }
+
+        case .inputSuspended(let lastSegmentIndex):
+            // (The first suspension counts: the item stopped there.)
+            guard route.isLiveRemux, awaitsInputSuspension, suspension == nil, let item = player.currentItem else {
+                break
+            }
+            awaitsInputSuspension = false
+            logger.info("Paused live channel: the playlist stopped after segment \(lastSegmentIndex); playing on needs a new item")
+            // (Unchanged until the input opens again.)
+            let frozenPlaylist = remuxer.configuration.flatMap { try? String(contentsOf: $0.playlistURL, encoding: .utf8) }
+            suspension = Suspension(lastSegment: lastSegmentIndex, item: ObjectIdentifier(item),
+                                    frozenDates: frozenPlaylist.flatMap(PausedTimeShiftPolicy.dateRange(ofPlaylist:)), clock: clock(of: item))
+            if player.timeControlStatus != .paused, suspensionResume == nil {
+                // Played again while the input closed: the engine opened it again at once, but the playlist was marked
+                // as ended, so the item stops at its end. A new item continues once the engine writes again.
+                logger.info("Played while the input closed: a new item continues once the engine writes again")
+                suspensionResume = .pausedPosition
             }
 
         case .recordingStarted:
@@ -175,6 +196,7 @@ extension AVPlayerViewModel {
                 if status == .playing {
                     self.itemRecoveryAttempts = 0
                 }
+                self.updatePausedTimeShift(status)
                 self.watchForStall()
                 self.seeker.playerChanged()
                 self.refreshPlaybackState()

@@ -6,6 +6,8 @@
 # Then CYCLES on-demand sessions of each of four 60 s movies (MPEG-TS H.264, planned every 4 s; MPEG-TS HEVC with
 # ADTS AAC, fragmented MP4 output; the same in Matroska with a second audio track and subtitles, over HTTP on
 # 127.0.0.1) with in-order, forward and backward segment requests and a cache small enough to evict segments.
+# SANITIZE=1: the same sessions built with AddressSanitizer and UndefinedBehaviorSanitizer instead of `leaks` (which
+# cannot run with them); any report stops the run (see also run_probe.sh).
 set -eu
 
 PORT=${PORT:-18925}
@@ -17,8 +19,14 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 WORK=$(mktemp -d /tmp/fluxo-engine-leaks.XXXXXX)
 BIN="$WORK/engine-churn"
 
-# shellcheck disable=SC2086 # FFMPEG_CFLAGS / FFMPEG_LDFLAGS / FLUXO_ENGINE_SOURCES are lists of words.
-clang -O1 -g -Wall -Wextra -o "$BIN" \
+SANITIZER_FLAGS=
+if [ "${SANITIZE:-0}" = 1 ]; then
+    SANITIZER_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer"
+    export ASAN_OPTIONS=${ASAN_OPTIONS:-detect_leaks=0:halt_on_error=1}
+    export UBSAN_OPTIONS=${UBSAN_OPTIONS:-print_stacktrace=1:halt_on_error=1}
+fi
+# shellcheck disable=SC2086 # FFMPEG_CFLAGS / FFMPEG_LDFLAGS / FLUXO_ENGINE_SOURCES / SANITIZER_FLAGS are lists of words.
+clang -O1 -g -Wall -Wextra $SANITIZER_FLAGS -o "$BIN" \
     -I "$ROOT/Fluxo/Features/Player/Engine" $FFMPEG_CFLAGS \
     "$ROOT/Tools/EngineSmokeTest/churn.c" $FLUXO_ENGINE_SOURCES \
     $FFMPEG_LDFLAGS
@@ -57,7 +65,7 @@ VOD_INPUTS="$WORK/vod-h264.ts $WORK/vod-hevc.ts http://127.0.0.1:$HTTP_PORT/vod-
 LOOP_PID=$!
 sleep 1
 
-if [ "${FOOTPRINT_ONLY:-0}" = 1 ]; then
+if [ "${FOOTPRINT_ONLY:-0}" = 1 ] || [ "${SANITIZE:-0}" = 1 ]; then
     # Without malloc stack logging, whose own bookkeeping grows the footprint.
     "$BIN" "http://127.0.0.1:$PORT/live.ts" "$WORK" "$CYCLES" "$SECONDS_PER_CYCLE" $VOD_INPUTS > "$WORK/leaks.log" 2>&1 || true
 else
@@ -68,4 +76,8 @@ pkill -f "127.0.0.1:$PORT/live.ts" 2>/dev/null || true
 
 grep -E '^\[churn\]' "$WORK/leaks.log" || true
 grep -E 'leaks for|total leaked bytes|Process [0-9]+: [0-9]+ (nodes|leaks)' "$WORK/leaks.log" || true
+if grep -E 'ERROR: AddressSanitizer|runtime error:' "$WORK/leaks.log"; then
+    echo "error: sanitizer report (see $WORK/leaks.log)" >&2
+    exit 1
+fi
 echo "full report: $WORK/leaks.log"

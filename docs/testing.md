@@ -72,8 +72,9 @@ at a time; `Tools/CI/checks.sh guide series` runs some. Each script also runs on
 `ffmpeg` here is the command line program (`brew install ffmpeg`), a test tool that generates and inspects test
 streams; nothing links it. Every server the checks start is bound to 127.0.0.1.
 
-`Tools/EngineSmokeTest` has more engine scripts (formats, seeking, tracks, VOD, leaks) that take longer; run them
-when changing the engine.
+`Tools/EngineSmokeTest` has more engine scripts (formats, seeking, tracks, VOD, the engine probe, leaks) that take
+longer; run them when changing the engine. `run_probe.sh` and `leaks.sh` also run under AddressSanitizer and
+UndefinedBehaviorSanitizer with `SANITIZE=1` (see [Player](player.md)).
 
 ## Simulator harness and UI tests
 

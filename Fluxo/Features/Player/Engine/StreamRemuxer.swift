@@ -51,6 +51,8 @@ final class StreamRemuxer {
         var hasMasterPlaylist = false
         var audioTrackCount = 0
         var subtitleTrackCount = 0
+        /// The media sequence number of the segment just written (its index in an on-demand playlist).
+        var segmentIndex = 0
     }
 
     struct RecordingProgress: Equatable {
@@ -68,6 +70,10 @@ final class StreamRemuxer {
         case recordingStopped(RecordingProgress)
         /// The recording failed; `url` is set when a (partial) file may exist.
         case recordingFailed(URL?, String)
+        /// The live input closed for `setInputSuspended(true)`: the playlist stops changing until it opens again (the
+        /// segments after the one numbered `lastSegmentIndex` follow a discontinuity). AVPlayer stops reloading a live
+        /// playlist that does not change for long and never asks for it again, so playing on needs a new item.
+        case inputSuspended(lastSegmentIndex: Int)
     }
 
     enum RemuxError: LocalizedError {
@@ -113,8 +119,9 @@ final class StreamRemuxer {
         /// On-demand inputs: where the player starts (a resume), so the engine produces that segment first.
         var startTime: TimeInterval = 0
         /// The first open of the input makes one connection per attempt of the engine (`FluxoRemuxConfig.quick_open`):
-        /// an unreachable server fails in about 4 s instead of 20 s.
-        var quickOpen = false
+        /// a dead channel fails in about half a second, a server that refuses the account in about 4 s, instead of
+        /// "Connecting…" for 20 s.
+        var quickOpen = true
         var userAgent: String?
 
         var filePrefix: String {
@@ -189,8 +196,9 @@ final class StreamRemuxer {
         var index: Int
     }
 
-    /// Longest wait for a requested segment: a slow server, or a seek far into a file that cannot seek.
-    static let segmentRequestTimeout: Duration = .seconds(45)
+    /// Longest wait for a requested segment: a slow server, or a seek far into a file that cannot seek. The loopback
+    /// server allows each request longer than this (`LoopbackTimeouts.request`).
+    static let segmentRequestTimeout: Duration = LoopbackTimeouts.segmentWait
 
     /// Called on the main queue for every engine event.
     var onEvent: ((Event) -> Void)?
@@ -202,6 +210,14 @@ final class StreamRemuxer {
     /// URL of the recording being written, if any.
     private(set) var recordingURL: URL?
 
+    /// The input of the live session is closed while the player is paused (see `setInputSuspended(_:)`).
+    private(set) var isInputSuspended = false
+
+    /// FFmpeg's error code of the failure of the session (state `.failed`), 0 otherwise; see `EngineMessage.error(code:)`.
+    private(set) var failureCode: Int32 = 0
+    /// The failure of the session as an error (`EngineMessage.error(code:message:)`), nil without a code.
+    private(set) var failureError: NSError?
+
     var isProcessing: Bool {
         state.isActive
     }
@@ -210,8 +226,19 @@ final class StreamRemuxer {
 
     private var session: OpaquePointer?
     private var callbackBox: Unmanaged<CallbackBox>?
+    /// A request of the player waiting for a segment, and the task that ends it at `segmentRequestTimeout`.
+    private struct SegmentWaiter {
+        let continuation: CheckedContinuation<Bool, Never>
+        let timeout: Task<Void, Never>
+
+        func resume(returning available: Bool) {
+            timeout.cancel()
+            continuation.resume(returning: available)
+        }
+    }
+
     /// Requests of the player waiting for a segment (index -1 is the initialization segment).
-    private var segmentWaiters: [SegmentFile: [UUID: CheckedContinuation<Bool, Never>]] = [:]
+    private var segmentWaiters: [SegmentFile: [UUID: SegmentWaiter]] = [:]
 
     private static let teardownQueue = DispatchQueue(label: "dev.watermelon.Fluxo.StreamRemuxer.teardown", qos: .utility)
 
@@ -251,6 +278,8 @@ final class StreamRemuxer {
         self.callbackBox = unmanagedBox
         self.configuration = configuration
         self.statistics = WindowStatistics()
+        self.failureCode = 0
+        self.failureError = nil
         update(.opening)
     }
 
@@ -270,6 +299,7 @@ final class StreamRemuxer {
         self.callbackBox = nil
         self.configuration = nil
         self.recordingURL = nil
+        self.isInputSuspended = false
 
         // Ignore any late callback of the stopped session.
         box?.takeUnretainedValue().owner = nil
@@ -298,8 +328,9 @@ final class StreamRemuxer {
     /// Called by the loopback server for every file the player requests. Segment files of an on-demand
     /// session are produced on request: this tells the engine (which seeks the input when the segment is far
     /// from what it reads) and waits until the file is on disk. Returns false when the file will not come
-    /// (no such segment, the session ended or failed, or it took longer than `segmentRequestTimeout`);
-    /// the server then answers 404, and AVPlayer reports the failure.
+    /// (no such segment, the session ended or failed, or it took longer than `segmentRequestTimeout`), or when the
+    /// request is cancelled (the server stopped, or ended it at its own limit); the server then answers 404, and
+    /// AVPlayer reports the failure.
     @MainActor
     func requestFile(named fileName: String) async -> Bool {
         guard let session, let configuration, !configuration.isLive,
@@ -312,7 +343,7 @@ final class StreamRemuxer {
         if result != 0 {
             return result > 0
         }
-        guard isProcessing else {
+        guard isProcessing, !Task.isCancelled else {
             return false
         }
         // A request far from the others of the same playlist supersedes them (the player seeked): the engine no
@@ -323,17 +354,49 @@ final class StreamRemuxer {
             resolveSegmentWaiters(for: waiting, with: false)
         }
         let id = UUID()
-        return await withCheckedContinuation { continuation in
-            segmentWaiters[file, default: [:]][id] = continuation
-            Task { @MainActor [weak self] in
-                try? await Task.sleep(for: Self.segmentRequestTimeout)
-                guard let self, let waiter = self.segmentWaiters[file]?.removeValue(forKey: id) else {
-                    return
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                let timeout = Task { @MainActor [weak self] in
+                    try? await Task.sleep(for: Self.segmentRequestTimeout)
+                    guard !Task.isCancelled, let self, self.removeSegmentWaiter(id, of: file) != nil else {
+                        return
+                    }
+                    logger.error("Segment \(index) (\(file.rendition ?? "main", privacy: .public)) not produced in time")
+                    continuation.resume(returning: false)
                 }
-                logger.error("Segment \(index) (\(file.rendition ?? "main", privacy: .public)) not produced in time")
-                waiter.resume(returning: false)
+                segmentWaiters[file, default: [:]][id] = SegmentWaiter(continuation: continuation, timeout: timeout)
+                // Cancelled before the waiter existed: the handler below found nothing to resolve.
+                if Task.isCancelled {
+                    removeSegmentWaiter(id, of: file)?.resume(returning: false)
+                }
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                self?.removeSegmentWaiter(id, of: file)?.resume(returning: false)
             }
         }
+    }
+
+    @discardableResult
+    private func removeSegmentWaiter(_ id: UUID, of file: SegmentFile) -> SegmentWaiter? {
+        guard let waiter = segmentWaiters[file]?.removeValue(forKey: id) else {
+            return nil
+        }
+        if segmentWaiters[file]?.isEmpty == true {
+            segmentWaiters.removeValue(forKey: file)
+        }
+        return waiter
+    }
+
+    /// Live sessions: closes the input (true) while the player is paused, keeping the time-shift window and the
+    /// playlist, or opens it again (false), the playlist continuing after a discontinuity (see
+    /// `fluxo_remux_set_input_suspended` and `PausedTimeShiftPolicy`). The engine keeps the input open while it records.
+    func setInputSuspended(_ suspended: Bool) {
+        guard let session, let configuration, configuration.isLive, suspended != isInputSuspended else {
+            return
+        }
+        isInputSuspended = suspended
+        fluxo_remux_set_input_suspended(session, suspended ? 1 : 0)
     }
 
     /// The player is about to seek an on-demand session to `seconds` (item time): the segment it asks for next
@@ -387,6 +450,8 @@ final class StreamRemuxer {
             throw RemuxError.notRunning
         }
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        // A recording needs the input.
+        setInputSuspended(false)
         let result = url.path.withCString { fluxo_remux_start_recording(session, $0) }
         guard result == 0 else {
             throw RemuxError.unableToStart(result)
@@ -422,8 +487,16 @@ final class StreamRemuxer {
             RecordingProgress(url: URL(fileURLWithPath: $0), duration: event.recordingDuration, bytes: event.recordingBytes)
         }
 
+        if let raw = event.rawMessage, event.isFailure {
+            // The engine's own words (the message shown is translated).
+            logger.error("Engine: \(raw, privacy: .public) (\(event.errorCode))")
+        }
         switch event.kind {
         case .stateChanged:
+            if case .failed = event.state {
+                failureCode = event.errorCode
+                failureError = event.errorCode != 0 ? EngineMessage.error(code: event.errorCode, message: event.rawMessage) : nil
+            }
             if !event.state.isActive {
                 // Nothing more will be produced.
                 resolveAllSegmentWaiters()
@@ -459,6 +532,8 @@ final class StreamRemuxer {
                 recordingURL = nil
             }
             onEvent?(.recordingFailed(progress?.url, event.message ?? String(localized: "Recording failed", comment: "Recording error shown when the engine gives no reason.")))
+        case .inputSuspended:
+            onEvent?(.inputSuspended(lastSegmentIndex: event.segmentIndex))
         }
     }
 
@@ -555,16 +630,31 @@ private struct EngineEvent {
     let kind: FluxoRemuxEventKind
     let state: StreamRemuxer.State
     let message: String?
+    /// The engine's English message (for the log), and its error code (FFmpeg's, 0 without one).
+    let rawMessage: String?
+    let errorCode: Int32
     let statistics: StreamRemuxer.WindowStatistics
     let recordingPath: String?
     let recordingDuration: TimeInterval
     let recordingBytes: Int64
     let segmentIndex: Int
 
+    /// A failure of the session or of a recording.
+    var isFailure: Bool {
+        if case .failed = state, kind == .stateChanged {
+            return true
+        }
+        return kind == .recordingFailed
+    }
+
     init(_ event: FluxoRemuxEvent) {
         kind = event.kind
         segmentIndex = Int(event.segment_index)
-        message = event.message.map { EngineMessage.localized(String(cString: $0)) }
+        let raw = event.message.map { String(cString: $0) }
+        let code = event.error_code
+        rawMessage = raw
+        errorCode = code
+        message = raw.map { EngineMessage.localized($0, code: code) }
         switch event.state {
         case .idle:
             state = .idle
@@ -588,7 +678,8 @@ private struct EngineEvent {
             bytes: event.window_bytes,
             hasMasterPlaylist: event.master_playlist_written != 0,
             audioTrackCount: Int(event.audio_rendition_count),
-            subtitleTrackCount: Int(event.subtitle_rendition_count)
+            subtitleTrackCount: Int(event.subtitle_rendition_count),
+            segmentIndex: Int(event.segment_index)
         )
         recordingPath = event.recording_path.map { String(cString: $0) }
         recordingDuration = event.recording_duration
@@ -596,11 +687,192 @@ private struct EngineEvent {
     }
 }
 
-/// Translates the messages of the C engine (FluxoRemuxEngine.c and the FluxoEngine*.c files), which are English: "<what failed>: <FFmpeg reason>",
-/// or the unsupported-protocol message. The part that says what failed is localized; FFmpeg's technical reason
-/// ("Connection refused", "Server returned 404 Not Found") is kept as it is.
+/// Translates the messages of the C engine (FluxoRemuxEngine.c and the FluxoEngine*.c files), which are English:
+/// "<what failed>: <FFmpeg reason>", or the unsupported-protocol message. The part that says what failed is localized,
+/// and so are the reasons the network and servers commonly cause (`Reason`, from the engine's error code, or from
+/// FFmpeg's text when there is no code); any other reason of FFmpeg is kept as it is, in English. The raw message goes
+/// to the log.
 enum EngineMessage {
-    static func localized(_ message: String) -> String {
+    /// The domain of the errors made from the engine's codes (`error(code:)`): FFmpeg's error codes (AVERROR).
+    static let errorDomain = "dev.watermelon.Fluxo.Engine"
+
+    /// The key of the `userInfo` of `error(code:message:)` with the stage of the engine's message (what failed, in
+    /// English: "Unable to open the stream").
+    static let stageKey = "FluxoEngineStage"
+
+    /// An error with the engine's code, so that a screen can tell what happened by its code (`reason(of:)`).
+    /// `message`: the engine's (English) message, whose stage tells what a code of no particular meaning means.
+    static func error(code: Int32, message: String? = nil) -> NSError {
+        NSError(domain: errorDomain, code: Int(code), userInfo: message.flatMap(stage(of:)).map { [stageKey: $0] } ?? [:])
+    }
+
+    /// The common reason of an error of `error(code:message:)`; nil for others.
+    static func reason(of error: NSError) -> Reason? {
+        guard error.domain == errorDomain else {
+            return nil
+        }
+        return reason(code: Int32(truncatingIfNeeded: error.code), stage: error.userInfo[stageKey] as? String)
+    }
+
+    /// What failed in an engine message ("<what failed>: <reason>"), nil without it.
+    private static func stage(of message: String) -> String? {
+        message.range(of: ": ").map { String(message[..<$0.lowerBound]) }
+    }
+
+    /// The stage of the engine's messages that opens the input.
+    private static let openStage = "Unable to open the stream"
+
+    /// The common reasons of a failure, from FFmpeg's error codes.
+    enum Reason: Equatable {
+        case connectionRefused
+        case timedOut
+        case connectionReset
+        case networkUnreachable
+        case badRequest
+        case unauthorized
+        case forbidden
+        case notFound
+        case tooManyRequests
+        case otherClientError
+        case serverError
+        case invalidData
+        case endOfStream
+        case noSpace
+        /// An input/output error (EIO) while opening the input: FFmpeg's failed name lookup has no code of its own
+        /// (tcp.c, "Failed to resolve hostname"), nor do some other failures to reach the server.
+        case serverNotFound
+
+        var localizedDescription: String {
+            switch self {
+            case .connectionRefused:
+                String(localized: "The server refused the connection", comment: "Player or recording error, the technical reason after 'Unable to open the stream:' and similar: the server did not accept the connection (it is down, or the address or port is wrong).")
+            case .timedOut:
+                String(localized: "The server didn't respond in time", comment: "Player or recording error, the technical reason after 'Unable to open the stream:' and similar: the connection timed out.")
+            case .connectionReset:
+                String(localized: "The server closed the connection", comment: "Player or recording error, the technical reason after 'Stream interrupted:' and similar: the connection was reset by the server.")
+            case .networkUnreachable:
+                String(localized: "The server can't be reached from this network", comment: "Player or recording error, the technical reason after 'Unable to open the stream:' and similar: no route to the server (the network is down or blocks it).")
+            case .badRequest:
+                String(localized: "The server didn't understand the request (400)", comment: "Player or recording error, the technical reason after 'Unable to open the stream:': the server answered HTTP 400. Keep the number.")
+            case .unauthorized:
+                String(localized: "The server didn't accept the account (401)", comment: "Player or recording error, the technical reason after 'Unable to open the stream:': the server answered HTTP 401 (wrong user name or password). Keep the number.")
+            case .forbidden:
+                String(localized: "The server refused access (403)", comment: "Player or recording error, the technical reason after 'Unable to open the stream:': the server answered HTTP 403 (an expired subscription, or the account's connections are in use). Keep the number.")
+            case .notFound:
+                String(localized: "The server doesn't have this stream (404)", comment: "Player or recording error, the technical reason after 'Unable to open the stream:': the server answered HTTP 404. Keep the number.")
+            case .tooManyRequests:
+                String(localized: "The server is limiting connections (429)", comment: "Player or recording error, the technical reason after 'Unable to open the stream:': the server answered HTTP 429 (too many requests). Keep the number.")
+            case .otherClientError:
+                String(localized: "The server refused the request", comment: "Player or recording error, the technical reason after 'Unable to open the stream:': the server answered with another HTTP 4xx error.")
+            case .serverError:
+                String(localized: "The server has a problem (5xx)", comment: "Player or recording error, the technical reason after 'Unable to open the stream:': the server answered with an HTTP 5xx error. Keep '5xx'.")
+            case .invalidData:
+                String(localized: "The stream's data is damaged or isn't video", comment: "Player or recording error, the technical reason after 'Unable to open the stream:' and similar: FFmpeg found invalid data (a web page instead of a stream, or a damaged file).")
+            case .endOfStream:
+                String(localized: "The stream ended unexpectedly", comment: "Player or recording error, the technical reason after 'Stream interrupted:' and similar: the input ended (end of file).")
+            case .noSpace:
+                String(localized: "There isn't enough storage space", comment: "Player or recording error, the technical reason after 'Unable to write the stream:' and similar: the device's storage is full.")
+            case .serverNotFound:
+                String(localized: "The server couldn't be found or reached", comment: "Player error, the technical reason after 'Unable to open the stream:': the server's name did not resolve, or it could not be reached (an input/output error while connecting).")
+            }
+        }
+    }
+
+    /// FFmpeg's error code of a message whose stage (what failed) is `stage` as a common reason; nil for others. An
+    /// input/output error (EIO) means that the server could not be found or reached only while the input opens.
+    static func reason(code: Int32, stage: String?) -> Reason? {
+        if code == -EIO, stage == openStage {
+            return .serverNotFound
+        }
+        return reason(code: code)
+    }
+
+    /// FFmpeg's error code (AVERROR: a negative POSIX error, or a tag of FFmpeg's) as a common reason; nil for others.
+    static func reason(code: Int32) -> Reason? {
+        switch code {
+        case -ECONNREFUSED:
+            return .connectionRefused
+        case -ETIMEDOUT:
+            return .timedOut
+        case -ECONNRESET, -EPIPE:
+            return .connectionReset
+        case -ENETUNREACH, -EHOSTUNREACH, -ENETDOWN, -EHOSTDOWN:
+            return .networkUnreachable
+        case -ENOSPC:
+            return .noSpace
+        case errorTag(0xF8, "4", "0", "0"):
+            return .badRequest
+        case errorTag(0xF8, "4", "0", "1"):
+            return .unauthorized
+        case errorTag(0xF8, "4", "0", "3"):
+            return .forbidden
+        case errorTag(0xF8, "4", "0", "4"):
+            return .notFound
+        case errorTag(0xF8, "4", "2", "9"):
+            return .tooManyRequests
+        case errorTag(0xF8, "4", "X", "X"):
+            return .otherClientError
+        case errorTag(0xF8, "5", "X", "X"):
+            return .serverError
+        case errorTag("I", "N", "D", "A"):
+            return .invalidData
+        case errorTag("E", "O", "F", " "):
+            return .endOfStream
+        default:
+            return nil
+        }
+    }
+
+    /// The reason of FFmpeg's text for it (`av_strerror`, in English): the messages of `fluxo_remux_convert_file`
+    /// have no code.
+    static func reason(text: String) -> Reason? {
+        switch text {
+        case "Connection refused":
+            return .connectionRefused
+        case "Operation timed out":
+            return .timedOut
+        case "Connection reset by peer", "Broken pipe":
+            return .connectionReset
+        case "Network is unreachable", "No route to host", "Network is down", "Host is down":
+            return .networkUnreachable
+        case "No space left on device":
+            return .noSpace
+        case "Server returned 400 Bad Request":
+            return .badRequest
+        case "Server returned 401 Unauthorized (authorization failed)":
+            return .unauthorized
+        case "Server returned 403 Forbidden (access denied)":
+            return .forbidden
+        case "Server returned 404 Not Found":
+            return .notFound
+        case "Server returned 429 Too Many Requests":
+            return .tooManyRequests
+        case "Server returned 4XX Client Error, but not one of 40{0,1,3,4}":
+            return .otherClientError
+        case "Server returned 5XX Server Error reply":
+            return .serverError
+        case "Invalid data found when processing input":
+            return .invalidData
+        case "End of file":
+            return .endOfStream
+        default:
+            return nil
+        }
+    }
+
+    /// FFERRTAG(a, b, c, d) of libavutil/error.h: -MKTAG(a, b, c, d). The HTTP codes start with the byte 0xF8, which is
+    /// not ASCII (so not a `Character` with an `asciiValue`).
+    private static func errorTag(_ a: UInt8, _ b: Character, _ c: Character, _ d: Character) -> Int32 {
+        let bytes = [UInt32(a)] + [b, c, d].map { UInt32($0.asciiValue ?? 0) }
+        return -Int32(bitPattern: bytes[0] | bytes[1] << 8 | bytes[2] << 16 | bytes[3] << 24)
+    }
+
+    private static func errorTag(_ a: Character, _ b: Character, _ c: Character, _ d: Character) -> Int32 {
+        errorTag(a.asciiValue ?? 0, b, c, d)
+    }
+
+    /// `code`: the engine's error code for the message (`FluxoRemuxEvent.error_code`), 0 when there is none.
+    static func localized(_ message: String, code: Int32 = 0) -> String {
         if message.hasPrefix("Unsupported stream type") {
             if let start = message.range(of: ": ")?.upperBound, let end = message.range(of: "://")?.lowerBound, start < end {
                 let scheme = String(message[start..<end])
@@ -618,7 +890,10 @@ enum EngineMessage {
         guard parts.count == 2 else {
             return localizedStage
         }
-        return String(localized: "\(localizedStage): \(parts[1])", comment: "Player or recording error: what failed, then the technical reason (in English).")
+        let reason = (code != 0 ? self.reason(code: code, stage: stage) : nil)
+            ?? self.reason(text: parts[1])
+            ?? (stage == openStage && parts[1] == "Input/output error" ? .serverNotFound : nil)
+        return String(localized: "\(localizedStage): \(reason?.localizedDescription ?? parts[1])", comment: "Player or recording error: what failed, then the reason (localized for the common ones, otherwise FFmpeg's technical reason in English).")
     }
 
     /// The whole sentence for an engine message that says the video (or, without video, the audio) is in a format

@@ -20,7 +20,6 @@ set -eu
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 . "$ROOT/Tools/FFmpeg/env.sh"
 PORT=${PORT:-18940}
-CHECK_PORT=${CHECK_PORT:-19333}
 MEDIA=${MEDIA:-/tmp/fluxo-format-media}
 WORK=${WORK:-/tmp/fluxo-format-check}
 SAMPLES=${SAMPLES:-/tmp/fluxo-format-samples}

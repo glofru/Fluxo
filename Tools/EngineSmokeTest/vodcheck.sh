@@ -1,6 +1,7 @@
-# Sourced by run_vod.sh and run_formats.sh (after they set ROOT, WORK and CHECK_PORT and source
-# Tools/FFmpeg/env.sh): builds VODCheck (VODCheck/main.swift and Stress.swift with the app's PlaybackRoute, PlayerSeeker, StreamRemuxer,
-# SimpleHTTPServer and the remux engine, on loopback port CHECK_PORT) and sets CHECK to its path.
+# Sourced by run_vod.sh and run_formats.sh (after they set ROOT and WORK and source Tools/FFmpeg/env.sh): builds
+# VODCheck (VODCheck/main.swift and Stress.swift with the app's PlaybackRoute, PlayerSeeker, PausedTimeShiftPolicy, StreamRemuxer,
+# SimpleHTTPServer and the remux engine; the loopback server takes a free port on 127.0.0.1, like the app's) and sets
+# CHECK to its path.
 
 build_check() {
     pkg=$WORK/package
@@ -15,10 +16,10 @@ build_check() {
     cp "$ROOT/Fluxo/Features/Player/Engine/FluxoRemuxEngine.h" "$pkg/Sources/FluxoEngine/include/"
     cp "$ROOT/Tools/EngineSmokeTest/VODCheck/main.swift" "$ROOT/Tools/EngineSmokeTest/VODCheck/Stress.swift" \
         "$ROOT/Fluxo/Features/Player/PlaybackRoute.swift" "$ROOT/Fluxo/Features/Player/PlayerSeeker.swift" \
+        "$ROOT/Fluxo/Features/Player/PausedTimeShiftPolicy.swift" \
         "$ROOT/Fluxo/Features/Playlist/ChannelContentKind.swift" "$ROOT/Fluxo/Features/Series/EpisodeParser.swift" "$pkg/Sources/VODCheck/"
     { echo "import FluxoEngine"; cat "$ROOT/Fluxo/Features/Player/Engine/StreamRemuxer.swift"; } > "$pkg/Sources/VODCheck/StreamRemuxer.swift"
-    sed "s/static let port: UInt16 = debugPortOverride ?? 19123/static let port: UInt16 = $CHECK_PORT/" "$ROOT/Fluxo/Features/Player/SimpleHTTPServer.swift" > "$pkg/Sources/VODCheck/SimpleHTTPServer.swift"
-    grep -q "port: UInt16 = $CHECK_PORT" "$pkg/Sources/VODCheck/SimpleHTTPServer.swift"
+    cp "$ROOT/Fluxo/Features/Player/SimpleHTTPServer.swift" "$pkg/Sources/VODCheck/"
     version=$(sed -n '/flyingfox/,/version/s/.*"version" : "\(.*\)".*/\1/p' "$ROOT/Fluxo.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved")
     cat > "$pkg/Package.swift" <<SWIFT
 // swift-tools-version:6.0

@@ -16,8 +16,6 @@ set -eu
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 . "$ROOT/Tools/FFmpeg/env.sh"
 PORT=${PORT:-18950}
-# The check's own loopback server (run_vod.sh uses 19323, the app 19123).
-CHECK_PORT=${CHECK_PORT:-19333}
 MEDIA=${MEDIA:-/tmp/fluxo-vod-real}
 WORK=${WORK:-/tmp/fluxo-seek-check}
 mkdir -p "$MEDIA" "$WORK"
@@ -35,7 +33,7 @@ if [ ! -f "$MEDIA/done" ]; then
     touch "$MEDIA/done"
 fi
 
-CHECK=$(BUILD_ONLY=1 WORK="$WORK" CHECK_PORT="$CHECK_PORT" "$ROOT/Tools/EngineSmokeTest/run_vod.sh" | tail -n 1)
+CHECK=$(BUILD_ONLY=1 WORK="$WORK" "$ROOT/Tools/EngineSmokeTest/run_vod.sh" | tail -n 1)
 [ -x "$CHECK" ]
 
 cleanup() {
@@ -45,12 +43,10 @@ cleanup() {
     fi
 }
 trap cleanup EXIT INT TERM
-for port in "$PORT" "$CHECK_PORT"; do
-    if lsof -nP -iTCP:"$port" -sTCP:LISTEN > /dev/null 2>&1; then
-        echo "error: port $port is in use (another check running?); set PORT / CHECK_PORT" >&2
-        exit 1
-    fi
-done
+if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN > /dev/null 2>&1; then
+    echo "error: port $PORT is in use (another check running?); set PORT" >&2
+    exit 1
+fi
 # Loopback only (vod_server.py binds 127.0.0.1).
 python3 -I "$ROOT/Tools/EngineSmokeTest/vod_server.py" --root "$MEDIA" --port "$PORT" > "$WORK/seek-server.log" 2>&1 &
 SERVER_PID=$!

@@ -14,6 +14,9 @@ Serves the files of a media directory, bound to 127.0.0.1 only, the way IPTV pan
                                   request ends the response still being sent (the newest connection wins)
   /busy/...                       one connection per account, the other way: a request while a response is still
                                   being sent is refused (403, "maximum connections reached")
+  /status/<code>/...              always answers <code> (a dead channel: 403 for an expired account, 404, 5xx)
+  /seekdelay/<ms>/...             a request for a byte range that does not start at 0 (a seek) is answered after
+                                  <ms> milliseconds, the first byte of the file at once (a server slow to seek)
 Range requests get 206 with Content-Range unless the path starts with /norange.
 """
 import argparse
@@ -47,6 +50,8 @@ class Handler(BaseHTTPRequestHandler):
         path = parts.path
         ranges, rate = True, None
         self.latency = 0.0
+        self.status = None
+        self.seek_delay = 0.0
         self.one_connection = False
         self.refuses_second = False
         while True:
@@ -58,6 +63,14 @@ class Handler(BaseHTTPRequestHandler):
                 continue
             if path.startswith("/norange/"):
                 ranges, path = False, path[len("/norange"):]
+                continue
+            m = re.match(r"^/status/(\d{3})(/.*)$", path)
+            if m:
+                self.status, path = int(m.group(1)), m.group(2)
+                continue
+            m = re.match(r"^/seekdelay/(\d+)(/.*)$", path)
+            if m:
+                self.seek_delay, path = int(m.group(1)) / 1000.0, m.group(2)
                 continue
             m = re.match(r"^/lat/(\d+)(/.*)$", path)
             if m:
@@ -97,6 +110,11 @@ class Handler(BaseHTTPRequestHandler):
         full, ranges, rate = self.resolve()
         if self.latency > 0:
             time.sleep(self.latency)
+        if self.status is not None:
+            self.send_response(self.status)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         if full is None:
             self.send_response(404)
             self.send_header("Content-Length", "0")
@@ -141,6 +159,8 @@ class Handler(BaseHTTPRequestHandler):
                     self.end_headers()
                     return
                 status = 206
+        if status == 206 and start > 0 and self.seek_delay > 0:
+            time.sleep(self.seek_delay)
         self.send_response(status)
         self.send_header("Content-Type", TYPES.get(os.path.splitext(full)[1], "application/octet-stream"))
         self.send_header("Content-Length", str(end - start + 1))

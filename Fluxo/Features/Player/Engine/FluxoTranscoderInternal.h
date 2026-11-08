@@ -15,6 +15,7 @@
 #include <TargetConditionals.h>
 #include <VideoToolbox/VideoToolbox.h>
 #include <pthread.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -49,6 +50,29 @@
 // that is refused before it gives up (it then runs again later).
 #define FLUXO_ENCODER_WAITS 20
 #define FLUXO_ENCODER_WAIT_US 250000
+// Back-pressure of the video encoder. FFmpeg's VideoToolbox encoder gives back at most one packet for each picture it is
+// sent and keeps the rest (and the pictures it has not encoded yet) until it is flushed: whenever the encoder is a
+// little behind, the difference between pictures sent and packets received can only grow, and nothing else stops the
+// reader from running ahead of the encoder (a movie is converted at full speed: the 60 s read-ahead of playback, or a
+// whole download). So the encoder is flushed (which waits for VideoToolbox to finish every picture) and opened again:
+// at a key frame the converter places anyway (a segment start) when more than FLUXO_ENCODER_DRAIN_AT_KEY pictures are
+// in flight, or at once, with a key frame of its own, at FLUXO_ENCODER_MAX_IN_FLIGHT. Both are above what an encoder
+// holds when it keeps up, its pipeline, so they cost nothing then: 1080p MPEG-2 converted at full speed had at most 12
+// in flight with the hardware encoder of an M4 Mac, 17 with VideoToolbox's software encoder on the Mac and in the iOS
+// Simulator.
+// (The smoke tests can set others to measure, e.g. -DFLUXO_ENCODER_MAX_IN_FLIGHT=100000 for no bound.)
+#ifndef FLUXO_ENCODER_DRAIN_AT_KEY
+#define FLUXO_ENCODER_DRAIN_AT_KEY 24
+#endif
+#ifndef FLUXO_ENCODER_MAX_IN_FLIGHT
+#define FLUXO_ENCODER_MAX_IN_FLIGHT 48
+#endif
+// Encoder statistics on stderr when FLUXO_ENCODER_TRACE is set (smoke test builds, -DFLUXO_ENGINE_TRACE).
+#ifdef FLUXO_ENGINE_TRACE
+#define FLUXO_ENCODER_TRACE(...) do { if (getenv("FLUXO_ENCODER_TRACE") != NULL) { fprintf(stderr, "[encoder] " __VA_ARGS__); fputc('\n', stderr); } } while (0)
+#else
+#define FLUXO_ENCODER_TRACE(...) do { } while (0)
+#endif
 // A picture whose time is this far behind the previous one's is a timestamp restart (a live source that starts
 // its clock again, a restreamer that switches source, a spliced programme), not reordering jitter.
 #define FLUXO_VIDEO_RESYNC (AV_TIME_BASE / 10)
@@ -104,6 +128,12 @@ struct FluxoTranscoder {
     int64_t key_interval;
     int64_t last_key_time;
     int encoder_failures;
+    // Pictures sent to the current video encoder and packets received from it (see FLUXO_ENCODER_MAX_IN_FLIGHT), the
+    // most in flight so far, and the flushes made for the bound.
+    int64_t frames_in;
+    int64_t packets_out;
+    int64_t most_in_flight;
+    int64_t drains;
     // Input time (AV_TIME_BASE units) of the latest picture: the test refusals of FLUXO_TEST_REFUSE_ENCODER apply
     // to opening an encoder too, at that time (0 before the first picture).
     int64_t clock;

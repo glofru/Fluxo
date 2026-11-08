@@ -248,6 +248,9 @@ int fluxo_drain_encoder(FluxoTranscoder *t, AVRational from) {
         if (ret < 0) {
             return ret;
         }
+        if (t->type == AVMEDIA_TYPE_VIDEO) {
+            t->packets_out++;
+        }
         if (!fluxo_filter_aspect(t)) {
             continue;
         }
@@ -267,6 +270,9 @@ static void fluxo_transcoder_free(FluxoTranscoder **pointer) {
     FluxoTranscoder *t = *pointer;
     if (t == NULL) {
         return;
+    }
+    if (t->type == AVMEDIA_TYPE_VIDEO) {
+        FLUXO_ENCODER_TRACE("video: at most %lld pictures in flight, %lld flushes for the bound", (long long)t->most_in_flight, (long long)t->drains);
     }
     avcodec_free_context(&t->decoder);
     avcodec_free_context(&t->encoder);

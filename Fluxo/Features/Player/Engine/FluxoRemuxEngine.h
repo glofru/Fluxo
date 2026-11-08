@@ -70,6 +70,11 @@ typedef enum __attribute__((enum_extensibility(closed))) FluxoRemuxEventKind {
     FluxoRemuxEventRecordingStopped = 3,
     /// A recording could not be started or stopped because of an error. The partial file may exist.
     FluxoRemuxEventRecordingFailed = 4,
+    /// The live input was closed for fluxo_remux_set_input_suspended: the playlist stops changing until the input
+    /// opens again, marked as ended (EXT-X-ENDLIST) meanwhile, so that players do not give up on it; a player item of
+    /// it has to be replaced after the resume. `segment_index` is the media sequence number of the last segment before
+    /// the pause; the segments written after the input opens again follow an EXT-X-DISCONTINUITY.
+    FluxoRemuxEventInputSuspended = 5,
 } FluxoRemuxEventKind;
 
 /// Event delivered to the session callback. Pointers are only valid for the duration of the call.
@@ -91,7 +96,8 @@ typedef struct FluxoRemuxEvent {
     double window_duration;
     /// Size in bytes of the segments of the window.
     int64_t window_bytes;
-    /// SegmentWritten: the media sequence number of the segment (its index in an on-demand playlist).
+    /// SegmentWritten: the media sequence number of the segment (its index in an on-demand playlist). InputSuspended:
+    /// the media sequence number of the last segment before the input closed (-1 when none was written).
     int64_t segment_index;
 
     /// Path of the active (or just closed) recording, or NULL.
@@ -168,9 +174,10 @@ typedef struct FluxoRemuxConfig {
     /// the movie before it can seek. 0 starts at the beginning.
     double start_time;
     /// Non-zero: while the input is first opened, each of the engine's attempts makes a single connection (FFmpeg's
-    /// HTTP layer does not retry a refused or failed connection by itself, 0 + 1 + 3 s per attempt), so an
-    /// unreachable server fails in about 4 s instead of 20 s. The engine's own retries (a busy server) and, once the
-    /// input is open, FFmpeg's reconnection on network errors inside a connection are the same as without it.
+    /// HTTP layer does not retry a refused or failed connection by itself, 0 + 1 + 3 s per attempt), so a dead channel
+    /// fails in about half a second (a refused connection, a failed name lookup: one retry), and a server that refuses
+    /// the account (403, 429, 5xx: three retries) in about 4 s, instead of 20 s. Once the input is open, FFmpeg's
+    /// reconnection on network errors inside a connection is the same as without it. The app always sets it.
     /// Zero keeps FFmpeg's retries at the first open too.
     int32_t quick_open;
     /// HLS output description.
@@ -205,9 +212,17 @@ void fluxo_remux_stop_recording(FluxoRemuxSession *session);
 /// `is_rendition`: the segment of an audio or subtitle rendition of the master playlist, which the engine writes
 /// with the main segment of the same number; such requests wait for it but never move the reader.
 /// Never blocks. Returns 1 when the segment is on disk, 0 when it will be reported by a SegmentWritten
-/// event, and a negative value when it will not be produced (no such segment, the input ended before it,
-/// or the playlist of this session is not planned on demand).
+/// event, -2 when it will not be produced (no such segment, the input ended before it, or the session finished,
+/// failed or was cancelled and the segment is not on disk), and -1 for an invalid request (a live session, a
+/// negative index other than -1).
 int32_t fluxo_remux_request_segment(FluxoRemuxSession *session, int64_t index, int32_t is_rendition);
+
+/// Live inputs: non-zero closes the input until it is called again with zero (the player is paused long enough that
+/// the time-shift window would push its position out, or on a metered network). The time-shift window and the
+/// playlist stay as they are meanwhile; then the input opens again (at once, without a Reconnecting state unless that
+/// open fails) and the playlist continues after an EXT-X-DISCONTINUITY, its timeline without a gap. Ignored while a
+/// recording is active or asked for (the recording needs the input). Never blocks.
+void fluxo_remux_set_input_suspended(FluxoRemuxSession *session, int32_t suspended);
 
 /// On-demand inputs: tells the engine that the player seeks to `seconds` (playlist time), just before it asks for
 /// the segment there. That request is then handled as a seek even when it is for the segment after the one the

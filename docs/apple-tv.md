@@ -326,11 +326,8 @@ live channels, recordings. The transport bar, the clickpad and the Siri Remote w
   unknown host, 401/403, 404, 5xx: `TVPlayerFailureText`) over the technical one in small type, a warning sign or,
   offline, a Wi-Fi sign) with Try Again and Close (Liquid Glass buttons, readable unfocused);
   on a live channel also Next Channel, and up and down change the channel there as on the video.
-  A server that refuses the connection fails in about 4 s, not 20: on Apple TV the engine opens the input with one
-  connection per attempt (`StreamRemuxer.Configuration.quickOpen`, `FluxoRemuxConfig.quick_open`; its own retries
-  for a busy server, 0.5, 1 and 2 s apart, stay, and FFmpeg's reconnection on network errors is turned on once the
-  input is open), where FFmpeg's HTTP layer would retry each attempt for 4 s by itself. iPhone, iPad and Mac keep
-  the retries; **the end of a movie or recording** shows Play Again and
+  A dead channel fails in about half a second, a server that refuses the account in about 4 s, as on every platform
+  (see [Dead channels fail fast](player.md#player)); **the end of a movie or recording** shows Play Again and
   Close; **the end of an episode** with a next one shows it (poster, series, code and title) with a 10 s countdown
   ring, Play Now and Cancel (nothing starts by itself with VoiceOver or Switch Control on); a live broadcast that
   stopped is a failure with Try Again. These take the focus: the transport bar is off while they show, so the

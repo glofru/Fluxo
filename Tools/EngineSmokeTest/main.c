@@ -57,6 +57,9 @@ static void on_event(void *context, const FluxoRemuxEvent *event) {
     case FluxoRemuxEventRecordingFailed:
         printf("[event] recording failed %s: %s\n", event->recording_path ? event->recording_path : "-", event->message ? event->message : "-");
         break;
+    case FluxoRemuxEventInputSuspended:
+        printf("[event] input suspended after segment %lld\n", (long long)event->segment_index);
+        break;
     }
     fflush(stdout);
 }

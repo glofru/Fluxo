@@ -89,6 +89,12 @@ int fluxo_video_open_encoder(FluxoTranscoder *t) {
     AVDictionary *options = NULL;
     // The software encoder only where there is no hardware one (the Simulator).
     av_dict_set(&options, "allow_sw", "1", 0);
+#ifdef FLUXO_ENGINE_TRACE
+    // Smoke tests: VideoToolbox's software encoder, slower than the decoders, as in the Simulator (back-pressure).
+    if (getenv("FLUXO_TEST_SOFTWARE_ENCODER") != NULL) {
+        av_dict_set(&options, "require_sw", "1", 0);
+    }
+#endif
     av_dict_set(&options, "realtime", t->options.is_live ? "1" : "0", 0);
     av_dict_set(&options, "power_efficient", "1", 0);
     int ret = avcodec_open2(encoder, codec, &options);
@@ -99,6 +105,8 @@ int fluxo_video_open_encoder(FluxoTranscoder *t) {
     }
     t->encoder = encoder;
     t->encoder_used = 0;
+    t->frames_in = 0;
+    t->packets_out = 0;
     if (t->parameters->codec_id == AV_CODEC_ID_NONE) {
         ret = avcodec_parameters_from_context(t->parameters, encoder);
         if (ret < 0) {
@@ -342,10 +350,27 @@ static int fluxo_video_reopen(FluxoTranscoder *t, AVFrame *picture, int refused)
         picture->pict_type = AV_PICTURE_TYPE_I;
         ret = refused ? AVERROR_EXTERNAL : avcodec_send_frame(t->encoder, picture);
         if (ret >= 0) {
+            t->frames_in++;
             return 0;
         }
     }
     return t->options.complete ? FLUXO_ERROR_ENCODER_UNAVAILABLE : -1;
+}
+
+// Back-pressure (FLUXO_ENCODER_MAX_IN_FLIGHT): flushes the video encoder, which returns once VideoToolbox has encoded
+// every picture it holds, queues their packets, and opens a new encoder (it starts with a key frame). Returns 0 (the
+// encoder may be NULL: refused, tried again on the next pictures), or ENOMEM / FLUXO_ERROR_ENCODER_UNAVAILABLE.
+static int fluxo_video_drain(FluxoTranscoder *t) {
+    if (avcodec_send_frame(t->encoder, NULL) >= 0) {
+        int ret = fluxo_drain_encoder(t, t->encoder->time_base);
+        if (ret == AVERROR(ENOMEM)) {
+            return ret;
+        }
+    }
+    avcodec_free_context(&t->encoder);
+    t->drains++;
+    int ret = fluxo_video_reopen(t, NULL, 0);
+    return ret == AVERROR(ENOMEM) || ret == FLUXO_ERROR_ENCODER_UNAVAILABLE ? ret : 0;
 }
 
 // A timestamp restart: what the encoder holds is written out with the old times, and a new encoder starts the new
@@ -481,10 +506,31 @@ int fluxo_video_encode(FluxoTranscoder *t, AVFrame *frame) {
     t->clock = time;
     picture->pts = pts;
     // A new encoder starts with a key frame (after a restart, outside the interval of the others).
-    picture->pict_type = fluxo_video_wants_key(t, time) || !t->encoder_used ? AV_PICTURE_TYPE_I : AV_PICTURE_TYPE_NONE;
+    int key = fluxo_video_wants_key(t, time) || !t->encoder_used;
+    int64_t in_flight = t->frames_in - t->packets_out;
+    if (in_flight > t->most_in_flight) {
+        t->most_in_flight = in_flight;
+    }
+    if (t->encoder_used && (in_flight >= FLUXO_ENCODER_MAX_IN_FLIGHT || (key && in_flight > FLUXO_ENCODER_DRAIN_AT_KEY))) {
+        // Back-pressure: VideoToolbox finishes what it holds before this picture is sent (to a new encoder, as its key frame).
+        int ret = fluxo_video_drain(t);
+        if (ret < 0) {
+            return ret;
+        }
+        if (t->encoder == NULL) {
+            return 0;
+        }
+        // (A key frame of its own when the bound, not a segment start, called for the flush: last_key_time stays, so
+        // the key frames the converter places for its segments keep their schedule, and this one is an extra.)
+        key = 1;
+    }
+    picture->pict_type = key ? AV_PICTURE_TYPE_I : AV_PICTURE_TYPE_NONE;
 
     int refused = fluxo_test_refused(time);
     int ret = refused ? AVERROR_EXTERNAL : avcodec_send_frame(t->encoder, picture);
+    if (ret >= 0) {
+        t->frames_in++;
+    }
     if (ret < 0 && ret != AVERROR(EAGAIN)) {
         // A session VideoToolbox invalidated: a new encoder starts with a key frame. While playing, after a few
         // failures in a row the pictures are dropped, and a new encoder is tried about once a second; a file

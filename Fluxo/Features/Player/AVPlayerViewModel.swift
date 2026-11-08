@@ -135,11 +135,14 @@ final class AVPlayerViewModel {
     var playbackState: PlaybackState = .idle
     /// Last error reported by the stream engine or AVPlayer for the current channel.
     var streamError: String?
-    /// The error of the player item that failed (`playbackState` is `.failed` with its localized description), so a
-    /// screen can tell what happened by its domain and code: the description is in the device's language. Nil when
-    /// the failure came from the engine (its reasons are FFmpeg's) or from anything else.
+    /// The error of the player item that failed (`playbackState` is `.failed` with its localized description), or the
+    /// engine's (`EngineMessage.errorDomain`, FFmpeg's error code) while its failure is the error shown, so a screen can
+    /// tell what happened by its domain and code: the description is in the device's language. Nil for anything else.
     var itemFailureError: NSError? {
-        itemFailure == nil ? nil : itemFailureNSError
+        if itemFailure != nil {
+            return itemFailureNSError
+        }
+        return engineFailure.flatMap { $0.message == streamError ? $0.error : nil }
     }
     /// The current item is a live stream with a time-shift (DVR) window.
     var isTimeShiftAvailable = false
@@ -221,8 +224,9 @@ final class AVPlayerViewModel {
 
     @ObservationIgnored
     var route: PlaybackRoute = .direct
+    /// The playlist AVPlayer opens from the loopback server (its address is known once the server listens).
     @ObservationIgnored
-    var streamURL: URL?
+    var streamFileName: String?
     @ObservationIgnored
     var waitingForFirstSegment = false
     @ObservationIgnored
@@ -249,6 +253,9 @@ final class AVPlayerViewModel {
     /// The error behind `itemFailure` (AVFoundation's, for a stream AVPlayer plays itself).
     @ObservationIgnored
     var itemFailureNSError: NSError?
+    /// The engine's failure of the current channel: its message (shown as `streamError`) and its error code.
+    @ObservationIgnored
+    var engineFailure: (message: String, error: NSError)?
     @ObservationIgnored
     var pendingRestoreCompletion: ((Bool) -> Void)?
     @ObservationIgnored
@@ -297,6 +304,64 @@ final class AVPlayerViewModel {
     /// Watches a direct on-demand item that keeps waiting for data (see `watchForStall()`).
     @ObservationIgnored
     var stallTask: Task<Void, Never>?
+    /// A paused live channel through the engine: decides when the engine stops reading its input
+    /// (`PausedTimeShiftPolicy`).
+    @ObservationIgnored
+    var pausedTimeShiftTask: Task<Void, Never>?
+    /// The engine closed the input of the paused live channel (`StreamRemuxer.Event.inputSuspended`): the current item
+    /// no longer follows the playlist (the engine marked it as ended meanwhile, see `PausedTimeShiftPolicy`), so playing
+    /// on attaches a new item (`continueAfterSuspension`).
+    @ObservationIgnored
+    var suspension: Suspension?
+    /// Playing on after a suspension: the new item is attached once the engine wrote a segment after the resume.
+    @ObservationIgnored
+    var suspensionResume: SuspensionResume?
+    /// The engine was asked to close the input of the paused live channel: its `inputSuspended` event is taken even
+    /// when the player plays again meanwhile (the playlist may have been marked as ended already).
+    @ObservationIgnored
+    var awaitsInputSuspension = false
+    /// Where the new item after a suspension continues once it is ready (`resumeAfterSuspension(at:in:)`).
+    @ObservationIgnored
+    var pendingSuspensionResume: PendingSuspensionResume?
+    @ObservationIgnored
+    var suspensionResumeTask: Task<Void, Never>?
+    /// The clock of the current item (`PausedTimeShiftPolicy.MediaClock`), read when it became ready.
+    @ObservationIgnored
+    var itemClock: (item: ObjectIdentifier, clock: PausedTimeShiftPolicy.MediaClock)?
+
+    struct Suspension {
+        /// The media sequence number of the last segment written before the input closed.
+        var lastSegment: Int
+        /// The old item (it stops following the playlist).
+        var item: ObjectIdentifier
+        /// The dates of the media of the playlist then (the one the old item stopped at), nil when it could not be read.
+        var frozenDates: Range<Date>?
+        /// The old item's clock (`PausedTimeShiftPolicy.MediaClock`), nil when it had no date.
+        var clock: PausedTimeShiftPolicy.MediaClock?
+
+        /// The old item's media, in its time: its seekable range while the playlist is marked as ended (AVPlayer's
+        /// tells nothing then: on macOS it has no length and lies past the media).
+        var itemRange: (start: TimeInterval, end: TimeInterval)? {
+            guard let frozenDates, let clock else {
+                return nil
+            }
+            return PausedTimeShiftPolicy.itemRange(of: frozenDates, clock: clock)
+        }
+    }
+
+    struct PendingSuspensionResume {
+        /// The date of the media to continue at (`PausedTimeShiftPolicy.MediaClock`).
+        var date: Date
+        /// The date of the first media written after the resume (Go Live), nil when unknown.
+        var liveEdge: Date?
+    }
+
+    /// Where the new item after a suspension starts: where the old one was (the paused position, or where a seek
+    /// meanwhile went), or with what the channel shows now (Go Live).
+    enum SuspensionResume {
+        case pausedPosition
+        case liveEdge
+    }
 
     init(recordings: RecordingStore? = nil, cast: CastController? = nil) {
         let player = AVPlayer()
@@ -600,11 +665,14 @@ final class AVPlayerViewModel {
             didReachEnd = false
             refreshPlaybackState()
         }
-        if pendingResumePosition != nil {
-            // A new item is still starting (a stuck seek's recovery, the engine taking a movie over): it starts where
-            // the viewer went now, not where the older seek went.
+        if pendingResumePosition != nil || pendingSuspensionResume != nil || suspensionResumeTask != nil {
+            // A new item is still starting (a stuck seek's recovery, the engine taking a movie over, a live channel
+            // after a suspension): it starts where the viewer went now, not where the older seek went.
             pendingResumePosition = seconds
             pendingResumeContinuesRecovery = false
+            pendingSuspensionResume = nil
+            suspensionResumeTask?.cancel()
+            suspensionResumeTask = nil
         }
         seeker.followSystemSeek(to: seconds)
         return seconds
