@@ -8,6 +8,10 @@ Serves on 127.0.0.1 only (never another interface; the simulator shares the Mac'
   /live/test-pattern   live raw MPEG-TS over HTTP, as IPTV servers send it (the remux engine path);
   /live.ts             the same; every client gets its own real-time ffmpeg encoder, at most
                        MAX_LIVE_CLIENTS at once (more get 503, so a retry loop cannot start many encoders)
+  /live/dusk.ts        the live test pattern again, also at /slow/<n>/live/dusk.ts: the path where the `store` seed's
+                       Wildframe plays the App Store demo footage (Design/AppStore/Scripts/demo-footage.sh), so that
+                       channel plays with this server too (the throttle prefix is accepted and ignored: the stream is
+                       already sent in real time)
   /live/two-audio      live raw MPEG-TS with two audio tracks (English AAC, German AC-3), as DVB channels have;
                        the remux engine offers both in the Audio and Subtitles menu
   /movie/clip.mp4      a 60 s on-demand MP4 (byte ranges supported)
@@ -350,7 +354,7 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == "/playlist.m3u":
             self.send_bytes(self.streams.playlist(), CONTENT_TYPES[".m3u"], send_body)
-        elif path in ("/live/test-pattern", "/live.ts"):
+        elif path in ("/live/test-pattern", "/live.ts") or re.fullmatch(r"(/slow/\d{1,6})?/live/dusk\.ts", path):
             self.send_live_ts(send_body)
         elif path == "/live/two-audio":
             self.send_live_ts(send_body, two_audio=True)

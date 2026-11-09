@@ -1,5 +1,5 @@
 {
-  "_comment": "The storyboard and the words of the App Store screenshots, per platform: one entry per screenshot, in App Store order. capture: the app screen (Scripts/capture.sh, or Scripts/capture-mac.sh for the Mac); layout (one for every language, or per language): portrait, landscape (the device turned, chips below), rise (the device larger, rising from the bottom edge, which cuts the screen where its content ends; see rise) or wide (Mac, Apple TV); chips: short glass labels over the picture (a null for a language leaves the label out in it); bubble (Siri) and bubble_at: its place, a fraction of the device's height; rise: cut (the fraction of the capture's height at the bottom edge), screen_width, chip_size, cover_from (black from there to the cut); inset (Mac): another capture, cropped (x, y, width, height in pixels) and enlarged on a card over the device, centered at `at` (fractions of the screen), with a label. compose.py reads it. A platform can derive its set from another: from (the platform), skip (ids), override (fields by id).",
+  "_comment": "The storyboard and the words of the App Store screenshots, per platform: one entry per screenshot, in App Store order. capture: the app screen (Scripts/capture.sh, or Scripts/capture-mac.sh for the Mac); layout (one for every language, or per language): portrait, landscape (the device turned, chips below), rise (the device larger, rising from the bottom edge, which cuts the screen where its content ends; see rise) or wide (Mac, Apple TV); chips: short glass labels over the picture (a null for a language leaves the label out in it); bubble (Siri) and bubble_at (portrait layout): its place, a fraction of the device's height; rise (one for every language, or per language): cut (the fraction of the capture's height at the bottom edge), screen_width, chip_size, cover_from (black from there to the cut); chip_size: the labels' text size (Apple TV); inset: another capture (or the same), cropped (crop: x, y, width, height in pixels; it, width and at can be per language) and enlarged on a card (width: the picture's width on it), with an optional label (label_size) on its tab: on the Mac and in the landscape layout over the device, centered at `at` (fractions of the screen), or, with under (landscape), under the device at the screen's right end; in the rise layout above the device. A null removes a field a platform derives. compose.py reads it. A platform can derive its set from another: from (the platform), skip (ids), override (fields by id).",
   "iphone": [
     {
       "id": "01-home",
@@ -137,15 +137,34 @@
           "en": "Subtitles",
           "it": "Sottotitoli"
         }
-      ]
+      ],
+      "inset": {
+        "capture": "player",
+        "crop": {
+          "en": [
+            2077,
+            1018,
+            600,
+            212
+          ],
+          "it": [
+            1920,
+            1018,
+            757,
+            212
+          ]
+        },
+        "width": {
+          "en": 560,
+          "it": 706
+        },
+        "under": true
+      }
     },
     {
       "id": "07-siri",
       "capture": "siri",
-      "layout": {
-        "en": "rise",
-        "it": "portrait"
-      },
+      "layout": "rise",
       "kicker": {
         "en": "SIRI & SHORTCUTS",
         "it": "SIRI E COMANDI RAPIDI"
@@ -163,27 +182,31 @@
         "it": "«Cosa c’è su Fluxo?»"
       },
       "rise": {
-        "cut": 0.59,
-        "screen_width": 1180,
-        "chip_size": 36
+        "en": {
+          "cut": 0.613,
+          "screen_width": 1180,
+          "chip_size": 36
+        },
+        "it": {
+          "cut": 0.625,
+          "screen_width": 1180,
+          "chip_size": 36
+        }
       },
       "chips": [
         {
           "en": "“Watch TV in Fluxo”",
-          "it": null
+          "it": "«Guarda la TV su Fluxo»"
         },
         {
           "en": "“Record this in Fluxo”",
-          "it": null
+          "it": "«Registra questo in Fluxo»"
         },
         {
           "en": "“Continue watching in Fluxo”",
-          "it": null
+          "it": "«Continua a guardare su Fluxo»"
         }
-      ],
-      "bubble_at": {
-        "it": -1
-      }
+      ]
     },
     {
       "id": "08-cast",
@@ -211,8 +234,8 @@
         "it": "PRIVACY PRIMA DI TUTTO"
       },
       "title": {
-        "en": "Everything stays\non your device",
-        "it": "Tutto resta sul\ntuo dispositivo"
+        "en": "Your data\nstays yours",
+        "it": "I tuoi dati\nrestano tuoi"
       },
       "subtitle": {
         "en": "Intelligence runs on the device. Sync uses your own private iCloud, and nobody else.",
@@ -240,7 +263,7 @@
     {
       "id": "10-open-source",
       "capture": "credits",
-      "layout": "portrait",
+      "layout": "rise",
       "kicker": {
         "en": "OPEN SOURCE",
         "it": "OPEN SOURCE"
@@ -253,11 +276,25 @@
         "en": "Read every line, build it yourself, and help make it better on GitHub.",
         "it": "Leggi ogni riga, compilalo da te e aiutaci a migliorarlo su GitHub."
       },
-      "chips": [
-        {
+      "rise": {
+        "cut": 0.44,
+        "screen_width": 1180,
+        "chip_size": 40
+      },
+      "inset": {
+        "capture": "license",
+        "crop": [
+          90,
+          1615,
+          1140,
+          685
+        ],
+        "width": 1000,
+        "label": {
           "en": "github.com/glofru/Fluxo"
-        }
-      ]
+        },
+        "label_size": 34
+      }
     }
   ],
   "ipad": {
@@ -280,13 +317,14 @@
         "subtitle": {
           "en": "Pause and rewind live TV, with what’s on next one tap away. Its FFmpeg-based engine plays what others can’t.",
           "it": "Metti in pausa e riavvolgi la diretta, con i prossimi programmi a portata di tocco. Il suo motore basato su FFmpeg riproduce ciò che altri non riescono."
-        }
+        },
+        "inset": null
       },
       "08-cast": {
         "id": "07-cast",
         "layout": "rise",
         "rise": {
-          "cut": 0.4855,
+          "cut": 0.485,
           "screen_width": 1860,
           "chip_size": 36
         },
@@ -306,7 +344,28 @@
         "id": "08-privacy"
       },
       "10-open-source": {
-        "id": "09-open-source"
+        "id": "09-open-source",
+        "layout": "rise",
+        "rise": {
+          "cut": 0.335,
+          "screen_width": 1860,
+          "chip_size": 40
+        },
+        "inset": {
+          "capture": "license",
+          "crop": [
+            58,
+            975,
+            1948,
+            350
+          ],
+          "width": 1720
+        },
+        "chips": [
+          {
+            "en": "github.com/glofru/Fluxo"
+          }
+        ]
       }
     }
   },
@@ -364,7 +423,8 @@
         "subtitle": {
           "en": "Pause and rewind live TV. Its own FFmpeg-based engine plays what other players can’t.",
           "it": "Metti in pausa e riavvolgi la diretta. Il suo motore basato su FFmpeg riproduce quasi tutto."
-        }
+        },
+        "inset": null
       },
       "07-siri": {
         "layout": "wide",
@@ -391,7 +451,13 @@
       },
       "10-open-source": {
         "id": "09-open-source",
-        "layout": "wide"
+        "layout": "wide",
+        "chips": [
+          {
+            "en": "github.com/glofru/Fluxo"
+          }
+        ],
+        "inset": null
       }
     }
   },
@@ -544,7 +610,8 @@
           "en": "MIT License",
           "it": "Licenza MIT"
         }
-      ]
+      ],
+      "chip_size": 36
     }
   ]
 }

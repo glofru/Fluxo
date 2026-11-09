@@ -16,6 +16,8 @@
 #   --appearance light|dark      system appearance of the clone (simctl ui)
 #   --content-size SIZE  Dynamic Type of the clone (simctl ui content_size, e.g. accessibility-extra-large)
 #   --language CODE      app language and locale, e.g. it, de, ja, ar (passes -AppleLanguages / -AppleLocale)
+#   --system-locale ID   the clone's own language and region, e.g. it_IT, en_US (the status bar, system sheets,
+#                        other apps); restarts the clone when it changes
 #   --out DIR            screenshot folder (default /tmp/fluxo-shots/<clone>); several screenshots are also
 #                        combined into <prefix>-contact.png
 #   --name PREFIX        screenshot file prefix (default "shot")
@@ -37,6 +39,7 @@ STEP_SHOTS=0
 APPEARANCE=""
 CONTENT_SIZE=""
 LANGUAGE=""
+SYSTEM_LOCALE=""
 OUT=""
 NAME=shot
 TIMEOUT=120
@@ -55,6 +58,7 @@ while [ $# -gt 0 ]; do
     --appearance) APPEARANCE=$2; shift 2 ;;
     --content-size) CONTENT_SIZE=$2; shift 2 ;;
     --language) LANGUAGE=$2; shift 2 ;;
+    --system-locale) SYSTEM_LOCALE=$2; shift 2 ;;
     --out) OUT=$2; shift 2 ;;
     --name) NAME=$2; shift 2 ;;
     --timeout) TIMEOUT=$2; shift 2 ;;
@@ -62,7 +66,7 @@ while [ $# -gt 0 ]; do
     --no-install) INSTALL=0; shift ;;
     --keep) KEEP=1; shift ;;
     --) shift; break ;;
-    -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,29p' "$0"; exit 0 ;;
     *) die "unknown option $1 (see --help)" ;;
     esac
 done
@@ -116,14 +120,34 @@ if [ "$WAS_BOOTED" -eq 0 ]; then
     # end up behind the Home Screen.
     sleep "${FLUXO_SIM_BOOT_SETTLE:-5}"
 fi
+# The system's language and region (the app's own come from --language). SpringBoard reads them at boot, so a
+# change restarts the clone.
+if [ -n "$SYSTEM_LOCALE" ]; then
+    case "$SYSTEM_LOCALE" in
+    [a-z][a-z]_[A-Z][A-Z]|[a-z][a-z][a-z]_[A-Z][A-Z]) ;;
+    *) die "--system-locale takes a locale identifier such as it_IT or en_US" ;;
+    esac
+    if [ "$(xcrun simctl spawn "$UDID" defaults read "Apple Global Domain" AppleLocale 2>/dev/null || true)" != "$SYSTEM_LOCALE" ]; then
+        echo "Setting the system locale of $CLONE to $SYSTEM_LOCALE (restarts it)..." >&2
+        xcrun simctl spawn "$UDID" defaults write "Apple Global Domain" AppleLanguages -array "${SYSTEM_LOCALE%%_*}"
+        xcrun simctl spawn "$UDID" defaults write "Apple Global Domain" AppleLocale -string "$SYSTEM_LOCALE"
+        xcrun simctl shutdown "$UDID"
+        xcrun simctl bootstatus "$UDID" -b > /dev/null
+        sleep "${FLUXO_SIM_BOOT_SETTLE:-5}"
+    fi
+fi
 [ -z "$APPEARANCE" ] || xcrun simctl ui "$UDID" appearance "$APPEARANCE"
 [ -z "$CONTENT_SIZE" ] || xcrun simctl ui "$UDID" content_size "$CONTENT_SIZE"
 # A clean, fixed status bar, so screenshots compare well (Apple TV has none). FLUXO_SIM_BATTERY_STATE=discharging
-# shows a plain full battery, without the charging bolt (the App Store screenshots use it).
+# shows a plain full battery, without the charging bolt (the App Store screenshots use it). FLUXO_SIM_STATUS_TIME:
+# another time, or an ISO date and time with milliseconds and the offset
+# (2026-11-08T09:41:00.000-07:00), which also fixes the date the iPad shows.
 if [ "$PLATFORM" != tvos ]; then
-    xcrun simctl status_bar "$UDID" override --time 9:41 --dataNetwork wifi --wifiMode active --wifiBars 3 \
+    xcrun simctl status_bar "$UDID" override --dataNetwork wifi --wifiMode active --wifiBars 3 \
         --cellularMode active --cellularBars 4 --batteryState "${FLUXO_SIM_BATTERY_STATE:-charged}" --batteryLevel 100 \
         > /dev/null 2>&1 || true
+    # On its own: given with the other overrides, a date shows the wrong weekday (simctl of Xcode 27.2).
+    xcrun simctl status_bar "$UDID" override --time "${FLUXO_SIM_STATUS_TIME:-9:41}" > /dev/null 2>&1 || true
 fi
 
 # 3. Install and launch.

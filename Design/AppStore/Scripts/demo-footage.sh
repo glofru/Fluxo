@@ -1,11 +1,14 @@
 #!/bin/bash
 # Demo footage for the App Store screenshots: "Dusk" (dusk_footage.py, drawn with FigCraft) as a slow, looping push-in,
 # served on 127.0.0.1 only where the `store` seed looks for the test streams (`-FluxoDebugTestStreamURL
-# http://127.0.0.1:$PORT`): as live HLS for the live channels Wildframe and Northwind Sports (/hls/live.m3u8), and as
+# http://127.0.0.1:$PORT`): as live HLS for the live channel Northwind Sports (/hls/live.m3u8), and as
 # a film for The Silent Harbor and Crimson Signal (/movie/clip.mp4, with byte ranges, so they play and download): the
 # picture with a light grain at about 2 Mbit/s for 1 h 47 min (1.6 GB, 30 s repeated), so Downloads shows the length and
-# size of a real film. The server is Tools/EngineSmokeTest/vod_server.py, which only binds 127.0.0.1. Its throttle
-# (`/slow/<KB/s>/` before a path) lets a capture catch a download half way.
+# size of a real film. Wildframe plays it as raw MPEG-TS, the way IPTV providers send live channels (/live/dusk.ts,
+# through the remux engine, so the player shows its time-shift): 30 min at a constant 2.4 Mbit/s, sent by the throttle at
+# exactly that rate (/slow/300/live/dusk.ts, 300 KiB/s), so it arrives in real time like a live channel. The server is
+# Tools/EngineSmokeTest/vod_server.py, which only binds 127.0.0.1. Its throttle (`/slow/<KiB/s>/` before a path) also
+# lets a capture catch a download half way.
 #
 #   FIGCRAFT_CLI=/path/to/figcraft-cli Design/AppStore/Scripts/demo-footage.sh start   # background
 #   Design/AppStore/Scripts/demo-footage.sh status | stop
@@ -24,7 +27,7 @@ BIND=127.0.0.1
 die() { echo "error: $*" >&2; exit 1; }
 
 prepare() {
-    mkdir -p "$WORK/www/hls" "$WORK/www/movie"
+    mkdir -p "$WORK/www/hls" "$WORK/www/movie" "$WORK/www/live"
     if [ ! -f "$WORK/loop.mp4" ]; then
         [ -x "${FIGCRAFT_CLI:-}" ] || die "set FIGCRAFT_CLI to figcraft-cli (the figcraft-cli-<version>-macos-universal.zip release asset)"
         python3 -I "$HERE/dusk_footage.py" "$WORK/dusk.json"
@@ -36,6 +39,12 @@ prepare() {
             -filter_complex "[0:v]scale=3840:2160,zoompan=z='1+0.12*(0.5-0.5*cos(2*PI*on/900))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1920x1080:fps=30,format=yuv420p[v]" \
             -map "[v]" -map 1:a -t 30 -c:v libx264 -preset medium -crf 18 -g 60 -keyint_min 60 -sc_threshold 0 \
             -c:a aac -b:a 64k -shortest -movflags +faststart "$WORK/loop.mp4"
+    fi
+    if [ ! -f "$WORK/www/live/dusk.ts" ]; then
+        # Constant bit rate (null packets fill the mux to 2 457 600 bit/s, the 300 KiB/s of /slow/300/), 60 loops.
+        "$FFMPEG" -hide_banner -loglevel error -y -stream_loop 59 -i "$WORK/loop.mp4" -c copy -f mpegts \
+            -muxrate 2457600 "$WORK/www/live/dusk-part.ts"
+        mv "$WORK/www/live/dusk-part.ts" "$WORK/www/live/dusk.ts"
     fi
     if [ ! -f "$WORK/www/movie/clip.mp4" ]; then
         "$FFMPEG" -hide_banner -loglevel error -y -loop 1 -framerate 24 -i "$WORK/dusk.png" -t 30 \

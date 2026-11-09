@@ -73,9 +73,9 @@ final class SiriTests: XCTestCase {
         shot("02-fluxo-app-shortcuts")
         dump(shortcuts, "02-fluxo-app-shortcuts")
         // One tile (an "Other" element labelled with the short title) per App Shortcut, and one per entity Siri knows
-        // by name (the channels of Play Channel, What's On, Add to Favorites and Recording, the programmes of Set
+        // by name (the channels of Play Channel, What's On, Add to Favorites and Record, the programmes of Set
         // Reminder): the list is long and its order is the system's, so scroll down to each, then back up.
-        for title in ["Continue Watching", "Suggestions", "Search TV Guide", "Search", "Play Channel", "What's On", "Open Screen", "Add to Favorites", "Recording", "Set Reminder"] {
+        for title in ["Continue Watching", "Suggestions", "Search TV Guide", "Search", "Play Channel", "What's On", "Open Screen", "Add to Favorites", "Record", "Set Reminder"] {
             // Open Screen has a screen in each of its phrases: the system shows one tile per screen ("TV Guide"…).
             let label = title == "Open Screen" ? "TV Guide" : title
             let tile = shortcuts.descendants(matching: .other).matching(NSPredicate(format: "label ==[c] %@", label)).firstMatch
@@ -90,7 +90,7 @@ final class SiriTests: XCTestCase {
                 swipes += 1
             }
             XCTAssertTrue(tile.exists, "the \(title) App Shortcut is listed")
-            if title == "Recording" {
+            if title == "Record" {
                 shot("02b-fluxo-app-shortcuts-more")
             }
         }
@@ -119,7 +119,13 @@ final class SiriTests: XCTestCase {
         let title = ProcessInfo.processInfo.environment["FLUXO_WHATS_ON"] ?? "What's On"
         shortcuts.launch()
         sleep(3)
-        tap(shortcuts, containing: "Continue", timeout: 2)
+        // The first launch's welcome screen, in the simulator's language (only that button: "Continua a guardare",
+        // Fluxo's own shortcut, may be on screen too).
+        let welcome = shortcuts.buttons.matching(NSPredicate(format: "label IN %@", ["Continue", "Continua"])).firstMatch
+        if welcome.waitForExistence(timeout: 2), welcome.isHittable {
+            welcome.tap()
+            sleep(1)
+        }
         goToLibrary()
         let fluxoApp = shortcuts.buttons["Fluxo"]
         XCTAssertTrue(fluxoApp.waitForExistence(timeout: 8), "Fluxo is among the apps of the Shortcuts library")

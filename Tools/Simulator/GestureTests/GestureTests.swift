@@ -10,7 +10,8 @@
 //  seek plays where it was released), its X stops playback, and nothing shows above the
 //  tab bar while nothing plays. On a (simulated) foldable, the channel list beside the video scrolls and switches
 //  channel without moving the player. Deleting a TV guide source (swipe, context menu, the Guide Sources sheet)
-//  leaves the app running and the row gone.
+//  leaves the app running and the row gone. `testFullScreenAppsMode` is no test of Fluxo: it sets an iPad clone to
+//  Full Screen Apps for the App Store screenshots (Design/AppStore/Scripts/capture.sh).
 //  The app runs with the debug harness (seeded in-memory library, routes) and the test streams of
 //  test-stream.sh. Screenshots of the steps go to $FLUXO_SHOTS (default /tmp/fluxo-shots/gesture-tests).
 //
@@ -605,6 +606,32 @@ final class GestureTests: XCTestCase {
         if ProcessInfo.processInfo.environment["FLUXO_LAYOUT_KEEP_ORIENTATION"] != "1" {
             XCUIDevice.shared.orientation = .portrait
         }
+    }
+
+    /// iPad: Settings › Multitasking & Gestures › Full Screen Apps, so that apps fill the screen without the resize
+    /// grabber of windowed apps in the corner (the App Store screenshots, Design/AppStore/Scripts/capture.sh). Not a
+    /// test of Fluxo: the clone keeps the setting. The labels are the English ones (run it with the system in English).
+    func testFullScreenAppsMode() throws {
+        try XCTSkipUnless(UIDevice.current.userInterfaceIdiom == .pad, "iPad only")
+        XCUIDevice.shared.orientation = .portrait
+        let settings = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
+        settings.terminate()
+        settings.launch()
+        let row = settings.descendants(matching: .any).matching(NSPredicate(format: "label == 'Multitasking & Gestures'")).firstMatch
+        let sidebar = settings.collectionViews.firstMatch
+        var swipes = 0
+        while !(row.exists && row.isHittable) && swipes < 10 {
+            (sidebar.exists ? sidebar : settings).swipeUp(velocity: .slow)
+            swipes += 1
+        }
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "Settings lists Multitasking & Gestures")
+        row.tap()
+        let option = settings.descendants(matching: .any).matching(NSPredicate(format: "label == 'Full Screen Apps'")).firstMatch
+        XCTAssertTrue(option.waitForExistence(timeout: 5), "Multitasking & Gestures offers Full Screen Apps")
+        option.tap()
+        sleep(2)
+        shot("full-screen-apps")
+        settings.terminate()
     }
 
     /// iPad: the context menu of a row in the player's side panel has nothing that would present under the

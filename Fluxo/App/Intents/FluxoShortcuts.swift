@@ -131,7 +131,7 @@ struct FluxoShortcuts: AppShortcutsProvider {
                 "\(\.$action) on \(.applicationName)",
                 "Record this in \(.applicationName)",
             ],
-            shortTitle: "Recording",
+            shortTitle: "Record",
             systemImageName: "record.circle"
         )
         // Without a programme, Siri asks "Which programme?" and searches the guide for the answer, so any title works;

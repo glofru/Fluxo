@@ -788,6 +788,15 @@ enum DebugRoutes {
                 context.player.togglePictureInPicture()
             }
         },
+        DebugRoute("fill:<on|off>", "Fills the screen with the video (on), cropping its edges, or fits it (off), like the player's Fill button.") { context, argument in
+            let values = ["on": true, "off": false]
+            guard let fills = values[argument.lowercased()] else {
+                throw DebugRouteError.invalidArgument("fill", argument)
+            }
+            if context.player.fillsScreen != fills {
+                context.player.toggleFillsScreen()
+            }
+        },
         DebugRoute("cast-picker", "The Cast device picker (with the simulated receiver of `cast:`, or the real SDK).") { context, _ in
             context.player.cast.presentPicker()
         },

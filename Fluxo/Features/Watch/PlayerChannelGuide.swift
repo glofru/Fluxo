@@ -60,13 +60,18 @@ struct PlayerFullGuideButton: View {
             } label: {
                 Group {
                     if iconOnly {
-                        Image(systemName: Self.systemImage)
-                            .frame(width: 32, height: 32)
+                        icon
                     } else {
-                        Label("Full Guide", systemImage: Self.systemImage)
-                            .lineLimit(1)
-                            .padding(.horizontal, 12)
-                            .frame(minHeight: 32)
+                        // Its whole title, never truncated ("Guida comp…"): where the title does not fit (a long
+                        // translation, a large text size), the icon only.
+                        ViewThatFits(in: .horizontal) {
+                            Label("Full Guide", systemImage: Self.systemImage)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                                .padding(.horizontal, 12)
+                                .frame(minHeight: 32)
+                            icon
+                        }
                     }
                 }
                 .font(.subheadline.weight(.semibold))
@@ -77,8 +82,17 @@ struct PlayerFullGuideButton: View {
             .accessibilityLabel("Full Guide")
             .accessibilityHint("Closes the player and shows this channel in the TV guide")
             .accessibilityIdentifier("player.guide.fullGuide")
+            .largeContentControl(String(localized: "Full Guide"), systemImage: Self.systemImage)
             .help("Show this channel in the full TV guide")
         }
+    }
+
+    /// Its size kept at the accessibility text sizes, as the panel's other buttons (the Large Content Viewer shows
+    /// it instead).
+    private var icon: some View {
+        Image(systemName: Self.systemImage)
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+            .frame(width: 32, height: 32)
     }
 }
 

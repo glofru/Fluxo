@@ -25,7 +25,8 @@ COPY = os.path.join(HERE, "..", "copy.json")
 # Mac 16:10, Apple TV 4K.
 CANVAS = {"iphone": (1320, 2868), "ipad": (2064, 2752), "mac": (2880, 1800), "tv": (3840, 2160)}
 
-# The widest the layouts show a capture, in pixels: (portrait capture, landscape capture). compose_slide's sizes.
+# The widest the layouts show a capture, in pixels: (portrait capture, landscape capture). compose_slide's sizes; a
+# `rise` layout shows it at its own `screen_width` (display_width).
 DISPLAY_WIDTH = {"iphone": (960, 1200), "ipad": (1620, 1880), "mac": (1850, 1850), "tv": (2280, 2280)}
 
 # The brand palette (docs/interface.md, "Brand and app icon").
@@ -160,7 +161,7 @@ def words(s, frame, slide, language, x, y, width, scale, align="center", one_lin
 
 
 def pick(value, language):
-    if value is None or isinstance(value, (str, int, float)):
+    if value is None or isinstance(value, (str, int, float, list)):
         return value
     return value.get(language, value.get("en"))
 
@@ -224,7 +225,9 @@ def iphone(s, frame, capture, x, y, screen_width, landscape=False):
             bx = x - band * 0.45 if side == "left" else x + ow - band * 0.55
             s.rect(frame, bx, y + oh * top, band, oh * length, {"cornerRadius": band / 2, "fills": [titanium]}, layer="Button")
     else:
-        for side, left, length in [("top", 0.17, 0.045), ("top", 0.245, 0.075), ("top", 0.335, 0.075), ("bottom", 0.27, 0.11)]:
+        # Turned with the Dynamic Island on the left (counterclockwise): the left edge's Action button and volume
+        # buttons on the bottom edge, the side button on the top one, as far from the left as they were from the top.
+        for side, left, length in [("bottom", 0.17, 0.045), ("bottom", 0.245, 0.075), ("bottom", 0.335, 0.075), ("top", 0.27, 0.11)]:
             by = y - band * 0.45 if side == "top" else y + oh - band * 0.55
             s.rect(frame, x + ow * left, by, ow * length, band, {"cornerRadius": band / 2, "fills": [titanium]}, layer="Button")
     s.rect(frame, x, y, ow, oh, {"cornerRadius": radius + border + band, "fills": [titanium],
@@ -349,9 +352,31 @@ def compose_slide(s, frame, slide, language, platform, capture, width, height):
             ow, oh = sw + 2 * edge * sh, sh + 2 * edge * sh
             gap = 140 * scale
             _, labels_height = chip_rows(labels, width - 180 * scale, scale, size=50)
-            y = bottom + max(160 * scale, (height - bottom - (oh + gap + labels_height)) / 2 - 40 * scale)
-            device(s, frame, capture, (width - ow) / 2, y, sw, **({"landscape": True} if platform == "iphone" else {}))
-            chips(s, frame, labels, 90 * scale, y + oh + gap, width - 180 * scale, scale, size=50)
+            # A callout (`inset`, a part of the same screen enlarged): with `under`, under the device, its right
+            # edge on the screen's (under a control at the screen's right end, where it shows it bigger); otherwise
+            # centered at `inset.at` (fractions of the screen), over the device's lower edge. The labels go under
+            # whichever ends lower.
+            card = slide.get("inset")
+            overhang = 0
+            if card:
+                cw, ch = png_size(card["image"])
+                card_width, card_height = card["width"] + 2 * 16 * scale, card["width"] * ch / cw + 2 * 16 * scale
+                card_gap = 44 * scale
+                if card.get("under"):
+                    overhang = card_gap + card_height
+                else:
+                    overhang = max(0, card["at"][1] * sh + card_height / 2 - (oh - edge * sh))
+            y = bottom + max(160 * scale, (height - bottom - (oh + overhang + gap + labels_height)) / 2 - 40 * scale)
+            x = (width - ow) / 2
+            device(s, frame, capture, x, y, sw, **({"landscape": True} if platform == "iphone" else {}))
+            if card:
+                if card.get("under"):
+                    center = (x + edge * sh + sw - card_width / 2, y + oh + card_gap + card_height / 2)
+                else:
+                    fx, fy = card["at"]
+                    center = (x + edge * sh + fx * sw, y + edge * sh + fy * sh)
+                callout(s, frame, card, language, center[0], center[1], scale)
+            chips(s, frame, labels, 90 * scale, y + oh + overhang + gap, width - 180 * scale, scale, size=50)
             return
         if layout == "rise":
             rise(s, frame, slide, language, platform, capture, width, height, bottom, labels, scale)
@@ -397,11 +422,12 @@ def compose_slide(s, frame, slide, language, platform, capture, width, height):
         # The words' height first (a dry run), to center them.
         probe = Script()
         bottom = words(probe, frame, slide, language, column_x, 0, column_w, scale, align="left", size=104)
-        labels_height = chip_rows(labels, column_w, scale)[1] + 40 * scale if labels else 0
+        size = slide.get("chip_size", 40)
+        labels_height = chip_rows(labels, column_w, scale, size=size)[1] + 40 * scale if labels else 0
         y = (height - (bottom + labels_height)) / 2
         bottom = words(s, frame, slide, language, column_x, y, column_w, scale, align="left", size=104)
         if labels:
-            chips(s, frame, labels, column_x, bottom + 40 * scale, column_w, scale, align="left")
+            chips(s, frame, labels, column_x, bottom + 40 * scale, column_w, scale, size=size, align="left")
 
 
 def rise(s, frame, slide, language, platform, capture, width, height, bottom, labels, scale):
@@ -409,8 +435,10 @@ def rise(s, frame, slide, language, platform, capture, width, height, bottom, la
     (`rise.cut`, a fraction of the capture's height), so no empty part of the screen shows; the Siri bubble and the
     labels centered in the room between the words and the device. `rise.screen_width`: the screen's width;
     `rise.cover_from` (optional): from there to the cut the screen is drawn black, hiding the cut-off edge of what
-    lies behind the content (the Shortcuts app under Siri's answer)."""
-    config = slide["rise"]
+    lies behind the content (the Shortcuts app under Siri's answer). `rise` can differ per language ({"en": {…}, "it":
+    {…}}). An `inset` (another screen of the app, cropped, on a glass card; see callout) goes in the room above the
+    labels, centered."""
+    config = rise_config(slide, language)
     pw, ph = png_size(capture)
     sw = config["screen_width"]
     sh = sw * ph / pw
@@ -428,6 +456,20 @@ def rise(s, frame, slide, language, platform, capture, width, height, bottom, la
     bubble_height = (2 * 34 + 50 * 1.21) * scale if quote else 0
     labels_height = chip_rows(labels, width * 0.88, scale, size=size)[1]
     gap = 44 * scale if quote and labels else 0
+    card = slide.get("inset")
+    if card:
+        # The card (its padding and the label's tab above it), then the labels under it.
+        pw_card, ph_card = png_size(card["image"])
+        card_height = card["width"] * ph_card / pw_card + 2 * 16 * scale
+        label = pick(card.get("label"), language)
+        tab = chip_rows([label], width, scale, size=card.get("label_size", 26))[1] if label else 0
+        card_gap = 70 * scale if labels else 0
+        group_height = tab + card_height + card_gap + labels_height
+        group_top = bottom + max(40 * scale, (y - bottom - group_height) / 2)
+        callout(s, frame, card, language, width / 2, group_top + tab + card_height / 2, scale)
+        if labels:
+            chips(s, frame, labels, width * 0.06, group_top + tab + card_height + card_gap, width * 0.88, scale, size=size)
+        return
     group_top = bottom + max(40 * scale, (y - bottom - (bubble_height + gap + labels_height)) / 2)
     if quote:
         # In a full-width row that centers it (auto layout measures the bubble).
@@ -438,6 +480,18 @@ def rise(s, frame, slide, language, platform, capture, width, height, bottom, la
         bubble(s, ref(row), quote, 0, 0, scale)
     if labels:
         chips(s, frame, labels, width * 0.06, group_top + bubble_height + gap, width * 0.88, scale, size=size)
+
+
+def rise_config(slide, language):
+    config = slide["rise"]
+    return pick(config, language) if "en" in config else config
+
+
+def display_width(platform, slide, language, landscape):
+    """The width the layout shows the slide's capture at (the captures go into the document at that size)."""
+    if (pick(slide.get("layout"), language) or "portrait") == "rise":
+        return rise_config(slide, language)["screen_width"]
+    return DISPLAY_WIDTH[platform][1 if landscape else 0]
 
 
 def callout(s, frame, inset, language, center_x, center_y, scale):
@@ -463,7 +517,7 @@ def callout(s, frame, inset, language, center_x, center_y, scale):
     if label:
         # A tab standing on the card's top edge at its left end, over the rim only, so it hides none of the page
         # (sized as chip_rows measures it).
-        size = 26
+        size = inset.get("label_size", 26)
         chip_width = (len(label) * size * 0.56 + 88) * scale
         chip_height = chip_rows([label], iw, scale, size=size)[1]
         chips(s, frame, [label], cx + 36 * scale, cy - chip_height + 4 * scale, chip_width + 40 * scale, scale, size=size, align="left")
@@ -547,27 +601,31 @@ def main():
         if not os.path.exists(source):
             sys.exit(f"missing capture {source}")
         # The captures go into the document at the size the exports show them (no wider than the device's screen in
-        # the layout) and quantized: a fraction of the size, the same pixels in the exports.
-        capture = os.path.join(work, slide["capture"] + ".png")
+        # the layout) and quantized: a fraction of the size, the same pixels in the exports. One file per capture and
+        # size, so two slides that show a capture at different sizes each get their own.
+        pw, ph = png_size(source)
+        target = display_width(platform, slide, language, pw > ph)
+        capture = os.path.join(work, f"{slide['capture']}-{int(target)}.png")
         if not os.path.exists(capture):
-            pw, ph = png_size(source)
-            target = DISPLAY_WIDTH[platform][1 if pw > ph else 0]
             scaled = source
             if pw > target:
-                scaled = os.path.join(work, slide["capture"] + "-scaled.png")
+                scaled = os.path.join(work, f"{slide['capture']}-{int(target)}-scaled.png")
                 subprocess.run(["sips", "--resampleWidth", str(target), source, "--out", scaled], check=True, capture_output=True)
             optimize(scaled, capture, opaque=False)
         inset = slide.get("inset")
         if inset:
+            # Its crop, width and place can differ per language (the control it shows is longer in Italian).
+            inset = {key: pick(value, language) if key in ("crop", "width", "at") else value for key, value in inset.items()}
             # The callout's screen: cropped (x, y, width, height in the capture's pixels), at its size on the card.
             inset_source = os.path.join(captures, inset["capture"] + ".png")
             if not os.path.exists(inset_source):
                 sys.exit(f"missing capture {inset_source}")
             x, y, w, h = inset["crop"]
-            cropped = os.path.join(work, inset["capture"] + "-crop.png")
+            # Named after the slide: the document is made from the files once every slide is laid out.
+            cropped = os.path.join(work, f"{slide['id']}-{inset['capture']}-crop.png")
             subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", inset_source, "-vf",
                             f"crop={w}:{h}:{x}:{y},scale={int(inset['width'])}:-1:flags=lanczos", cropped], check=True)
-            inset_image = os.path.join(work, inset["capture"] + "-inset.png")
+            inset_image = os.path.join(work, f"{slide['id']}-{inset['capture']}-inset.png")
             optimize(cropped, inset_image, opaque=False)
             slide = dict(slide, inset=dict(inset, image=inset_image))
         name = f"frame{index}"

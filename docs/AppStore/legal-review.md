@@ -96,3 +96,7 @@ Creative Commons and public test streams only, and recordings and downloads that
   `Design/AppStore/README.md`).
 - "Chromecast" and "Google Cast" are Google trademarks, used to describe compatibility, as Google's Cast branding
   guidelines allow.
+- Third-party software in the screenshots: the player's words say the engine is based on FFmpeg (descriptive), and
+  the Mac and Apple TV open-source screenshots show the Acknowledgements screen, which credits FFmpeg and FlyingFox
+  with their licenses, as those licenses ask. The iPhone and iPad open-source screenshots are cut under Fluxo's own
+  section, so their longer list (with the Google Cast SDK and GTMSessionFetcher) does not show in marketing material.

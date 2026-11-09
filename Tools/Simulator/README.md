@@ -86,7 +86,17 @@ same state): on a busy Mac, SpringBoard sometimes finishes its first-boot work a
 screenshots then show the Home Screen while the app runs behind it.
 
 The status bar is fixed at 9:41 with full signal and a full, charging battery; `FLUXO_SIM_BATTERY_STATE=discharging`
-shows a plain full battery instead (the App Store screenshots, `Design/AppStore`).
+shows a plain full battery instead (the App Store screenshots, `Design/AppStore`). `FLUXO_SIM_STATUS_TIME` replaces
+the 9:41 with another time, or with an ISO 8601 date and time (with milliseconds and the offset, e.g.
+`2026-11-08T09:41:00.000-07:00`), which also fixes the date the iPad's status bar shows (otherwise the day of the
+capture). The status bar is drawn by the system, in the clone's own language: `--language` only sets the app's, so
+for a localized status bar (the iPad's date, "dom 8 nov") also pass `--system-locale it_IT` (the clone's
+`AppleLanguages` and `AppleLocale`; a change restarts the clone, and it keeps that locale afterwards).
+
+The app runs in the simulator's time zone, the Mac's. To run it in another one (an evening guide whatever the time
+of the capture), export `SIMCTL_CHILD_TZ` before `run.sh`, e.g. `SIMCTL_CHILD_TZ=Etc/GMT-1`: `simctl launch` passes
+`SIMCTL_CHILD_` variables to the app without the prefix. Only the app sees it; the status bar keeps the Mac's time
+zone (`FLUXO_SIM_TZ` of `Design/AppStore/Scripts/capture.sh` sets it).
 
 Everything after `--` is passed to the app, so any launch argument below (and the older
 `-FluxoDebugAutoplayURL`, `-FluxoDebugRecordSeconds`, `-FluxoDebugPictureInPicture` of
@@ -213,6 +223,7 @@ first that contains the text.
 | `player-controls:<show\|hide>` | Shows the player's controls and keeps them on screen until `player-controls:hide` (screenshots of the controls, the status bar); `hide` hides them like a tap on the video. |
 | `overscroll:<points>` | Shows Home as if pulled down by that many points (the billboard stretches over the gap); `overscroll:0` resets it. |
 | `pip` | Starts Picture in Picture once the item allows it. |
+| `fill:<on\|off>` | Fills the screen with the video, cropping its edges (`on`), or fits it (`off`), like the player's Fill button. |
 | `pause`, `resume` | Pauses playback (on Apple TV the transport bar then shows, for screenshots of it), plays again. |
 | `record:<start\|stop>`, `play-recording` | Starts recording the live channel that plays (once the engine can, 15 s at most) or stops it; plays the newest recording once it is converted. |
 | `tv-seek:<seconds\|percent%>` | Apple TV: a seek of the system player's transport bar (a scrub committed with a click), made as AVKit makes it: it asks its delegate (`timeToSeekAfterUserNavigatedFrom`), then seeks AVPlayer itself, exactly. Then the check of `seek:`, with the latency. |
@@ -422,8 +433,11 @@ Home" has 45 invented live channels in 8 groups (News, Sports, Movies, Entertain
 Lifestyle: "Aurora News", "Northwind Sports", "Cinevista", "Wildframe"…), every one with a logo that loads, and
 "Fluxo Movies & Series": Cinema Club's invented films and series, but in plain groups ("Action", "Drama Series"),
 every episode named "Show S01E02" and every poster loading (none of the "IT:", "[MULTI] FHD", "Serie TV |" or
-"4K UHD" of a resold IPTV list, which `sample` keeps for the parser). Northwind Sports and Wildframe play the live HLS test pattern, Aurora News
+"4K UHD" of a resold IPTV list, which `sample` keeps for the parser). Northwind Sports plays the live HLS test pattern, Aurora News
 the raw MPEG-TS one and Tempo Music the one with two audio tracks (`test-stream.sh`), for screenshots of the player.
+Wildframe plays `/slow/300/live/dusk.ts`: with `Design/AppStore/Scripts/demo-footage.sh` the App Store demo footage,
+raw MPEG-TS sent in real time (through the engine, with its time-shift); with `test-stream.sh` the raw MPEG-TS test
+pattern, which that server also sends at this path.
 Its favorites, history and recordings use those names (`Northwind Sports`, `Aurora News`, `Wildframe`); the recordings show
 the lengths and sizes of real programmes (1:47:00 · 3.61 GB…; the clip inside is 4 s, then a sparse MP4 `free` box).
 Its posters are original scenes of each genre drawn in code (`DebugArtwork.scenePoster`: space, hills at sunset, a city
@@ -552,7 +566,10 @@ TEST_RUNNER_FLUXO_LAYOUT_SHOTS="home|landscape|dark|seed-guide;home;;panel|lands
 
 The test turns the device back to portrait at the end; with `TEST_RUNNER_FLUXO_LAYOUT_KEEP_ORIENTATION=1` it
 leaves it turned, and as a clone keeps its last orientation, later `run.sh` runs on it (cold launches with
-`simctl launch`) are in landscape too. `testDragChannelOntoLibraryTab`
+`simctl launch`) are in landscape too. `testFullScreenAppsMode` (iPad, a setup step rather than a test) turns on
+Full Screen Apps in Settings › Multitasking & Gestures, so screenshots show no resize grabber in the bottom corner (the
+Simulator starts in Windowed Apps); the clone keeps it. It taps the English labels: run it while the clone's system is
+in English. `testDragChannelOntoLibraryTab`
 (iPad) drags a channel row onto Library in the sidebar and checks that it became a favorite.
 `testSidePanelScheduleMenu` (iPad) opens the context menu of a row in the player's side panel, checks that it has
 no guide matching, and that Today's Schedule shows the schedule in the panel, with a way back. It waits for the

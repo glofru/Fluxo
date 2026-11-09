@@ -80650,7 +80650,7 @@
       }
     },
     "Record" : {
-      "comment" : "Button (verb): start recording the live channel.\nApple TV player, transport bar button: starts recording the live channel.",
+      "comment" : "Button (verb): start recording the live channel.\nApple TV player, transport bar button: starts recording the live channel.\nShort title of an App Shortcut tile — Siri and Shortcuts (App Shortcuts): records the channel that is playing.",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -104489,7 +104489,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Suggerimenti"
+            "value" : "Consigli"
           }
         },
         "ja" : {

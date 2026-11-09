@@ -115,13 +115,16 @@ enum DebugSeedCatalog {
     /// Live TV for App Store screenshots and demos: invented channel names and logos only, so no real broadcaster,
     /// network or brand appears (App Review 5.2.1; `sample` keeps the real-world names its checks are about).
     /// Every channel has a logo that loads, in the cleaner styles. Four of them play the loopback test streams of
-    /// Tools/Simulator/test-stream.sh (for screenshots of the player); the others use the `.invalid` host.
+    /// Tools/Simulator/test-stream.sh (for screenshots of the player); the others use the `.invalid` host. Wildframe
+    /// plays the demo footage as raw MPEG-TS sent in real time (Design/AppStore/Scripts/demo-footage.sh), through the
+    /// engine, as IPTV live channels play, so its player shows the time-shift; test-stream.sh sends its raw MPEG-TS
+    /// test pattern at that path, so Wildframe plays with either server.
     private static func store(baseURL: URL) -> DebugSeedPlaylist {
         let base = base(of: baseURL)
         let playable = [
             "Northwind Sports": "\(base)/hls/live.m3u8",
             "Aurora News": "\(base)/live/test-pattern",
-            "Wildframe": "\(base)/hls/live.m3u8",
+            "Wildframe": "\(base)/slow/300/live/dusk.ts",
             "Tempo Music": "\(base)/live/two-audio",
         ]
         var playlist = DebugSeedPlaylist(name: "Fluxo Home")

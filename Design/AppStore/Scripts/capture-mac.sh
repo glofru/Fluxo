@@ -51,7 +51,8 @@ screens=(
     "recordings|library;wait:2|"
     "downloads|download:The Silent Harbor;download-wait:180;download:Crimson Signal;download-progress:0.4;pause-download:Crimson Signal;downloads;wait:2|/slow/40000"
     "search|$base;search:$query;wait:10||1280x620"
-    "player|$base;player:Wildframe;wait:8;player-controls:show;wait:1|"
+    # Wildframe through the engine: a minute and a half of time-shift, then a skip a minute back (as capture.sh).
+    "player|$base;player:Wildframe;wait:8;wait:90;skip:-60;wait:2;player-controls:show;wait:1|"
     # Siri & Shortcuts, from its second phrase: the first one's example is a real channel.
     "siri|$base;home;wait:3;settings-section:siri-whats-on;wait:2|"
     # The Mac has no iCloud sync yet, so its privacy screen is Settings › About (Diagnostic Reports, Privacy Policy).

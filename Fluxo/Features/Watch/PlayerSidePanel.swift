@@ -93,14 +93,17 @@ struct PlayerSidePanel: View {
                 .labelsHidden()
 
                 Button(action: close) {
+                    // Its size kept at the accessibility text sizes (the Large Content Viewer shows it instead).
                     Image(systemName: "xmark")
                         .font(.subheadline.weight(.semibold))
+                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                         .frame(width: 36, height: 36)
                         .contentShape(.circle)
                 }
                 .buttonStyle(.plain)
                 .glassEffect(.regular.interactive(), in: .circle)
                 .accessibilityLabel("Hide Side Panel")
+                .largeContentControl(String(localized: "Hide Side Panel"), systemImage: "xmark")
                 .help("Hide the channel list")
             }
             .padding(.horizontal, 14)
@@ -392,14 +395,17 @@ private struct PlayerScheduleHeader: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityAddTraits(.isHeader)
 
+            // The buttons keep their size at the accessibility text sizes (the Large Content Viewer shows them).
             Button("Watch", systemImage: "play.fill", action: play)
                 .labelStyle(.iconOnly)
                 .font(.subheadline.weight(.semibold))
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                 .frame(width: 32, height: 32)
                 .contentShape(.circle)
                 .buttonStyle(.plain)
                 .glassEffect(.regular.tint(Theme.accentFill).interactive(), in: .circle)
                 .disabled(!canPlay)
+                .largeContentControl(String(localized: "Watch"), systemImage: "play.fill")
                 .help("Watch this channel")
 
             PlayerFullGuideButton(item: item, iconOnly: true)
@@ -407,10 +413,12 @@ private struct PlayerScheduleHeader: View {
             Button("Back to Playing Channel", systemImage: "arrow.uturn.backward", action: close)
                 .labelStyle(.iconOnly)
                 .font(.subheadline.weight(.semibold))
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                 .frame(width: 32, height: 32)
                 .contentShape(.circle)
                 .buttonStyle(.plain)
                 .glassEffect(.regular.interactive(), in: .circle)
+                .largeContentControl(String(localized: "Back to Playing Channel"), systemImage: "arrow.uturn.backward")
                 .help("Show the guide of the playing channel")
         }
         .padding(.horizontal, 18)
@@ -431,7 +439,9 @@ private struct PlayerGuideTabHeader: View {
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityAddTraits(.isHeader)
+            // Offered the room first, so the channel's name truncates before the button's title does.
             PlayerFullGuideButton(item: item)
+                .layoutPriority(1)
         }
         .padding(.horizontal, 18)
         .padding(.bottom, 4)
