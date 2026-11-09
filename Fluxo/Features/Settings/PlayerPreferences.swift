@@ -15,12 +15,14 @@ enum PlayerPreferences {
     static let skipForwardSecondsKey = "player.skipForwardSeconds"
     static let autoPictureInPictureKey = "player.autoPictureInPicture"
     static let pictureInPictureOnCloseKey = "player.pictureInPictureOnClose"
+    static let legacyNetworkingKey = "player.legacyNetworking"
 
     static let defaultTimeShiftMinutes = 30
     static let defaultSkipBackwardSeconds = 10
     static let defaultSkipForwardSeconds = 30
     static let defaultAutoPictureInPicture = true
     static let defaultPictureInPictureOnClose = true
+    static let defaultLegacyNetworking = false
 
     /// Lengths offered for the live time-shift (DVR) window, in minutes. There is no "off": a window of 0
     /// means "keep everything" for the engine.
@@ -59,6 +61,22 @@ enum PlayerPreferences {
     /// iOS: closing the player screen (its chevron or a swipe down) keeps the video playing in Picture in Picture.
     static var pictureInPictureOnClose: Bool {
         UserDefaults.fluxo.object(forKey: pictureInPictureOnCloseKey) as? Bool ?? defaultPictureInPictureOnClose
+    }
+
+    /// The streams the remux engine opens are read with FFmpeg's own network code, as in earlier versions, instead of
+    /// the system's (`StreamRemuxer.Configuration.HTTPInput`): for a server that only works with it. Off by default.
+    static var legacyNetworking: Bool {
+        UserDefaults.fluxo.object(forKey: legacyNetworkingKey) as? Bool ?? defaultLegacyNetworking
+    }
+
+    /// The title of the setting, in Settings on every platform.
+    static var legacyNetworkingTitle: String {
+        String(localized: "Legacy Networking", comment: "Settings, Playback: a switch that makes streams connect with the network code of earlier versions of the app, for servers that stopped working after an update.")
+    }
+
+    /// What the setting does, under the Playback section.
+    static var legacyNetworkingFooter: String {
+        String(localized: "Turn on Legacy Networking only if a server stopped working after an update: the streams Fluxo converts itself, such as MPEG-TS channels and MKV movies, then connect as in earlier versions, without TLS 1.3, HTTP/2 or the system's proxy settings. Applies the next time a stream starts.", comment: "Settings, Playback footer: what the Legacy Networking switch does. TLS 1.3 and HTTP/2 are network protocol names; keep them.")
     }
 
     private static func value(forKey key: String, default defaultValue: Int, allowed: [Int]) -> Int {

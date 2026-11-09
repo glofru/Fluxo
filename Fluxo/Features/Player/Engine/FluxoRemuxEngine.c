@@ -14,6 +14,7 @@
 //
 
 #include "FluxoEngineInternal.h"
+#include "FluxoEngineHTTP.h"
 
 static pthread_once_t fluxo_init_once = PTHREAD_ONCE_INIT;
 
@@ -109,7 +110,14 @@ void fluxo_set_state(FluxoRemuxSession *session, FluxoRemuxState state, int erro
 
 void fluxo_format_error(char *buffer, size_t size, int error_code, const char *what) {
     char reason[AV_ERROR_MAX_STRING_SIZE] = {0};
-    av_strerror(error_code, reason, sizeof(reason));
+    // The engine's own codes have no text in FFmpeg (EngineMessage translates them by code).
+    if (error_code == FLUXO_REMUX_ERROR_TLS_CERTIFICATE) {
+        snprintf(reason, sizeof(reason), "Server certificate not trusted");
+    } else if (error_code == FLUXO_REMUX_ERROR_TLS_HANDSHAKE) {
+        snprintf(reason, sizeof(reason), "Secure connection failed");
+    } else {
+        av_strerror(error_code, reason, sizeof(reason));
+    }
     snprintf(buffer, size, "%s: %s", what, reason);
 }
 
@@ -283,6 +291,7 @@ FluxoRemuxSession *fluxo_remux_create(const FluxoRemuxConfig *config, FluxoRemux
     session->is_live = config->is_live != 0;
     session->max_reconnect_attempts = config->max_reconnect_attempts == 0 ? FLUXO_DEFAULT_RECONNECT_ATTEMPTS : config->max_reconnect_attempts;
     session->quick_open = config->quick_open != 0;
+    session->http_ffmpeg = config->http_input == FluxoRemuxHTTPInputLibavformat;
     session->callback = callback;
     session->context = context;
     session->state = FluxoRemuxStateIdle;
@@ -516,6 +525,7 @@ void fluxo_remux_destroy(FluxoRemuxSession *session) {
     free(session->recording.path);
     fluxo_output_free(&session->hls.output);
     fluxo_close_input(session);
+    fluxo_http_client_free(&session->http_client);
 
     free(session->input_url);
     free(session->user_agent);

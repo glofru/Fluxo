@@ -153,6 +153,19 @@ typedef struct FluxoRemuxHLSOptions {
     const char *master_playlist_path;
 } FluxoRemuxHLSOptions;
 
+/// How the engine reads http:// and https:// inputs (FluxoRemuxConfig.http_input).
+typedef enum __attribute__((enum_extensibility(closed))) FluxoRemuxHTTPInput {
+    /// The system's URL loading system (URLSession): TLS 1.3, HTTP/2, the system's proxy settings, App Transport Security
+    /// and the system trust store. Byte ranges for seeks, redirections, cookies, the user agent, timeouts, reconnection
+    /// and cancellation behave as with FFmpeg's http protocol. A server the system cannot talk to (a response it cannot
+    /// parse, such as SHOUTcast's "ICY 200 OK") is opened with FFmpeg's http protocol instead (for the rest of the session
+    /// once that opens it).
+    FluxoRemuxHTTPInputSystem = 0,
+    /// FFmpeg's own http protocol, as before (TLS through Secure Transport: TLS 1.2 at most, no system proxy). The
+    /// fallback for servers that only work with it.
+    FluxoRemuxHTTPInputLibavformat = 1,
+} FluxoRemuxHTTPInput;
+
 /// Configuration of a remux session. All strings are copied by fluxo_remux_create.
 typedef struct FluxoRemuxConfig {
     /// Input URL (http, https, udp, file, ...).
@@ -180,6 +193,8 @@ typedef struct FluxoRemuxConfig {
     /// reconnection on network errors inside a connection is the same as without it. The app always sets it.
     /// Zero keeps FFmpeg's retries at the first open too.
     int32_t quick_open;
+    /// How http:// and https:// inputs are read. 0 (FluxoRemuxHTTPInputSystem) is the default.
+    FluxoRemuxHTTPInput http_input;
     /// HLS output description.
     FluxoRemuxHLSOptions hls;
 } FluxoRemuxConfig;
@@ -244,6 +259,15 @@ void fluxo_remux_destroy(FluxoRemuxSession *session);
 /// refuses to encode while the app is in the background). The input is intact: convert it again later, with the
 /// app in the foreground.
 enum { FLUXO_REMUX_ERROR_ENCODER_UNAVAILABLE = -1447385158 };
+
+/// An https:// input whose server's certificate is not trusted: expired or not yet valid, for another name, or not from
+/// an authority the system trusts (FFERRTAG('F', 'X', 'T', 'C')). The first open does not try such a server again
+/// (fluxo_first_open_retries); a live channel that played reconnects as after any other error (a captive portal's
+/// certificate goes away once the network lets the stream through).
+enum { FLUXO_REMUX_ERROR_TLS_CERTIFICATE = -1129601094 };
+/// An https:// input with which no secure connection could be made: no TLS version or cipher in common, or the server
+/// asks for a client certificate (FFERRTAG('F', 'X', 'T', 'L')). Tried again like FLUXO_REMUX_ERROR_TLS_CERTIFICATE.
+enum { FLUXO_REMUX_ERROR_TLS_HANDSHAKE = -1280596038 };
 
 /// Synchronously remuxes a local media file (for example a recording) into another container,
 /// chosen from the output file extension (e.g. ".mp4"). Video and audio are copied (what AVPlayer cannot

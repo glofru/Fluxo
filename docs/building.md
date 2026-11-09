@@ -181,24 +181,18 @@ A platform kept from an earlier build (`SLICES=…`) keeps the dSYM it had; one 
     libswresample for the pixel and sample conversions.
   No filters, devices or programs. `srt://` needs libsrt (and a crypto library), which is not included: such channels
   fail at once with "Unsupported stream type".
-- **HTTPS** uses Secure Transport, the TLS backend FFmpeg has for Apple platforms without an
-  extra library, with the system trust store and certificate verification on (`tls_verify`, on by default in FFmpeg 9).
-  Secure Transport is deprecated and stops at TLS 1.2, and it does not follow the system's proxy settings or App
-  Transport Security as the URL loading system does. The only external libraries are the system's (Secure Transport,
-  zlib, VideoToolbox, CoreMedia, CoreVideo), so nothing is taken from Homebrew.
-  - **Replacing it was evaluated, and deferred.** The candidate is an input of the engine's own (an `AVIOContext` like
-    the one on-demand HTTP inputs already use, `FluxoInputIO`) that reads through a `URLSession` data task: TLS 1.3,
-    the system proxy, ATS and HTTP/2 for free, and no deprecated API. It is not a drop-in change: the engine depends on
-    how FFmpeg's HTTP layer behaves, and each behaviour has to be rebuilt on `URLSession` and checked against real IPTV
-    servers: the error codes the retries are decided by (403, 429 and 5xx of accounts limited to one connection, the
-    refused and timed-out connections of a dead channel), byte ranges and the size (seeking, `Accept-Ranges` / 206),
-    the reconnection of a live input that drops (`reconnect_streamed`), cancellation and timeouts on the engine
-    thread (`interrupt_callback`, `rw_timeout`), flow control while the reader pauses (a suspended task, or the
-    buffered data grows), and the HLS demuxer's own requests (`AVFormatContext.io_open`). The design: one blocking
-    reader per connection, fed by a `URLSessionDataDelegate` into a bounded buffer (the task suspended above a high
-    mark), Range requests for seeks, the HTTP status and `NSURLError` codes mapped to FFmpeg's (`AVERROR_HTTP_*`,
-    `ECONNREFUSED`, `ETIMEDOUT`), behind `FluxoRemuxConfig` so both inputs can run side by side in
-    `Tools/EngineSmokeTest` before the switch. Until then a server that accepts only TLS 1.3 cannot be played.
+- **HTTP and HTTPS inputs** are read through the system's URL loading system, not FFmpeg's http protocol: an input of
+  the engine's own (`FluxoEngineHTTP.m`, a `URLSession` data task per connection, behind the `AVIOContext` of
+  `FluxoEngineInput.c`), so TLS 1.3, HTTP/2, the system's proxy settings, App Transport Security and the system trust
+  store apply to the streams the engine opens as to everything else the app loads (see "Network input" in
+  [Player](player.md#network-input)). FFmpeg's own **TLS uses Secure Transport**, the backend FFmpeg has for Apple
+  platforms without an extra library, with the system trust store and certificate verification on (`tls_verify`, on
+  by default in FFmpeg 9). Secure Transport is deprecated and stops at TLS 1.2, and it follows neither the system's
+  proxy settings nor App Transport Security. It is kept for what still goes through FFmpeg's protocols: the fallback for
+  servers the URL loading system cannot talk to (decided by the engine, `FluxoRemuxHTTPInput`), Settings › Playback ›
+  Legacy Networking and `rtmps://` (the AES-128 segments of an HLS input the engine reads go through the URL loading
+  system, decrypted by the engine with libavutil's AES). The only external libraries are the system's (Secure
+  Transport, zlib, VideoToolbox, CoreMedia, CoreVideo), so nothing is taken from Homebrew.
 - **License**: the build enables no GPL, version 3 or non-free component (no libx264, libfdk-aac or other external
   codec library: the AAC encoder is FFmpeg's own, H.264 is encoded by the operating system), so it is LGPL v2.1 or
   later. It is linked dynamically and embedded as `Fluxo.app/Frameworks/FFmpeg.framework`

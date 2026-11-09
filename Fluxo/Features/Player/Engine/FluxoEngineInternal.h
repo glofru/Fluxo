@@ -34,6 +34,7 @@
 #include <libavcodec/bsf.h>
 #include <libavformat/avformat.h>
 #include <libavutil/avutil.h>
+#include <libavutil/avstring.h>
 #include <libavutil/dict.h>
 #include <libavutil/error.h>
 #include <libavutil/mathematics.h>
@@ -128,6 +129,12 @@
 // one opens a connection at the new position).
 #define FLUXO_INPUT_IO_BUFFER (64 * 1024)
 #define FLUXO_INPUT_IO_READ_ON (512 * 1024)
+// The engine's TLS errors (FluxoRemuxEngine.h) are FFmpeg error tags.
+_Static_assert(FLUXO_REMUX_ERROR_TLS_CERTIFICATE == FFERRTAG('F', 'X', 'T', 'C'), "FLUXO_REMUX_ERROR_TLS_CERTIFICATE");
+_Static_assert(FLUXO_REMUX_ERROR_TLS_HANDSHAKE == FFERRTAG('F', 'X', 'T', 'L'), "FLUXO_REMUX_ERROR_TLS_HANDSHAKE");
+// A connection of an HTTP input that drops is made again inside the input after 0, 1 and 3 s (FFmpeg's http protocol:
+// `reconnect`, `reconnect_delay_max` 4 s).
+#define FLUXO_HTTP_RECONNECT_DELAY_MAX 4
 // fluxo_run_loop: a live input stops for fluxo_remux_set_input_suspended.
 #define FLUXO_INPUT_SUSPENDED FFERRTAG('S', 'U', 'S', 'P')
 
@@ -379,8 +386,19 @@ struct FluxoRemuxSession {
     int output_failed;
 
     AVFormatContext *input;
-    // On-demand HTTP inputs are read through the engine's own AVIOContext (see fluxo_input_io_open), or NULL.
+    // HTTP inputs read through the engine's own AVIOContext (see fluxo_input_io_open), or NULL: every one read through
+    // the URL loading system, and on-demand ones read with FFmpeg's http protocol.
     struct FluxoInputIO *input_io;
+    // http:// and https:// inputs are read with FFmpeg's http protocol (FluxoRemuxHTTPInputLibavformat, or since the URL
+    // loading system could not talk to the server, see fluxo_open_input) instead of the URL loading system.
+    int http_ffmpeg;
+    // The session's client of the URL loading system (FluxoEngineHTTP.h): its cookies and connections, made at the first
+    // connection through it and freed with the session (fluxo_remux_destroy).
+    struct FluxoHTTPClient *http_client;
+    // The input context's own io_open and io_close2 (FFmpeg's), for the requests of its demuxer that the engine does not
+    // read itself (see fluxo_io_open).
+    int (*default_io_open)(struct AVFormatContext *context, AVIOContext **pb, const char *url, int flags, AVDictionary **options);
+    int (*default_io_close2)(struct AVFormatContext *context, AVIOContext *pb);
     // What happens to each stream of the input (copied, converted, left out), and the converters.
     FluxoStreams streams;
     FluxoHLS hls;

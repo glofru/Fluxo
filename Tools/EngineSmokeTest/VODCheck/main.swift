@@ -124,6 +124,8 @@ final class Check {
             server.beginSession()
             server.start(root: directory)
             var configuration = StreamRemuxer.Configuration(inputURL: url, outputDirectory: directory, name: "check-\(UUID().uuidString.prefix(8))", isLive: isLive)
+            // FLUXO_HTTP_INPUT=ffmpeg: FFmpeg's http protocol instead of the URL loading system (the app's Legacy Networking).
+            configuration.httpInput = ProcessInfo.processInfo.environment["FLUXO_HTTP_INPUT"] == "ffmpeg" ? .ffmpeg : .system
             if isLive {
                 // WINDOW_SECONDS: a short time-shift window, which lets go of its oldest segments (SCENARIO=livepause).
                 configuration.maxWindowDuration = Double(ProcessInfo.processInfo.environment["WINDOW_SECONDS"] ?? "") ?? 30 * 60

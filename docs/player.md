@@ -173,12 +173,15 @@
   address 5.1 s. That last one is FFmpeg's TCP connect timeout (`tcp.c`: 5 s, not `rw_timeout`): only the tcp
   protocol's own `timeout` option shortens it, and that option is also the read timeout of the connection and stays
   in the http protocol's options for its reconnections, so a shorter one for the first open would cut the live read
-  timeout (15 s) of that connection too. Left at 5 s.
+  timeout (15 s) of that connection too. Left at 5 s. Through the URL loading system (see [Network input](#network-input)),
+  the same: refused 0.56 s, unknown host 0.60 s, 404 and 401 at once, 403 and 503 3.7 s; an unreachable address
+  takes the 15 s I/O timeout (it has no separate connect timeout).
 - **Error messages** name what failed and why in the user's language: the engine's English message
   ("Unable to open the stream: Connection refused") is translated in both parts (`EngineMessage`; the reason from
   FFmpeg's error code, `FluxoRemuxEvent.error_code`: refused, timed out, reset, unreachable, 400, 401, 403, 404, 429,
-  other 4xx, 5xx, damaged data, end of stream, disk full, and an input/output error while the input opens, which is
-  how FFmpeg reports a failed name lookup: "the server couldn't be found or reached"; other reasons stay in English).
+  other 4xx, 5xx, damaged data, end of stream, disk full, an untrusted certificate, a failed secure connection, and an
+  input/output error while the input opens, which is how FFmpeg reports a failed name lookup: "the server couldn't be
+  found or reached"; other reasons stay in English).
   The engine's own words go to the log. Screens that explain failures in plain words read the code and what failed
   (`EngineMessage.error(code:message:)`, `reason(of:)`, `AVPlayerViewModel.itemFailureError`), not the text.
 - **Recording**: the record button writes the live stream to
@@ -260,6 +263,112 @@
     the remembered languages applied when the media loads, and subtitles use this device's caption style
     (`GCKMediaTextTrackStyle.createDefault()`). Subtitle files are not cast: the receiver would have to fetch them
     from this device, and the app never serves anything beyond 127.0.0.1.
+
+## Network input
+
+The engine reads `http://` and `https://` inputs through the system's URL loading system (`FluxoEngineHTTP.m`: a
+`URLSession` data task per connection, read by the engine thread through the `AVIOContext` of `FluxoEngineInput.c`),
+not with FFmpeg's http protocol, whose TLS is the deprecated Secure Transport (TLS 1.2 at most, no system proxy, no App
+Transport Security). The streams the engine opens get what everything else the app loads has: **TLS 1.3**, **HTTP/2**,
+the **system's proxy settings** (PAC included), App Transport Security and the system trust store. Live channels,
+movies and episodes go through it, and so do the requests of an HLS input the engine reads (its playlist reloads,
+segments and keys, with their byte ranges: `AVFormatContext.io_open`), AES-128 segments included: the engine decrypts
+those itself (`crypto+https://…`, AES-128-CBC with libavutil's AES, as FFmpeg's `crypto` protocol does, but a dropped
+connection fails the segment instead of ending it early). It behaves as FFmpeg's http protocol did, so the engine's
+retries and messages do not change:
+
+- **Requests**: `Range: bytes=<position>-` on every request, also from 0 (a server with byte ranges answers 206, and
+  the input is seekable), `Accept: */*`, FFmpeg's `User-Agent` (`Lavf/<version>`: servers that filter clients by it
+  see the same one), `Accept-Encoding: identity` (byte positions are the file's), no `Icy-MetaData` (so the server
+  sends no metadata to strip). Up to 8 redirections, relative or absolute, with the same headers. The address after
+  them is the input's `location` (the base of an HLS playlist's relative segments) and the `Content-Type` its
+  `mime_type` (an HLS playlist behind an address without `.m3u8` is recognised by it), both read with `av_opt_get` as
+  those of FFmpeg's protocol. Cookies a server sets go back with the next requests of the same playback, in memory
+  only: each engine session has a client of its own (`FluxoHTTPClient`, an ephemeral `URLSession`: nothing is cached
+  or stored), whose cookies and connections go with the session, so a panel's cookie never goes with another
+  playback, account or playlist (`run_http.sh`: another client has none, nor the same client made again). A user and
+  password in the address answer a Basic or Digest challenge of that server once: of the same scheme, host and port
+  only, so a redirection to another server (or from `https://` to `http://`) does not get them, as FFmpeg's protocol
+  resets its authentication on a redirection; a new address with a user and password of its own answers its server
+  (`run_http.sh`: a redirection to another server's `/auth/` fails with 401, one to the same server plays). A client opens up to 16 connections to one server
+  at a time (the system's default is 4 to 6; an HLS input with several renditions has several requests open at once,
+  and FFmpeg's sockets had no limit).
+- **Seeks** close the connection first (and wait until the system has closed it, at most 1 s), then open one at the
+  position, as before, so servers that allow one connection per account see one. A server that ignores the range (a
+  200 for a request from a later byte) fails that seek instead of giving the demuxer the wrong bytes.
+- **Timeouts and cancellation**: the response and every read wait at most the engine's I/O timeout (15 s, FFmpeg's
+  `rw_timeout`), and the engine thread checks the session's cancellation every
+  100 ms while it waits, as FFmpeg's network protocols do (`run_http.sh`: a read stops 0.08 to 0.10 s after the
+  interrupt). A server that sends its headers and then nothing fails after one timeout. The timeout runs only while the
+  engine waits, as FFmpeg's socket timeout did: a connection the engine leaves unread (an on-demand movie read 60 s
+  ahead waits until it is 30 s ahead; a paused movie) stays open however long, so it is not the URL loading system's
+  idle timer (`timeoutInterval`), which also runs while the flow control suspends the task and would cut such a
+  connection every time (a reconnection within the input every 30 s of playback with byte ranges; without them the
+  movie reopened and read again from its start, Reconnecting…). That one is set to 7 days (`run_http.sh`: a
+  connection unread for 6 s with a timeout of 2 s reads on, whole; movies played at 6 times real time with a timeout
+  of 2 s, with and without byte ranges, over HTTP/1.1 and HTTP/2, never drop, reopen or go to Reconnecting). The requests the engine leaves
+  to FFmpeg keep the same timeout: the input's `AVIOContext` exports `rw_timeout` and `user_agent` (with Legacy
+  Networking, FFmpeg's own context below it answers, cookies included), which the HLS demuxer gives every request it
+  makes (`ffio_copy_url_options`), and a request of the demuxer that goes to FFmpeg's `io_open` (one the URL loading
+  system cannot make, `data:`) also gets them and the session's cookies for its address. Without them FFmpeg would
+  wait for a segment server that stops sending until the session is cancelled (`run_http.sh`: an AES-128 segment
+  stalled for 2 minutes, live and on demand, through each path; with the timeout removed, every request of the on-demand
+  case waits out the check's 30 s).
+- **Reconnection** within the input, as FFmpeg's `reconnect` did: a connection that drops (an error, a timeout, an end
+  before the announced length, or the end of a live stream of no known length, which FFmpeg's protocol took for a drop
+  too; not the end of a playlist) is made again after 0, 1 and 3 s, a live input from where its server is now, an
+  on-demand one at its position when the server has byte ranges (one without them is reopened by the engine,
+  `fluxo_vod_recover`). After that the engine's own loops take over (the live reconnection with Reconnecting…, the
+  on-demand recovery). The HLS demuxer's requests are not made again (FFmpeg never did). In `run.sh`, whose live
+  server stops for 4 s, the engine does not even go to Reconnecting, and the recording has 20.0 s of the 20 s served
+  (FFmpeg's protocol: one Reconnecting, 20.1 s).
+- **Flow control**: what the task receives waits in a buffer. Above 4 MB the task is suspended (the system then stops
+  reading the socket, and TCP or HTTP/2 flow control holds the server back, as an unread socket did) and it resumes
+  below 1 MB. While the engine does not read, a connection holds those 4 MB, plus what the system's network stack had
+  already received when the task was suspended, and the server is held back (`run_http.sh`: the process grows by
+  about 3 MB in 3 s unread while a local server could have sent gigabytes); the connection stays open, as an unread
+  socket did, until the engine reads on or closes it.
+- **Errors** are FFmpeg's codes: the HTTP status (`AVERROR_HTTP_*` for 400, 401, 403, 404, 429, other 4xx and 5xx), a
+  refused connection (`ECONNREFUSED`), a timeout (`ETIMEDOUT`), a failed name lookup (`EIO`, as FFmpeg reports it), no
+  network (`ENETUNREACH`), a connection lost mid-response (the POSIX error under it, else `EIO`). Two are new, for
+  HTTPS: `FLUXO_REMUX_ERROR_TLS_CERTIFICATE` (the server's certificate is not trusted: expired, for another name, from
+  an unknown authority) and `FLUXO_REMUX_ERROR_TLS_HANDSHAKE` (no secure connection: no TLS version or cipher in common,
+  a client certificate asked for). The first open does not try either again (`fluxo_first_open_retries`; a live
+  channel that played reconnects as after any other error: a captive portal's certificate goes away once the network
+  lets the stream through), and each has its sentence ("The server's security
+  certificate isn't valid", "A secure connection to the server couldn't be made"; through Secure Transport both were an
+  input/output error, "The server couldn't be found or reached"). Dead channels fail as fast as before (see "Dead
+  channels fail fast"), but for one case: an address that never answers waits the 15 s I/O timeout instead of FFmpeg's
+  5 s TCP connect timeout. The URL loading system has no connect timeout of its own, and a shorter wait for the
+  response would also cut servers that are slow to answer (`run_vod.sh mkv-slow-segment` answers a seek after 12 s).
+- **FFmpeg's http protocol** stays as the fallback. A server the URL loading system cannot talk to is opened with it,
+  which the engine decides by itself: a response it cannot parse (SHOUTcast's `ICY 200 OK`, which it takes for the
+  body of an HTTP/0.9 response), or an address `NSURL` does not accept (one it cannot parse, such as an unclosed IPv6
+  bracket; it percent-encodes spaces and other invalid characters itself). Once FFmpeg's protocol has opened the input it
+  reads it for the rest of the session; when it cannot open it either, the next attempt tries the URL loading system
+  again (what it refused may have been a passing failure of the server). Settings ›
+  Playback › **Legacy Networking** (`PlayerPreferences.legacyNetworking`, off by default; `FluxoRemuxConfig.http_input`)
+  reads every input with it, as before, for a server that only works that way. FFmpeg's protocols, with Secure
+  Transport, also still open `rtmps://`.
+
+Checked with `Tools/EngineSmokeTest/run_http.sh`, against servers on 127.0.0.1 only: plain HTTP, TLS 1.2 only, TLS 1.3
+only and HTTP/2 (Node.js fronts of `vod_server.py`, with certificates of a test authority that only the checks trust:
+`-DFLUXO_ENGINE_TESTING` and `FLUXO_TEST_CA_FILE` in the tools, `xcrun simctl keychain <udid> add-root-cert` in the
+iOS Simulator; the app's trust and App Transport Security are not changed). `TLS=1.2|1.3|h2` runs `run_vod.sh`,
+`run_formats.sh` and `run_probe.sh` through such a front, and `FLUXO_HTTP_INPUT=ffmpeg` any engine tool with FFmpeg's
+http protocol. FFmpeg's http protocol cannot open the TLS 1.3 only server at all ("Input/output error"); the URL
+loading system plays every case on all four. Cost (`run_http.sh cost`, macOS on an M4 Pro, a busy host; the ranges
+are three runs): reading a 1080p movie of 20 Mbit/s paced at 4 MB/s over 71 s (the engine reading ahead of a player),
+the URL loading system takes 1.7 to 2.1 s of CPU time against FFmpeg's 0.9 to 1.2 s over HTTP (2.4 to 3.0 % of a core
+against 1.3 to 1.7 %, about twice as much), and 2.1 to 2.7 s against 1.0 to 1.4 s over TLS 1.2 (3.0 to 3.7 % against
+1.4 to 1.9 %), with the same peak memory (18 to 20 MB against 18 to 19 MB for the whole process); a live channel of
+2.4 Mbit/s for 60 s costs the same with both (0.4 to 0.6 s against 0.4 to 0.5 s). Read as fast as the loopback
+interface allows (290 MB in 0.2 to 0.3 s, the same time for both), the process peaks at 26 to 117 MB against 17 to 18
+MB: the system's network stack buffers what arrives at gigabytes per second faster than the task's suspension takes
+effect, which no real network delivers (the engine's own buffer stays at 4.4 MB at most, measured). `leaks.sh`
+(`FOOTPRINT_ONLY=1`, 12 cycles of every kind of session) ends at 32.5 MB against 12.9 MB, the same after the first
+cycle as after the last (no growth with more sessions, and `leaks` finds nothing). The difference is the system's HTTP
+stack in the process (FFmpeg's reads the socket directly) and its TLS; it buys TLS 1.3, HTTP/2 and the proxy settings.
 
 ## Formats
 
@@ -431,6 +540,9 @@ Tools/EngineSmokeTest/run_vod.sh       # movies: skip, scrub, resume on MP4 / MK
 Tools/EngineSmokeTest/run_formats.sh   # the format matrix: every container / video / audio codec (see "Formats")
 Tools/EngineSmokeTest/run_converted.sh # converted video: live timestamp restarts, a refused encoder, file conversion
 Tools/EngineSmokeTest/run_probe.sh     # the engine without AVPlayer: seeks in every container, dead channels, pauses
+Tools/EngineSmokeTest/run_http.sh      # the HTTP input: HTTP, TLS 1.2, TLS 1.3 only, HTTP/2; flaky, slow, live; its cost
+TLS=1.3 Tools/EngineSmokeTest/run_vod.sh        # run_vod / run_formats / run_probe through HTTPS (1.2, 1.3 or h2)
+FLUXO_HTTP_INPUT=ffmpeg Tools/EngineSmokeTest/run_probe.sh   # any engine tool with FFmpeg's http protocol
 SANITIZE=1 Tools/EngineSmokeTest/run_probe.sh   # the same with AddressSanitizer + UndefinedBehaviorSanitizer
 SANITIZE=1 Tools/EngineSmokeTest/leaks.sh       # the leak check's sessions under the sanitizers instead of `leaks`
 ```
@@ -521,11 +633,12 @@ these with `-configuration Debug`.
   fast-changing position. `SimpleHTTPServer.swift` is the loopback server (and `LoopbackTimeouts`).
 - **The remux engine** (`Features/Player/Engine`, C): `FluxoRemuxEngine.h` is its interface (the only header Swift sees).
   `FluxoRemuxEngine.c` has the session, its thread, events and file conversion; `FluxoEngineInput.c` the input,
+  `FluxoEngineHTTP.h` / `.m` (Objective-C) its HTTP connections through `URLSession` (see [Network input](#network-input)),
   `FluxoEngineOutput.c` the muxers, `FluxoEngineHLS.c` the segmenter and its playlists, `FluxoEngineRenditions.c`,
   `FluxoEngineText.c` (WebVTT, language tags) and `FluxoEngineMasterPlaylist.c` the master playlist and its renditions,
   `FluxoEngineRecording.c` recordings and requests from other threads, `FluxoEngineLive.c` the live packet loop and
   reconnection, and `FluxoEngineVODPlan.c`, `FluxoEngineVODPackets.c` and `FluxoEngineVOD.c` on-demand inputs. They share
   `FluxoEngineInternal.h` (limits, types, the functions one file calls in another; hidden from the binary's exports).
   The converter is `FluxoTranscoder.h` / `.c` (decisions, the stream reader) with `FluxoTranscoderVideo.c` and
-  `FluxoTranscoderAudio.c`, sharing `FluxoTranscoderInternal.h`. The tools that build the engine take every `.c` file
-  of the folder (`FLUXO_ENGINE_SOURCES` in `Tools/FFmpeg/env.sh`).
+  `FluxoTranscoderAudio.c`, sharing `FluxoTranscoderInternal.h`. The tools that build the engine take every `.c` and
+  `.m` file of the folder (`FLUXO_ENGINE_SOURCES` in `Tools/FFmpeg/env.sh`; Objective-C with ARC).

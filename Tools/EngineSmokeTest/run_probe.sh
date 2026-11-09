@@ -15,6 +15,10 @@
 #   Tools/EngineSmokeTest/run_probe.sh                 everything
 #   SANITIZE=1 Tools/EngineSmokeTest/run_probe.sh      the same with AddressSanitizer and UndefinedBehaviorSanitizer (any
 #                                                      report fails the run)
+#   TLS=1.3 Tools/EngineSmokeTest/run_probe.sh         through an HTTPS front of the server: 1.2, 1.3 (TLS 1.3 only) or h2
+#                                                      (HTTP/2), see tls.sh (needs Node.js)
+#   FLUXO_HTTP_INPUT=ffmpeg Tools/EngineSmokeTest/run_probe.sh   with FFmpeg's http protocol instead of the URL loading
+#                                                      system (the app's Legacy Networking)
 #
 # The media are the format matrix's (run_formats.sh MEDIA_ONLY=1 makes them, with ffmpeg).
 set -eu
@@ -52,13 +56,17 @@ if [ "${SANITIZE:-0}" = 1 ]; then
     export UBSAN_OPTIONS=${UBSAN_OPTIONS:-print_stacktrace=1:halt_on_error=1}
 fi
 # shellcheck disable=SC2086 # FLAGS / FFMPEG_CFLAGS / FFMPEG_LDFLAGS / FLUXO_ENGINE_SOURCES are lists of words.
-clang $FLAGS -Wall -Wextra -Wno-unused-parameter -DFLUXO_ENGINE_TRACE -o "$BIN" -I "$ROOT/Fluxo/Features/Player/Engine" $FFMPEG_CFLAGS \
+clang $FLAGS -Wall -Wextra -Wno-unused-parameter -DFLUXO_ENGINE_TRACE -DFLUXO_ENGINE_TESTING -o "$BIN" -I "$ROOT/Fluxo/Features/Player/Engine" $FFMPEG_CFLAGS \
     "$ROOT/Tools/EngineSmokeTest/probe.c" $FLUXO_ENGINE_SOURCES $FFMPEG_LDFLAGS
 
 cleanup() {
     # (Never "kill 0": that is the whole process group.)
     if [ -n "${SERVER_PID:-}" ]; then
         kill "$SERVER_PID" 2>/dev/null || true
+    fi
+    # TLS=…: the HTTPS front (tls.sh).
+    if command -v tls_stop_all > /dev/null 2>&1; then
+        tls_stop_all
     fi
 }
 trap cleanup EXIT INT TERM
@@ -73,6 +81,11 @@ sleep 1
 lsof -nP -iTCP:"$PORT" -sTCP:LISTEN | grep -q "127.0.0.1:$PORT" || { echo "error: the media server is not listening on 127.0.0.1:$PORT" >&2; exit 1; }
 
 B=http://127.0.0.1:$PORT
+if [ -n "${TLS:-}" ]; then
+    # TLS=1.2|1.3|h2: through an HTTPS front of the server (tls.sh).
+    . "$ROOT/Tools/EngineSmokeTest/tls.sh"
+    tls_wrap "$PORT" "$WORK"
+fi
 # A port of 127.0.0.1 nothing listens on (refused connections).
 CLOSED=1
 while lsof -nP -iTCP:"$CLOSED" -sTCP:LISTEN > /dev/null 2>&1; do CLOSED=$((CLOSED + 1)); done

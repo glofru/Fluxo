@@ -50,6 +50,8 @@ static void churn_on_demand(const char *input, const char *directory, int cycle)
     snprintf(prefix, sizeof(prefix), "%s/stream-vod", directory);
     FluxoRemuxConfig config;
     memset(&config, 0, sizeof(config));
+    // FLUXO_HTTP_INPUT=ffmpeg: FFmpeg's http protocol instead of the URL loading system (the app's Legacy Networking).
+    config.http_input = getenv("FLUXO_HTTP_INPUT") != NULL && strcmp(getenv("FLUXO_HTTP_INPUT"), "ffmpeg") == 0 ? FluxoRemuxHTTPInputLibavformat : FluxoRemuxHTTPInputSystem;
     config.input_url = input;
     config.io_timeout_us = 5 * 1000000LL;
     config.is_live = 0;
@@ -113,6 +115,8 @@ int main(int argc, char **argv) {
     for (int cycle = 1; cycle <= cycles; cycle++) {
         FluxoRemuxConfig config;
         memset(&config, 0, sizeof(config));
+        // FLUXO_HTTP_INPUT=ffmpeg: FFmpeg's http protocol instead of the URL loading system (the app's Legacy Networking).
+        config.http_input = getenv("FLUXO_HTTP_INPUT") != NULL && strcmp(getenv("FLUXO_HTTP_INPUT"), "ffmpeg") == 0 ? FluxoRemuxHTTPInputLibavformat : FluxoRemuxHTTPInputSystem;
         config.input_url = input;
         config.io_timeout_us = 5 * 1000000LL;
         config.is_live = 1;

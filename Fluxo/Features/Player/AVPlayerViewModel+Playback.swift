@@ -77,6 +77,7 @@ extension AVPlayerViewModel {
                 name: "\(channel.id.uuidString.prefix(8))-\(UUID().uuidString.prefix(8))",
                 isLive: isLive
             )
+            configuration.httpInput = PlayerPreferences.legacyNetworking ? .ffmpeg : .system
             if isLive {
                 configuration.maxWindowDuration = PlayerPreferences.timeShiftDuration
                 configuration.maxWindowBytes = Self.diskBudget(for: outputDirectory, maximum: PlayerPreferences.timeShiftBytes)

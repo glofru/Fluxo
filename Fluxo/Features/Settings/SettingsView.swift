@@ -21,6 +21,7 @@ struct SettingsView: View {
     @AppStorage(PlayerPreferences.skipForwardSecondsKey) private var skipForwardSeconds = PlayerPreferences.defaultSkipForwardSeconds
     @AppStorage(PlayerPreferences.autoPictureInPictureKey) private var autoPictureInPicture = PlayerPreferences.defaultAutoPictureInPicture
     @AppStorage(PlayerPreferences.pictureInPictureOnCloseKey) private var pictureInPictureOnClose = PlayerPreferences.defaultPictureInPictureOnClose
+    @AppStorage(PlayerPreferences.legacyNetworkingKey) private var legacyNetworking = PlayerPreferences.defaultLegacyNetworking
     @AppStorage(RecordingLimits.maximumMinutesKey) private var maximumRecordingMinutes = RecordingLimits.defaultMaximumMinutes
 
     @State private var viewModel = SettingsViewModel()
@@ -177,11 +178,16 @@ struct SettingsView: View {
             } label: {
                 SettingsLabel("Skip forward", systemImage: "goforward", tint: Theme.accent)
             }
+
+            Toggle(isOn: $legacyNetworking) {
+                SettingsLabel(localized: PlayerPreferences.legacyNetworkingTitle, systemImage: "network", tint: Theme.warning)
+            }
         } header: {
             Text("Playback")
         } footer: {
             VStack(alignment: .leading, spacing: 8) {
                 Text("How far back you can go in a live channel. Applies the next time a channel starts. The buffer uses at most \(Self.bytes(PlayerPreferences.timeShiftBytes)) and never more than a tenth of the free space.")
+                Text(PlayerPreferences.legacyNetworkingFooter)
                 // What the app does differently to save energy (`PlaybackEnergyProfile`, `EPGStore`).
                 if PowerMonitor.shared.thermalState.isThrottling {
                     Text("Your device is warm: streams that offer several qualities play at a lower one, and the TV guide waits to refresh until it cools down.", comment: "Settings, Playback footer: shown while the device is hot (serious or critical thermal state).")

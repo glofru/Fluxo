@@ -27,14 +27,27 @@
 //      discontinuity too (the dates follow the media timeline).
 //  engine-probe convert <input-file> <output.mp4>
 //      Converts a file like a download (fluxo_remux_convert_file).
-//  Every mode prints the peak memory footprint of the process at the end ("[probe] footprint"), also in the iOS
-//  Simulator (xcrun simctl spawn), where the encoder's memory is in the process.
+//  engine-probe read <input-url> <output-dir>
+//      Plays the input on demand and requests every segment in order, each once the one before is on disk: the whole
+//      input read as fast as the network and the engine allow (run_http.sh compares the inputs' CPU time and memory with it).
+//  engine-probe live <input-url> <output-dir> <seconds> <min-segments>
+//      Plays a live input for <seconds>: at least <min-segments> segments must be written and the session must not fail.
+//  engine-probe play <input-url> <output-dir> <seconds> <speed>
+//      Plays the input on demand from its start at <speed> times real time for <seconds>, like a player: requests each
+//      segment once the one before has played (its EXTINF / <speed>). The engine reads 60 s ahead and then stops
+//      reading until it is 30 s ahead, so its connection stays unread for 30 s / <speed> at a time. Every request must
+//      be served within 30 s and the session must never go to Reconnecting (run_http.sh: a connection left unread for
+//      longer than the I/O timeout must not fail, as FFmpeg's socket did not).
+//  FLUXO_HTTP_INPUT=ffmpeg reads http:// and https:// inputs with FFmpeg's http protocol instead of the URL loading
+//  system; FLUXO_PROBE_IO_TIMEOUT_MS sets the engine's network timeout (the app's 15 s otherwise). Every mode prints the peak memory footprint and the CPU time of the process at the end ("[probe] footprint",
+//  also in the iOS Simulator, xcrun simctl spawn, where the encoder's memory is in the process).
 //
 
 #include "FluxoRemuxEngine.h"
 
 #include <mach/mach.h>
 #include <math.h>
+#include <sys/resource.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -45,6 +58,7 @@
 static atomic_int last_state = FluxoRemuxStateIdle;
 static atomic_int segments_written;
 static atomic_int state_changes;
+static atomic_int reconnecting_states;
 // FluxoRemuxEventInputSuspended: how many, and the last segment before the pause; the last segment written.
 static atomic_int suspended_events;
 static atomic_llong suspended_after = -1;
@@ -56,6 +70,11 @@ static void print_footprint(void) {
     mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
     if (task_info(mach_task_self(), TASK_VM_INFO, (task_info_t)&info, &count) == KERN_SUCCESS) {
         printf("[probe] footprint now=%.1f MB peak=%.1f MB\n", info.phys_footprint / 1048576.0, info.ledger_phys_footprint_peak / 1048576.0);
+    }
+    struct rusage usage;
+    if (getrusage(RUSAGE_SELF, &usage) == 0) {
+        printf("[probe] cpu user=%.2f s system=%.2f s\n", usage.ru_utime.tv_sec + usage.ru_utime.tv_usec / 1e6,
+               usage.ru_stime.tv_sec + usage.ru_stime.tv_usec / 1e6);
     }
 }
 
@@ -81,6 +100,9 @@ static void on_event(void *context, const FluxoRemuxEvent *event) {
             snprintf(last_message, sizeof(last_message), "%s", event->message);
         }
         atomic_store(&last_state, (int)event->state);
+        if (event->state == FluxoRemuxStateReconnecting) {
+            atomic_fetch_add(&reconnecting_states, 1);
+        }
         printf("[probe] state=%d attempt=%d message=%s\n", event->state, event->reconnect_attempt, event->message ? event->message : "-");
         fflush(stdout);
     }
@@ -93,8 +115,12 @@ static FluxoRemuxSession *make_session(const char *input, const char *directory,
     snprintf(prefix, sizeof(prefix), "%s/stream-probe", directory);
     FluxoRemuxConfig config;
     memset(&config, 0, sizeof(config));
+    // FLUXO_HTTP_INPUT=ffmpeg: FFmpeg's http protocol instead of the URL loading system (the app's Legacy Networking).
+    config.http_input = getenv("FLUXO_HTTP_INPUT") != NULL && strcmp(getenv("FLUXO_HTTP_INPUT"), "ffmpeg") == 0 ? FluxoRemuxHTTPInputLibavformat : FluxoRemuxHTTPInputSystem;
     config.input_url = input;
-    config.io_timeout_us = 15 * 1000000LL;
+    // FLUXO_PROBE_IO_TIMEOUT_MS: another timeout than the app's 15 s (the stalled-segment cases of run_http.sh).
+    const char *timeout_ms = getenv("FLUXO_PROBE_IO_TIMEOUT_MS");
+    config.io_timeout_us = timeout_ms != NULL && atoll(timeout_ms) > 0 ? atoll(timeout_ms) * 1000LL : 15 * 1000000LL;
     config.is_live = is_live;
     // As the app: StreamRemuxer.Configuration / AVPlayerViewModel.
     config.read_ahead_duration = 60;
@@ -153,7 +179,12 @@ static int run_vod(const char *input, const char *directory, int count, char **i
     }
     char playlist[1024];
     snprintf(playlist, sizeof(playlist), "%s/stream-probe.m3u8", directory);
+    // An input without a plan (no byte ranges, no index) lists its segments as they are written: wait for the first.
     int planned = count_in_file(playlist, "#EXTINF");
+    while (planned <= 0 && atomic_load(&last_state) == FluxoRemuxStateRunning && now_seconds() - begin < 30) {
+        usleep(20000);
+        planned = count_in_file(playlist, "#EXTINF");
+    }
     for (int i = 0; i < count; i++) {
         int64_t index = atoll(indexes[i]);
         if (strchr(indexes[i], '%') != NULL) {
@@ -318,6 +349,113 @@ static int run_suspend(const char *input, const char *directory) {
     return ok ? 0 : 1;
 }
 
+static int run_read(const char *input, const char *directory) {
+    FluxoRemuxSession *session = make_session(input, directory, 0);
+    double begin = now_seconds();
+    while (atomic_load(&last_state) != FluxoRemuxStateRunning && atomic_load(&last_state) != FluxoRemuxStateFailed && now_seconds() - begin < 30) {
+        usleep(20000);
+    }
+    char playlist[1024];
+    snprintf(playlist, sizeof(playlist), "%s/stream-probe.m3u8", directory);
+    int planned = count_in_file(playlist, "#EXTINF");
+    int served = 0;
+    double slowest = 0;
+    for (int64_t index = 0; index < planned; index++) {
+        double elapsed = 0;
+        int32_t result = request(session, index, 60, &elapsed);
+        if (result != 1) {
+            printf("[probe] request %lld => %d after %.2f s FAIL\n", (long long)index, result, elapsed);
+            break;
+        }
+        slowest = elapsed > slowest ? elapsed : slowest;
+        served++;
+    }
+    double total = now_seconds() - begin;
+    fluxo_remux_destroy(session);
+    int ok = planned > 0 && served == planned;
+    printf("[probe] read %d of %d segments in %.2f s (slowest request %.2f s) => %s\n", served, planned, total, slowest, ok ? "PASS" : "FAIL");
+    return ok ? 0 : 1;
+}
+
+// The duration of segment `index` in the playlist (its EXTINF), -1 when it is not listed (yet).
+static double segment_duration(const char *path, int64_t index) {
+    FILE *file = fopen(path, "r");
+    if (file == NULL) {
+        return -1;
+    }
+    char line[4096];
+    int64_t seen = 0;
+    double duration = -1;
+    while (fgets(line, sizeof(line), file) != NULL) {
+        if (strncmp(line, "#EXTINF:", 8) == 0 && seen++ == index) {
+            duration = atof(line + 8);
+            break;
+        }
+    }
+    fclose(file);
+    return duration;
+}
+
+static int run_play(const char *input, const char *directory, double seconds, double speed) {
+    FluxoRemuxSession *session = make_session(input, directory, 0);
+    double begin = now_seconds();
+    while (atomic_load(&last_state) != FluxoRemuxStateRunning && atomic_load(&last_state) != FluxoRemuxStateFailed && now_seconds() - begin < 30) {
+        usleep(20000);
+    }
+    char playlist[1024];
+    snprintf(playlist, sizeof(playlist), "%s/stream-probe.m3u8", directory);
+    double started = now_seconds();
+    double played = 0;
+    double slowest = 0;
+    int64_t index = 0;
+    int failed = 0;
+    while (now_seconds() - started < seconds) {
+        double elapsed = 0;
+        int32_t result = request(session, index, 30, &elapsed);
+        if (result != 1) {
+            printf("[probe] request %lld => %d after %.2f s FAIL\n", (long long)index, result, elapsed);
+            failed = 1;
+            break;
+        }
+        slowest = elapsed > slowest ? elapsed : slowest;
+        double duration = segment_duration(playlist, index);
+        if (duration <= 0) {
+            duration = 4;
+        }
+        played += duration;
+        index++;
+        // The segment plays: the next one is requested once it has.
+        double until = now_seconds() + duration / speed;
+        while (now_seconds() < until && now_seconds() - started < seconds) {
+            usleep(20000);
+        }
+    }
+    int reconnecting = atomic_load(&reconnecting_states);
+    int state = atomic_load(&last_state);
+    fluxo_remux_destroy(session);
+    int ok = !failed && index > 0 && reconnecting == 0 && (state == FluxoRemuxStateRunning || state == FluxoRemuxStateFinished);
+    printf("[probe] play %lld segments (%.0f s of media) in %.0f s at %.1fx (slowest request %.2f s), Reconnecting %d times, state=%d => %s\n",
+           (long long)index, played, now_seconds() - started, speed, slowest, reconnecting, state, ok ? "PASS" : "FAIL");
+    return ok ? 0 : 1;
+}
+
+static int run_live(const char *input, const char *directory, double seconds, int min_segments) {
+    FluxoRemuxSession *session = make_session(input, directory, 1);
+    double begin = now_seconds();
+    int failed = 0;
+    while (now_seconds() - begin < seconds) {
+        failed |= atomic_load(&last_state) == FluxoRemuxStateFailed;
+        usleep(100000);
+    }
+    int segments = atomic_load(&segments_written);
+    int state = atomic_load(&last_state);
+    fluxo_remux_destroy(session);
+    int ok = !failed && segments >= min_segments && (state == FluxoRemuxStateRunning || state == FluxoRemuxStateReconnecting);
+    printf("[probe] live %d segments in %.0f s (at least %d) state=%d message=\"%s\" => %s\n", segments, seconds, min_segments, state, last_message,
+           ok ? "PASS" : "FAIL");
+    return ok ? 0 : 1;
+}
+
 static int run_convert(const char *input, const char *output) {
     double begin = now_seconds();
     double duration = 0;
@@ -342,11 +480,17 @@ int main(int argc, char **argv) {
         status = run_suspend(argv[2], argv[3]);
     } else if (argc == 4 && strcmp(argv[1], "convert") == 0) {
         status = run_convert(argv[2], argv[3]);
+    } else if (argc == 4 && strcmp(argv[1], "read") == 0) {
+        status = run_read(argv[2], argv[3]);
+    } else if (argc == 6 && strcmp(argv[1], "live") == 0) {
+        status = run_live(argv[2], argv[3], atof(argv[4]), atoi(argv[5]));
+    } else if (argc == 6 && strcmp(argv[1], "play") == 0 && atof(argv[5]) > 0) {
+        status = run_play(argv[2], argv[3], atof(argv[4]), atof(argv[5]));
     }
     if (status >= 0) {
         print_footprint();
         return status;
     }
-    fprintf(stderr, "usage: %s vod <input-url> <output-dir> <index>... | dead <input-url> <output-dir> <max-seconds> | finished <input-url> <output-dir> | ended <input-url> <output-dir> <index> <max-seconds> | suspend <live-url> <output-dir> | convert <input> <output.mp4>\n", argv[0]);
+    fprintf(stderr, "usage: %s vod <input-url> <output-dir> <index>... | dead <input-url> <output-dir> <max-seconds> | finished <input-url> <output-dir> | ended <input-url> <output-dir> <index> <max-seconds> | suspend <live-url> <output-dir> | convert <input> <output.mp4> | read <input-url> <output-dir> | live <input-url> <output-dir> <seconds> <min-segments> | play <input-url> <output-dir> <seconds> <speed>\n", argv[0]);
     return 2;
 }

@@ -35,6 +35,7 @@ model does not run behind the tests. Tests that need a store make their own: an 
 | Download failures (`DownloadFailureTests`) | A system error of no known kind keeps its domain, code and the language of its description, shown only in that language; uninformative errors; the stored form and the texts of earlier builds |
 | Smart Search chips (`SmartSearchChipsTests`) | The chips show the viewer's own words, not the synonyms and translations searched with them, also for Japanese and Chinese queries written without spaces |
 | Diagnostic reports (`DiagnosticReportStoreTests`) | The on-device ring buffer of MetricKit reports: order, kinds, the count, size and age limits, the export ([Diagnostics](diagnostics.md)) |
+| Engine messages (`EngineMessageTests`) | The reasons of the engine's errors from FFmpeg's codes and texts (network, HTTP statuses, the engine's own TLS errors), both parts of a message translated, the code and stage an engine error carries |
 | Harness playback probe (`HarnessProbeTests`) | Where the simulator harness counts a seek as landed (`DebugPlaybackProbe.isAtTarget`) |
 
 The name tables are shared with the `Tools/` checks: `FluxoTests/Fixtures/EpisodeParserCases.swift` (also compiled by
@@ -67,14 +68,30 @@ at a time; `Tools/CI/checks.sh guide series` runs some. Each script also runs on
 | `playlist` | `Tools/PlaylistBenchmark`: the streaming M3U import against the former one |
 | `image-loader` | `Tools/ImageLoaderBenchmark`: the logo loader against the former path (needs `ffmpeg`) |
 | `engine` | `Tools/EngineSmokeTest/run.sh`: the remux engine on a local live stream with a reconnection (needs `ffmpeg`) |
+| `http-input` | `Tools/EngineSmokeTest/run_http.sh http`: the engine's HTTP connections over HTTP, TLS 1.2, TLS 1.3 only and HTTP/2 (needs `ffmpeg` and Node.js; skipped without Node.js) |
 | `test-streams` | The harness's test server (`Tools/Simulator/test_stream_server.py`) starts and serves every file it advertises (needs `ffmpeg`) |
 
 `ffmpeg` here is the command line program (`brew install ffmpeg`), a test tool that generates and inspects test
 streams; nothing links it. Every server the checks start is bound to 127.0.0.1.
 
-`Tools/EngineSmokeTest` has more engine scripts (formats, seeking, tracks, VOD, the engine probe, leaks) that take
-longer; run them when changing the engine. `run_probe.sh` and `leaks.sh` also run under AddressSanitizer and
-UndefinedBehaviorSanitizer with `SANITIZE=1` (see [Player](player.md)).
+`Tools/EngineSmokeTest` has more engine scripts (formats, seeking, tracks, VOD, the engine probe, the HTTP input,
+leaks) that take longer; run them when changing the engine. `run_probe.sh` and `leaks.sh` also run under
+AddressSanitizer and UndefinedBehaviorSanitizer with `SANITIZE=1` (see [Player](player.md)).
+
+The engine's HTTP input (the URL loading system, see [Network input](player.md#network-input)) has `run_http.sh`: its
+connections directly (`http_check.c`) and the whole engine (`probe.c`) against plain HTTP, TLS 1.2 only, TLS 1.3 only
+and HTTP/2 servers, servers without byte ranges, slow, stalling and flaky ones, redirections, cookies (each engine
+session's own), authentication (never sent to another server a redirection leads to), a 5 GB file, live MPEG-TS, live
+HLS and AES-128 HLS (live and on demand, with a segment whose server stops for 2 minutes: the read times out on every
+path, also the requests left to FFmpeg), connections left unread for longer than the timeout (`engine-paced`: movies
+played at 6 times real time, which must never drop, reopen or reconnect), and the CPU time and memory of both inputs. The HTTPS servers are Node.js
+fronts (`tls_proxy.mjs`, `tls.sh`) of `vod_server.py` on 127.0.0.1, with certificates of a test authority that `tls.sh`
+makes for the run: only the tools trust it (built with `-DFLUXO_ENGINE_TESTING`, which reads `FLUXO_TEST_CA_FILE`;
+never the app, never the Mac's keychain). In the iOS Simulator the authority goes into the clone's keychain instead
+(`xcrun simctl keychain <udid> add-root-cert <ca.pem>`), and the app then plays `https://127.0.0.1:<port>/…` with its
+usual trust. `TLS=1.2|1.3|h2` runs `run_vod.sh`, `run_formats.sh` and `run_probe.sh` through such a front, and
+`FLUXO_HTTP_INPUT=ffmpeg` makes every engine tool use FFmpeg's http protocol, as Settings › Playback › Legacy
+Networking does. They need Node.js (the system's Python has neither TLS 1.3 nor HTTP/2).
 
 ## Simulator harness and UI tests
 

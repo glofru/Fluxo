@@ -90,11 +90,28 @@ struct EngineMessageTests {
         #expect(EngineMessage.reason(of: NSError(domain: NSURLErrorDomain, code: Int(-ECONNREFUSED))) == nil)
     }
 
+    @Test("The engine's TLS errors (its HTTP input through the URL loading system) are FFmpeg tags with their own reasons")
+    func tlsErrors() {
+        let certificate = Self.tag(UInt8(ascii: "F"), UInt8(ascii: "X"), UInt8(ascii: "T"), UInt8(ascii: "C"))
+        let handshake = Self.tag(UInt8(ascii: "F"), UInt8(ascii: "X"), UInt8(ascii: "T"), UInt8(ascii: "L"))
+        #expect(Int32(FLUXO_REMUX_ERROR_TLS_CERTIFICATE) == certificate)
+        #expect(Int32(FLUXO_REMUX_ERROR_TLS_HANDSHAKE) == handshake)
+        #expect(EngineMessage.reason(code: certificate) == .untrustedCertificate)
+        #expect(EngineMessage.reason(code: handshake) == .secureConnectionFailed)
+        // The engine's English text for them (fluxo_format_error), and by code.
+        #expect(EngineMessage.localized("Unable to open the stream: Server certificate not trusted")
+                == "Unable to open the stream: The server's security certificate isn't valid")
+        #expect(EngineMessage.localized("Unable to open the stream: Secure connection failed", code: handshake)
+                == "Unable to open the stream: A secure connection to the server couldn't be made")
+        #expect(EngineMessage.reason(of: EngineMessage.error(code: certificate, message: "Unable to open the stream: x")) == .untrustedCertificate)
+    }
+
     @Test("Every common reason has its own sentence")
     func sentences() {
         let reasons: [EngineMessage.Reason] = [
             .connectionRefused, .timedOut, .connectionReset, .networkUnreachable, .badRequest, .unauthorized, .forbidden,
             .notFound, .tooManyRequests, .otherClientError, .serverError, .invalidData, .endOfStream, .noSpace, .serverNotFound,
+            .untrustedCertificate, .secureConnectionFailed,
         ]
         let sentences = Set(reasons.map(\.localizedDescription))
         #expect(sentences.count == reasons.count)

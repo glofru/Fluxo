@@ -7,9 +7,10 @@
 #   Tools/CI/checks.sh guide series      # some of them (names below)
 #   SOURCE_PACKAGES=<derived data>/SourcePackages Tools/CI/checks.sh legal
 #
-# The checks marked "ffmpeg" need the ffmpeg command line program (`brew install ffmpeg`, a test tool only: nothing
-# links it); without it they are skipped, unless REQUIRE_FFMPEG=1. Nothing goes on the network: every server is bound
-# to 127.0.0.1, and GuideCheck runs offline. One check at a time; each one's log is in $LOG_DIR/check-<name>.log.
+# http-input also needs Node.js (skipped without it). The checks marked "ffmpeg" need the ffmpeg command line program
+# (`brew install ffmpeg`, a test tool only: nothing links it); without it they are skipped, unless REQUIRE_FFMPEG=1.
+# Nothing goes on the network: every server is bound to 127.0.0.1, and GuideCheck runs offline. One check at a time;
+# each one's log is in $LOG_DIR/check-<name>.log.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -17,7 +18,7 @@ log_dir="${LOG_DIR:-/tmp/fluxo-logs}"
 mkdir -p "$log_dir"
 FFMPEG_BIN="${FFMPEG:-$(command -v ffmpeg || true)}"
 
-ALL=(legal ffmpeg-framework sync series featured home-queries guide library playlist image-loader engine test-streams)
+ALL=(legal ffmpeg-framework sync series featured home-queries guide library playlist image-loader engine http-input test-streams)
 
 run_check() { # name
     case "$1" in
@@ -32,13 +33,15 @@ run_check() { # name
         playlist) ENTRIES=20000 "$ROOT/Tools/PlaylistBenchmark/run.sh" ;;
         image-loader) COUNT=60 FFMPEG="$FFMPEG_BIN" "$ROOT/Tools/ImageLoaderBenchmark/run.sh" ;;
         engine) FFMPEG="$FFMPEG_BIN" "$ROOT/Tools/EngineSmokeTest/run.sh" ;;
+        # The engine's HTTP input through the URL loading system: HTTP, TLS 1.2, TLS 1.3 only, HTTP/2 (needs Node.js).
+        http-input) FFMPEG="$FFMPEG_BIN" "$ROOT/Tools/EngineSmokeTest/run_http.sh" http ;;
         test-streams) test_streams ;;
         *) echo "unknown check $1 (checks: ${ALL[*]})"; return 2 ;;
     esac
 }
 
 needs_ffmpeg() {
-    case "$1" in image-loader | engine | test-streams) return 0 ;; *) return 1 ;; esac
+    case "$1" in image-loader | engine | http-input | test-streams) return 0 ;; *) return 1 ;; esac
 }
 
 # The simulator harness's loopback test server (Tools/Simulator/test_stream_server.py) starts, and every on-demand
@@ -82,6 +85,11 @@ for name in "${selected[@]}"; do
         else
             echo "skip  $name (no ffmpeg command line program)"
         fi
+        continue
+    fi
+    if [ "$name" = http-input ] && ! command -v node > /dev/null 2>&1; then
+        # (The HTTPS test servers are Node.js: the system's Python has neither TLS 1.3 nor HTTP/2.)
+        echo "skip  $name (no Node.js)"
         continue
     fi
     started=$(date +%s)

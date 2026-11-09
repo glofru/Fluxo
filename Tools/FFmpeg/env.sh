@@ -15,11 +15,12 @@ if [ -z "$FFMPEG_MACOS_SLICE" ]; then
     echo "error: no macOS slice in $FFMPEG_XCFRAMEWORK (run Tools/FFmpeg/build-xcframework.sh)" >&2
     exit 1
 fi
-FFMPEG_CFLAGS="-I $ROOT/Vendor/FFmpeg/include"
-# The engine's converter (FluxoTranscoder*.c) asks VideoToolbox what the device decodes.
-FFMPEG_LDFLAGS="-F $FFMPEG_MACOS_SLICE -framework FFmpeg -Wl,-rpath,$FFMPEG_MACOS_SLICE -framework VideoToolbox -framework CoreMedia -framework CoreFoundation"
-# The C sources of the remux engine (every .c file of its folder, which has no other), for the tools that build it.
-FLUXO_ENGINE_SOURCES=$(echo "$ROOT"/Fluxo/Features/Player/Engine/*.c)
+# (-fobjc-arc: the engine's HTTP input, FluxoEngineHTTP.m, is Objective-C with ARC, as in the app.)
+FFMPEG_CFLAGS="-I $ROOT/Vendor/FFmpeg/include -fobjc-arc"
+# The engine's converter (FluxoTranscoder*.c) asks VideoToolbox what the device decodes; its HTTP input uses URLSession.
+FFMPEG_LDFLAGS="-F $FFMPEG_MACOS_SLICE -framework FFmpeg -Wl,-rpath,$FFMPEG_MACOS_SLICE -framework VideoToolbox -framework CoreMedia -framework CoreFoundation -framework Foundation -framework Security"
+# The sources of the remux engine (every .c and .m file of its folder, which has no other), for the tools that build it.
+FLUXO_ENGINE_SOURCES=$(echo "$ROOT"/Fluxo/Features/Player/Engine/*.c "$ROOT"/Fluxo/Features/Player/Engine/*.m)
 
 FFMPEG=${FFMPEG:-$(command -v ffmpeg || echo /opt/homebrew/bin/ffmpeg)}
 FFPROBE=${FFPROBE:-$(command -v ffprobe || echo /opt/homebrew/bin/ffprobe)}

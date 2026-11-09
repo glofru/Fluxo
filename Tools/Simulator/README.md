@@ -180,6 +180,7 @@ first that contains the text.
 | `featured-seed:<n\|next>` | The featured pages (billboard, Apple TV hero) of a given seed, or of the next rotation (as pull to refresh). |
 | `featured-page:<n>` | Shows a page of the featured billboard (the Mac's featured cards, the Apple TV hero), from 0; on iPhone, iPad and Mac it pages as a swipe does. The app log lists the pages (`Featured (seed …)`). E.g. `featured-page:2;orientation:landscape;orientation:portrait` checks that a rotation keeps that page aligned. |
 | `hide-adult-content:<on\|off>` | Settings › Recommendations › Hide adult content from recommendations. |
+| `legacy-networking:<on\|off>` | Settings › Playback › Legacy Networking: the streams the engine opens are read with FFmpeg's http protocol (Secure Transport: no TLS 1.3) instead of the URL loading system, from the next one that starts. |
 | `audio-track:<name\|number>` | Chooses an audio track of what plays (by name, e.g. `Italian`, or 1-based number), as the Audio and Subtitles menu does (and so remembers its language). |
 | `subtitles:<automatic\|off\|file\|name\|number>` | Chooses the subtitles of what plays (`file`: the loaded subtitle file). |
 | `subtitle-file:<url>` | Loads a SubRip / WebVTT file (a file URL, or http such as the test server's `/subtitles/clip.srt`) for the movie or episode that plays, as Load Subtitle File… does. |
@@ -246,7 +247,7 @@ first that contains the text.
 | `settings-section:guide` | Settings, scrolled to TV Guide (its sources, Remind Me). |
 | `settings-section:icloud` | Settings, scrolled to iCloud. |
 | `settings-section:intelligence` | Settings, scrolled to Apple Intelligence (Personal Suggestions and Smart Search). |
-| `settings-section:playback` | Settings, scrolled to Playback (Time-shift buffer, Skip back, Skip forward). |
+| `settings-section:playback` | Settings, scrolled to Playback (Time-shift buffer, Skip back, Skip forward, Legacy Networking). |
 | `settings-section:recordings` | Settings, scrolled to Recordings (Stop Recording After). |
 | `settings-section:recommendations` | Settings, scrolled to Recommendations (Hide adult content from recommendations). |
 | `settings-section:siri` | Settings, scrolled to Siri & Shortcuts. |

@@ -20,6 +20,8 @@
 #
 #   Tools/EngineSmokeTest/run_vod.sh                 every case
 #   Tools/EngineSmokeTest/run_vod.sh mkv-h264 ts     cases whose name contains one of the words
+#   TLS=1.3 Tools/EngineSmokeTest/run_vod.sh         through an HTTPS front of the server: 1.2, 1.3 (TLS 1.3 only) or h2
+#                                                    (HTTP/2), see tls.sh (needs Node.js)
 #
 # Needs ffmpeg / ffprobe (see Tools/FFmpeg/env.sh) to generate the media, and network access the first
 # time (Swift Package Manager fetches FlyingFox at the version the app uses).
@@ -97,6 +99,10 @@ cleanup() {
     if [ -n "${SERVER_PID:-}" ]; then
         kill "$SERVER_PID" 2>/dev/null || true
     fi
+    # TLS=…: the HTTPS front (tls.sh).
+    if command -v tls_stop_all > /dev/null 2>&1; then
+        tls_stop_all
+    fi
 }
 trap cleanup EXIT INT TERM
 
@@ -117,6 +123,11 @@ sleep 1
 lsof -nP -iTCP:"$PORT" -sTCP:LISTEN | grep -q "127.0.0.1:$PORT" || { echo "error: the media server is not listening on 127.0.0.1:$PORT" >&2; exit 1; }
 
 B=http://127.0.0.1:$PORT
+if [ -n "${TLS:-}" ]; then
+    # TLS=1.2|1.3|h2: through an HTTPS front of the server (tls.sh).
+    . "$ROOT/Tools/EngineSmokeTest/tls.sh"
+    tls_wrap "$PORT" "$WORK"
+fi
 # name|url|kind
 CASES="
 mp4-moov-first|$B/movie/user/pass/h264.mp4|movie
@@ -163,6 +174,12 @@ for line in $CASES; do
             case $name in *"$word"*) match=1 ;; esac
         done
         [ $match -eq 1 ] || continue
+    fi
+    if [ -n "${TLS:-}" ] && [ "$name" = hls-vod ]; then
+        # (Only AVPlayer plays HLS, with its own TLS, which does not trust the checks' authority.)
+        summary="$summary
+SKIP $name (TLS: AVPlayer only)"
+        continue
     fi
     echo "=== $name ($kind) $url"
     # dropped-*: AVPlayer dropping seeks (VODCheck SCENARIO=dropped, Stress.swift).

@@ -93,6 +93,8 @@ int main(int argc, char **argv) {
 
     FluxoRemuxConfig config;
     memset(&config, 0, sizeof(config));
+    // FLUXO_HTTP_INPUT=ffmpeg: FFmpeg's http protocol instead of the URL loading system (the app's Legacy Networking).
+    config.http_input = getenv("FLUXO_HTTP_INPUT") != NULL && strcmp(getenv("FLUXO_HTTP_INPUT"), "ffmpeg") == 0 ? FluxoRemuxHTTPInputLibavformat : FluxoRemuxHTTPInputSystem;
     config.input_url = input;
     config.io_timeout_us = 5 * 1000000LL;
     config.is_live = is_vod ? 0 : 1;

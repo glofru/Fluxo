@@ -7,7 +7,8 @@ build_check() {
     pkg=$WORK/package
     rm -rf "$pkg"
     mkdir -p "$pkg/Sources/FluxoEngine/include" "$pkg/Sources/VODCheck"
-    # The engine's C files and its internal headers; its interface (FluxoRemuxEngine.h) is the module's public header.
+    # The engine's C and Objective-C files and its internal headers; its interface (FluxoRemuxEngine.h) is the module's
+    # public header.
     # shellcheck disable=SC2086 # FLUXO_ENGINE_SOURCES is a list of words.
     cp $FLUXO_ENGINE_SOURCES "$pkg/Sources/FluxoEngine/"
     for header in "$ROOT"/Fluxo/Features/Player/Engine/*.h; do
@@ -30,7 +31,8 @@ let package = Package(
     platforms: [.macOS("26.0")],
     dependencies: [.package(url: "https://github.com/swhitty/FlyingFox.git", exact: "$version")],
     targets: [
-        .target(name: "FluxoEngine", cSettings: [.unsafeFlags(["-I$ROOT/Vendor/FFmpeg/include", "-DFLUXO_ENGINE_TRACE"])]),
+        // FLUXO_ENGINE_TESTING: the TLS cases trust the local test servers' authority (FLUXO_TEST_CA_FILE), never the app.
+        .target(name: "FluxoEngine", cSettings: [.unsafeFlags(["-I$ROOT/Vendor/FFmpeg/include", "-fobjc-arc", "-DFLUXO_ENGINE_TRACE", "-DFLUXO_ENGINE_TESTING"])]),
         .executableTarget(
             name: "VODCheck",
             dependencies: ["FluxoEngine", .product(name: "FlyingFox", package: "FlyingFox")],
@@ -44,7 +46,7 @@ let package = Package(
             ],
             linkerSettings: [
                 .unsafeFlags(["-F$FFMPEG_MACOS_SLICE", "-framework", "FFmpeg", "-Xlinker", "-rpath", "-Xlinker", "$FFMPEG_MACOS_SLICE"]),
-                .linkedFramework("VideoToolbox"), .linkedFramework("CoreMedia"),
+                .linkedFramework("VideoToolbox"), .linkedFramework("CoreMedia"), .linkedFramework("Foundation"), .linkedFramework("Security"),
             ]
         ),
     ]

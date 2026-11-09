@@ -123,6 +123,18 @@ final class StreamRemuxer {
         /// "Connecting…" for 20 s.
         var quickOpen = true
         var userAgent: String?
+        /// How the engine reads http:// and https:// inputs (`FluxoRemuxConfig.http_input`).
+        var httpInput: HTTPInput = .system
+
+        /// How the engine reads http:// and https:// inputs.
+        enum HTTPInput: Equatable {
+            /// The system's URL loading system: TLS 1.3, HTTP/2, the system's proxy settings and trust store. A server it
+            /// cannot talk to is opened with FFmpeg's http protocol instead (the engine decides that by itself).
+            case system
+            /// FFmpeg's own http protocol, as before (TLS 1.2 at most, no system proxy): for servers that only work with it
+            /// (`PlayerPreferences.legacyNetworking`).
+            case ffmpeg
+        }
 
         var filePrefix: String {
             "stream-\(name)"
@@ -574,6 +586,7 @@ final class StreamRemuxer {
                             config.read_ahead_duration = configuration.readAheadDuration
                             config.start_time = configuration.startTime
                             config.quick_open = configuration.quickOpen ? 1 : 0
+                            config.http_input = configuration.httpInput == .ffmpeg ? .libavformat : .system
                             config.hls.playlist_path = playlistPointer
                             config.hls.segment_path_prefix = prefixPointer
                             config.hls.segment_duration = configuration.segmentDuration
@@ -741,6 +754,10 @@ enum EngineMessage {
         /// An input/output error (EIO) while opening the input: FFmpeg's failed name lookup has no code of its own
         /// (tcp.c, "Failed to resolve hostname"), nor do some other failures to reach the server.
         case serverNotFound
+        /// The server's TLS certificate is not trusted (`FLUXO_REMUX_ERROR_TLS_CERTIFICATE`).
+        case untrustedCertificate
+        /// No secure connection could be made with the server (`FLUXO_REMUX_ERROR_TLS_HANDSHAKE`).
+        case secureConnectionFailed
 
         var localizedDescription: String {
             switch self {
@@ -774,6 +791,10 @@ enum EngineMessage {
                 String(localized: "There isn't enough storage space", comment: "Player or recording error, the technical reason after 'Unable to write the stream:' and similar: the device's storage is full.")
             case .serverNotFound:
                 String(localized: "The server couldn't be found or reached", comment: "Player error, the technical reason after 'Unable to open the stream:': the server's name did not resolve, or it could not be reached (an input/output error while connecting).")
+            case .untrustedCertificate:
+                String(localized: "The server's security certificate isn't valid", comment: "Player or recording error, the technical reason after 'Unable to open the stream:' and similar: the HTTPS server's certificate is expired, for another server, or not from an authority the device trusts.")
+            case .secureConnectionFailed:
+                String(localized: "A secure connection to the server couldn't be made", comment: "Player or recording error, the technical reason after 'Unable to open the stream:' and similar: the TLS (HTTPS) handshake with the server failed.")
             }
         }
     }
@@ -818,6 +839,10 @@ enum EngineMessage {
             return .invalidData
         case errorTag("E", "O", "F", " "):
             return .endOfStream
+        case Int32(FLUXO_REMUX_ERROR_TLS_CERTIFICATE):
+            return .untrustedCertificate
+        case Int32(FLUXO_REMUX_ERROR_TLS_HANDSHAKE):
+            return .secureConnectionFailed
         default:
             return nil
         }
@@ -855,6 +880,10 @@ enum EngineMessage {
             return .invalidData
         case "End of file":
             return .endOfStream
+        case "Server certificate not trusted":
+            return .untrustedCertificate
+        case "Secure connection failed":
+            return .secureConnectionFailed
         default:
             return nil
         }

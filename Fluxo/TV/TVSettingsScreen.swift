@@ -25,6 +25,7 @@ struct TVSettingsScreen: View {
     @Query(EPGQueries.sources()) private var sources: [EPGSource]
     @AppStorage(PlaylistSelection.storageKey) private var selectionRawValue = ""
     @AppStorage(PlayerPreferences.timeShiftMinutesKey) private var timeShiftMinutes = PlayerPreferences.defaultTimeShiftMinutes
+    @AppStorage(PlayerPreferences.legacyNetworkingKey) private var legacyNetworking = PlayerPreferences.defaultLegacyNetworking
     @AppStorage(ReminderCenter.leadMinutesKey) private var leadMinutes = ReminderCenter.defaultLeadMinutes
     @AppStorage(RecordingLimits.maximumMinutesKey) private var maximumRecordingMinutes = RecordingLimits.defaultMaximumMinutes
     @Environment(PlaylistActions.self) private var actions
@@ -148,10 +149,16 @@ struct TVSettingsScreen: View {
                 } label: {
                     Label(String(localized: "Time-shift buffer"), systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
                 }
+                Toggle(isOn: $legacyNetworking) {
+                    Label(PlayerPreferences.legacyNetworkingTitle, systemImage: "network")
+                }
             } header: {
                 Text("Playback")
             } footer: {
-                Text(String(localized: "TV.settings.timeShift.footer", defaultValue: "How far back you can pause and rewind a live channel. Applies the next time a channel starts.", comment: "Apple TV Settings, Playback footer: what the time-shift buffer is."))
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(String(localized: "TV.settings.timeShift.footer", defaultValue: "How far back you can pause and rewind a live channel. Applies the next time a channel starts.", comment: "Apple TV Settings, Playback footer: what the time-shift buffer is."))
+                    Text(PlayerPreferences.legacyNetworkingFooter)
+                }
             }
             TrackSettingsSection()
             RecommendationSettingsSection()

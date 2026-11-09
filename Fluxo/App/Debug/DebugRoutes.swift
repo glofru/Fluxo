@@ -358,6 +358,12 @@ enum DebugRoutes {
             }
             UserDefaults.fluxo.set(argument == "on", forKey: MatureContent.hidesAdultContentKey)
         },
+        DebugRoute("legacy-networking:<on|off>", "Settings › Playback › Legacy Networking: the engine reads http(s) inputs with FFmpeg's http protocol.") { _, argument in
+            guard argument == "on" || argument == "off" else {
+                throw DebugRouteError.invalidArgument("legacy-networking", argument)
+            }
+            UserDefaults.fluxo.set(argument == "on", forKey: PlayerPreferences.legacyNetworkingKey)
+        },
         DebugRoute("favorite-series:<title>", "Adds a series to the favorites.") { context, argument in
             context.library.series.setFavorite(true, for: try context.series(named: argument))
         },

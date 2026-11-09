@@ -13,6 +13,8 @@
 #                                                        video, MP2 audio and 10-bit H.264 are converted, AV1 is not
 #                                                        decoded)
 #   MEDIA_ONLY=1 Tools/EngineSmokeTest/run_formats.sh    only generates the media (for Tools/Simulator/format-matrix.sh)
+#   TLS=1.3 Tools/EngineSmokeTest/run_formats.sh         through an HTTPS front of the server: 1.2, 1.3 (TLS 1.3 only) or
+#                                                        h2 (HTTP/2), see tls.sh (needs Node.js)
 #
 # The summary lists, for every case, the route (direct: AVPlayer; remux: the engine), the formats AVPlayer
 # decodes (video / audio four-character codes: converted streams show as avc1 / aac) and the result.
@@ -168,6 +170,10 @@ cleanup() {
     if [ -n "${SERVER_PID:-}" ]; then
         kill "$SERVER_PID" 2>/dev/null || true
     fi
+    # TLS=…: the HTTPS front (tls.sh).
+    if command -v tls_stop_all > /dev/null 2>&1; then
+        tls_stop_all
+    fi
 }
 trap cleanup EXIT INT TERM
 
@@ -183,6 +189,11 @@ sleep 1
 lsof -nP -iTCP:"$PORT" -sTCP:LISTEN | grep -q "127.0.0.1:$PORT" || { echo "error: the media server is not listening on 127.0.0.1:$PORT" >&2; exit 1; }
 
 B=http://127.0.0.1:$PORT
+if [ -n "${TLS:-}" ]; then
+    # TLS=1.2|1.3|h2: through an HTTPS front of the server (tls.sh).
+    . "$ROOT/Tools/EngineSmokeTest/tls.sh"
+    tls_wrap "$PORT" "$WORK"
+fi
 M=$B/movie/user/pass
 # name|url|kind|scenario|expects (a: audio, v: video)
 CASES="
@@ -269,7 +280,14 @@ for line in $CASES; do
     fi
     file=$(echo "$url" | sed -e 's|.*/||' -e 's|.*stream=||')
     case $name in
-        hls-*) ;;
+        hls-*)
+            # (Only AVPlayer plays HLS, with its own TLS, which does not trust the checks' authority.)
+            if [ -n "${TLS:-}" ]; then
+                skipped=$((skipped + 1))
+                summary="$summary
+SKIP $name (TLS: AVPlayer only)"
+                continue
+            fi ;;
         *) if [ ! -e "$MEDIA/$file" ] && ! ls "$MEDIA/$file".* > /dev/null 2>&1; then
                skipped=$((skipped + 1))
                summary="$summary
