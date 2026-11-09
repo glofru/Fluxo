@@ -922,7 +922,9 @@ enum EngineMessage {
         let reason = (code != 0 ? self.reason(code: code, stage: stage) : nil)
             ?? self.reason(text: parts[1])
             ?? (stage == openStage && parts[1] == "Input/output error" ? .serverNotFound : nil)
-        return String(localized: "\(localizedStage): \(reason?.localizedDescription ?? parts[1])", comment: "Player or recording error: what failed, then the reason (localized for the common ones, otherwise FFmpeg's technical reason in English).")
+        // FFmpeg's untranslated reason is English, often ending in digits or punctuation ("… not one of
+        // 40{0,1,3,4}"): isolated, so that it keeps its order in a right-to-left sentence.
+        return String(localized: "\(localizedStage): \(reason?.localizedDescription ?? TextParts.isolated(parts[1]))", comment: "Player or recording error: what failed, then the reason (localized for the common ones, otherwise FFmpeg's technical reason in English).")
     }
 
     /// The whole sentence for an engine message that says the video (or, without video, the audio) is in a format

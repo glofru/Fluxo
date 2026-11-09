@@ -160,7 +160,7 @@ private struct ReminderRow: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.tint)
-            .accessibilityLabel(reminder.channelName.map { Text("Watch \($0)", comment: "VoiceOver label of the button that plays a reminder's channel; the placeholder is the channel name.") } ?? Text("Watch the channel", comment: "VoiceOver label of the button that plays a reminder's channel when its name is unknown."))
+            .accessibilityLabel(reminder.channelName.map { Text("Watch \(TextParts.isolated($0))", comment: "Button or VoiceOver label that plays a channel (a reminder's, a programme's); the placeholder is the channel name.") } ?? Text("Watch the channel", comment: "VoiceOver label of the button that plays a reminder's channel when its name is unknown."))
         }
         .accessibilityElement(children: .combine)
         .rowSwipeActions(edge: .trailing) {

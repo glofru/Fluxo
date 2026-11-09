@@ -15812,7 +15812,105 @@
       }
     },
     "A secure connection to the server couldn't be made" : {
-      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:' and similar: the TLS (HTTPS) handshake with the server failed."
+      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:' and similar: the TLS (HTTPS) handshake with the server failed.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تعذّر إنشاء اتصال آمن بالخادم"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es konnte keine sichere Verbindung zum Server hergestellt werden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "no se ha podido establecer una conexión segura con el servidor"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "la connexion sécurisée avec le serveur n’a pas pu être établie"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "सर्वर से सुरक्षित कनेक्शन नहीं बन सका"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "koneksi aman ke server tidak dapat dibuat"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "non è stato possibile stabilire una connessione sicura con il server"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サーバへの安全な接続を確立できませんでした"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서버에 안전하게 연결할 수 없음"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "er kon geen beveiligde verbinding met de server worden gemaakt"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "nie udało się nawiązać bezpiecznego połączenia z serwerem"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "falha ao estabelecer uma conexão segura com o servidor"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "защищенное соединение с сервером не установлено"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sunucuyla güvenli bir bağlantı kurulamadı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法与服务器建立安全连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法與伺服器建立安全連線"
+          }
+        }
+      }
     },
     "AD" : {
       "comment" : "Short badge for an audio description track. Keep it very short.",
@@ -54682,7 +54780,105 @@
       }
     },
     "Legacy Networking" : {
-      "comment" : "Settings, Playback: a switch that makes streams connect with the network code of earlier versions of the app, for servers that stopped working after an update."
+      "comment" : "Settings, Playback: a switch that makes streams connect with the network code of earlier versions of the app, for servers that stopped working after an update.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الاتصال الشبكي القديم"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klassischer Netzwerkmodus"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Red clásica"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réseau classique"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "पुरानी नेटवर्किंग"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mode Jaringan Lama"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rete classica"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "従来のネットワーク接続"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "레거시 네트워킹"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oudere netwerkmodus"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Starszy tryb sieciowy"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rede legada"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Прежний сетевой режим"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eski Ağ Bağlantısı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "旧版网络连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "舊版網路連線"
+          }
+        }
+      }
     },
     "Library" : {
       "comment" : "The place with the favorites, recently watched and recordings: a tab and its title, and a sidebar section.",
@@ -82254,7 +82450,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "由于此设备的存储空间即将用尽，录制已停止。已录制的内容已存储。"
+            "value" : "由于此设备的储存空间即将用尽，录制已停止。已录制的内容已存储。"
           }
         },
         "zh-Hant" : {
@@ -82557,7 +82753,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "录像和下载项只能在 Fluxo 中播放，仅供个人观看。它们保留在此设备上，不包含在备份中。当设备存储空间即将用尽时，录制也会停止。"
+            "value" : "录像和下载项只能在 Fluxo 中播放，仅供个人观看。它们保留在此设备上，不包含在备份中。当设备储存空间即将用尽时，录制也会停止。"
           }
         },
         "zh-Hant" : {
@@ -120766,7 +120962,105 @@
       }
     },
     "The player couldn't start its local stream server. Try again." : {
-      "comment" : "Player error: the app's internal streaming server (on this device only) could not start."
+      "comment" : "Player error: the app's internal streaming server (on this device only) could not start.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تعذّر على المشغّل بدء خادم البث المحلي. أعد المحاولة."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Player konnte seinen lokalen Stream-Server nicht starten. Versuche es erneut."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El reproductor no ha podido iniciar su servidor de transmisión local. Vuelve a intentarlo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le lecteur n’a pas pu démarrer son serveur de flux local. Réessayez."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "प्लेयर अपना लोकल स्ट्रीम सर्वर शुरू नहीं कर सका। फिर से कोशिश करें।"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pemutar tidak dapat memulai server stream lokalnya. Coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il player non è riuscito ad avviare il proprio server di streaming locale. Riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プレーヤーのローカルストリームサーバを起動できませんでした。もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "플레이어의 로컬 스트림 서버를 시작할 수 없습니다. 다시 시도하십시오."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "De speler kan zijn lokale streamserver niet starten. Probeer het opnieuw."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Odtwarzacz nie mógł uruchomić lokalnego serwera strumieni. Spróbuj ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O reprodutor não conseguiu iniciar o servidor de transmissão local. Tente novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Плееру не удалось запустить локальный сервер потоков. Повторите попытку."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oynatıcı yerel yayın sunucusunu başlatamadı. Yeniden deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放器无法启动本地流服务器。请重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放器無法啟動本機串流伺服器。請再試一次。"
+          }
+        }
+      }
     },
     "The player is in another window." : {
       "comment" : "Text — separate player window (iPad, Mac).",
@@ -121779,10 +122073,206 @@
       }
     },
     "The server can't be reached from this network" : {
-      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:' and similar: no route to the server (the network is down or blocks it)."
+      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:' and similar: no route to the server (the network is down or blocks it).",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يتعذّر الوصول إلى الخادم من هذه الشبكة"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Server ist von diesem Netzwerk aus nicht erreichbar"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "no se puede acceder al servidor desde esta red"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "le serveur est inaccessible depuis ce réseau"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "इस नेटवर्क से सर्वर तक नहीं पहुँचा जा सकता"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "server tidak dapat dijangkau dari jaringan ini"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "il server non è raggiungibile da questa rete"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このネットワークからサーバに接続できません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 네트워크에서 서버에 연결할 수 없음"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "de server is niet bereikbaar vanaf dit netwerk"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "serwer jest nieosiągalny z tej sieci"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "o servidor não pode ser acessado a partir desta rede"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "сервер недоступен из этой сети"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sunucuya bu ağdan ulaşılamıyor"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法从此网络访问服务器"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法從此網路連線至伺服器"
+          }
+        }
+      }
     },
     "The server closed the connection" : {
-      "comment" : "Player or recording error, the technical reason after 'Stream interrupted:' and similar: the connection was reset by the server."
+      "comment" : "Player or recording error, the technical reason after 'Stream interrupted:' and similar: the connection was reset by the server.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "أغلق الخادم الاتصال"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Server hat die Verbindung getrennt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "el servidor ha cerrado la conexión"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "le serveur a fermé la connexion"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "सर्वर ने कनेक्शन बंद कर दिया"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "server menutup koneksi"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "il server ha chiuso la connessione"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サーバが接続を切断しました"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서버가 연결을 끊음"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "de server heeft de verbinding verbroken"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "serwer zamknął połączenie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "o servidor encerrou a conexão"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "сервер разорвал соединение"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sunucu bağlantıyı kapattı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器关闭了连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器關閉了連線"
+          }
+        }
+      }
     },
     "The server could not be found. Check the address of the guide." : {
       "comment" : "TV guide download error: the server name of the guide's address does not exist.",
@@ -121886,7 +122376,105 @@
       }
     },
     "The server couldn't be found or reached" : {
-      "comment" : "Player error, the technical reason after 'Unable to open the stream:': the server's name did not resolve, or it could not be reached (an input/output error while connecting)."
+      "comment" : "Player error, the technical reason after 'Unable to open the stream:': the server's name did not resolve, or it could not be reached (an input/output error while connecting).",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تعذّر العثور على الخادم أو الوصول إليه"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Server wurde nicht gefunden oder ist nicht erreichbar"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "no se ha podido encontrar el servidor o acceder a él"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "le serveur est introuvable ou inaccessible"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "सर्वर नहीं मिला या उस तक पहुँचा नहीं जा सका"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "server tidak ditemukan atau tidak dapat dijangkau"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "il server non è stato trovato o non è raggiungibile"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サーバが見つからないか、接続できませんでした"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서버를 찾을 수 없거나 연결할 수 없음"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "de server kan niet worden gevonden of bereikt"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "serwer nie został znaleziony lub jest nieosiągalny"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "o servidor não foi encontrado ou está inacessível"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "сервер не найден или недоступен"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sunucu bulunamadı veya sunucuya ulaşılamadı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "找不到服务器或无法连接到服务器"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "找不到伺服器或無法連線至伺服器"
+          }
+        }
+      }
     },
     "The server couldn’t be found. Check the playlist’s address and your network." : {
       "comment" : "Apple TV player, failure screen: the host name of the stream's server does not resolve. The technical reason shows under it.",
@@ -121990,13 +122578,307 @@
       }
     },
     "The server didn't accept the account (401)" : {
-      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:': the server answered HTTP 401 (wrong user name or password). Keep the number."
+      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:': the server answered HTTP 401 (wrong user name or password). Keep the number.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لم يقبل الخادم الحساب (401)"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Server hat das Konto nicht akzeptiert (401)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "el servidor no ha aceptado la cuenta (401)"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "le serveur n’a pas accepté le compte (401)"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "सर्वर ने अकाउंट स्वीकार नहीं किया (401)"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "server tidak menerima akun (401)"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "il server non ha accettato l’account (401)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サーバがアカウントを受け付けませんでした（401）"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서버가 계정을 수락하지 않음(401)"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "de server heeft het account niet geaccepteerd (401)"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "serwer nie zaakceptował konta (401)"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "o servidor não aceitou a conta (401)"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "сервер не принял учетную запись (401)"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sunucu hesabı kabul etmedi (401)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器不接受该账户（401）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器不接受該帳號（401）"
+          }
+        }
+      }
     },
     "The server didn't respond in time" : {
-      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:' and similar: the connection timed out."
+      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:' and similar: the connection timed out.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لم يستجب الخادم في الوقت المناسب"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Server hat nicht rechtzeitig geantwortet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "el servidor no ha respondido a tiempo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "le serveur n’a pas répondu à temps"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "सर्वर ने समय पर जवाब नहीं दिया"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "server tidak merespons tepat waktu"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "il server non ha risposto in tempo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サーバが時間内に応答しませんでした"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서버가 제시간에 응답하지 않음"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "de server reageerde niet op tijd"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "serwer nie odpowiedział na czas"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "o servidor não respondeu a tempo"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "сервер не ответил вовремя"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sunucu zamanında yanıt vermedi"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器未及时响应"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器未及時回應"
+          }
+        }
+      }
     },
     "The server didn't understand the request (400)" : {
-      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:': the server answered HTTP 400. Keep the number."
+      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:': the server answered HTTP 400. Keep the number.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لم يفهم الخادم الطلب (400)"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Server hat die Anfrage nicht verstanden (400)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "el servidor no ha entendido la solicitud (400)"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "le serveur n’a pas compris la requête (400)"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "सर्वर अनुरोध को समझ नहीं सका (400)"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "server tidak memahami permintaan (400)"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "il server non ha capito la richiesta (400)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サーバがリクエストを理解できませんでした（400）"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서버가 요청을 이해하지 못함(400)"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "de server begreep het verzoek niet (400)"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "serwer nie zrozumiał żądania (400)"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "o servidor não entendeu a solicitação (400)"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "сервер не смог обработать запрос (400)"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sunucu isteği anlamadı (400)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器无法理解请求（400）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器無法理解要求（400）"
+          }
+        }
+      }
     },
     "The server didn’t respond in time. Try again in a moment." : {
       "comment" : "Apple TV player, failure screen: the stream's server did not answer. The technical reason shows under it.",
@@ -122100,7 +122982,105 @@
       }
     },
     "The server doesn't have this stream (404)" : {
-      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:': the server answered HTTP 404. Keep the number."
+      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:': the server answered HTTP 404. Keep the number.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لا يتوفر هذا البث على الخادم (404)"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Stream ist auf dem Server nicht vorhanden (404)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "el servidor no tiene esta transmisión (404)"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "le serveur ne propose pas ce flux (404)"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "सर्वर पर यह स्ट्रीम नहीं है (404)"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "server tidak memiliki stream ini (404)"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "il server non ha questo stream (404)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サーバにこのストリームがありません（404）"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서버에 이 스트림이 없음(404)"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "de server heeft deze stream niet (404)"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "serwer nie ma tego strumienia (404)"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "o servidor não tem esta transmissão (404)"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "на сервере нет этого потока (404)"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sunucuda bu yayın yok (404)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器上没有此流（404）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器上沒有此串流（404）"
+          }
+        }
+      }
     },
     "The server doesn’t have this stream. The playlist may be out of date." : {
       "comment" : "Apple TV player, failure screen: the stream's server answered 404. The technical reason shows under it.",
@@ -122204,7 +123184,105 @@
       }
     },
     "The server has a problem (5xx)" : {
-      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:': the server answered with an HTTP 5xx error. Keep '5xx'."
+      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:': the server answered with an HTTP 5xx error. Keep '5xx'.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يواجه الخادم مشكلة (5xx)"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf dem Server ist ein Fehler aufgetreten (5xx)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "el servidor tiene un problema (5xx)"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "le serveur rencontre un problème (5xx)"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "सर्वर में कोई समस्या है (5xx)"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "server sedang bermasalah (5xx)"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "il server ha un problema (5xx)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サーバに問題が発生しています（5xx）"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서버에 문제가 있음(5xx)"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "de server heeft een probleem (5xx)"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "wystąpił problem z serwerem (5xx)"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "o servidor está com um problema (5xx)"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "на сервере произошла ошибка (5xx)"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sunucuda bir sorun var (5xx)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器出现问题（5xx）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器發生問題（5xx）"
+          }
+        }
+      }
     },
     "The server has a problem right now. Try again later." : {
       "comment" : "Apple TV player, failure screen: the stream's server answered with a 5xx error. The technical reason shows under it.",
@@ -122308,7 +123386,105 @@
       }
     },
     "The server is limiting connections (429)" : {
-      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:': the server answered HTTP 429 (too many requests). Keep the number."
+      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:': the server answered HTTP 429 (too many requests). Keep the number.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يحدّ الخادم من عدد الاتصالات (429)"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Server begrenzt die Verbindungen (429)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "el servidor está limitando las conexiones (429)"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "le serveur limite les connexions (429)"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "सर्वर कनेक्शन सीमित कर रहा है (429)"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "server sedang membatasi koneksi (429)"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "il server sta limitando le connessioni (429)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サーバが接続数を制限しています（429）"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서버가 연결을 제한하고 있음(429)"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "de server beperkt het aantal verbindingen (429)"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "serwer ogranicza liczbę połączeń (429)"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "o servidor está limitando as conexões (429)"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "сервер ограничивает число подключений (429)"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sunucu bağlantıları sınırlıyor (429)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器正在限制连接（429）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器正在限制連線（429）"
+          }
+        }
+      }
     },
     "The server isn’t accepting connections. Check that it’s running, then try again." : {
       "comment" : "Apple TV player, failure screen: the stream's server refused the connection (it is down or the address is wrong). The technical reason shows under it.",
@@ -122412,7 +123588,105 @@
       }
     },
     "The server refused access (403)" : {
-      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:': the server answered HTTP 403 (an expired subscription, or the account's connections are in use). Keep the number."
+      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:': the server answered HTTP 403 (an expired subscription, or the account's connections are in use). Keep the number.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "رفض الخادم الوصول (403)"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Server hat den Zugriff verweigert (403)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "el servidor ha denegado el acceso (403)"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "le serveur a refusé l’accès (403)"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "सर्वर ने ऐक्सेस देने से मना कर दिया (403)"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "server menolak akses (403)"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "il server ha negato l’accesso (403)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サーバがアクセスを拒否しました（403）"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서버가 접근을 거부함(403)"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "de server weigerde toegang (403)"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "serwer odmówił dostępu (403)"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "o servidor recusou o acesso (403)"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "сервер отказал в доступе (403)"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sunucu erişimi reddetti (403)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器拒绝访问（403）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器拒絕取用（403）"
+          }
+        }
+      }
     },
     "The server refused access to this stream. Check your playlist’s account." : {
       "comment" : "Apple TV player, failure screen: the stream's server answered 401 or 403 (the subscription or credentials). The technical reason shows under it.",
@@ -122516,10 +123790,206 @@
       }
     },
     "The server refused the connection" : {
-      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:' and similar: the server did not accept the connection (it is down, or the address or port is wrong)."
+      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:' and similar: the server did not accept the connection (it is down, or the address or port is wrong).",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "رفض الخادم الاتصال"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Server hat die Verbindung abgelehnt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "el servidor ha rechazado la conexión"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "le serveur a refusé la connexion"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "सर्वर ने कनेक्शन अस्वीकार कर दिया"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "server menolak koneksi"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "il server ha rifiutato la connessione"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サーバが接続を拒否しました"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서버가 연결을 거부함"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "de server weigerde de verbinding"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "serwer odrzucił połączenie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "o servidor recusou a conexão"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "сервер отклонил подключение"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sunucu bağlantıyı reddetti"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器拒绝了连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器拒絕了連線"
+          }
+        }
+      }
     },
     "The server refused the request" : {
-      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:': the server answered with another HTTP 4xx error."
+      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:': the server answered with another HTTP 4xx error.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "رفض الخادم الطلب"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Server hat die Anfrage abgelehnt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "el servidor ha rechazado la solicitud"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "le serveur a refusé la requête"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "सर्वर ने अनुरोध अस्वीकार कर दिया"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "server menolak permintaan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "il server ha rifiutato la richiesta"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サーバがリクエストを拒否しました"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서버가 요청을 거부함"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "de server weigerde het verzoek"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "serwer odrzucił żądanie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "o servidor recusou a solicitação"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "сервер отклонил запрос"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sunucu isteği reddetti"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器拒绝了请求"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器拒絕了要求"
+          }
+        }
+      }
     },
     "The server responded with HTTP %@ (%@)." : {
       "comment" : "Download error; the placeholders are the HTTP status code, such as 404, and its system description, such as 'not found'.",
@@ -122730,7 +124200,105 @@
       }
     },
     "The server's security certificate isn't valid" : {
-      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:' and similar: the HTTPS server's certificate is expired, for another server, or not from an authority the device trusts."
+      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:' and similar: the HTTPS server's certificate is expired, for another server, or not from an authority the device trusts.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "شهادة أمان الخادم غير صالحة"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Sicherheitszertifikat des Servers ist ungültig"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "el certificado de seguridad del servidor no es válido"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "le certificat de sécurité du serveur n’est pas valide"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "सर्वर का सुरक्षा प्रमाणपत्र मान्य नहीं है"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "sertifikat keamanan server tidak valid"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "il certificato di sicurezza del server non è valido"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サーバのセキュリティ証明書が無効です"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서버의 보안 인증서가 유효하지 않음"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "het beveiligingscertificaat van de server is ongeldig"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "certyfikat bezpieczeństwa serwera jest nieprawidłowy"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "o certificado de segurança do servidor não é válido"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "сертификат безопасности сервера недействителен"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sunucunun güvenlik sertifikası geçerli değil"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器的安全证书无效"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器的安全性憑證無效"
+          }
+        }
+      }
     },
     "The small web server, reachable only from this device, that gives converted streams to the system player." : {
       "comment" : "Settings › Acknowledgements: what FlyingFox (an HTTP server library) does in Fluxo: the loopback server of the player.",
@@ -123137,7 +124705,105 @@
       }
     },
     "The stream ended unexpectedly" : {
-      "comment" : "Player or recording error, the technical reason after 'Stream interrupted:' and similar: the input ended (end of file)."
+      "comment" : "Player or recording error, the technical reason after 'Stream interrupted:' and similar: the input ended (end of file).",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "انتهى البث بشكل غير متوقع"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Stream wurde unerwartet beendet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "la transmisión ha finalizado inesperadamente"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "le flux s’est terminé de manière inattendue"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "स्ट्रीम अचानक खत्म हो गई"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "stream berakhir secara tak terduga"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "lo stream è terminato in modo imprevisto"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ストリームが予期せず終了しました"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "스트림이 예기치 않게 종료됨"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "de stream eindigde onverwacht"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "strumień nieoczekiwanie się zakończył"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "a transmissão terminou inesperadamente"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "поток неожиданно завершился"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yayın beklenmedik bir şekilde sona erdi"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "流意外结束"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "串流意外結束"
+          }
+        }
+      }
     },
     "The stream is not running." : {
       "comment" : "Player error from the streaming engine.",
@@ -123241,7 +124907,105 @@
       }
     },
     "The stream's data is damaged or isn't video" : {
-      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:' and similar: FFmpeg found invalid data (a web page instead of a stream, or a damaged file)."
+      "comment" : "Player or recording error, the technical reason after 'Unable to open the stream:' and similar: FFmpeg found invalid data (a web page instead of a stream, or a damaged file).",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "بيانات البث تالفة أو ليست فيديو"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Daten des Streams sind beschädigt oder enthalten kein Video"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "los datos de la transmisión están dañados o no son de vídeo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "les données du flux sont endommagées ou ne correspondent pas à une vidéo"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "स्ट्रीम का डेटा खराब है या वह वीडियो नहीं है"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "data stream rusak atau bukan video"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "i dati dello stream sono danneggiati o non contengono video"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ストリームのデータが破損しているか、ビデオではありません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "스트림 데이터가 손상되었거나 비디오가 아님"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "de gegevens van de stream zijn beschadigd of bevatten geen video"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dane strumienia są uszkodzone lub nie zawierają wideo"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "os dados da transmissão estão danificados ou não são de vídeo"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "данные потока повреждены или не содержат видео"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yayın verileri bozuk veya video değil"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "流数据已损坏或不是视频"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "串流資料已損毀或不是影片"
+          }
+        }
+      }
     },
     "The video can't be converted while the app is in the background. Try again with the app open." : {
       "comment" : "Error while saving a recording or a download whose video must be converted: the system does not allow it while the app is in the background.",
@@ -123749,7 +125513,105 @@
       }
     },
     "There isn't enough storage space" : {
-      "comment" : "Player or recording error, the technical reason after 'Unable to write the stream:' and similar: the device's storage is full."
+      "comment" : "Player or recording error, the technical reason after 'Unable to write the stream:' and similar: the device's storage is full.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لا توجد مساحة تخزين كافية"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es ist nicht genug Speicherplatz verfügbar"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "no hay suficiente espacio de almacenamiento"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "l’espace de stockage est insuffisant"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "पर्याप्त स्टोरेज स्पेस नहीं है"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ruang penyimpanan tidak cukup"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "lo spazio di archiviazione non è sufficiente"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ストレージの空き容量が不足しています"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "저장 공간이 부족함"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "er is onvoldoende opslagruimte"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "za mało miejsca w pamięci"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "não há espaço de armazenamento suficiente"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "недостаточно места в хранилище"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yeterli depolama alanı yok"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "储存空间不足"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "儲存空間不足"
+          }
+        }
+      }
     },
     "These playlists are on your other devices. Add them to this Apple TV to watch them here, without typing a single address." : {
       "comment" : "Description of the iCloud playlists sheet on Apple TV.",
@@ -128917,7 +130779,105 @@
       }
     },
     "Turn on Legacy Networking only if a server stopped working after an update: the streams Fluxo converts itself, such as MPEG-TS channels and MKV movies, then connect as in earlier versions, without TLS 1.3, HTTP/2 or the system's proxy settings. Applies the next time a stream starts." : {
-      "comment" : "Settings, Playback footer: what the Legacy Networking switch does. TLS 1.3 and HTTP/2 are network protocol names; keep them."
+      "comment" : "Settings, Playback footer: what the Legacy Networking switch does. TLS 1.3 and HTTP/2 are network protocol names; keep them.",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لا تفعّل «الاتصال الشبكي القديم» إلا إذا توقف خادم عن العمل بعد تحديث: عندها تتصل عمليات البث التي يحوّلها Fluxo بنفسه، مثل قنوات MPEG-TS وأفلام MKV، كما في الإصدارات السابقة، دون TLS 1.3 أو HTTP/2 أو إعدادات الوكيل في النظام. يسري هذا الإعداد عند بدء البث التالي."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktiviere „Klassischer Netzwerkmodus“ nur, wenn ein Server nach einem Update nicht mehr funktioniert: Die Streams, die Fluxo selbst konvertiert, etwa MPEG-TS-Sender und MKV-Filme, verbinden sich dann wie in früheren Versionen, ohne TLS 1.3, HTTP/2 oder die Proxy-Einstellungen des Systems. Gilt ab dem nächsten Start eines Streams."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activa “Red clásica” solo si un servidor ha dejado de funcionar tras una actualización: las transmisiones que Fluxo convierte por sí mismo, como los canales MPEG-TS y las películas MKV, se conectarán entonces como en versiones anteriores, sin TLS 1.3, HTTP/2 ni los ajustes de proxy del sistema. Se aplica la próxima vez que se inicie una transmisión."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activez « Réseau classique » uniquement si un serveur a cessé de fonctionner après une mise à jour : les flux que Fluxo convertit lui-même, comme les chaînes MPEG-TS et les films MKV, se connectent alors comme dans les versions précédentes, sans TLS 1.3, HTTP/2 ni les réglages de proxy du système. S’applique au prochain démarrage d’un flux."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“पुरानी नेटवर्किंग” तभी चालू करें जब किसी अपडेट के बाद कोई सर्वर काम करना बंद कर दे: तब Fluxo जिन स्ट्रीम को खुद कन्वर्ट करता है, जैसे MPEG-TS चैनल और MKV फ़िल्में, वे पिछले संस्करणों की तरह TLS 1.3, HTTP/2 या सिस्टम की प्रॉक्सी सेटिंग्ज़ के बिना कनेक्ट होती हैं। अगली बार स्ट्रीम शुरू होने पर लागू होगा।"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktifkan Mode Jaringan Lama hanya jika server berhenti berfungsi setelah pembaruan: stream yang dikonversi sendiri oleh Fluxo, seperti saluran MPEG-TS dan film MKV, akan terhubung seperti di versi sebelumnya, tanpa TLS 1.3, HTTP/2, atau pengaturan proxy sistem. Berlaku saat stream berikutnya dimulai."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Attiva “Rete classica” solo se un server ha smesso di funzionare dopo un aggiornamento: gli stream che Fluxo converte da sé, come i canali MPEG-TS e i film MKV, in tal caso si connettono come nelle versioni precedenti, senza TLS 1.3, HTTP/2 né le impostazioni proxy del sistema. Si applica al prossimo avvio di uno stream."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アップデート後にサーバが動作しなくなった場合にのみ、「従来のネットワーク接続」をオンにしてください。オンにすると、MPEG-TSチャンネルやMKV映画など、Fluxoが自ら変換するストリームは、TLS 1.3、HTTP/2、システムのプロキシ設定を使用せずに、以前のバージョンと同じ方法で接続します。次にストリームを開始したときに適用されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "업데이트 후 서버가 작동하지 않게 된 경우에만 ‘레거시 네트워킹’을 켜십시오. 켜면 MPEG-TS 채널, MKV 영화 등 Fluxo가 직접 변환하는 스트림이 TLS 1.3, HTTP/2 또는 시스템 프록시 설정 없이 이전 버전과 같은 방식으로 연결됩니다. 다음에 스트림을 시작할 때 적용됩니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schakel ‘Oudere netwerkmodus’ alleen in als een server na een update niet meer werkt: de streams die Fluxo zelf converteert, zoals MPEG-TS-zenders en MKV-films, maken dan verbinding zoals in eerdere versies, zonder TLS 1.3, HTTP/2 of de proxyinstellingen van het systeem. Geldt de volgende keer dat een stream start."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Włącz opcję „Starszy tryb sieciowy” tylko wtedy, gdy serwer przestał działać po aktualizacji: strumienie, które Fluxo konwertuje samodzielnie, takie jak kanały MPEG-TS i filmy MKV, będą wtedy łączyć się tak jak we wcześniejszych wersjach, bez TLS 1.3, HTTP/2 ani systemowych ustawień proxy. Zmiana obowiązuje od następnego uruchomienia strumienia."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ative “Rede legada” somente se um servidor tiver deixado de funcionar após uma atualização: as transmissões que o Fluxo converte por conta própria, como canais MPEG-TS e filmes MKV, passam a se conectar como nas versões anteriores, sem TLS 1.3, HTTP/2 nem os ajustes de proxy do sistema. Vale a partir da próxima vez que uma transmissão começar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Включайте «Прежний сетевой режим», только если сервер перестал работать после обновления: потоки, которые Fluxo преобразует сам, например каналы MPEG-TS и фильмы MKV, будут подключаться как в предыдущих версиях — без TLS 1.3, HTTP/2 и системных настроек прокси. Применяется при следующем запуске потока."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eski Ağ Bağlantısı'nı yalnızca bir sunucu bir güncellemeden sonra çalışmayı bıraktıysa açın: Bu durumda Fluxo'nun kendi dönüştürdüğü yayınlar (MPEG-TS kanalları ve MKV filmleri gibi), önceki sürümlerdeki gibi TLS 1.3, HTTP/2 veya sistemin proxy ayarları olmadan bağlanır. Bir sonraki yayın başlatıldığında geçerli olur."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅当某个服务器在更新后无法正常使用时，才打开“旧版网络连接”。打开后，Fluxo 自行转换的流（例如 MPEG-TS 频道和 MKV 电影）将像早期版本一样进行连接，不使用 TLS 1.3、HTTP/2 或系统的代理设置。下次开始播放流时生效。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "僅當某個伺服器在更新後無法正常運作時，才開啟「舊版網路連線」。開啟後，Fluxo 自行轉換的串流（例如 MPEG-TS 頻道和 MKV 電影）會像早期版本一樣連線，不使用 TLS 1.3、HTTP/2 或系統的代理伺服器設定。下次開始播放串流時生效。"
+          }
+        }
+      }
     },
     "Turned off. Fluxo uses simpler suggestions and search." : {
       "comment" : "Text — Apple Intelligence features.",
@@ -133162,7 +135122,7 @@
       }
     },
     "Watch %@" : {
-      "comment" : "VoiceOver label of the button that plays a reminder's channel; the placeholder is the channel name.",
+      "comment" : "Button or VoiceOver label that plays a channel (a reminder's, a programme's); the placeholder is the channel name.",
       "localizations" : {
         "ar" : {
           "stringUnit" : {

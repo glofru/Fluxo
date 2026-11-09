@@ -591,7 +591,7 @@ private struct GuideProgrammeCell: View {
             Button("Details", systemImage: "info.circle") {
                 onSelect(GuideSelection(programme: programme, channel: channel))
             }
-            Button("Watch \(channel.item.displayName)", systemImage: "play.fill") {
+            Button("Watch \(TextParts.isolated(channel.item.displayName))", systemImage: "play.fill") {
                 playChannel(channel.item)
             }
             if ReminderCenter.canRemind(programme) {
@@ -612,7 +612,7 @@ private struct GuideProgrammeCell: View {
         .accessibilityHint("Shows the details")
         .accessibilityAddTraits(.isButton)
         .accessibilityActions {
-            Button("Watch \(channel.item.displayName)") {
+            Button("Watch \(TextParts.isolated(channel.item.displayName))") {
                 playChannel(channel.item)
             }
             if ReminderCenter.canRemind(programme) {

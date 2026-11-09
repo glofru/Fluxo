@@ -157,7 +157,7 @@ private struct GuideSearchRow: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
-            Button("Watch \(result.channel.displayName)", systemImage: "play.fill") {
+            Button("Watch \(TextParts.isolated(result.channel.displayName))", systemImage: "play.fill") {
                 playChannel(result.channel)
             }
             if ReminderCenter.canRemind(programme, now: now) {

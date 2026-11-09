@@ -50,7 +50,7 @@ struct EngineMessageTests {
         #expect(EngineMessage.reason(code: -EIO, stage: "Stream interrupted") == nil)
         #expect(EngineMessage.localized("Unable to open the stream: Input/output error")
                 == "Unable to open the stream: The server couldn't be found or reached")
-        #expect(EngineMessage.localized("Stream interrupted: Input/output error") == "Stream interrupted: Input/output error")
+        #expect(EngineMessage.localized("Stream interrupted: Input/output error") == "Stream interrupted: \u{2068}Input/output error\u{2069}")
     }
 
     @Test("Both parts of a message are translated, by code or by FFmpeg's text, and other reasons stay as they are")
@@ -71,9 +71,12 @@ struct EngineMessageTests {
         // The code wins over the text.
         #expect(EngineMessage.localized("Stream interrupted: something", code: -ECONNRESET)
                 == "Stream interrupted: The server closed the connection")
-        // A reason with no translation stays in FFmpeg's words.
+        // A reason with no translation stays in FFmpeg's words, isolated so that it keeps its order in a right-to-left
+        // sentence (English that ends in digits or punctuation).
         #expect(EngineMessage.localized("Stream interrupted: Protocol not found", code: -EPROTONOSUPPORT)
-                == "Stream interrupted: Protocol not found")
+                == "Stream interrupted: \u{2068}Protocol not found\u{2069}")
+        #expect(EngineMessage.localized("Stream interrupted: Stream ends prematurely at 1234")
+                == "Stream interrupted: \u{2068}Stream ends prematurely at 1234\u{2069}")
         // A message the engine does not compose this way is shown as it is.
         #expect(EngineMessage.localized("Something else: Connection refused") == "Something else: Connection refused")
     }

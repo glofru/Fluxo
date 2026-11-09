@@ -544,7 +544,8 @@ private struct ContentKindHeader: View {
                     picker
                 } label: {
                     HStack(spacing: 8) {
-                        Label(kind.segmentTitle, systemImage: kind.systemImage)
+                        // The full name: the row has the whole width (the short one is for the equal segments).
+                        Label(kind.title, systemImage: kind.systemImage)
                             .fixedSize(horizontal: false, vertical: true)
                         Image(systemName: "chevron.up.chevron.down")
                             .font(.subheadline.weight(.semibold))
@@ -554,7 +555,8 @@ private struct ContentKindHeader: View {
                     .contentShape(.rect)
                 }
                 .accessibilityLabel(Text("Content"))
-                .accessibilityValue(Text(kind.segmentTitle))
+                .accessibilityValue(Text(kind.title))
+                .accessibilityInputLabels([Text(kind.title), Text("Content")])
                 .padding(.horizontal, HomeLayout.horizontalMargin)
             } else {
                 segmentedPicker

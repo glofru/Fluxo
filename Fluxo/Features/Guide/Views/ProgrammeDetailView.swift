@@ -256,7 +256,7 @@ struct ProgrammeDetailView: View {
     }
 
     private func watchButton(now: Date, fillsWidth: Bool) -> some View {
-        let title = programme.isOnAir(at: now) ? String(localized: "Watch Now") : String(localized: "Watch \(channel.displayName)")
+        let title = programme.isOnAir(at: now) ? String(localized: "Watch Now") : String(localized: "Watch \(TextParts.isolated(channel.displayName))")
         return Button {
             close()
             playChannel(channel)
